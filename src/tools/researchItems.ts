@@ -20,6 +20,7 @@ import {
 } from "./_shared.js";
 import { researchItemUrl } from "../urls.js";
 import { languageMatches } from "../languages.js";
+import { nameMatchesQuery } from "../names.js";
 
 function itemYears(item: CollectionItem): number[] {
   const ys: number[] = [];
@@ -59,7 +60,8 @@ export function registerResearchItemTools(server: Server): void {
         "  - subject: LCSH subject heading (partial match, e.g. 'Architecture', 'Islam')\n" +
         "  - location: any place level — country, region or city (e.g. 'Nigeria', 'Lagos')\n" +
         "  - country: match the origin country specifically\n" +
-        "  - contributor: a person/institution/group name in the item's credits\n" +
+        "  - contributor: a person/institution/group name in the item's credits (person names match in " +
+        "either order — 'Oliver Baumann' or 'Baumann, Oliver')\n" +
         "  - project_id: e.g. 'UBT_ArtWorld2019', 'Ext_ILAM'\n" +
         "  - research_section: e.g. 'Arts & Aesthetics', 'Mobilities'\n" +
         "  - university: ubt | unilag | ujkz | ufba | external (code or name)\n" +
@@ -117,7 +119,12 @@ export function registerResearchItemTools(server: Server): void {
         if (args.location && !placeMatches(it, args.location)) return false;
         if (args.country && !(it.location?.origin ?? []).some((o) => containsCI(o.l1, args.country!)))
           return false;
-        if (args.contributor && !itemContributors(it).some((c) => containsCI(c.name, args.contributor!)))
+        if (
+          args.contributor &&
+          !itemContributors(it).some(
+            (c) => containsCI(c.name, args.contributor!) || nameMatchesQuery(c.name, args.contributor!),
+          )
+        )
           return false;
         if (args.project_id && !equalsCI(it.project?.id, args.project_id)) return false;
         if (args.research_section) {

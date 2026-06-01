@@ -14,16 +14,23 @@ const INSTRUCTIONS =
   "GETTING STARTED: call get_collection_overview first to scope the data, then use the search_* / list_* " +
   "tools to find records and the get_* tools to drill into one. find_related pivots from any " +
   "subject/place/person/project/tag to the entities that co-occur with it.\n\n" +
-  "CITATIONS: every record includes a `dashboard_url` field (e.g. " +
-  "https://amira.africamultiple.uni-bayreuth.de/research-items?id=abg-99-0000). ALWAYS cite an entity by " +
-  "rendering this URL as a markdown link so the user can open and verify the source page on the amira " +
-  "dashboard — never invent a citation or use a bare id. Publications additionally carry their own `url` " +
-  "(DOI or repository permalink); cite that as the primary reference for a publication. When you list " +
-  "multiple results, attach each one's dashboard_url to the item you mention.\n\n" +
+  "CITATIONS — follow these rules exactly:\n" +
+  "• Every record includes a `dashboard_url` (e.g. " +
+  "https://amira.africamultiple.uni-bayreuth.de/research-items?id=aaa-02-0007). Whenever you mention an " +
+  "item, person, project, research section, subject, place, etc., render its `dashboard_url` as a markdown " +
+  "link, e.g. [Volume 8: Yoruba Architecture…](https://amira.africamultiple.uni-bayreuth.de/research-items?id=aaa-02-0007).\n" +
+  "• NEVER print a bare identifier such as `aaa-02-0007`, and NEVER collapse several items into an id " +
+  "range like `aaa-02-0007 through aaa-02-0014`. Reference each item as its own full markdown link (a " +
+  "bulleted list of links is good when there are several).\n" +
+  "• Use only URLs returned by the tools — never invent one. For a publication, cite its own `url` " +
+  "(DOI or permalink) as the primary reference.\n\n" +
+  "NAMES: people are stored 'Surname, Forename' (e.g. `Baumann, Oliver`) — always display and cite that " +
+  "form. The search_persons, get_person and contributor filters accept either order and ignore accents, so " +
+  "a user's 'Oliver Baumann' will still find 'Baumann, Oliver'; get_person echoes the canonical `name`.\n\n" +
   "DATA NOTES: results come from a snapshot of the dashboard's public JSON — the server queries no " +
   "backend database, so it works offline. The snapshot may lag the live site; get_collection_overview " +
-  "reports its freshness. Person/contributor names use 'Surname, Forename'. Treat the collection as " +
-  "curated, not exhaustive: absence of a result is not proof of absence.";
+  "reports its freshness. Treat the collection as curated, not exhaustive: absence of a result is not " +
+  "proof of absence.";
 
 async function main(): Promise<void> {
   const server = new McpServer(

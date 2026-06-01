@@ -12,6 +12,7 @@ import {
   type Server,
 } from "./_shared.js";
 import { locationUrl, personUrl, projectUrl, subjectUrl, tagUrl } from "../urls.js";
+import { nameMatchesQuery } from "../names.js";
 
 type EntityType = "subject" | "location" | "person" | "project" | "tag";
 
@@ -68,7 +69,7 @@ export function registerRelatedTools(server: Server): void {
               (o) => containsCI(o.l1, value) || containsCI(o.l2, value) || containsCI(o.l3, value),
             );
           case "person":
-            return itemContributors(it).some((c) => equalsCI(c.name, value));
+            return itemContributors(it).some((c) => nameMatchesQuery(c.name, value) || containsCI(c.name, value));
           case "project":
             return equalsCI(it.project?.id, value) || containsCI(it.project?.name, value);
         }
@@ -87,7 +88,8 @@ export function registerRelatedTools(server: Server): void {
         inc(projects, it.project?.name);
         for (const s of sectionByProject.get(it.project?.id) ?? []) inc(sections, s);
         for (const s of itemSubjects(it)) if (!(type === "subject" && containsCI(s, value))) inc(subjects, s);
-        for (const c of itemContributors(it)) if (!(type === "person" && equalsCI(c.name, value))) inc(people, c.name);
+        for (const c of itemContributors(it))
+          if (!(type === "person" && nameMatchesQuery(c.name, value))) inc(people, c.name);
         for (const o of it.location?.origin ?? []) inc(locations, o.l1);
         for (const t of it.tags ?? []) if (!(type === "tag" && containsCI(t, value))) inc(tags, t);
       }

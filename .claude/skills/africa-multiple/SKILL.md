@@ -91,9 +91,13 @@ repository permalink) as the primary reference. Never cite a bare id.
 
 ## Citation rules (important)
 
-- ALWAYS render `dashboard_url` as a markdown link, e.g.
-  `[Volume 8: Yoruba Architecture…](https://amira.africamultiple.uni-bayreuth.de/research-items?id=abg-99-0000)`.
-- When listing several results, attach each one's link to the item you mention.
+- ALWAYS render an entity's `dashboard_url` as a markdown link, e.g.
+  `[Volume 8: Yoruba Architecture…](https://amira.africamultiple.uni-bayreuth.de/research-items?id=aaa-02-0007)`.
+- **Never** print a bare id (`aaa-02-0007`) and **never** collapse items into an id range
+  (`aaa-02-0007 through aaa-02-0014`). List each referenced item as its own full link — a bulleted list
+  of links is the right shape when there are several.
+  - ❌ `Photos from fieldwork (aaa-02-0007 through aaa-02-0014).`
+  - ✅ `Photos from fieldwork: [aaa-02-0007](…?id=aaa-02-0007), [aaa-02-0008](…?id=aaa-02-0008), …`
 - For a publication, lead with its own `url`/DOI; the `dashboard_url` points to the publications page.
 - Do not invent links or ids — only use the URLs the tools return.
 
@@ -106,8 +110,10 @@ repository permalink) as the primary reference. Never cite a bare id.
    the Liberia broadcasting tapes). Disclose this when comparing universities, places, or themes.
 4. **Projects ≠ items.** The project registry is larger than the set of projects with digitised items;
    use `item_count` from `get_project` / `search_projects` to tell them apart.
-5. **Name format.** People are `Surname, Forename`. Contributor names on items may not perfectly match
-   the people authority list — `get_person` matches across projects, items, and the bibliography anyway.
+5. **Name format.** People are stored `Surname, Forename` — always display and cite that form. You may
+   query in either order (and without accents): `search_persons`, `get_person` and the `contributor`
+   filter resolve "Oliver Baumann" → "Baumann, Oliver". `get_person` echoes the canonical `name` plus the
+   `query` you passed, and matches PIs/contributors/authors across projects, items and the bibliography.
 6. **University label.** A project's university is inferred from its id prefix (UBT_/ULG_/UJKZ_/UFB_),
    matching the dashboard; unprefixed ids fall under "external".
 7. **Language codes split.** Languages are ISO 639-2, and some appear under both the bibliographic and
