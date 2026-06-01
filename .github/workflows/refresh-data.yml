@@ -1,0 +1,89 @@
+name: Refresh data snapshot
+
+# Keeps a downloadable .mcpb in sync with the live amira dashboard data.
+# Runs on a schedule (and on demand): fetches the dashboard's public JSON,
+# and ONLY if its `generatedAt` changed since last time, rebuilds + repacks
+# and updates the rolling `data-latest` pre-release. No database/VPN involved —
+# it reads the same public JSON any browser can.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+env:
+  ROLLING_TAG: data-latest
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+
+      - name: Fetch latest dashboard data
+        run: npm run fetch-data
+
+      - name: Read snapshot timestamp
+        id: snap
+        run: |
+          gen=$(node -p "require('./data/manifest.json').generatedAt")
+          echo "generated_at=$gen" >> "$GITHUB_OUTPUT"
+          printf '%s' "$gen" > generatedAt.txt
+
+      - name: Read previously published timestamp
+        id: prev
+        run: |
+          prev=""
+          if gh release download "$ROLLING_TAG" --pattern generatedAt.txt --output prev.txt 2>/dev/null; then
+            prev=$(cat prev.txt)
+          fi
+          echo "generated_at=$prev" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether to publish
+        id: check
+        env:
+          CURRENT: ${{ steps.snap.outputs.generated_at }}
+          PREVIOUS: ${{ steps.prev.outputs.generated_at }}
+        run: |
+          if [ -n "$PREVIOUS" ] && [ "$CURRENT" = "$PREVIOUS" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Dashboard data unchanged (generatedAt=$CURRENT) — nothing to publish."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "New dashboard data (generatedAt=$CURRENT, was '$PREVIOUS') — rebuilding."
+          fi
+
+      - name: Type-check, bundle, pack
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          npm run prepack-mcpb
+          npx -y @anthropic-ai/mcpb@latest pack . africa-multiple-mcp-server.mcpb
+
+      - name: Publish / update rolling pre-release
+        if: steps.check.outputs.changed == 'true'
+        env:
+          CURRENT: ${{ steps.snap.outputs.generated_at }}
+        run: |
+          notes="Auto-built .mcpb tracking the live amira dashboard data (snapshot generatedAt: $CURRENT).
+
+          This rolling pre-release always carries the latest data. For versioned, code-tagged builds see the main Releases list."
+          if gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
+            gh release upload "$ROLLING_TAG" africa-multiple-mcp-server.mcpb generatedAt.txt --clobber
+            gh release edit "$ROLLING_TAG" --title "Latest data snapshot" --notes "$notes" --prerelease
+          else
+            gh release create "$ROLLING_TAG" africa-multiple-mcp-server.mcpb generatedAt.txt \
+              --title "Latest data snapshot" --notes "$notes" --prerelease
+          fi

@@ -16,10 +16,12 @@ nmraw.mjs
 
 # Dev metadata
 .gitignore
+.gitattributes
 .git/
+.github/
 .DS_Store
 *.log
 .env
 .env.*
 
-# Keep in the bundle: manifest.json, package.json, server/index.js, data/, README.md
+# Keep in the bundle: manifest.json, package.json, icon.png, server/index.js, data/, README.md

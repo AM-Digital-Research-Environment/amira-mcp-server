@@ -1,8 +1,7 @@
 // Domain types for the Africa Multiple research data.
 //
-// These mirror the shapes the amira dashboard loads from its static JSON
-// (which in turn come from the WissKI MongoDB archive), AFTER the MongoDB
-// Extended JSON wrappers have been normalised by mongoJSON.ts:
+// These mirror the shapes the amira dashboard loads from its static JSON,
+// AFTER the Extended-JSON value wrappers have been normalised by mongoJSON.ts:
 //   {$oid}          -> string
 //   {$date}         -> ISO string
 //   {$numberDouble:"NaN"} -> null

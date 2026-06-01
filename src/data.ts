@@ -5,13 +5,13 @@
 // indexes. Two data planes keep this offline-safe for wide public distribution:
 //
 //   1. A JSON snapshot is BUNDLED in the .mcpb (config.bundledDataDir). The
-//      server is fully usable from this alone, with no network and no MongoDB.
+//      server is fully usable from this alone, with no network and no backend database.
 //   2. When config.liveRefresh is on, a background task compares the bundled/
 //      cached snapshot's `generatedAt` against the PUBLIC dashboard JSON and,
 //      if newer, downloads it into config.cacheDir and hot-swaps the store.
 //
-// MongoDB is never contacted by this server; only the dashboard's upstream
-// pipeline (on the university VPN) touches it.
+// This server contacts no backend database; it reads only the bundled snapshot
+// and the dashboard's public JSON.
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";

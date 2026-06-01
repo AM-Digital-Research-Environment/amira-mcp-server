@@ -13,28 +13,24 @@ items**, **people**, **institutions**, **groups**, and the cluster
 Every result carries a `dashboard_url` so findings can be **cited as links** back
 to the exact page on the amira dashboard.
 
-## How it gets its data — and why no database is needed
+## How it gets its data — and why nothing else is needed
 
-The server **never connects to MongoDB**. There are two separate data planes:
+The server is **self-contained and offline-first**, with no backend database to
+connect to. It reads from two sources:
 
-| Plane | Who | What |
-| --- | --- | --- |
-| **Upstream** (private) | the maintainer, on the university VPN | MongoDB → Python pipeline → static JSON → published to the public amira dashboard |
-| **Downstream** (public) | everyone who installs this extension | reads the **bundled JSON snapshot** and, optionally, the **public dashboard JSON** over HTTPS |
+1. A complete **JSON snapshot (~15 MB) bundled inside the `.mcpb`** — so it works
+   fully offline, with zero setup.
+2. *(optional, on by default)* the **amira dashboard's public JSON** over HTTPS.
+   At startup a background task compares the bundled/cached snapshot's
+   `generatedAt` against the dashboard's `manifest.json` and, if newer, downloads
+   it into a local cache and hot-swaps the in-memory data. If the dashboard is
+   unreachable, it silently keeps serving the bundled snapshot.
 
-So end users need **no database, no API key, and no VPN**:
-
-1. A complete **~15 MB JSON snapshot is bundled inside the `.mcpb`**. The server
-   is fully usable from this alone — **offline**.
-2. When **live refresh** is on (default), a background task compares the bundled/
-   cached snapshot's `generatedAt` against the public dashboard's
-   `manifest.json` and, if newer, downloads it into a local cache and hot-swaps
-   the in-memory data. If the site is unreachable, it silently keeps using the
-   bundled snapshot.
-
-When the maintainer regenerates the dashboard data from MongoDB, every installed
-copy picks up the newer JSON on its next refresh. Turn live refresh off (in the
-extension settings) to pin to the bundled snapshot and run fully offline.
+So end users need **no API key, no credentials, and no special network access** —
+it's the same openly-published dataset that powers the public dashboard. When the
+dashboard's data is refreshed, every installed copy picks up the newer snapshot
+on its next refresh. Turn live refresh off in the extension settings to pin to
+the bundled snapshot and run fully offline.
 
 ## Tools
 
@@ -80,14 +76,16 @@ A research-workflow skill ships in [`.claude/skills/africa-multiple/`](.claude/s
 it gives the model cluster context, a query workflow, a tool-by-task map, the citation discipline, and
 the collection's coverage caveats. Install it by copying that folder into your Claude skills directory
 (e.g. `~/.claude/skills/`) or your project's `.claude/skills/`. It is also packed inside the `.mcpb` for
-reference. For the upstream data architecture, see the separate `wisski-mongodb` skill.
+reference. See [`references/data-model.md`](.claude/skills/africa-multiple/references/data-model.md) for field-level detail.
 
 ## Install (end users)
 
 Download `africa-multiple-mcp-server.mcpb` from the
 [releases page](https://github.com/AM-Digital-Research-Environment/africa-multiple-mcp-server/releases)
 and double-click it. Claude Desktop shows an install dialog; click **Install**.
-No further configuration is required.
+No further configuration is required. The latest tagged release carries the
+current data; the rolling [`data-latest`](https://github.com/AM-Digital-Research-Environment/africa-multiple-mcp-server/releases/tag/data-latest)
+pre-release always tracks the freshest dashboard snapshot.
 
 ## Develop / rebuild
 
@@ -111,6 +109,20 @@ npx @anthropic-ai/mcpb validate manifest.json
 npm run pack-mcpb                          # -> africa-multiple-mcp-server.mcpb
 ```
 
+## Continuous delivery
+
+Two GitHub Actions automate distribution (both build the snapshot from the
+**public** dashboard JSON — no database or credentials):
+
+- **Release** (`.github/workflows/release.yml`) — on a pushed `v*` tag, builds,
+  packs the `.mcpb`, and attaches it to the GitHub Release for that tag.
+- **Refresh data snapshot** (`.github/workflows/refresh-data.yml`) — weekly and
+  on demand; rebuilds and repacks **only when the dashboard's `generatedAt`
+  changed**, updating a rolling `data-latest` pre-release.
+
+> Publishing releases from Actions requires **Read and write** workflow
+> permissions: repo **Settings → Actions → General → Workflow permissions**.
+
 ## Configuration (environment / extension settings)
 
 | Env var | Extension setting | Default | Meaning |
@@ -127,8 +139,8 @@ npm run pack-mcpb                          # -> africa-multiple-mcp-server.mcpb
   [IWAC MCP server](https://github.com/fmadore/iwac-mcp-server) — the snapshot is
   loaded into memory and indexed at startup. No native bindings; the esbuild
   bundle is a single self-contained `server/index.js`.
-- **MongoDB Extended JSON** (`{$oid}`, `{$date}`, `{$numberDouble:"NaN"}`) and the
-  `location.l1/l2/l3` array quirk are normalised exactly as the dashboard does.
+- **Extended-JSON value wrappers** (`{$oid}`, `{$date}`, `{$numberDouble:"NaN"}`) and
+  the `location.l1/l2/l3` array quirk are normalised exactly as the dashboard does.
 - **Citations** mirror the dashboard's own URL scheme
   (`/people?name=…`, `/projects?id=…`, `/research-items?id=…`, …).
 

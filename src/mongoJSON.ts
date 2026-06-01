@@ -1,6 +1,6 @@
-// Normalise MongoDB Extended JSON exactly as the amira dashboard does at load
-// time (src/lib/utils/loaders/mongoJSON.ts), so the rest of the server works
-// with plain JS values.
+// Normalise the dashboard's Extended-JSON value wrappers exactly as the amira
+// dashboard does at load time, so the rest of the server works with plain JS
+// values.
 //
 //   {$oid: "..."}              -> string
 //   {$date: "..."}             -> ISO string (kept as string; we only serialise)
@@ -16,7 +16,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/** Recursively unwrap MongoDB Extended JSON wrappers. */
+/** Recursively unwrap Extended-JSON value wrappers. */
 export function transformMongoJSON<T = Json>(value: Json): T {
   if (Array.isArray(value)) {
     return value.map((v) => transformMongoJSON(v)) as unknown as T;
@@ -32,7 +32,7 @@ export function transformMongoJSON<T = Json>(value: Json): T {
         case "$oid":
           return String(inner) as unknown as T;
         case "$date":
-          // Mongo may nest as {$date: {$numberLong: "..."}}; coerce to ISO.
+          // May nest as {$date: {$numberLong: "..."}}; coerce to ISO.
           if (isPlainObject(inner) && "$numberLong" in inner) {
             const ms = Number((inner as Record<string, unknown>).$numberLong);
             return new Date(ms).toISOString() as unknown as T;

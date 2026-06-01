@@ -74,7 +74,7 @@ export function registerOverviewTools(server: Server): void {
           source: store.source,
           generated_at: store.generatedAt || null,
           note:
-            "Data is a snapshot of the public amira dashboard JSON; it never queries MongoDB directly. " +
+            "Data is a snapshot of the public amira dashboard JSON; the server queries no backend database. " +
             (store.source === "cache"
               ? "Loaded from a refreshed local cache."
               : "Loaded from the bundled snapshot."),

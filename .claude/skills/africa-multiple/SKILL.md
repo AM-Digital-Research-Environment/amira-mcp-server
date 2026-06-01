@@ -10,7 +10,7 @@ description: |
   - Exploring how a theme, place, or person connects across projects and collections
   - Building cited research outputs grounded in the amira dashboard
   It provides cluster background, a query workflow, tool-selection guidance, citation conventions, and
-  the collection's coverage caveats. For the underlying data architecture see the wisski-mongodb skill.
+  the collection's coverage caveats. See the bundled references for the data model and tool catalogue.
 ---
 
 # Africa Multiple Research Data — MCP Workflow
@@ -36,8 +36,8 @@ Work is organised into thematic **research sections** (don't hardcode the list �
 `list_research_sections`; it currently includes Affiliations, Arts & Aesthetics, Knowledges, Learning,
 Mobilities, Moralities plus newer thematic sections and a synthetic "External" grouping).
 
-The data is **read from a snapshot of the dashboard's public JSON** — the server never touches the
-underlying MongoDB, so it works offline and needs no database, key, or VPN.
+The data is **read from a snapshot of the dashboard's public JSON** — the server contacts no backend
+database, so it works offline and needs no database, key, or credentials.
 
 ## The entities (and how they connect)
 
@@ -100,7 +100,7 @@ repository permalink) as the primary reference. Never cite a bare id.
 ## Caveats
 
 1. **Snapshot, not live DB.** Data reflects the last dashboard refresh (`get_collection_overview` →
-   `data_snapshot.generated_at`). The server may lag the live site; it never reads MongoDB.
+   `data_snapshot.generated_at`). The server may lag the live site; it contacts no backend database.
 2. **Curated, not exhaustive.** Absence of a result is not proof of absence.
 3. **Coverage is uneven.** Item counts skew toward a few large collections (e.g. ILAM ≈ South Africa,
    the Liberia broadcasting tapes). Disclose this when comparing universities, places, or themes.

@@ -1,0 +1,49 @@
+name: Release
+
+# Build a fresh, self-contained .mcpb (snapshot pulled from the public dashboard
+# JSON) and attach it to a GitHub Release. Triggered by pushing a version tag
+# (e.g. `git tag v0.1.1 && git push --tags`); also runs on demand for a build
+# sanity check (artifact only, no release).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Build data snapshot from the public dashboard
+        run: npm run fetch-data
+      - name: Type-check and bundle
+        run: npm run prepack-mcpb
+      - name: Pack .mcpb
+        run: npx -y @anthropic-ai/mcpb@latest pack . africa-multiple-mcp-server.mcpb
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: africa-multiple-mcp-server-mcpb
+          path: africa-multiple-mcp-server.mcpb
+          if-no-files-found: error
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" africa-multiple-mcp-server.mcpb --clobber
+          else
+            gh release create "${{ github.ref_name }}" africa-multiple-mcp-server.mcpb \
+              --title "${{ github.ref_name }} — Africa Multiple MCP server" \
+              --generate-notes
+          fi

@@ -9,8 +9,8 @@ const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 /**
  * Public base URL of the amira dashboard. ALL citations and the optional
  * live-refresh fetches point here. It serves static JSON under `/data/*` with
- * no authentication — the MCP server never touches MongoDB directly, so end
- * users need neither a database nor the university VPN.
+ * no authentication — the MCP server contacts no backend database, so end
+ * users need no database or credentials.
  */
 export const DASHBOARD_BASE =
   process.env.AMIRA_DASHBOARD_BASE?.trim().replace(/\/+$/, "") ||

@@ -1,8 +1,8 @@
 # Data model (as the tools return it)
 
-The server normalises the dashboard's MongoDB-Extended-JSON before returning anything, so you work with
-plain values. For the upstream architecture (MongoDB collections, the WissKI SPARQL endpoint, the
-ERef/EPub publications pipeline), see the **wisski-mongodb** skill.
+The server normalises the dashboard's Extended-JSON value wrappers before returning anything, so you
+work with plain values. Publications come from a separate bibliography feed and are merged into the
+same shape.
 
 ## Research item
 

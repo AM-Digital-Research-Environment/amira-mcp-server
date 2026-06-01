@@ -20,8 +20,8 @@ const INSTRUCTIONS =
   "dashboard — never invent a citation or use a bare id. Publications additionally carry their own `url` " +
   "(DOI or repository permalink); cite that as the primary reference for a publication. When you list " +
   "multiple results, attach each one's dashboard_url to the item you mention.\n\n" +
-  "DATA NOTES: results come from a snapshot of the dashboard's public JSON — the server never queries the " +
-  "underlying MongoDB, so it works offline. The snapshot may lag the live site; get_collection_overview " +
+  "DATA NOTES: results come from a snapshot of the dashboard's public JSON — the server queries no " +
+  "backend database, so it works offline. The snapshot may lag the live site; get_collection_overview " +
   "reports its freshness. Person/contributor names use 'Surname, Forename'. Treat the collection as " +
   "curated, not exhaustive: absence of a result is not proof of absence.";
 
