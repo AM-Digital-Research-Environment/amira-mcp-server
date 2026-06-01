@@ -1,0 +1,25 @@
+# The esbuild bundle (server/index.js) is fully self-contained — verified to run
+# with node_modules absent — so the packed extension ships only the bundle + the
+# JSON snapshot. No node_modules, no native bindings, cross-platform.
+node_modules/
+
+# Source & build config
+src/
+scripts/
+tsconfig.json
+*.ts
+*.map
+
+# Local test scripts
+smoke-test.mjs
+nmraw.mjs
+
+# Dev metadata
+.gitignore
+.git/
+.DS_Store
+*.log
+.env
+.env.*
+
+# Keep in the bundle: manifest.json, package.json, server/index.js, data/, README.md
