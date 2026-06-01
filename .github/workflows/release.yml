@@ -38,7 +38,9 @@ jobs:
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/')
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Uses a PAT/App secret if present, else the default token (which needs
+          # org "Read and write" workflow permissions to publish releases).
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
         run: |
           if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
             gh release upload "${{ github.ref_name }}" africa-multiple-mcp-server.mcpb --clobber

@@ -20,7 +20,9 @@ concurrency:
 
 env:
   ROLLING_TAG: data-latest
-  GH_TOKEN: ${{ github.token }}
+  # Uses a PAT/App secret if present, else the default token (which needs org
+  # "Read and write" workflow permissions to publish releases).
+  GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
 
 jobs:
   refresh:

@@ -120,8 +120,12 @@ Two GitHub Actions automate distribution (both build the snapshot from the
   on demand; rebuilds and repacks **only when the dashboard's `generatedAt`
   changed**, updating a rolling `data-latest` pre-release.
 
-> Publishing releases from Actions requires **Read and write** workflow
-> permissions: repo **Settings → Actions → General → Workflow permissions**.
+> **Publishing from Actions requires a writable token.** If the organization
+> disables write permissions for the default workflow token, either (a) enable
+> *Read and write permissions* under **Organization → Settings → Actions →
+> General → Workflow permissions**, or (b) add a repo/org secret `RELEASE_TOKEN`
+> (a PAT or GitHub App token with `contents: write`). The workflows use
+> `secrets.RELEASE_TOKEN` when present and fall back to the default token.
 
 ## Configuration (environment / extension settings)
 
