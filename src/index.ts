@@ -34,7 +34,7 @@ const INSTRUCTIONS =
 
 async function main(): Promise<void> {
   const server = new McpServer(
-    { name: "africa-multiple-mcp-server", version: "0.1.0" },
+    { name: "africa-multiple-mcp-server", version: "0.2.0" },
     { instructions: INSTRUCTIONS },
   );
 
