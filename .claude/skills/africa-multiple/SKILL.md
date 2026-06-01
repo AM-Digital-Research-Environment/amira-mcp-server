@@ -1,43 +1,68 @@
 ---
 name: africa-multiple
 description: |
-  Research workflow and context for the Africa Multiple MCP server (the amira dashboard data).
+  Research workflow and context for the Africa Multiple MCP server — the read-only interface to AMIRA,
+  the public research-data dashboard built by the Digital Research Environment (DRE) of the Africa
+  Multiple Cluster of Excellence (University of Bayreuth).
   Use this skill when:
   - Querying the Africa Multiple MCP server (africa-multiple-mcp-server tools) about the cluster's
     research projects, research sections, digitised research items, people, institutions, groups,
     publications, subjects, or locations
-  - Investigating the Africa Multiple Cluster of Excellence's digital research collections
+  - Investigating the Africa Multiple Cluster of Excellence, its DRE, or the AMIRA dashboard and its
+    digital research collections
   - Exploring how a theme, place, or person connects across projects and collections
-  - Building cited research outputs grounded in the amira dashboard
-  It provides cluster background, a query workflow, tool-selection guidance, citation conventions, and
-  the collection's coverage caveats. See the bundled references for the data model and tool catalogue.
+  - Building cited research outputs grounded in AMIRA
+  It provides a query workflow, tool-selection guidance, citation conventions, and coverage caveats; the
+  bundled references add cluster background (references/cluster-context.md), the data model, and the tool
+  catalogue.
 ---
 
 # Africa Multiple Research Data — MCP Workflow
 
-Context and method for working with the **africa-multiple-mcp-server** tools, which expose the research
-data of the **Africa Multiple Cluster of Excellence** (University of Bayreuth) as published by the
-**amira dashboard** at <https://amira.africamultiple.uni-bayreuth.de>.
+Context and method for working with the **africa-multiple-mcp-server** tools. They expose the research
+data of the **Africa Multiple Cluster of Excellence** (University of Bayreuth) as published by **AMIRA**,
+the public research-data dashboard at <https://amira.africamultiple.uni-bayreuth.de>. Both AMIRA and this
+MCP server are built and maintained by the cluster's **Digital Research Environment (DRE)**.
 
 ## What this collection is
 
-Africa Multiple is a Cluster of Excellence studying Africa and its diasporas through the lens of
-**multiplicity** and **relationality**. Its digital research environment gathers material produced by
-collaborative projects across four partner universities and some external collections:
+The **Africa Multiple Cluster of Excellence** (University of Bayreuth, est. 2019) studies Africa and its
+diasporas under the banner **"Reconfiguring African Studies"**. Its three core concepts —
+**multiplicity, relationality, reflexivity** — treat phenomena as products of ever-changing
+relationships rather than fixed entities; `find_related` is the tool that puts this relational view into
+practice. The cluster works through partner research centres in Burkina Faso, Nigeria, Kenya, South
+Africa, and Brazil, coordinated from Bayreuth. See
+[references/cluster-context.md](references/cluster-context.md) for the fuller picture — mission, the two
+funding phases, the research centres, the DRE, and AMIRA.
+
+AMIRA gathers material produced by collaborative projects. In the data, each project's `university` is
+one of four id-prefixed partners, plus a bucket for outside collections:
 
 - **UBT** — University of Bayreuth (Germany)
 - **ULG** — University of Lagos (Nigeria)
 - **UJKZ** — Université Joseph Ki-Zerbo, Ouagadougou (Burkina Faso)
 - **UFB** — Federal University of Bahia (Brazil)
-- **External** — e.g. the International Library of African Music (ILAM, Rhodes University) and
-  Bayreuth Global / Bayreuth Postkolonial
+- **External** — outside collections, e.g. the International Library of African Music (ILAM, Rhodes
+  University, South Africa) and Bayreuth Global / Bayreuth Postkolonial
 
-Work is organised into thematic **research sections** (don't hardcode the list — read it with
-`list_research_sections`; it currently includes Affiliations, Arts & Aesthetics, Knowledges, Learning,
-Mobilities, Moralities plus newer thematic sections and a synthetic "External" grouping).
+Work is organised into thematic **research sections**, which were **redefined between the cluster's two
+funding phases** — so `list_research_sections` returns *two distinct groups* of sections plus a synthetic
+grouping. Don't hardcode the list (read it from the tool), but expect:
 
-The data is **read from a snapshot of the dashboard's public JSON** — the server contacts no backend
-database, so it works offline and needs no database, key, or credentials.
+- **Phase 1 — AM 1.0 (2019–2025):** Affiliations, Arts & Aesthetics, Knowledges, Learning, Mobilities,
+  Moralities. These carry **all** the digitised projects and items in the current snapshot.
+- **Phase 2 — AM 2.0 (2026–2032):** Accumulation, Digitalities, Ecologies, In/securities, Re:membering,
+  Translating. The structure for the next phase — **seeded but ~0 projects/items so far**, so treat
+  empty results from these as expected, not a bug.
+- **External:** a synthetic grouping for outside collections (e.g. ILAM, Bayreuth Global).
+
+Each section returned by `list_research_sections` / `get_research_section` carries a **`funding_phase`**
+label ("AM 1.0 (2019–2025)" / "AM 2.0 (2026–2032)", `null` for External) and a `date` range, so you can
+group or filter the two sets directly. Filter with the exact strings the tool returns (note the
+punctuation in "In/securities", "Re:membering").
+
+The data is **read from a snapshot of AMIRA's public JSON** — the server contacts no backend database,
+so it works offline and needs no database, key, or credentials.
 
 ## The entities (and how they connect)
 

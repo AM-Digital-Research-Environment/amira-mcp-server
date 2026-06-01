@@ -4,16 +4,13 @@ import {
   annotate,
   capText,
   equalsCI,
+  fundingPhase,
   projectSummary,
+  sectionSummary,
   textResult,
   type Server,
 } from "./_shared.js";
 import { researchSectionUrl } from "../urls.js";
-
-function brief(text: string | undefined, n = 280): string | null {
-  if (!text) return null;
-  return text.length <= n ? text : `${text.slice(0, n).trimEnd()}…`;
-}
 
 export function registerResearchSectionTools(server: Server): void {
   // === list_research_sections ===============================================
@@ -22,11 +19,14 @@ export function registerResearchSectionTools(server: Server): void {
     {
       title: "List research sections",
       description:
-        "List the cluster's research sections (its top-level thematic structure — e.g. 'Affiliations', " +
-        "'Arts & Aesthetics', 'Knowledges', 'Learning', 'Mobilities', 'Moralities', plus newer thematic " +
-        "sections and the synthetic 'External' grouping). Takes no arguments. For each section returns " +
-        "name, principal_investigators, member_count, project_count, item_count, a brief description and a " +
-        "`dashboard_url`. Use get_research_section for the full description, objectives and project list.",
+        "List the cluster's research sections (its top-level thematic structure). They fall into two " +
+        "groups, one per funding phase: AM 1.0 / 2019–2025 (Affiliations, Arts & Aesthetics, Knowledges, " +
+        "Learning, Mobilities, Moralities) and AM 2.0 / 2026–2032 (Accumulation, Digitalities, Ecologies, " +
+        "In/securities, Re:membering, Translating), plus a synthetic 'External' grouping for outside " +
+        "collections. The AM 2.0 sections are newly seeded and currently have ~0 projects/items. Takes no " +
+        "arguments. For each section returns name, funding_phase, date, principal_investigators, " +
+        "member_count, project_count, item_count, a brief description and a `dashboard_url`. Use " +
+        "get_research_section for the full description, objectives and project list.",
       annotations: annotate("List research sections"),
       inputSchema: {},
     },
@@ -43,15 +43,7 @@ export function registerResearchSectionTools(server: Server): void {
         const projectCount = store.projects.filter((p) =>
           (p.researchSection ?? []).some((x) => equalsCI(x, s.name)),
         ).length;
-        return {
-          name: s.name,
-          principal_investigators: s.pi ?? [],
-          member_count: (s.members ?? []).length,
-          project_count: projectCount,
-          item_count: itemCountBySection.get(s.name) ?? 0,
-          description: brief(s.description),
-          dashboard_url: researchSectionUrl(s.name),
-        };
+        return sectionSummary(s, { projectCount, itemCount: itemCountBySection.get(s.name) ?? 0 });
       });
 
       return textResult({ count: sections.length, results: sections });
@@ -65,8 +57,9 @@ export function registerResearchSectionTools(server: Server): void {
       title: "Get research section detail",
       description:
         "Full detail for one research section by `name` (case-insensitive, e.g. 'Mobilities'). Returns the " +
-        "description, objectives, work programme, principal investigators, members, spokesperson, the list " +
-        "of projects belonging to the section (with their item counts), the total item count, and a citable " +
+        "funding_phase (AM 1.0 / 2019–2025 or AM 2.0 / 2026–2032) and its date range, the description, " +
+        "objectives, work programme, principal investigators, members, spokesperson, the list of projects " +
+        "belonging to the section (with their item counts), the total item count, and a citable " +
         "`dashboard_url`. Returns { error, available_sections } if the name is unknown.",
       annotations: annotate("Get research section detail"),
       inputSchema: { name: z.string().describe("Section name, e.g. 'Arts & Aesthetics'") },
@@ -87,6 +80,8 @@ export function registerResearchSectionTools(server: Server): void {
 
       return textResult({
         name: s.name,
+        funding_phase: fundingPhase(s),
+        date: s.date ?? null,
         description: s.description ? capText(s.description).text : null,
         objectives: s.objectives ? capText(s.objectives).text : null,
         work_programme: s.workProgramme ? capText(s.workProgramme).text : null,

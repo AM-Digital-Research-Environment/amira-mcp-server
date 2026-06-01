@@ -32,7 +32,7 @@ import type {
 
 // --- External collections (virtual projects, mirrors dashboard external.ts) ---
 
-const EXTERNAL_SECTION = "External";
+export const EXTERNAL_SECTION = "External";
 
 const EXTERNAL_PROJECTS: Project[] = [
   {

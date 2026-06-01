@@ -40,10 +40,20 @@ Returned by `search_projects` / `get_project`.
 
 ## Research section
 
-Returned by `list_research_sections` / `get_research_section`: `name`, `description`, `objectives`,
-`work_programme`, `principal_investigators[]`, `members[]`, `spokesperson`, and the `projects[]` in it.
-**Always read the section list from the tool** — it evolves (it currently includes the six long-standing
-sections, newer thematic sections, and a synthetic "External" grouping for outside collections).
+Returned by `list_research_sections` / `get_research_section`: `name`, `funding_phase`
+("AM 1.0 (2019–2025)" / "AM 2.0 (2026–2032)", or `null` for the synthetic External grouping),
+`date {start,end}`, `description`, `objectives`, `work_programme`, `principal_investigators[]`,
+`members[]`, `spokesperson`, `project_count`, `item_count`, and (for `get_research_section`) the
+`projects[]` in it. **The cluster has two distinct groups of sections, one per funding phase** — group or
+filter by `funding_phase`, and always read the live list rather than hardcoding it:
+
+- **AM 1.0 (2019–2025):** Affiliations, Arts & Aesthetics, Knowledges, Learning, Mobilities, Moralities
+  — all current projects/items belong here.
+- **AM 2.0 (2026–2032):** Accumulation, Digitalities, Ecologies, In/securities, Re:membering, Translating
+  — newly seeded; `project_count`/`item_count` are ≈0 in the current snapshot.
+- plus a synthetic **External** grouping for outside collections.
+
+Filter with the exact strings returned (incl. "In/securities", "Re:membering").
 
 ## Person
 

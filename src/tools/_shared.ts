@@ -3,7 +3,7 @@
 // capping, and the entity -> summary mappers that attach a citable amira
 // dashboard URL to every record.
 import type { CollectionItem, Person, Project, Publication, ResearchSection } from "../types.js";
-import { UNIVERSITY_LABELS } from "../data.js";
+import { EXTERNAL_SECTION, UNIVERSITY_LABELS } from "../data.js";
 import {
   institutionUrl,
   personUrl,
@@ -176,11 +176,40 @@ export function institutionSummary(name: string): Record<string, unknown> {
   return { name, dashboard_url: institutionUrl(name) };
 }
 
-export function sectionSummary(s: ResearchSection, projectCount?: number): Record<string, unknown> {
+/**
+ * Derive the cluster funding phase from a section's date range. The cluster
+ * redefined its research sections between phases — AM 1.0 (2019–2025) and
+ * AM 2.0 (2026–2032) — and each section record is dated to its phase. The
+ * synthetic "External" grouping is not a funding phase, so it returns null.
+ */
+export function fundingPhase(s: ResearchSection): string | null {
+  if (equalsCI(s.name, EXTERNAL_SECTION)) return null;
+  const start = s.date?.start;
+  if (!start) return null;
+  const year = Number(start.slice(0, 4));
+  if (!Number.isFinite(year)) return null;
+  return year >= 2026 ? "AM 2.0 (2026–2032)" : "AM 1.0 (2019–2025)";
+}
+
+/** Truncate free text to a short preview for list/summary views. */
+function brief(text: string | undefined, n = 280): string | null {
+  if (!text) return null;
+  return text.length <= n ? text : `${text.slice(0, n).trimEnd()}…`;
+}
+
+export function sectionSummary(
+  s: ResearchSection,
+  counts: { projectCount?: number; itemCount?: number } = {},
+): Record<string, unknown> {
   return {
     name: s.name,
+    funding_phase: fundingPhase(s),
+    date: s.date ?? null,
     principal_investigators: s.pi ?? [],
-    ...(projectCount !== undefined ? { project_count: projectCount } : {}),
+    member_count: (s.members ?? []).length,
+    ...(counts.projectCount !== undefined ? { project_count: counts.projectCount } : {}),
+    ...(counts.itemCount !== undefined ? { item_count: counts.itemCount } : {}),
+    description: brief(s.description),
     dashboard_url: researchSectionUrl(s.name),
   };
 }

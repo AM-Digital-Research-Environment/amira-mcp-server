@@ -28,6 +28,7 @@ await call("search_research_items", { subject: "Islam", limit: 3 });
 await call("search_research_items", { location: "Nigeria", resource_type: "Image", limit: 2 });
 await call("search_projects", { research_section: "Arts & Aesthetics", limit: 3 });
 await call("list_research_sections", {});
+await call("get_research_section", { name: "Translating" });
 await call("list_subjects", { limit: 5 });
 await call("list_locations", { level: "country", limit: 5 });
 await call("list_categories", { category: "resource_types", limit: 5 });
