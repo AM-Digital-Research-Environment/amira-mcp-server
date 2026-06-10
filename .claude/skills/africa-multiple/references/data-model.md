@@ -1,87 +1,86 @@
 # Data model (as the tools return it)
 
-The server normalises the dashboard's Extended-JSON value wrappers before returning anything, so you
-work with plain values. Publications come from a separate bibliography feed and are merged into the
-same shape.
+Every entity is an Omeka S item; the server transforms the site's JSON-LD into the compact records
+below at build time. Every record carries `amira_url` — the entity's public page
+(`…/s/amira/item/<id>`), the citation target.
 
 ## Research item
 
-The central artefact (image, text, audio, moving image, etc.). Returned in full by `get_research_item`.
+The central artefact (image, text, audio, moving image, …). Returned in full by `get_research_item`.
 
 | Field | Meaning |
 | --- | --- |
-| `dre_id` | Stable identifier (e.g. `abg-99-0000`). The key for `get_research_item` and citations. |
-| `title` / `titles[]` | Main title; `titles[]` also holds translated variants. |
-| `type_of_resource` | Image · Text · Audio · Moving image · … |
-| `contributors[]` | `{ name, qualifier (person/institution/group), role (Author/Editor/Photographer/…), affiliations[] }` |
-| `subjects[]` | LCSH subject headings `{ label, uri }`. The `label` is the canonical heading. |
-| `locations[]` | Origin places `{ country (l1), region (l2), city (l3) }`. Levels may be partly empty. |
-| `project` | `{ id, name }` — links to the parent project. |
-| `research_sections` | The parent project's sections. |
-| `university` | ubt / unilag / ujkz / ufba / external (inferred from the project id prefix). |
-| `language[]` | ISO 639-2 codes (eng, yor, fra, …). |
-| `genre[]`, `tags[]`, `target_audience[]` | MARC genre terms; free-form keywords; intended audiences. |
-| `abstract`, `note`, `table_of_contents` | Free text (truncated at 25,000 chars). |
-| `identifiers[]`, `access_condition`, `citation[]`, `external_urls[]` | Provenance / rights / external links. |
+| `dre_id` | Stable identifier (e.g. `abg-99-0000`). The key for `get_research_item` and the human-readable id. |
+| `title` / `alternative_titles[]` | Main title; translated titles, subtitles and variants. |
+| `type` | Text · Image · Audio · Moving image · Manuscript · Dataset · … |
+| `dates{}` / `date` | Typed content dates keyed `created` / `collected` / `issued` / `copyrighted` / … (`modified` is record admin and excluded from the year range). `date` is the derived year (range). |
+| `contributors[]` | `{ name, role }` — 50+ MARC relator roles (Author, Photographer, Interviewee, Musician, …). |
+| `subjects[]` | Subject headings `{ label, amira_url }` — **includes the former free-form tags** (one merged facet). |
+| `places[]` | `{ name, within[], amira_url }` — `within` is the region → country chain. |
+| `project` / `research_sections` | Parent project `{ id, name, amira_url }` and its sections. |
+| `university` | ubt / unilag / ujkz / ufba / external (from the project id prefix). |
+| `languages[]` | Canonical names ("English", "Twi") — query with names or any ISO code. |
+| `formats[]` / `physical_notes[]` | Genre/format descriptors (linked authority) and free-text physical notes. |
+| `description`, `abstract`, `table_of_contents` | Free text (truncated at 25,000 chars). |
+| `sponsors[]`, `provenance[]`, `access_rights[]`, `license` | Funding, holding source, rights. |
+| `identifiers[]`, `doi`, `external_urls[]`, `collection_url`, `wisski_url` | Provenance / external links. |
+| `related_items[]` | `{ relation (replaces/replaced by/has version/…), title, amira_url }` — resolvable links. |
+| `has_media` | Whether digitised media is attached on the site (open `amira_url` to view). |
+
+Search results are slimmer (no long text); profile views (`get_person`, `get_institution`,
+`find_related`) return slim refs `{ dre_id, title, type, date, amira_url }` — drill with
+`get_research_item`.
 
 ## Project
 
-Returned by `search_projects` / `get_project`.
-
-| Field | Meaning |
-| --- | --- |
-| `id` | e.g. `UBT_ArtWorld2019`, `ULG_WOPP2021`, `Ext_ILAM`. |
-| `name`, `description`, `date {start,end}` | |
-| `university` | From the id prefix. |
-| `research_sections[]` | One or more thematic sections. |
-| `principal_investigators[]`, `members[]`, `emails[]` | People (names as `Surname, Forename`). |
-| `institutions[]` | Affiliated institutions. |
-| `item_count` | How many digitised items belong to it (0 for registry-only projects). |
+`id` (e.g. `UBT_ArtWorld2019`, `Ext_ILAM`), `name`, `description`, `date {start,end}`, `university`,
+`research_sections[]`, `principal_investigators[]`, `members[]`, `funded_by[]` (funding
+institutions), `website`, `item_count` (0 for registry-only projects); `get_project` adds
+`items_by_resource_type` and `top_subjects`.
 
 ## Research section
 
-Returned by `list_research_sections` / `get_research_section`: `name`, `funding_phase`
-("AM 1.0 (2019–2025)" / "AM 2.0 (2026–2032)", or `null` for the synthetic External grouping),
-`date {start,end}`, `description`, `objectives`, `work_programme`, `principal_investigators[]`,
-`members[]`, `spokesperson`, `project_count`, `item_count`, and (for `get_research_section`) the
-`projects[]` in it. **The cluster has two distinct groups of sections, one per funding phase** — group or
-filter by `funding_phase`, and always read the live list rather than hardcoding it:
-
-- **AM 1.0 (2019–2025):** Affiliations, Arts & Aesthetics, Knowledges, Learning, Mobilities, Moralities
-  — all current projects/items belong here.
-- **AM 2.0 (2026–2032):** Accumulation, Digitalities, Ecologies, In/securities, Re:membering, Translating
-  — newly seeded; `project_count`/`item_count` are ≈0 in the current snapshot.
-- plus a synthetic **External** grouping for outside collections.
-
-Filter with the exact strings returned (incl. "In/securities", "Re:membering").
+`name`, `funding_phase` ("AM 1.0 (2019–2025)" / "AM 2.0 (2026–2032)", `null` for External),
+`date {start,end}`, `description`, `principal_investigators[]`, `members[]`, `spokesperson`,
+`website` (the section's page on the cluster site), `project_count`, `item_count`, and (in the get
+tool) the `projects[]`. The two phase groups are documented in SKILL.md — read the live list, don't
+hardcode it.
 
 ## Person
 
-`search_persons` returns `{ name, affiliation[] }`. `get_person` aggregates a name across the graph:
-`as_principal_investigator[]`, `as_member[]`, `contributed_items[]` (with role; capped at 50, total
-reported), and `publications[]` (author/editor). Works even for names absent from the authority list.
+`search_persons` returns `{ name, affiliations[], amira_url }` (names stored 'Surname, Forename').
+`get_person` aggregates a name across the graph: `as_principal_investigator[]`, `as_member[]`,
+`contributed_items[]` (slim refs with the person's `role`; capped at 50, total reported), and
+`publications[]` (author/editor). Works even for names absent from the authority list.
 
 ## Institution / Group
 
-`Institution`/`Group` are essentially `{ name }` authority records. `get_institution` adds the projects
-affiliated with it and the items whose contributors are affiliated with it.
+Organisation authority records, typed: `kind` = institution (508) or group (84). `get_institution`
+(works for both) adds funded/hosted projects, affiliated persons, and contributed items (slim refs);
+coordinates and Wikidata link when reconciled.
 
 ## Publication
 
-A separate bibliography (ERef + EPub Bayreuth), not from the item collections. Fields: `title`, `type`
-(article/book/chapter/conference/doctoral_thesis/working_paper/report/…), `year`, `authors[]`,
-`editors[]`, venue (`journal`/`booktitle`/`series`/`volume`/`issue`/`pages`), `publisher`, `doi`,
-`isbn`/`issn`, `keywords[]`, `abstract`, `language`, `url` (canonical DOI/permalink — cite this),
-`eref_url`/`epub_url`, and ready-to-use `bibtex`.
+`id` (e.g. `eref-94882`), `type` (article/book/chapter/conference/doctoral_thesis/working_paper/…),
+`title`, `year`, `authors[]`, `editors[]`, `venue` (journal/book/series title), `volume`, `issue`,
+`pages`, `publisher`, `doi`, `isbn`/`issn`, `subjects[]`, `abstract`, `language`,
+`repository_urls[]` (ERef/EPub), `url` (DOI else repository permalink — **cite this**), and `bibtex`
+(generated from the structured fields).
+
+## Podcast episode / YouTube video
+
+Podcasts: `title`, `series`, `episode`, `date`, `abstract`, `people[]` (speaker/host/sound engineer),
+`url`, `transcript` (none filled as of 2026-06 — `has_transcript` tells you). Videos: `title`,
+`date`, `abstract`, `playlists[]`, `speakers[]`, `languages[]`, watch `url`, `transcript` (91/140
+filled; capped at 25k chars in `get_video`, searchable in full via `search_videos`).
 
 ## Relationships to exploit
 
-- Item → Project (`project.id`) → Research sections (`project.research_sections`).
-- Item → People (contributor `name`), Institutions (contributor `affiliations`), Groups (qualifier `group`).
-- Item → Subjects (LCSH `label`), Locations (`country`/`region`/`city`), Tags, Genres, Languages.
-- Project → PIs / members / institutions / sections.
-- Publication contributors ↔ People (reconciled by name).
+- Item → Project (`project.id`) → Research sections; Item → People/Organisations (contributor
+  roles); Item → Subjects, Places (hierarchy), Formats, Languages; Item → related items.
+- Project → PIs / members / funders / sections.
+- Publication contributors ↔ People; Podcast/Video speakers ↔ People.
 
-`find_related` operationalises these: it gathers the items matching a seed entity and ranks everything
-that co-occurs with them. Coordinates for places come from a slimmed geo lookup (returned by
-`list_locations`).
+`find_related` operationalises these: it gathers the items matching a seed entity and ranks
+everything that co-occurs with them. Coordinates come from the Location authority records (returned
+by `list_locations`).

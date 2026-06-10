@@ -1,18 +1,20 @@
 {
-  "name": "africa-multiple-mcp-server-bundle",
-  "version": "0.2.0",
-  "description": "Node MCP server for the Africa Multiple research data (amira dashboard), packaged as a Claude Desktop extension (.mcpb).",
+  "name": "amira-mcp-server-bundle",
+  "version": "1.0.0",
+  "description": "Node MCP server for the Africa Multiple research data (AMIRA collection on Omeka S), packaged as a Claude Desktop extension (.mcpb).",
   "private": true,
   "type": "module",
   "main": "server/index.js",
   "scripts": {
-    "fetch-data": "node scripts/fetch_data.mjs",
+    "fetch-data": "npm run build && node server/fetchCli.js",
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build.mjs",
     "clean": "rimraf server",
+    "test": "npm run build && node --test \"test/unit/*.test.mjs\"",
+    "test:live": "npm run build && node --test \"test/live/*.test.mjs\"",
     "smoke": "node smoke-test.mjs",
-    "prepack-mcpb": "npm run clean && npm run typecheck && npm run build",
-    "pack-mcpb": "mcpb pack . africa-multiple-mcp-server.mcpb"
+    "prepack-mcpb": "npm run clean && npm run typecheck && npm run test && npm run smoke",
+    "pack-mcpb": "mcpb pack . amira-mcp-server.mcpb"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

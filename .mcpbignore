@@ -1,6 +1,6 @@
-# The esbuild bundle (server/index.js) is fully self-contained — verified to run
-# with node_modules absent — so the packed extension ships only the bundle + the
-# JSON snapshot. No node_modules, no native bindings, cross-platform.
+# The esbuild bundles (server/) are fully self-contained — verified to run
+# with node_modules absent — so the packed extension ships only the bundles +
+# the JSON snapshot. No node_modules, no native bindings, cross-platform.
 node_modules/
 
 # Source & build config
@@ -10,9 +10,12 @@ tsconfig.json
 *.ts
 *.map
 
-# Local test scripts
+# Tests
+test/
 smoke-test.mjs
-nmraw.mjs
+
+# Local caches
+.census-cache/
 
 # Dev metadata
 .gitignore
@@ -24,4 +27,4 @@ nmraw.mjs
 .env
 .env.*
 
-# Keep in the bundle: manifest.json, package.json, icon.png, server/index.js, data/, README.md
+# Keep in the bundle: manifest.json, package.json, icon.png, server/, data/, README.md, ROADMAP.md, .claude/ (companion skill)

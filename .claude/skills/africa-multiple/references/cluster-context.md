@@ -58,18 +58,9 @@ don't read the data's university split as the full institutional map of the clus
 ## Research sections
 
 Projects are organised into thematic **Research Sections**, and these were **redefined between the two
-funding phases** — so the cluster has *two different sets* of sections, each dated to its phase. AMIRA's
-section list carries both:
-
-- **AM 1.0 (2019–2025):** Affiliations · Arts & Aesthetics · Knowledges · Learning · Mobilities ·
-  Moralities — **all** current projects and items sit here.
-- **AM 2.0 (2026–2032):** Accumulation · Digitalities · Ecologies · In/securities · Re:membering ·
-  Translating — the new-phase structure; **seeded but not yet populated** in the current snapshot
-  (≈0 projects/items), so expect empty results from these for now.
-- plus a synthetic **External** grouping for outside collections (e.g. ILAM, Bayreuth Global).
-
-Always read the live list with `list_research_sections`, and filter with the exact strings it returns
-(note the punctuation in "In/securities" and "Re:membering").
+funding phases** — so the cluster has *two different sets* of sections, each dated to its phase, plus a
+synthetic **External** grouping. The two phase groups and how to filter them are documented once in
+SKILL.md ("What this collection is"); always read the live list with `list_research_sections`.
 
 ## The DRE and AMIRA
 
@@ -78,10 +69,11 @@ shared digital infrastructure and the team that builds it. The DRE integrates hi
 analogue and digital, qualitative and quantitative data into a common research platform, with the
 long-term aim of developing fluid IT ontologies.
 
-**AMIRA** (<https://amira.africamultiple.uni-bayreuth.de>) is the DRE's public-facing research-data
-dashboard, where the cluster's projects, digitised collections, people, and bibliography are published.
-This MCP server is itself a DRE project: it reads AMIRA's openly published JSON snapshot and re-exposes
-it as read-only tools, so every result can be cited back to its page on AMIRA.
+**AMIRA** is the cluster's research-data collection, published on the DRE's public **Omeka S site** at
+<https://data.africamultiple.uni-bayreuth.de> — projects, digitised collections, people, bibliography,
+podcasts, and the cluster's YouTube videos. This MCP server is itself a DRE project: it reads the
+site's openly published REST API into an offline snapshot and re-exposes it as read-only tools, so
+every result can be cited back to its `amira_url` page on the site.
 
 ## Other cluster bodies (context, not entities in the data)
 

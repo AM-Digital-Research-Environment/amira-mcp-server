@@ -1,10 +1,10 @@
 {
   "manifest_version": "0.3",
-  "name": "africa-multiple-mcp-server",
-  "display_name": "Africa Multiple Research Data (amira)",
-  "version": "0.2.0",
-  "description": "Read-only access to the Africa Multiple Cluster research data from the amira dashboard.",
-  "long_description": "Search and explore the research data of the Africa Multiple Cluster of Excellence, as published by the amira dashboard (https://amira.africamultiple.uni-bayreuth.de): research projects across four partner universities (Bayreuth, Lagos, Joseph Ki-Zerbo, Bahia) plus external collections, organised into thematic research sections, with ~4,000 digitised research items, people, institutions, groups, and an academic bibliography.\n\nNo API key, database, or VPN is required. A complete JSON snapshot (~16 MB) is bundled in the extension, so the server works fully offline. When enabled (default), it also refreshes itself from the dashboard's public JSON, and it contacts no backend database.\n\nEvery record carries a `dashboard_url` so results can be cited as links back to the source page.",
+  "name": "amira-mcp-server",
+  "display_name": "AMIRA — Africa Multiple Research Data",
+  "version": "1.0.0",
+  "description": "Read-only access to the Africa Multiple Cluster research data (AMIRA collection on Omeka S).",
+  "long_description": "Search and explore the research data of the Africa Multiple Cluster of Excellence, as published on the cluster's public Omeka S site (https://data.africamultiple.uni-bayreuth.de): research projects across four partner universities (Bayreuth, Lagos, Joseph Ki-Zerbo, Bahia) plus external collections such as the International Library of African Music, organised into thematic research sections, with ~4,000 digitised research items, people, institutions, groups, an academic bibliography, podcast episodes, and the cluster's YouTube videos with searchable transcripts.\n\nNo API key, database, or VPN is required. A complete data snapshot is bundled in the extension, so the server works fully offline. When enabled (default), it also refreshes itself from the site's public API.\n\nEvery record carries an `amira_url` — its public page on the Omeka S site — so results can be cited as links back to the source.",
   "author": {
     "name": "Frédérick Madore",
     "email": "frederick.madore@uni-bayreuth.de",
@@ -12,20 +12,21 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/AM-Digital-Research-Environment/africa-multiple-mcp-server"
+    "url": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server"
   },
-  "homepage": "https://amira.africamultiple.uni-bayreuth.de",
-  "documentation": "https://github.com/AM-Digital-Research-Environment/africa-multiple-mcp-server#readme",
-  "support": "https://github.com/AM-Digital-Research-Environment/africa-multiple-mcp-server/issues",
+  "homepage": "https://data.africamultiple.uni-bayreuth.de",
+  "documentation": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server#readme",
+  "support": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server/issues",
   "icon": "icon.png",
   "license": "MIT",
   "keywords": [
     "africa-multiple",
+    "amira",
     "digital-humanities",
     "african-studies",
     "research-data",
-    "bayreuth",
-    "wisski"
+    "omeka-s",
+    "bayreuth"
   ],
   "privacy_policies": ["https://www.africamultiple.uni-bayreuth.de/en/index.html"],
   "server": {
@@ -37,29 +38,33 @@
       "env": {
         "AMIRA_LIVE_REFRESH": "${user_config.live_refresh}",
         "AMIRA_CACHE_DIR": "${user_config.cache_dir}",
-        "AMIRA_DASHBOARD_BASE": "${user_config.dashboard_base}"
+        "AMIRA_SITE_BASE": "${user_config.site_base}"
       }
     }
   },
   "tools": [
-    { "name": "get_collection_overview", "description": "High-level counts and breakdowns across the whole collection, plus snapshot freshness. Start here." },
-    { "name": "search_research_items", "description": "Search ~4,000 research items by keyword, subject, location, contributor, project, research section, university, resource type, genre, language, tag, and year." },
-    { "name": "get_research_item", "description": "Full metadata for one research item by its dre_id." },
-    { "name": "search_projects", "description": "Search the cluster's research projects by keyword, university, research section, PI, member, or institution." },
+    { "name": "get_collection_overview", "description": "Counts and breakdowns across the whole collection + snapshot freshness. Start here." },
+    { "name": "search_research_items", "description": "Search ~4,000 research items by keyword, subject, location, contributor, project, section, university, resource type, format/genre, language, and year." },
+    { "name": "get_research_item", "description": "Full metadata for one research item by dre_id: dates, contributors with roles, places with hierarchy, sponsors, formats, related items." },
+    { "name": "search_projects", "description": "Search the cluster's research projects by keyword, university, section, PI, member, or funding institution." },
     { "name": "get_project", "description": "Full detail for one project, with item breakdown and top subjects." },
-    { "name": "list_research_sections", "description": "List the cluster's thematic research sections with PIs and counts." },
+    { "name": "list_research_sections", "description": "The cluster's thematic sections with funding phases, PIs and counts." },
     { "name": "get_research_section", "description": "Full detail for one research section, including its projects." },
-    { "name": "search_persons", "description": "Search the people authority list by name or affiliation." },
+    { "name": "search_persons", "description": "Search the people authority list by name (either order) or affiliation." },
     { "name": "get_person", "description": "Profile aggregating a person's projects led/joined, items contributed, and publications." },
-    { "name": "list_institutions", "description": "List institutions with affiliated-project counts." },
-    { "name": "get_institution", "description": "One institution's affiliated projects and contributed items." },
+    { "name": "list_institutions", "description": "List institutions with project counts and coordinates." },
+    { "name": "get_institution", "description": "One institution's or group's projects, affiliated people, and contributed items." },
     { "name": "list_groups", "description": "List research groups." },
-    { "name": "list_subjects", "description": "List LCSH subject headings ranked by item frequency." },
-    { "name": "list_locations", "description": "List origin places (country/region/city) ranked by item count, with coordinates." },
-    { "name": "list_categories", "description": "List values of a facet (tags, genres, languages, resource types) ranked by item count." },
-    { "name": "search_publications", "description": "Search the ~260-item cluster bibliography by keyword, author, type, or year." },
+    { "name": "list_subjects", "description": "Subject headings (tags merged in) ranked by item frequency, each with its authority page." },
+    { "name": "list_locations", "description": "Places (country/region/city via the place hierarchy) ranked by item count, with coordinates." },
+    { "name": "list_categories", "description": "Facet values: formats/genres, languages, resource types." },
+    { "name": "search_publications", "description": "Search the cluster bibliography by keyword, author, type, or year." },
     { "name": "get_publication", "description": "Full metadata and BibTeX for one publication." },
-    { "name": "find_related", "description": "Cross-entity discovery: pivot from a subject/location/person/project/tag to co-occurring entities." }
+    { "name": "find_related", "description": "Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities." },
+    { "name": "search_podcasts", "description": "Search cluster podcast episodes by keyword, series, person, or year." },
+    { "name": "get_podcast", "description": "Full detail for one podcast episode (incl. transcript when available)." },
+    { "name": "search_videos", "description": "Search the cluster's YouTube videos — including full-text search over transcripts." },
+    { "name": "get_video", "description": "Full detail for one video, including its transcript." }
   ],
   "compatibility": {
     "claude_desktop": ">=0.10.0",
@@ -71,20 +76,20 @@
   "user_config": {
     "live_refresh": {
       "type": "boolean",
-      "title": "Refresh data from the live dashboard",
-      "description": "When on, the server checks the public amira dashboard for a newer data snapshot at startup and updates its local cache. Turn off to run fully offline using only the bundled snapshot. The server never connects to any database either way.",
+      "title": "Refresh data from the live site",
+      "description": "When on, the server checks the public Omeka S API for newer data at startup and updates its local cache. Turn off to run fully offline using only the bundled snapshot.",
       "default": true
     },
     "cache_dir": {
       "type": "directory",
       "title": "Refreshed-data cache directory",
-      "description": "Where to store data refreshed from the dashboard. Leave default to use your home directory (~/.africa-multiple-mcp/cache).",
+      "description": "Where to store data refreshed from the site. Leave default to use your home directory (~/.amira-mcp/cache).",
       "required": false
     },
-    "dashboard_base": {
+    "site_base": {
       "type": "string",
-      "title": "Dashboard base URL (advanced)",
-      "description": "Override the dashboard base URL used for citations and refresh. Defaults to https://amira.africamultiple.uni-bayreuth.de.",
+      "title": "Site base URL (advanced)",
+      "description": "Override the Omeka S site base URL used for citations and refresh. Defaults to https://data.africamultiple.uni-bayreuth.de.",
       "required": false
     }
   }
