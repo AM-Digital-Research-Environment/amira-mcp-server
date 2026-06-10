@@ -26,8 +26,9 @@
      resolvable links exposed with their own `amira_url` (better than planned).
   7. `dcterms:modified` exists on items — kept in `dates{}`, excluded from year filtering
      (the v0.2.0 examination concern, resolved by design).
-  Still open from Phase 1: **GitHub repo rename** (at merge, D1), local extension
-  reinstall (§5), and the user-level `africa-multiple-data` skill update (§5).
+  Still open from Phase 1: tag `v1.0.0` (triggers the Release workflow), local extension
+  reinstall (§5), and the user-level `africa-multiple-data` skill update (§5). The GitHub
+  repo rename landed with the merge on 2026-06-10.
 
 **Sequencing rule (the one that governs everything):** the server re-platforms onto the
 **Omeka S API first**. None of the examination findings are fixed on the dashboard-era data
@@ -221,8 +222,8 @@ Work on an `omeka-migration` branch; rename the repo at merge time.
 - [x] `package.json` name, `manifest.json` (name, display_name, descriptions, homepage →
       Omeka site, repo/support links, tool list incl. the 4 new tools), artifact name in
       `pack-mcpb`/workflows/`.mcpbignore`, README.
-- [ ] **At merge:** rename the GitHub repo `africa-multiple-mcp-server` → `amira-mcp-server`
-      (GitHub redirects old URLs; manifest/README already point at the new name).
+- [x] **Done at merge (2026-06-10):** GitHub repo renamed `africa-multiple-mcp-server` →
+      `amira-mcp-server` via `gh repo rename` (old URLs redirect; issues/releases intact).
 - [x] ⟨exam⟩ single-source the version: esbuild `define` injects `package.json` version
       into `src/index.ts`.
 - [x] Server `instructions` rewritten: `amira_url` citation rules (keep the
