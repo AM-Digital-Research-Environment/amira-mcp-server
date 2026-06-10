@@ -1,32 +1,29 @@
 import { z } from "zod";
 import { ensureStore } from "../data.js";
-import type { Publication } from "../types.js";
+import type { PublicationRec } from "../types.js";
 import {
   annotate,
   anyContainsCI,
   capLimit,
   capOffset,
   containsCI,
-  itemSummary,
-  paginate,
+  filtersEcho,
+  itemRef,
+  pageOf,
   personSummary,
   publicationSummary,
+  refLabels,
   textResult,
   type Server,
 } from "./_shared.js";
-import { personUrl } from "../urls.js";
+import { itemUrlOrNull } from "../urls.js";
 import { nameMatchesQuery, samePerson } from "../names.js";
 
-function pubMatchesPerson(p: Publication, name: string): "author" | "editor" | null {
-  const match = (list?: { raw: string; normalized: string; person_name?: string | null }[]) =>
-    (list ?? []).some(
-      (c) =>
-        samePerson(c.normalized, name) ||
-        samePerson(c.person_name ?? "", name) ||
-        nameMatchesQuery(c.raw, name),
-    );
+function pubRole(p: PublicationRec, personOId: number | null, name: string): "author" | "editor" | null {
+  const match = (refs: PublicationRec["authors"]) =>
+    refs.some((r) => (personOId != null && r.o_id === personOId) || samePerson(r.label, name) || nameMatchesQuery(r.label, name));
   if (match(p.authors)) return "author";
-  if (match(p.editors) || match(p.book_editors)) return "editor";
+  if (match(p.editors)) return "editor";
   return null;
 }
 
@@ -40,10 +37,10 @@ export function registerPeopleTools(server: Server): void {
         "Search the people authority list (researchers and contributors). Filters (optional, AND-combined):\n" +
         "  - keyword: match against name or affiliation. Name matching is order-independent and " +
         "accent-insensitive — 'Oliver Baumann', 'Baumann, Oliver' and 'Baumann' all find 'Baumann, Oliver'\n" +
-        "  - affiliation: match the person's affiliation only\n" +
+        "  - affiliation: match the person's affiliations only\n" +
         "  - limit (default 25, max 100), offset\n\n" +
-        "Returns a paginated envelope; each result has name (always stored as 'Surname, Forename'), " +
-        "affiliation and a `dashboard_url`. Use get_person for a full profile.",
+        "Each result has name (stored 'Surname, Forename'), affiliations and a citable `amira_url`. Use " +
+        "get_person for a full profile.",
       annotations: annotate("Search people"),
       inputSchema: {
         keyword: z.string().optional(),
@@ -63,19 +60,15 @@ export function registerPeopleTools(server: Server): void {
           !(
             containsCI(p.name, args.keyword) ||
             nameMatchesQuery(p.name, args.keyword) ||
-            anyContainsCI(p.affiliation, args.keyword)
+            anyContainsCI(refLabels(p.affiliations), args.keyword)
           )
         )
           return false;
-        if (args.affiliation && !anyContainsCI(p.affiliation, args.affiliation)) return false;
+        if (args.affiliation && !anyContainsCI(refLabels(p.affiliations), args.affiliation)) return false;
         return true;
       });
 
-      return textResult(
-        paginate(filtered.map(personSummary), offset, limit, {
-          filters: { keyword: args.keyword ?? null, affiliation: args.affiliation ?? null },
-        }),
-      );
+      return textResult(pageOf(filtered, offset, limit, personSummary, filtersEcho(args)));
     },
   );
 
@@ -86,12 +79,12 @@ export function registerPeopleTools(server: Server): void {
       title: "Get person profile",
       description:
         "Aggregate everything the collection knows about one person by `name`. Names are stored " +
-        "'Surname, Forename' (e.g. 'Baumann, Oliver'), but you may pass either order and with or without " +
-        "accents — 'Oliver Baumann' resolves to 'Baumann, Oliver'. Returns the canonical `name`, the " +
-        "`query` you passed, affiliation, projects where they are a principal investigator, projects where " +
-        "they are a team member, research items they contributed to (with their role, capped at 50 — total " +
-        "reported), publications they authored or edited, and a citable `dashboard_url`. Works even for " +
-        "names not in the authority list. Empty role lists mean the name appears nowhere.",
+        "'Surname, Forename' (e.g. 'Baumann, Oliver'), but either order works, with or without accents — " +
+        "'Oliver Baumann' resolves to 'Baumann, Oliver'; the canonical `name` is echoed back. Returns " +
+        "affiliations, projects led (PI) and joined (member), research items contributed (slim refs with " +
+        "the person's role — use get_research_item for detail; capped at 50, total reported), " +
+        "publications authored/edited, and a citable `amira_url`. Works even for names absent from the " +
+        "authority list; empty lists mean the name appears nowhere.",
       annotations: annotate("Get person profile"),
       inputSchema: {
         name: z.string().describe("Person name in either order, e.g. 'Beier, Ulli' or 'Ulli Beier'"),
@@ -100,53 +93,52 @@ export function registerPeopleTools(server: Server): void {
     async ({ name }) => {
       const store = await ensureStore();
 
-      // Resolve to the canonical stored "Surname, Forename" form, accepting
-      // either name order (e.g. "Oliver Baumann" -> "Baumann, Oliver").
-      const record = store.getPerson(name) ?? store.persons.find((p) => samePerson(p.name, name));
-      let canonical = record?.name;
+      // Resolve to the canonical stored "Surname, Forename" form.
+      const record =
+        store.getPersonByName(name) ?? store.persons.find((p) => samePerson(p.name, name));
+      let canonical = record?.name ?? null;
       if (!canonical) {
-        for (const it of store.items) {
-          const hit = (it.name ?? []).find((n) => samePerson(n.name?.label, name));
-          if (hit?.name?.label) {
-            canonical = hit.name.label;
-            break;
+        outer: for (const it of store.items) {
+          for (const c of it.contributors) {
+            if (samePerson(c.name, name)) {
+              canonical = c.name;
+              break outer;
+            }
           }
         }
       }
       canonical = canonical ?? name;
+      const oId = record?.o_id ?? null;
+      const isPerson = (label: string, refOId: number | null): boolean =>
+        (oId != null && refOId === oId) || samePerson(label, canonical!);
 
-      const asPI = store.projects.filter((p) => (p.pi ?? []).some((x) => samePerson(x, canonical)));
-      const asMember = store.projects.filter((p) => (p.members ?? []).some((x) => samePerson(x, canonical)));
+      const asPI = store.projects.filter((p) => p.pis.some((x) => isPerson(x.label, x.o_id)));
+      const asMember = store.projects.filter((p) => p.members.some((x) => isPerson(x.label, x.o_id)));
 
-      const contributed = store.items
-        .map((it) => {
-          const entry = (it.name ?? []).find((n) => samePerson(n.name?.label, canonical));
-          return entry ? { it, role: entry.role || "Contributor" } : null;
-        })
-        .filter((x): x is { it: (typeof store.items)[number]; role: string } => x !== null);
+      const contributed: { ref: Record<string, unknown>; role: string }[] = [];
+      for (const it of store.items) {
+        const credit = it.contributors.find((c) => isPerson(c.name, c.o_id));
+        if (credit) contributed.push({ ref: itemRef(it), role: credit.role || "Contributor" });
+      }
 
-      const pubs = store.publications
-        .map((p) => {
-          const role = pubMatchesPerson(p, canonical);
-          return role ? { p, role } : null;
-        })
-        .filter((x): x is { p: Publication; role: "author" | "editor" } => x !== null);
+      const pubs: { p: PublicationRec; role: "author" | "editor" }[] = [];
+      for (const p of store.publications) {
+        const role = pubRole(p, oId, canonical);
+        if (role) pubs.push({ p, role });
+      }
 
       return textResult({
         name: canonical,
         query: name,
         found_in_authority_list: !!record,
-        affiliation: record?.affiliation ?? [],
-        as_principal_investigator: asPI.map((p) => ({ id: p.id, name: p.name })),
-        as_member: asMember.map((p) => ({ id: p.id, name: p.name })),
+        affiliations: refLabels(record?.affiliations),
+        as_principal_investigator: asPI.map((p) => ({ id: p.dre_id, name: p.name })),
+        as_member: asMember.map((p) => ({ id: p.dre_id, name: p.name })),
         contributed_item_count: contributed.length,
-        contributed_items: contributed.slice(0, 50).map(({ it, role }) => ({
-          role,
-          ...itemSummary(it),
-        })),
+        contributed_items: contributed.slice(0, 50).map(({ ref, role }) => ({ role, ...ref })),
         publication_count: pubs.length,
         publications: pubs.map(({ p, role }) => ({ role, ...publicationSummary(p) })),
-        dashboard_url: personUrl(canonical),
+        amira_url: itemUrlOrNull(oId),
       });
     },
   );

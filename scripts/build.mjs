@@ -1,24 +1,29 @@
-// Bundle the TypeScript server into a single ESM file at server/index.js.
+// Bundle the TypeScript server into self-contained ESM files under server/:
+//   server/index.js     — the MCP server (entry of the .mcpb)
+//   server/fetchCli.js  — the snapshot fetcher (build time + CI)
 //
-// Unlike the IWAC server, there are no native bindings or optional cloud SDKs to
-// keep external — the MCP SDK and zod inline cleanly, so the packed bundle is a
-// single self-contained server/index.js plus the read-only JSON snapshot in
-// data/. Nothing is required from node_modules at runtime.
+// No native bindings or optional cloud SDKs — the MCP SDK and zod inline
+// cleanly, so nothing is required from node_modules at runtime. The package
+// version is injected as __SERVER_VERSION__ (single source: package.json).
 import * as esbuild from "esbuild";
+import { readFile } from "node:fs/promises";
+
+const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
 await esbuild.build({
-  entryPoints: ["src/index.ts"],
-  outfile: "server/index.js",
+  entryPoints: ["src/index.ts", "src/fetchCli.ts", "src/lib.ts"],
+  outdir: "server",
   bundle: true,
   platform: "node",
   format: "esm",
   target: "node18",
-  // src/index.ts starts with `#!/usr/bin/env node`; esbuild hoists that shebang
-  // to line 1 of the bundle.
+  // Source entries start with `#!/usr/bin/env node`; esbuild hoists the
+  // shebang to line 1 of each bundle.
   legalComments: "none",
+  define: { __SERVER_VERSION__: JSON.stringify(pkg.version) },
   // esbuild emits `import { createRequire }`-style shims for the few CJS deps
   // the MCP SDK pulls in (express/hono/jose); this banner makes `require`,
-  // `__dirname`, and `__filename` available inside the ESM bundle.
+  // `__dirname`, and `__filename` available inside the ESM bundles.
   banner: {
     js: [
       "import { createRequire as __createRequire } from 'node:module';",

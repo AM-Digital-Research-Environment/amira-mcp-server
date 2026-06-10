@@ -7,9 +7,10 @@ import { registerOrganizationTools } from "./organizations.js";
 import { registerFacetTools } from "./facets.js";
 import { registerPublicationTools } from "./publications.js";
 import { registerRelatedTools } from "./related.js";
+import { registerMediaTools } from "./media.js";
 import type { Server } from "./_shared.js";
 
-/** Register every Africa Multiple tool on the server, grouped by domain. */
+/** Register every AMIRA tool on the server, grouped by domain (22 tools). */
 export function registerTools(server: Server): void {
   registerOverviewTools(server); // get_collection_overview
   registerResearchItemTools(server); // search_research_items, get_research_item
@@ -20,4 +21,5 @@ export function registerTools(server: Server): void {
   registerFacetTools(server); // list_subjects, list_locations, list_categories
   registerPublicationTools(server); // search_publications, get_publication
   registerRelatedTools(server); // find_related
+  registerMediaTools(server); // search_podcasts, get_podcast, search_videos, get_video
 }

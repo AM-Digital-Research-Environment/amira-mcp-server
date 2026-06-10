@@ -1,18 +1,19 @@
-// Cross-cutting helpers shared by every tool module: result/annotation
-// formatting, input capping, pagination, case-insensitive text matching, text
-// capping, and the entity -> summary mappers that attach a citable amira
-// dashboard URL to every record.
-import type { CollectionItem, Person, Project, Publication, ResearchSection } from "../types.js";
-import { EXTERNAL_SECTION, UNIVERSITY_LABELS } from "../data.js";
-import {
-  institutionUrl,
-  personUrl,
-  projectUrl,
-  publicationsUrl,
-  researchItemUrl,
-  researchSectionUrl,
-  subjectUrl,
-} from "../urls.js";
+// Cross-cutting helpers shared by every tool module: result formatting (compact
+// JSON — D10), input capping, paginate-then-map, text matching, and the
+// summary/ref mappers that attach a citable `amira_url` to every record.
+import type { DataStore } from "../data.js";
+import { UNIVERSITY_LABELS } from "../data.js";
+import { itemUrl, itemUrlOrNull } from "../urls.js";
+import type {
+  LinkedRef,
+  PersonRec,
+  PodcastRec,
+  ProjectRec,
+  PublicationRec,
+  ResearchItemRec,
+  SectionRec,
+  VideoRec,
+} from "../types.js";
 
 export type Server = import("@modelcontextprotocol/sdk/server/mcp.js").McpServer;
 
@@ -31,14 +32,14 @@ export function annotate(title: string) {
   };
 }
 
-/** Standard tool result: pretty JSON text plus structuredContent for clients
- * that consume structured data. Payloads must be plain objects. */
+/** Standard tool result: COMPACT JSON text (pretty-printing cost ~24% of every
+ * response pre-1.0) plus structuredContent for structured-data clients. */
 export function textResult(payload: Record<string, unknown>): {
   content: { type: "text"; text: string }[];
   structuredContent: Record<string, unknown>;
 } {
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
+    content: [{ type: "text" as const, text: JSON.stringify(payload) }],
     structuredContent: payload,
   };
 }
@@ -55,12 +56,12 @@ export function capOffset(v: number | undefined): number {
   return Math.max(0, Math.floor(v));
 }
 
-export function capText(text: string, limit = CHARACTER_LIMIT): { text: string; truncated?: boolean } {
-  if (text.length <= limit) return { text };
+export function capText(text: string, limit = CHARACTER_LIMIT): { text: string; truncated: boolean } {
+  if (text.length <= limit) return { text, truncated: false };
   return { text: text.slice(0, limit), truncated: true };
 }
 
-// --- pagination -------------------------------------------------------------
+// --- pagination (slice first, map only the page) ------------------------------
 
 export interface Page<T> {
   count: number;
@@ -72,25 +73,33 @@ export interface Page<T> {
   [k: string]: unknown;
 }
 
-export function paginate<T>(
+/** Paginate `all`, mapping ONLY the returned page through `toSummary`. */
+export function pageOf<T, S>(
   all: T[],
   offset: number,
   limit: number,
+  toSummary: (t: T) => S,
   extra: Record<string, unknown> = {},
-): Page<T> {
+): Page<S> {
   const total = all.length;
-  const results = all.slice(offset, offset + limit);
-  const hasMore = offset + results.length < total;
-  const env: Page<T> = {
+  const slice = all.slice(offset, offset + limit);
+  const hasMore = offset + slice.length < total;
+  const env: Page<S> = {
     ...extra,
-    count: results.length,
+    count: slice.length,
     total_matches: total,
     offset,
     has_more: hasMore,
-    results,
+    results: slice.map(toSummary),
   };
   if (hasMore) env.next_offset = offset + limit;
   return env;
+}
+
+/** Echo only the filters the caller actually passed (no null noise — D10). */
+export function filtersEcho(filters: Record<string, unknown>): Record<string, unknown> {
+  const set = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== null));
+  return Object.keys(set).length ? { filters: set } : {};
 }
 
 // --- text matching ----------------------------------------------------------
@@ -110,127 +119,142 @@ export function equalsCI(a: string | null | undefined, b: string): boolean {
   return !!a && a.toLowerCase() === b.toLowerCase();
 }
 
-// --- entity field helpers ---------------------------------------------------
-
-export function mainTitle(item: CollectionItem): string {
-  const titles = item.titleInfo ?? [];
-  const main = titles.find((t) => t.title_type?.toLowerCase() === "main");
-  return main?.title ?? titles[0]?.title ?? "(untitled)";
-}
-
-export function itemSubjects(item: CollectionItem): string[] {
-  return (item.subject ?? []).map((s) => s.authLabel || s.origLabel).filter(Boolean);
-}
-
-export function itemContributors(item: CollectionItem): { name: string; role: string; qualifier: string }[] {
-  return (item.name ?? [])
-    .filter((n) => n?.name?.label)
-    .map((n) => ({ name: n.name.label, role: n.role || "", qualifier: n.name.qualifier || "" }));
-}
-
-export function primaryPlace(item: CollectionItem): string | null {
-  const o = item.location?.origin?.[0];
-  if (!o) return null;
-  return [o.l3, o.l2, o.l1].filter(Boolean).join(", ") || null;
-}
-
-// --- summary mappers (each carries a citable dashboard_url) ------------------
-
-export function itemSummary(item: CollectionItem): Record<string, unknown> {
-  return {
-    dre_id: item.dre_id,
-    title: mainTitle(item),
-    type_of_resource: item.typeOfResource || null,
-    project: item.project?.name ?? null,
-    project_id: item.project?.id ?? null,
-    university: UNIVERSITY_LABELS[item.university],
-    contributors: itemContributors(item).map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
-    subjects: itemSubjects(item),
-    place: primaryPlace(item),
-    tags: item.tags ?? [],
-    dashboard_url: researchItemUrl(item.dre_id),
-  };
-}
-
-export function projectSummary(p: Project, itemCount?: number): Record<string, unknown> {
-  return {
-    id: p.id,
-    name: p.name,
-    university: UNIVERSITY_LABELS[p.university],
-    research_sections: p.researchSection ?? [],
-    principal_investigators: p.pi ?? [],
-    ...(itemCount !== undefined ? { item_count: itemCount } : {}),
-    dashboard_url: projectUrl(p.id),
-  };
-}
-
-export function personSummary(p: Person): Record<string, unknown> {
-  return {
-    name: p.name,
-    affiliation: p.affiliation ?? [],
-    dashboard_url: personUrl(p.name),
-  };
-}
-
-export function institutionSummary(name: string): Record<string, unknown> {
-  return { name, dashboard_url: institutionUrl(name) };
-}
-
-/**
- * Derive the cluster funding phase from a section's date range. The cluster
- * redefined its research sections between phases — AM 1.0 (2019–2025) and
- * AM 2.0 (2026–2032) — and each section record is dated to its phase. The
- * synthetic "External" grouping is not a funding phase, so it returns null.
- */
-export function fundingPhase(s: ResearchSection): string | null {
-  if (equalsCI(s.name, EXTERNAL_SECTION)) return null;
-  const start = s.date?.start;
-  if (!start) return null;
-  const year = Number(start.slice(0, 4));
-  if (!Number.isFinite(year)) return null;
-  return year >= 2026 ? "AM 2.0 (2026–2032)" : "AM 1.0 (2019–2025)";
-}
+export const refLabels = (refs: LinkedRef[] | undefined): string[] => (refs ?? []).map((r) => r.label);
 
 /** Truncate free text to a short preview for list/summary views. */
-function brief(text: string | undefined, n = 280): string | null {
+export function brief(text: string | null | undefined, n = 280): string | null {
   if (!text) return null;
   return text.length <= n ? text : `${text.slice(0, n).trimEnd()}…`;
 }
 
+// --- entity summaries (search results) -----------------------------------------
+
+/** "1953" / "1950–1960" from an item's content-date year range. */
+export function yearLabel(it: ResearchItemRec): string | null {
+  if (it.year_min == null) return null;
+  return it.year_max != null && it.year_max !== it.year_min ? `${it.year_min}–${it.year_max}` : String(it.year_min);
+}
+
+/** Search-result summary of a research item. */
+export function itemSummary(it: ResearchItemRec, store: DataStore): Record<string, unknown> {
+  return {
+    dre_id: it.dre_id,
+    title: it.title,
+    type: it.type,
+    date: yearLabel(it),
+    project: it.project?.label ?? null,
+    project_id: store.projectOf(it)?.dre_id ?? null,
+    university: UNIVERSITY_LABELS[it.university],
+    contributors: it.contributors.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
+    subjects: refLabels(it.subjects),
+    place: it.places[0]?.label ?? null,
+    amira_url: itemUrl(it.o_id),
+  };
+}
+
+/** SLIM item reference for profile/related views (detail is one get away). */
+export function itemRef(it: ResearchItemRec): Record<string, unknown> {
+  return {
+    dre_id: it.dre_id,
+    title: it.title,
+    type: it.type,
+    date: yearLabel(it),
+    amira_url: itemUrl(it.o_id),
+  };
+}
+
+export function projectSummary(p: ProjectRec, itemCount?: number): Record<string, unknown> {
+  return {
+    id: p.dre_id,
+    name: p.name,
+    university: UNIVERSITY_LABELS[p.university],
+    research_sections: refLabels(p.sections),
+    principal_investigators: refLabels(p.pis),
+    ...(itemCount !== undefined ? { item_count: itemCount } : {}),
+    amira_url: itemUrl(p.o_id),
+  };
+}
+
+export function personSummary(p: PersonRec): Record<string, unknown> {
+  return {
+    name: p.name,
+    affiliations: refLabels(p.affiliations),
+    amira_url: itemUrl(p.o_id),
+  };
+}
+
+/**
+ * Funding phase from a section's date range: the cluster redefined its sections
+ * between AM 1.0 (2019–2025) and AM 2.0 (2026–2032); the synthetic "External"
+ * grouping is not a phase.
+ */
+export function fundingPhase(s: SectionRec): string | null {
+  if (equalsCI(s.name, "External")) return null;
+  const year = Number((s.date.start ?? "").slice(0, 4));
+  if (!Number.isFinite(year) || year === 0) return null;
+  return year >= 2026 ? "AM 2.0 (2026–2032)" : "AM 1.0 (2019–2025)";
+}
+
 export function sectionSummary(
-  s: ResearchSection,
+  s: SectionRec,
   counts: { projectCount?: number; itemCount?: number } = {},
 ): Record<string, unknown> {
   return {
     name: s.name,
     funding_phase: fundingPhase(s),
-    date: s.date ?? null,
-    principal_investigators: s.pi ?? [],
-    member_count: (s.members ?? []).length,
+    date: s.date,
+    principal_investigators: refLabels(s.pis),
+    member_count: s.members.length,
     ...(counts.projectCount !== undefined ? { project_count: counts.projectCount } : {}),
     ...(counts.itemCount !== undefined ? { item_count: counts.itemCount } : {}),
     description: brief(s.description),
-    dashboard_url: researchSectionUrl(s.name),
+    website: s.url,
+    amira_url: itemUrl(s.o_id),
   };
 }
 
-export function subjectEntry(label: string, count: number): Record<string, unknown> {
-  return { subject: label, item_count: count, dashboard_url: subjectUrl(label) };
-}
-
-export function publicationSummary(p: Publication): Record<string, unknown> {
-  const authors = (p.authors ?? []).map((a) => a.normalized || a.raw);
+export function publicationSummary(p: PublicationRec): Record<string, unknown> {
   return {
-    id: p.id,
+    id: p.pub_id,
     title: p.title,
     type: p.type,
-    year: p.year ?? null,
-    authors,
-    venue: p.journal ?? p.booktitle ?? p.series ?? null,
-    doi: p.doi ?? null,
-    // The publication's own canonical link (DOI or repository permalink).
-    url: p.url ?? p.eref_url ?? p.epub_url ?? null,
-    // Dashboard page where the cluster bibliography is browsable.
-    dashboard_url: publicationsUrl(),
+    year: p.year,
+    authors: refLabels(p.authors),
+    venue: p.venue,
+    doi: p.doi,
+    // The publication's own canonical link (DOI, else repository permalink).
+    url: p.doi ?? p.urls[0] ?? null,
+    amira_url: itemUrl(p.o_id),
   };
+}
+
+export function podcastSummary(p: PodcastRec): Record<string, unknown> {
+  return {
+    id: p.o_id,
+    title: p.title,
+    series: p.series?.label ?? null,
+    episode: p.episode,
+    date: p.date,
+    people: p.people.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
+    url: p.url,
+    has_transcript: !!p.transcript,
+    amira_url: itemUrl(p.o_id),
+  };
+}
+
+export function videoSummary(v: VideoRec): Record<string, unknown> {
+  return {
+    id: v.o_id,
+    title: v.title,
+    date: v.date,
+    playlists: refLabels(v.playlists),
+    speakers: v.speakers.map((c) => c.name),
+    url: v.url,
+    has_transcript: !!v.transcript,
+    amira_url: itemUrl(v.o_id),
+  };
+}
+
+export function subjectEntry(label: string, oId: number | null, count: number): Record<string, unknown> {
+  return { subject: label, item_count: count, amira_url: itemUrlOrNull(oId) };
 }

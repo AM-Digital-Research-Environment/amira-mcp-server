@@ -7,13 +7,15 @@ import {
   capOffset,
   containsCI,
   equalsCI,
-  itemSubjects,
-  paginate,
+  filtersEcho,
+  pageOf,
   projectSummary,
+  refLabels,
   textResult,
   type Server,
 } from "./_shared.js";
-import { projectUrl } from "../urls.js";
+import { itemUrl } from "../urls.js";
+import { nameMatchesQuery } from "../names.js";
 
 export function registerProjectTools(server: Server): void {
   // === search_projects ======================================================
@@ -29,12 +31,12 @@ export function registerProjectTools(server: Server): void {
         "  - keyword: match project name or description\n" +
         "  - university: ubt | unilag | ujkz | ufba | external (code or name)\n" +
         "  - research_section: e.g. 'Knowledges', 'Moralities'\n" +
-        "  - principal_investigator: PI name (partial)\n" +
-        "  - member: team-member name (partial)\n" +
-        "  - institution: affiliated institution name (partial)\n" +
+        "  - principal_investigator / member: a person name (either order — 'Oliver Baumann' finds " +
+        "'Baumann, Oliver')\n" +
+        "  - institution: funding/affiliated institution name (partial)\n" +
         "  - limit (default 25, max 100), offset\n\n" +
-        "Returns a paginated envelope; each result has id, name, university, research_sections, " +
-        "principal_investigators, item_count and a `dashboard_url`. Use get_project for full detail.",
+        "Each result has id, name, university, research_sections, principal_investigators, item_count and " +
+        "a citable `amira_url`. Use get_project for full detail.",
       annotations: annotate("Search projects"),
       inputSchema: {
         keyword: z.string().optional(),
@@ -59,26 +61,28 @@ export function registerProjectTools(server: Server): void {
           const v = args.university.toLowerCase();
           if (p.university !== v && !containsCI(UNIVERSITY_LABELS[p.university], args.university)) return false;
         }
-        if (args.research_section && !(p.researchSection ?? []).some((s) => equalsCI(s, args.research_section!)))
+        if (args.research_section && !p.sections.some((s) => equalsCI(s.label, args.research_section!)))
           return false;
-        if (args.principal_investigator && !anyContainsCI(p.pi, args.principal_investigator)) return false;
-        if (args.member && !anyContainsCI(p.members ?? [], args.member)) return false;
-        if (args.institution && !anyContainsCI(p.institutions, args.institution)) return false;
+        if (
+          args.principal_investigator &&
+          !p.pis.some(
+            (x) =>
+              nameMatchesQuery(x.label, args.principal_investigator!) ||
+              containsCI(x.label, args.principal_investigator!),
+          )
+        )
+          return false;
+        if (
+          args.member &&
+          !p.members.some((x) => nameMatchesQuery(x.label, args.member!) || containsCI(x.label, args.member!))
+        )
+          return false;
+        if (args.institution && !anyContainsCI(refLabels(p.funded_by), args.institution)) return false;
         return true;
       });
 
-      const results = filtered.map((p) => projectSummary(p, store.itemsForProject(p.id).length));
       return textResult(
-        paginate(results, offset, limit, {
-          filters: {
-            keyword: args.keyword ?? null,
-            university: args.university ?? null,
-            research_section: args.research_section ?? null,
-            principal_investigator: args.principal_investigator ?? null,
-            member: args.member ?? null,
-            institution: args.institution ?? null,
-          },
-        }),
+        pageOf(filtered, offset, limit, (p) => projectSummary(p, store.itemsForProject(p.o_id).length), filtersEcho(args)),
       );
     },
   );
@@ -90,9 +94,9 @@ export function registerProjectTools(server: Server): void {
       title: "Get project detail",
       description:
         "Full detail for one project by `id` (e.g. 'UBT_ArtWorld2019', 'ULG_WOPP2021', 'Ext_ILAM'). " +
-        "Returns name, university, research sections, principal investigators, members, emails, " +
-        "description, start/end dates, affiliated institutions, item_count, a breakdown of its items by " +
-        "resource type, its top subjects, and a citable `dashboard_url`. Returns { error } if id unknown.",
+        "Returns name, university, research sections, principal investigators, members, description, " +
+        "start/end dates, funding institutions, project website, item_count, a breakdown of its items by " +
+        "resource type, its top subjects, and a citable `amira_url`. Returns { error } if the id is unknown.",
       annotations: annotate("Get project detail"),
       inputSchema: { id: z.string().describe("Project id, e.g. 'UBT_ArtWorld2019'") },
     },
@@ -100,18 +104,16 @@ export function registerProjectTools(server: Server): void {
       const store = await ensureStore();
       const p = store.getProject(id);
       if (!p) {
-        return textResult({
-          error: `No project with id '${id}'. Use search_projects to find valid ids.`,
-        });
+        return textResult({ error: `No project with id '${id}'. Use search_projects to find valid ids.` });
       }
-      const items = store.itemsForProject(id);
+      const items = store.itemsForProject(p.o_id);
 
       const byType: Record<string, number> = {};
       const subjectCounts = new Map<string, number>();
       for (const it of items) {
-        const t = it.typeOfResource || "Unknown";
+        const t = it.type || "Unknown";
         byType[t] = (byType[t] ?? 0) + 1;
-        for (const s of itemSubjects(it)) subjectCounts.set(s, (subjectCounts.get(s) ?? 0) + 1);
+        for (const s of it.subjects) subjectCounts.set(s.label, (subjectCounts.get(s.label) ?? 0) + 1);
       }
       const topSubjects = [...subjectCounts.entries()]
         .sort((a, b) => b[1] - a[1])
@@ -119,22 +121,20 @@ export function registerProjectTools(server: Server): void {
         .map(([subject, count]) => ({ subject, item_count: count }));
 
       return textResult({
-        id: p.id,
+        id: p.dre_id,
         name: p.name,
         university: UNIVERSITY_LABELS[p.university],
-        research_sections: p.researchSection ?? [],
-        principal_investigators: p.pi ?? [],
-        members: p.members ?? [],
-        emails: p.emails ?? [],
-        description: p.description ?? null,
-        date: p.date ?? null,
-        institutions: p.institutions ?? [],
+        research_sections: refLabels(p.sections),
+        principal_investigators: refLabels(p.pis),
+        members: refLabels(p.members),
+        funded_by: refLabels(p.funded_by),
+        description: p.description,
+        date: p.date,
+        website: p.url,
         item_count: items.length,
-        items_by_resource_type: Object.fromEntries(
-          Object.entries(byType).sort((a, b) => b[1] - a[1]),
-        ),
+        items_by_resource_type: Object.fromEntries(Object.entries(byType).sort((a, b) => b[1] - a[1])),
         top_subjects: topSubjects,
-        dashboard_url: projectUrl(p.id),
+        amira_url: itemUrl(p.o_id),
       });
     },
   );

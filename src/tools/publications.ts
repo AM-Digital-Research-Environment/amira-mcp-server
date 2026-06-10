@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ensureStore } from "../data.js";
-import type { Publication } from "../types.js";
+import type { PublicationRec } from "../types.js";
 import {
   annotate,
   anyContainsCI,
@@ -9,17 +9,53 @@ import {
   capText,
   containsCI,
   equalsCI,
-  paginate,
+  filtersEcho,
+  pageOf,
   publicationSummary,
+  refLabels,
   textResult,
   type Server,
 } from "./_shared.js";
-import { publicationsUrl } from "../urls.js";
+import { itemUrl } from "../urls.js";
+import { nameMatchesQuery } from "../names.js";
 
-function contributorNames(p: Publication): string[] {
-  return [...(p.authors ?? []), ...(p.editors ?? []), ...(p.book_editors ?? [])].map(
-    (c) => c.normalized || c.raw,
-  );
+const BIBTEX_ENTRY: Record<string, string> = {
+  article: "article",
+  book: "book",
+  chapter: "incollection",
+  conference: "inproceedings",
+  doctoral_thesis: "phdthesis",
+  working_paper: "techreport",
+  journal_issue: "misc",
+  book_review: "article",
+  online_post: "misc",
+  research_data: "misc",
+};
+
+/** Minimal BibTeX from the structured fields (Omeka carries no raw BibTeX). */
+function toBibtex(p: PublicationRec): string {
+  const entry = BIBTEX_ENTRY[p.type] ?? "misc";
+  const esc = (s: string) => s.replace(/[{}]/g, "");
+  const lines: string[] = [];
+  const add = (k: string, v: string | null | undefined) => {
+    if (v) lines.push(`  ${k} = {${esc(v)}}`);
+  };
+  add("author", refLabels(p.authors).join(" and "));
+  add("editor", refLabels(p.editors).join(" and "));
+  add("title", p.title);
+  if (p.type === "article" || p.type === "book_review") add("journal", p.venue);
+  else if (p.type === "chapter" || p.type === "conference") add("booktitle", p.venue);
+  else add("series", p.venue);
+  add("year", p.year != null ? String(p.year) : null);
+  add("volume", p.volume);
+  add("number", p.issue);
+  add("pages", p.pages);
+  add("publisher", p.publisher);
+  add("doi", p.doi?.replace(/^https?:\/\/(dx\.)?doi\.org\//i, ""));
+  add("isbn", p.isbn);
+  add("issn", p.issn);
+  add("url", p.doi ?? p.urls[0]);
+  return `@${entry}{${p.pub_id},\n${lines.join(",\n")}\n}`;
 }
 
 export function registerPublicationTools(server: Server): void {
@@ -29,17 +65,18 @@ export function registerPublicationTools(server: Server): void {
     {
       title: "Search publications",
       description:
-        "Search the cluster bibliography (~260 academic publications harvested from ERef + EPub Bayreuth: " +
-        "journal articles, books, chapters, theses, conference papers, etc.). Filters (optional, " +
-        "AND-combined):\n" +
-        "  - keyword: match title, abstract or keywords\n" +
-        "  - author: a contributor name (author/editor)\n" +
-        "  - type: article | book | chapter | conference | doctoral_thesis | working_paper | report | ...\n" +
+        "Search the cluster bibliography (~250 academic publications harvested from ERef/EPub Bayreuth " +
+        "into the collection: journal articles, books, chapters, theses, conference papers, working " +
+        "papers, etc.). Filters (optional, AND-combined):\n" +
+        "  - keyword: match title, abstract, venue or subjects\n" +
+        "  - author: a contributor name (either order works)\n" +
+        "  - type: article | book | chapter | conference | doctoral_thesis | working_paper | " +
+        "journal_issue | book_review | online_post | research_data\n" +
         "  - year_from / year_to: publication-year range\n" +
         "  - limit (default 25, max 100), offset\n\n" +
         "Results are newest-first. Each has id, title, type, year, authors, venue, doi, `url` (the " +
-        "publication's own DOI/permalink — the primary citation) and a `dashboard_url` to the publications " +
-        "page. Use get_publication for full metadata and BibTeX.",
+        "publication's own DOI/permalink — the primary citation) and its `amira_url`. Use " +
+        "get_publication for full metadata and BibTeX.",
       annotations: annotate("Search publications"),
       inputSchema: {
         keyword: z.string().optional(),
@@ -59,29 +96,32 @@ export function registerPublicationTools(server: Server): void {
       const filtered = store.publications.filter((p) => {
         if (args.keyword) {
           const k = args.keyword;
-          if (!(containsCI(p.title, k) || containsCI(p.abstract, k) || anyContainsCI(p.keywords, k)))
+          if (
+            !(
+              containsCI(p.title, k) ||
+              containsCI(p.abstract, k) ||
+              containsCI(p.venue, k) ||
+              anyContainsCI(refLabels(p.subjects), k)
+            )
+          )
             return false;
         }
-        if (args.author && !anyContainsCI(contributorNames(p), args.author)) return false;
+        if (
+          args.author &&
+          !refLabels(p.authors)
+            .concat(refLabels(p.editors))
+            .some((n) => nameMatchesQuery(n, args.author!) || containsCI(n, args.author!))
+        )
+          return false;
         if (args.type && !equalsCI(p.type, args.type)) return false;
         if (args.year_from !== undefined && (p.year ?? -Infinity) < args.year_from) return false;
         if (args.year_to !== undefined && (p.year ?? Infinity) > args.year_to) return false;
         return true;
       });
 
-      filtered.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+      filtered.sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title));
 
-      return textResult(
-        paginate(filtered.map(publicationSummary), offset, limit, {
-          filters: {
-            keyword: args.keyword ?? null,
-            author: args.author ?? null,
-            type: args.type ?? null,
-            year_from: args.year_from ?? null,
-            year_to: args.year_to ?? null,
-          },
-        }),
-      );
+      return textResult(pageOf(filtered, offset, limit, publicationSummary, filtersEcho(args)));
     },
   );
 
@@ -91,52 +131,46 @@ export function registerPublicationTools(server: Server): void {
     {
       title: "Get publication detail",
       description:
-        "Full metadata for one publication by `id` (e.g. 'eref-95983', 'epub-12345'). Returns title, type, " +
-        "authors, editors, book editors, year, venue fields (journal/booktitle/series/volume/issue/pages), " +
-        "publisher, DOI, ISBN/ISSN, keywords, abstract (truncated at 25,000 chars), language, the canonical " +
-        "`url`, source repository links (eref_url/epub_url), ready-to-use BibTeX, and a `dashboard_url`. " +
+        "Full metadata for one publication by `id` (e.g. 'eref-94882'; the numeric Omeka o:id also " +
+        "works). Returns title, type, authors, editors, year, venue (journal/book/series), volume, " +
+        "issue, pages, publisher, DOI, ISBN/ISSN, abstract (truncated at 25,000 chars), subjects, " +
+        "language, repository links (ERef/EPub), BibTeX generated from the structured fields, and the " +
+        "citable `amira_url`. Cite the `url` (DOI or repository permalink) as the primary reference. " +
         "Returns { error } if the id is unknown.",
       annotations: annotate("Get publication detail"),
-      inputSchema: { id: z.string().describe("Publication id, e.g. 'eref-95983'") },
+      inputSchema: { id: z.string().describe("Publication id, e.g. 'eref-94882'") },
     },
     async ({ id }) => {
       const store = await ensureStore();
-      const p = store.publications.find((x) => x.id === id);
+      const p = store.getPublication(id);
       if (!p) {
         return textResult({
           error: `No publication with id '${id}'. Use search_publications to find valid ids.`,
         });
       }
-      const names = (list?: Publication["authors"]) => (list ?? []).map((c) => c.normalized || c.raw);
       return textResult({
-        id: p.id,
+        id: p.pub_id,
         title: p.title,
         type: p.type,
-        year: p.year ?? null,
-        authors: names(p.authors),
-        editors: names(p.editors),
-        book_editors: names(p.book_editors),
-        journal: p.journal ?? null,
-        booktitle: p.booktitle ?? null,
-        series: p.series ?? null,
-        volume: p.volume ?? null,
-        issue: p.issue ?? null,
-        pages: p.pages ?? null,
-        publisher: p.publisher ?? null,
-        address: p.address ?? null,
-        event_location: p.event_location ?? null,
-        event_dates: p.event_dates ?? null,
-        doi: p.doi ?? null,
-        isbn: p.isbn ?? null,
-        issn: p.issn ?? null,
-        keywords: p.keywords ?? [],
-        language: p.language ?? null,
+        year: p.year,
+        date: p.date,
+        authors: refLabels(p.authors),
+        editors: refLabels(p.editors),
+        venue: p.venue,
+        volume: p.volume,
+        issue: p.issue,
+        pages: p.pages,
+        publisher: p.publisher,
+        doi: p.doi,
+        isbn: p.isbn,
+        issn: p.issn,
+        subjects: refLabels(p.subjects),
+        language: p.language,
         abstract: p.abstract ? capText(p.abstract).text : null,
-        url: p.url ?? null,
-        eref_url: p.eref_url ?? null,
-        epub_url: p.epub_url ?? null,
-        bibtex: p.bibtex_raw ?? null,
-        dashboard_url: publicationsUrl(),
+        url: p.doi ?? p.urls[0] ?? null,
+        repository_urls: p.urls,
+        bibtex: toBibtex(p),
+        amira_url: itemUrl(p.o_id),
       });
     },
   );
