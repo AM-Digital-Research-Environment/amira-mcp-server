@@ -1,0 +1,320 @@
+# Roadmap — amira-mcp-server
+
+**Status:** drafted 2026-06-10 · spine = [issue #1](https://github.com/AM-Digital-Research-Environment/africa-multiple-mcp-server/issues/1)
+(migration epic, all design decisions resolved) + the 2026-06-10 code/data examination of v0.2.0.
+
+**Progress log**
+
+- **2026-06-10 — Phase 1 implemented end-to-end on `omeka-migration`** (v1.0.0; repo rename +
+  tag pending at merge). Census: `scripts/census.mjs` + committed `census-report.json`.
+  Snapshot crawl ~56 s / ~110 requests → 11 corpora, **3,975 research items (v0.2.0
+  parity)**, ~10 MB of transformed records. Tests all green: **12 unit** (fixture JSON-LD,
+  every value type), **8 live-API**, **22-tool smoke** with citation-contract asserts
+  (`amira_url` everywhere, `dashboard_url` extinct, transcript search verified, legacy
+  `fre` alias verified). Deviations discovered against the plan:
+  1. **Podcast transcripts are 0/43 in Omeka** (issue #1 assumed they exist) — tools are
+     transcript-ready; search falls back to title/abstract; skill caveat 8 documents it.
+  2. **Sections carry only `dcterms:abstract`** — Mongo's objectives/workProgramme did not
+     migrate; `get_research_section` returns a single description field.
+  3. **Projects have no institutions[]/emails in Omeka** — `frapo:isFundedBy` → `funded_by`
+     serves as the institution link (the `institution` filter targets it); emails are gone.
+  4. **No raw BibTeX in Omeka** — `get_publication` now *generates* BibTeX from the
+     structured fields; publication `venue` is a literal (`dcterms:isPartOf`).
+  5. **Groups survive cleanly**: Organisation items are typed Institution (508) / Group (84);
+     `list_groups` works; no `get_group` needed (`get_institution` resolves both kinds).
+  6. **Related items upgraded**: `dcterms:replaces`/`isReplacedBy`/`hasVersion` are
+     resolvable links exposed with their own `amira_url` (better than planned).
+  7. `dcterms:modified` exists on items — kept in `dates{}`, excluded from year filtering
+     (the v0.2.0 examination concern, resolved by design).
+  Still open from Phase 1: **GitHub repo rename** (at merge, D1), local extension
+  reinstall (§5), and the user-level `africa-multiple-data` skill update (§5).
+
+**Sequencing rule (the one that governs everything):** the server re-platforms onto the
+**Omeka S API first**. None of the examination findings are fixed on the dashboard-era data
+layer — each one either *dies* with that layer, *transforms* into an Omeka mapping
+requirement, or *carries* into the rewritten tool layer. The triage is explicit in §1.3 so
+nothing is silently lost.
+
+---
+
+## 0 · Where we are
+
+- **v0.2.0** (current `main`): 18 read-only tools over an in-memory snapshot of the amira
+  SvelteKit dashboard's static JSON (MongoDB-shaped), bundled in the `.mcpb`, with optional
+  live refresh and dashboard-URL citations.
+- **Issue #1** (2026-06-08): re-source from the public **Omeka S** instance
+  (`data.africamultiple.uni-bayreuth.de`, site `amira`), rename to **`amira-mcp-server`**,
+  cite via **`amira_url`** item permalinks, add **podcasts + YouTube videos** with
+  transcript search, **merge subjects + tags**. Offline-first is a hard requirement.
+- **Examination** (2026-06-10): the snapshot audit (3,975 items) found three heavily-filled
+  fields no tool exposes (dates 99 %, physical description 100 %, sponsor 99 %), a
+  BayGlo2025 reconciliation bug, a torn-refresh cache bug, a ~24 % response-size overhead
+  from pretty-printing, and several smaller consistency/token issues.
+- **Live-API probes** (2026-06-10, grounding §2.4): research item template 10 carries
+  `frapo:isFundedBy` (sponsor), `marcrel:*` per-role contributors, `dcterms:spatial`
+  linked locations, `dcterms:description` descriptive text, `dre:id` ↔ `o:id`; a YouTube
+  item carries a 41,570-char `bibo:content` transcript; a sampled podcast has **no**
+  `bibo:content` (transcript fill is partial — handle absence gracefully).
+
+---
+
+## 1 · Decisions
+
+### 1.1 Locked (issue #1 — do not relitigate)
+
+| # | Decision |
+|---|---|
+| D1 | Rename package, manifest, artifact (`amira-mcp-server.mcpb`) **and the GitHub repo** |
+| D2 | **Offline-first stays**: build-time snapshot from the Omeka API; no per-call API hits; live refresh optional and off-able |
+| D3 | Citation field is **`amira_url`** = `https://data.africamultiple.uni-bayreuth.de/s/amira/item/<o:id>` |
+| D4 | **Dedicated `search_podcasts` / `search_videos`** tools (not overloaded into research items) |
+| D5 | **Dashboard URLs dropped entirely** — no secondary link |
+| D6 | **Subjects + tags merged** into one subject facet (Omeka stores both as `dcterms:subject`) |
+
+### 1.2 Proposed in this roadmap (confirm or veto before Phase 1 starts)
+
+| # | Proposal | Rationale |
+|---|---|---|
+| D7 | **Keep the 18 existing tool names** unchanged; only *add* tools | Prompt/skill continuity; the breaking change stays confined to citations + the tag facet |
+| D8 | **`dre_id` remains the research-item key**; every record also carries `o_id`; `get_research_item` accepts either | `dre:id` is the stable, human-meaningful identifier; `o:id` is needed for `amira_url` anyway |
+| D9 | **Snapshot integrity by construction**: fetch into a staging dir, write a snapshot manifest (per-template counts + max `o:modified` + fetchedAt), promote atomically, refuse to promote on any required-template shortfall | Direct lesson from the v0.2.0 torn-refresh bug — design it out instead of patching it |
+| D10 | **Token discipline is part of the Phase-1 tool layer**, not a later pass: compact JSON (no pretty-print), slim item refs in profile/sample lists, no null-filter echo, transcripts never in summaries | The tool layer is being rewritten anyway; retrofitting costs double |
+| D11 | Freshness probe = the **(max `o:modified`, per-template totals) pair** from the snapshot manifest vs the live API | `o:modified` alone misses deletions; totals alone miss edits |
+| D12 | `AMIRA_DASHBOARD_BASE` → **`AMIRA_SITE_BASE`**, accepting the old var with a deprecation warning for one minor version | Painless for existing installs |
+| D13 | Add **`get_podcast` / `get_video`** detail tools alongside the search tools | Transcripts are too big for search results; detail is where the capped transcript lives |
+| D14 | Companion skill keeps folder/name `africa-multiple` (content rewritten) | Renaming the skill breaks installed copies for zero functional gain; revisit only if the repo rename makes it confusing |
+
+### 1.3 Examination-findings triage (nothing lost, nothing wasted)
+
+**Dies with the dashboard layer** (do *not* fix on v0.2.x):
+
+| Finding | Why it dies |
+|---|---|
+| BayGlo2025 half-reconciliation (empty section, name mismatch) | The `EXTERNAL_PROJECTS` shim is deleted; in Omeka, external collections are real items/item sets with `dcterms:isPartOf` (§2.2 verifies this during the build) |
+| Torn-refresh cache corruption | Refresh pipeline is rewritten; the lesson becomes **D9** |
+| `mongoJSON.ts` Extended-JSON + `l1/l2/l3` quirk | Mongo/dashboard artifacts; replaced by the Omeka transform |
+| `LANG_GROUPS` `fre`/`fra` unification + missing `mas` | Languages become linked authority items (set 19) with labels; a slim query-side alias map may survive (§2.2 verifies) |
+| `dev.geo.json` + `coordsFor` | Location items carry `geo:lat`/`geo:long` natively |
+
+**Transforms into an Omeka mapping requirement** (Phase 1 §2.4, Phase 2):
+
+dates exposure (the #1 gap) · physical description (+ keyword recall) · sponsor
+(`frapo:isFundedBy`) · related items · collections (item sets) · research-section URL ·
+publication date precision.
+
+**Carries into the rewritten tool layer** (Phase 1 §2.5, tagged ⟨exam⟩ below):
+
+order-independent name matching for project PI/member filters · `find_related`
+seed-exclusion uses the same predicate as its match · paginate-then-map ·
+compact `textResult` · slim `contributed_items` / `sample_items` · drop null-filter echo ·
+version single-sourcing via esbuild define · smoke-test coverage of all `get_*` tools.
+
+(One v0.2.0 nuisance disappears for free: every publication becomes an Omeka item, so the
+constant per-row `/publications` `dashboard_url` is replaced by a real per-item `amira_url`.)
+
+---
+
+## 2 · Phase 1 — the migration epic → **v1.0.0, `amira-mcp-server.mcpb`**
+
+One epic, sequential workstreams, each gated by `typecheck && build && smoke`.
+Work on an `omeka-migration` branch; rename the repo at merge time.
+
+### 2.1 Fetcher & snapshot (`scripts/fetch_data.mjs` rewrite)
+
+- [x] Crawl per resource template / item set: Persons (4), Organisation (2), Location (3),
+      Projects (5), Research Sections (7), Research Items (10), Publications (11–20 / set
+      29918), Podcasts (21 / set 39095), YouTube videos (22 / set 39192), playlists (set
+      39193), plus authority sets needed for labels (Languages 19, Genres 21, …).
+- [x] `per_page=100`, loop sized by `Omeka-S-Total-Results` (read from **GET** headers —
+      the instance returns 405 on HEAD). ~100 requests total; concurrency 2–4, retry with
+      backoff, polite delays.
+- [x] Fetch `/api/properties` once and bake a `marcrel:*` (and friends) code→label map into
+      the snapshot, so the runtime never needs the vocabulary API.
+- [x] **D9**: staging dir → snapshot manifest (per-template counts, max `o:modified`,
+      fetchedAt, schema version) → atomic promote; abort on shortfall vs live totals.
+- [x] Store the snapshot as **transformed records** (see 2.3), not raw JSON-LD — JSON-LD is
+      ~5–10× the useful payload; transform at build time keeps the bundle and startup lean.
+      Transcripts stored full-length but in a separate per-corpus file if size warrants.
+
+### 2.2 Verification pass (one-off scripts, before code hardens)
+
+- [x] **Property census** across all ~9,400 items: fill rate per property per template —
+      the Omeka analogue of the 2026-06-10 snapshot audit. Confirms where dates live
+      (`dcterms:created`/`issued`/`date`/…), what holds physical description beyond
+      `dcterms:format` (extent/medium?), related-items properties, and section page URLs.
+      Output checked into `scripts/` for rerunning after instance-side changes.
+- [x] Verify external collections (ILAM, BayGlo2025): items ↔ project/item-set links and
+      display names — the source-side fix for the v0.2.0 BayGlo bug. If linkage is wrong
+      **in Omeka**, file it against `MongoDB2OmekaS` (authoritative), don't shim it here.
+- [x] Verify language values (linked items vs literals) → decide the fate of `languages.ts`.
+- [x] Verify `dre:id` coverage on template-10 items (key for D8).
+- [x] Spot-check 20 random `amira_url`s → 200.
+
+### 2.3 Transform, types, store
+
+- [x] New `src/omekaJSON.ts` (replaces `mongoJSON.ts`): JSON-LD value arrays → plain
+      records; linked values keep `{label: display_title, o_id: value_resource_id}`;
+      `marcrel:*` properties fold into `contributors[{name, role, o_id}]`.
+- [x] `src/types.ts` rewritten around the Omeka shapes; `src/data.ts` DataStore indexes:
+      by `o:id`, by `dre_id`, items-by-project, **section-by-project precomputed once**
+      ⟨exam⟩; no `EXTERNAL_PROJECTS` shim; no dead accessors (v0.2.0's unused
+      `getGroup`/`peekStore` — don't recreate).
+- [x] Runtime live refresh = probe (D11, 1 request) → full re-crawl into staging → atomic
+      swap, reusing the build-time fetcher module. Off-able via `AMIRA_LIVE_REFRESH`.
+
+### 2.4 Field mapping (research items — grounded by the 2026-06-10 probes)
+
+| v0.2.0 / Mongo field | Omeka property | Note |
+|---|---|---|
+| titles (main + translated) | `dcterms:title`, `fabio:hasTranslatedTitle` | |
+| typeOfResource | `dcterms:type` | |
+| subjects **and tags** | `dcterms:subject` | merged (D6); linked authority items |
+| abstract / `pd.desc` | `dcterms:description` (+ `dcterms:abstract` where used) | closes the v0.2.0 keyword-recall gap **if indexed** — see 2.5 |
+| **dates** (99 % filled, never exposed in v0.2.0) | `dcterms:created` / `issued` / `date` / … per census | **must end up in both summary (`year`/`date`) and detail (`dates{}`)** |
+| sponsor (99 %) | `frapo:isFundedBy` | linked authority; expose in detail |
+| locations l1/l2/l3 | `dcterms:spatial` → Location items (`geo:lat`/`geo:long`) | coordinates native |
+| contributors + roles | `marcrel:*` (54 role properties) | fold via property-label map |
+| audience | `dcterms:audience` | |
+| identifiers | `dcterms:identifier` + `dre:id` | |
+| physical description | `dcterms:format` (+ extent/medium per census) | expose in detail |
+| access condition | `dcterms:accessRights` | |
+| related items | per census (`dcterms:relation`/`succeeds`/…) | expose in detail |
+| collection membership | `o:item_set` | per-project sets 6259–6295 etc. |
+| project | `dcterms:isPartOf` | |
+| WissKI link | `dre:wisskiUrl` | optional secondary link in detail |
+
+### 2.5 Tool layer port (all of `src/tools/*`)
+
+- [x] `src/urls.ts` → single `itemUrl(oId)`; every record emits `amira_url`; publications
+      keep external `url` (DOI/permalink) as primary + `amira_url`.
+- [x] Keep the 18 tool names (D7); inputs unchanged except: `tag` filter/facet/entity-type
+      folds into `subject` (D6) — `list_categories` enum becomes
+      `genres | languages | resource_types`.
+- [x] **Keyword haystack (research items): title + translated title + description +
+      abstract + identifiers + dre_id** — fixes the v0.2.0 recall gap on the ~2,500
+      abstract-less items ⟨exam⟩.
+- [x] ⟨exam⟩ carry-ins, baked in as written: `nameMatchesQuery` on `search_projects`
+      `principal_investigator`/`member`; `find_related` exclusion reuses its match
+      predicate; slice page *then* map summaries; `get_person`/`get_institution`
+      `contributed_items` and `find_related.sample_items` use a slim ref
+      `{dre_id, o_id, title, role?, type_of_resource, year, amira_url}`; `filters` echo
+      includes only filters actually passed; `textResult` emits **compact** JSON
+      (structuredContent unchanged).
+- [x] `get_collection_overview`: counts gain `podcasts`, `youtube_videos`; breakdowns
+      unchanged otherwise; `data_snapshot` reports the snapshot-manifest freshness pair.
+
+### 2.6 Podcasts & YouTube videos (D4, D13)
+
+- [x] `search_podcasts`: keyword (title + abstract + **transcript**), series
+      (`dcterms:isPartOf`), person (`marcrel:spk`/`hst`), year; summary = title, series,
+      episode no., date, speakers, `fabio:hasURL`, `amira_url` — **never the transcript**.
+- [x] `search_videos`: keyword (title + abstract + **transcript**), playlist, speaker,
+      language, year; same summary discipline.
+- [x] `get_podcast` / `get_video`: full metadata + transcript capped at `CHARACTER_LIMIT`
+      (25 k chars) with `transcript_truncated` flag (probe: one transcript is already
+      41.5 k chars) and `transcript_length`. Absent transcripts (sampled podcast had none)
+      → `transcript: null`, never an error.
+- [x] When a transcript match triggers a search hit, say so: `matched_in: "transcript"`.
+
+### 2.7 Rename & packaging (D1)
+
+- [x] `package.json` name, `manifest.json` (name, display_name, descriptions, homepage →
+      Omeka site, repo/support links, tool list incl. the 4 new tools), artifact name in
+      `pack-mcpb`/workflows/`.mcpbignore`, README.
+- [ ] **At merge:** rename the GitHub repo `africa-multiple-mcp-server` → `amira-mcp-server`
+      (GitHub redirects old URLs; manifest/README already point at the new name).
+- [x] ⟨exam⟩ single-source the version: esbuild `define` injects `package.json` version
+      into `src/index.ts`.
+- [x] Server `instructions` rewritten: `amira_url` citation rules (keep the
+      no-bare-ids / no-id-ranges discipline verbatim), name-order note, snapshot note.
+
+### 2.8 CI (refresh + release workflows)
+
+- [x] `refresh-data.yml`: replace the `generatedAt` comparison with the D11 probe pair;
+      artifact `amira-mcp-server.mcpb`; rolling `data-latest` unchanged otherwise.
+- [x] `release.yml`: artifact rename only.
+
+### 2.9 Tests & acceptance
+
+- [x] `smoke-test.mjs` ⟨exam⟩: add `get_research_item`, `get_project`, `get_publication`,
+      plus podcast/video search-by-transcript-keyword and one `get_video`; assert every
+      result carries a well-formed `amira_url` and **no** `dashboard_url`.
+- [x] Parity check vs v0.2.0: research-item count ≥ 3,975; persons/projects/sections in the
+      same ballpark; publications ≥ 259.
+- [x] Issue #1 acceptance criteria, verbatim, as the release gate; plus D9 integrity
+      criteria (no promote on shortfall).
+
+### 2.10 Docs & companion skill (ships **with** v1.0.0, not after)
+
+- [x] Skill `africa-multiple` (folder name kept, D14): SKILL.md + `data-model.md` rewritten
+      to Omeka shapes (`amira_url`, merged subjects, dates, new tools); `tools-by-task.md`
+      → 22 tools; drop the `fre`/`fra` caveat if 2.2 confirms it obsolete; deduplicate the
+      funding-phase section lists to **one** place (SKILL.md) ⟨exam⟩; keep citation
+      discipline and coverage caveats (they survive unchanged).
+- [x] README: data-source section, tool table (22), example questions (add a transcript
+      one), architecture note (Omeka, not dashboard).
+
+---
+
+## 3 · Phase 2 — **v1.1**: finish "use all the data"
+
+Whatever the 2.2 census shows but Phase 1 didn't ship (Phase 1 must ship dates, merged
+description search, sponsor/physical-description/related-items in detail — this phase
+covers the long tail):
+
+- [ ] `list_collections` (or an `item_set` facet): browse the per-project collection sets
+      and external sets — replaces the opaque v0.2.0 `col-XX` ids with first-class sets.
+- [ ] Media: primary media link + thumbnail URL in `get_research_item` (capability the
+      dashboard snapshot never had).
+- [ ] Research-section website URL (per census) in `get_research_section`;
+      `dcterms:provenance`, `dre:wisskiUrl` in item detail.
+- [ ] Groups parity: census decides whether groups remain a distinct corpus in Omeka
+      (template 2 vs authority set); add `get_group` or fold into organisations.
+- [ ] Publication date precision (full `dcterms:date` ordering replaces the v0.2.0
+      year+quarter idea).
+- [ ] Re-run the token audit on real responses; tune summary fields with measurements.
+
+## 4 · Phase 3 — **v1.2+**: demand-driven extras (each needs a use-case before build)
+
+- `list_years` / date-histogram facet (timeline questions currently need paging).
+- `find_related` upgrades: multi-seed AND, year-windowed co-occurrence.
+- **Semantic search** over descriptions/abstracts/transcripts — IWAC-parity, env-gated,
+  embeddings **precomputed offline in the fetch pipeline** (never at request time),
+  `gemini-embedding-2`. Exploratory: needs a corpus-fit check first.
+- References-API live mode for fresh aggregations — explicitly deferred (conflicts with
+  D2's offline-first simplicity; revisit only if snapshot staleness becomes a real
+  complaint).
+
+## 5 · Ecosystem docs (parallel, not blocking)
+
+- [ ] Global `africa-multiple-data` skill (user-level): add the amira/Omeka MCP server to
+      the ecosystem diagram + a "Which reference do I need?" row pointing at the companion
+      skill; correct the `Ext_*` projectsData claim (the 2026-06-10 snapshot contradicts
+      it — verify against Mongo; the discrepancy is what caused the v0.2.0 BayGlo bug).
+- [ ] After v1.0.0: refresh the local installed extension (the currently-installed copy
+      already lags v0.2.0).
+
+## 6 · Contingency
+
+If Phase 1 slips by more than ~a month **and** the v0.2.0 server is in active use,
+cherry-pick exactly two fixes onto a v0.2.1: the BayGlo reconciliation and the
+torn-refresh staging — nothing else from the examination is worth dashboard-era effort.
+
+## 7 · Risks
+
+| Risk | Mitigation |
+|---|---|
+| Omeka API down/slow at build or refresh | Retry + backoff; CI keeps last good snapshot; runtime keeps serving bundled data (unchanged guarantee) |
+| Property/template drift on the instance | 2.2 census script kept in `scripts/`, re-runnable; census diff before each `data-latest` rebuild |
+| Torn snapshot | D9 staging + counts manifest + atomic promote |
+| Transcript bloat (snapshot + tokens) | Separate corpus file; never in summaries; capped in detail (2.6) |
+| Freshness probe false-negative | D11 pair (max `o:modified` **and** totals) |
+| Repo rename breaks pinned URLs | GitHub redirects; manifest/README/release links updated in 2.7 |
+| Doc/skill drift (three places describe tools) | One checklist rule: any tool change touches tool description + README table + skill in the same PR |
+| `dre:id` gaps on some items | 2.2 census; fall back to `o:id` as key where absent (D8 accepts both) |
+
+## 8 · Explicitly out of scope
+
+- Per-call live API querying (D2), writing to Omeka (read-only forever), WissKI/SPARQL
+  querying (separate system; `dre:wisskiUrl` link only), dashboard URL compatibility
+  (D5: dropped, not redirected).

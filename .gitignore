@@ -19,3 +19,6 @@ data/
 
 # Local-only Claude settings (keep the skill, drop local config)
 .claude/settings.local.json
+
+# Census raw-page cache (scripts/census.mjs)
+.census-cache/

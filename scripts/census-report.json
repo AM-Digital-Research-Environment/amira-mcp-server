@@ -1,0 +1,2424 @@
+{
+ "apiBase": "https://data.africamultiple.uni-bayreuth.de/api",
+ "generatedAt": "2026-06-10T16:33:16.764Z",
+ "targets": {
+  "organisation": {
+   "query": "resource_template_id=2",
+   "total": 592,
+   "fetched": 592,
+   "templates": {
+    "2": 592
+   },
+   "with_media": 6,
+   "with_thumbnail": 6,
+   "item_sets_top": {
+    "110": 592
+   },
+   "classes": {
+    "96": 592
+   },
+   "properties": {
+    "dcterms:title": {
+     "n": 592,
+     "maxValues": 1,
+     "types": {
+      "literal": 592
+     },
+     "sample": "DECCA"
+    },
+    "dcterms:type": {
+     "n": 592,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 592
+     },
+     "sample": "Institution"
+    },
+    "dre:wisskiUrl": {
+     "n": 393,
+     "maxValues": 1,
+     "types": {
+      "uri": 393
+     },
+     "sample": "46998"
+    },
+    "geo:lat": {
+     "n": 43,
+     "maxValues": 1,
+     "types": {
+      "literal": 43
+     },
+     "sample": "5.55602"
+    },
+    "geo:long": {
+     "n": 43,
+     "maxValues": 1,
+     "types": {
+      "literal": 43
+     },
+     "sample": "-0.1969"
+    },
+    "dcterms:identifier": {
+     "n": 34,
+     "maxValues": 1,
+     "types": {
+      "uri": 34
+     },
+     "sample": "Q702482"
+    },
+    "dcterms:isPartOf": {
+     "n": 28,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 28
+     },
+     "sample": "Africa Multiple Research Centres"
+    },
+    "dcterms:alternative": {
+     "n": 25,
+     "maxValues": 4,
+     "types": {
+      "literal": 42
+     },
+     "sample": "Universidade Eduardo Mondlane"
+    }
+   }
+  },
+  "location": {
+   "query": "resource_template_id=3",
+   "total": 162,
+   "fetched": 162,
+   "templates": {
+    "3": 162
+   },
+   "with_media": 0,
+   "with_thumbnail": 0,
+   "item_sets_top": {
+    "1851": 162
+   },
+   "classes": {
+    "9": 162
+   },
+   "properties": {
+    "dcterms:title": {
+     "n": 162,
+     "maxValues": 1,
+     "types": {
+      "literal": 162
+     },
+     "sample": "Australia"
+    },
+    "dcterms:type": {
+     "n": 162,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 162
+     },
+     "sample": "Country"
+    },
+    "geo:lat": {
+     "n": 161,
+     "maxValues": 1,
+     "types": {
+      "literal": 161
+     },
+     "sample": "-25.0"
+    },
+    "geo:long": {
+     "n": 161,
+     "maxValues": 1,
+     "types": {
+      "literal": 161
+     },
+     "sample": "133.0"
+    },
+    "dcterms:identifier": {
+     "n": 158,
+     "maxValues": 1,
+     "types": {
+      "uri": 158
+     },
+     "sample": "Q408"
+    },
+    "dre:wisskiUrl": {
+     "n": 136,
+     "maxValues": 1,
+     "types": {
+      "uri": 136
+     },
+     "sample": "41706"
+    },
+    "dcterms:isPartOf": {
+     "n": 120,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 120
+     },
+     "sample": "Ivory Coast"
+    },
+    "dcterms:alternative": {
+     "n": 16,
+     "maxValues": 1,
+     "types": {
+      "literal": 16
+     },
+     "sample": "Battsengel"
+    }
+   }
+  },
+  "person": {
+   "query": "resource_template_id=4",
+   "total": 1643,
+   "fetched": 1643,
+   "templates": {
+    "4": 1643
+   },
+   "with_media": 0,
+   "with_thumbnail": 0,
+   "item_sets_top": {
+    "18": 1643
+   },
+   "classes": {
+    "94": 1643
+   },
+   "properties": {
+    "dcterms:title": {
+     "n": 1643,
+     "maxValues": 1,
+     "types": {
+      "literal": 1643
+     },
+     "sample": "Andrea"
+    },
+    "dcterms:type": {
+     "n": 1643,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 1643
+     },
+     "sample": "Person"
+    },
+    "dre:wisskiUrl": {
+     "n": 795,
+     "maxValues": 2,
+     "types": {
+      "uri": 801
+     },
+     "sample": "46768"
+    },
+    "dcterms:isPartOf": {
+     "n": 707,
+     "maxValues": 5,
+     "types": {
+      "resource:item": 771
+     },
+     "sample": "University of Bayreuth"
+    },
+    "dcterms:alternative": {
+     "n": 3,
+     "maxValues": 1,
+     "types": {
+      "literal": 3
+     },
+     "sample": "Ngawa Mbaho, Liliane Carline"
+    }
+   }
+  },
+  "project": {
+   "query": "resource_template_id=5",
+   "total": 93,
+   "fetched": 93,
+   "templates": {
+    "5": 93
+   },
+   "with_media": 4,
+   "with_thumbnail": 4,
+   "item_sets_top": {
+    "20": 93
+   },
+   "classes": {
+    "99": 93
+   },
+   "properties": {
+    "dcterms:title": {
+     "n": 93,
+     "maxValues": 1,
+     "types": {
+      "literal": 93
+     },
+     "sample": "Locating the Albatross in Women's Political Participation in Sub-Saharan Africa"
+    },
+    "dcterms:alternative": {
+     "n": 93,
+     "maxValues": 1,
+     "types": {
+      "literal": 93
+     },
+     "sample": "aaa"
+    },
+    "dcterms:type": {
+     "n": 93,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 93
+     },
+     "sample": "Research project"
+    },
+    "frapo:isFundedBy": {
+     "n": 93,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 96
+     },
+     "sample": "University of Lagos African Cluster Centre (LACC)"
+    },
+    "dre:id": {
+     "n": 93,
+     "maxValues": 1,
+     "types": {
+      "literal": 93
+     },
+     "sample": "ULG_WOPP2021"
+    },
+    "dcterms:creator": {
+     "n": 91,
+     "maxValues": 4,
+     "types": {
+      "resource:item": 97
+     },
+     "sample": "Ademola-Adeoye, Feyisayo"
+    },
+    "dre:wisskiUrl": {
+     "n": 89,
+     "maxValues": 1,
+     "types": {
+      "uri": 89
+     },
+     "sample": "46237"
+    },
+    "dcterms:isPartOf": {
+     "n": 85,
+     "maxValues": 3,
+     "types": {
+      "resource:item": 105
+     },
+     "sample": "Moralities"
+    },
+    "dcterms:temporal": {
+     "n": 81,
+     "maxValues": 1,
+     "types": {
+      "numeric:interval": 81
+     },
+     "sample": "2021-10-01/2023-10-01"
+    },
+    "foaf:member": {
+     "n": 78,
+     "maxValues": 10,
+     "types": {
+      "resource:item": 210
+     },
+     "sample": "Akin-Otiko, Akinmayowa"
+    },
+    "dcterms:abstract": {
+     "n": 67,
+     "maxValues": 1,
+     "types": {
+      "literal": 67
+     },
+     "sample": "One of the most recent and significant discussions in AS is how to reconfigure the field i"
+    },
+    "fabio:hasURL": {
+     "n": 54,
+     "maxValues": 1,
+     "types": {
+      "uri": 54
+     },
+     "sample": "https://www.africamultiple.uni-bayreuth.de/en/1_2-Research/Research-Projects/Mobilities/Mo"
+    }
+   }
+  },
+  "research_section": {
+   "query": "resource_template_id=7",
+   "total": 13,
+   "fetched": 13,
+   "templates": {
+    "7": 13
+   },
+   "with_media": 0,
+   "with_thumbnail": 0,
+   "item_sets_top": {
+    "17": 13
+   },
+   "classes": {
+    "176": 13
+   },
+   "properties": {
+    "dcterms:title": {
+     "n": 13,
+     "maxValues": 1,
+     "types": {
+      "literal": 13
+     },
+     "sample": "Affiliations"
+    },
+    "dcterms:abstract": {
+     "n": 13,
+     "maxValues": 1,
+     "types": {
+      "literal": 13
+     },
+     "sample": "Today's African nation states maintain multiple, often overlapping, competing political, e"
+    },
+    "dcterms:temporal": {
+     "n": 13,
+     "maxValues": 1,
+     "types": {
+      "numeric:interval": 13
+     },
+     "sample": "2019/2025"
+    },
+    "foaf:member": {
+     "n": 12,
+     "maxValues": 26,
+     "types": {
+      "resource:item": 222,
+      "literal": 1
+     },
+     "sample": "Frempong, Raymond Boadi"
+    },
+    "fabio:hasURL": {
+     "n": 12,
+     "maxValues": 1,
+     "types": {
+      "uri": 12
+     },
+     "sample": "https://www.africamultiple.uni-bayreuth.de/en/unneeded2-Research/1research-sections/affili"
+    },
+    "dcterms:creator": {
+     "n": 6,
+     "maxValues": 5,
+     "types": {
+      "resource:item": 23
+     },
+     "sample": "Stadelmann, David"
+    },
+    "marcrel:spk": {
+     "n": 6,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 6
+     },
+     "sample": "Ouma, Stefan"
+    }
+   }
+  },
+  "research_item": {
+   "query": "resource_template_id=10",
+   "total": 3975,
+   "fetched": 3975,
+   "templates": {
+    "10": 3975
+   },
+   "with_media": 1228,
+   "with_thumbnail": 1228,
+   "item_sets_top": {
+    "6259": 182,
+    "6260": 105,
+    "6262": 298,
+    "6263": 487,
+    "6264": 129,
+    "6268": 292,
+    "6277": 108,
+    "6278": 525,
+    "6279": 86,
+    "6294": 83,
+    "6295": 110,
+    "27724": 1032
+   },
+   "classes": {},
+   "properties": {
+    "dcterms:title": {
+     "n": 3975,
+     "maxValues": 1,
+     "types": {
+      "literal": 3975
+     },
+     "sample": "Volume 8: Yoruba Architecture and Wall Painting. Digitaler Scan im Beier-Nachlass"
+    },
+    "dcterms:type": {
+     "n": 3975,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 3975
+     },
+     "sample": "Image"
+    },
+    "dcterms:isPartOf": {
+     "n": 3975,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 3975
+     },
+     "sample": "Of Art Worlds - Collecting and Archiving Modern and Contemporary Art on the African Contin"
+    },
+    "dcterms:accessRights": {
+     "n": 3975,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 3975,
+      "literal": 487
+     },
+     "sample": "No Raw Data"
+    },
+    "dre:id": {
+     "n": 3975,
+     "maxValues": 1,
+     "types": {
+      "literal": 3975
+     },
+     "sample": "abg-99-0000"
+    },
+    "dcterms:format": {
+     "n": 3975,
+     "maxValues": 10,
+     "types": {
+      "resource:item": 9986,
+      "literal": 5364
+     },
+     "sample": "book"
+    },
+    "dcterms:subject": {
+     "n": 3974,
+     "maxValues": 25,
+     "types": {
+      "resource:item": 19804
+     },
+     "sample": "Yoruba (African people)"
+    },
+    "dcterms:identifier": {
+     "n": 3974,
+     "maxValues": 3,
+     "types": {
+      "literal": 5185
+     },
+     "sample": "KG_00001_NachlassUB"
+    },
+    "dcterms:spatial": {
+     "n": 3955,
+     "maxValues": 7,
+     "types": {
+      "resource:item": 4012,
+      "literal": 4
+     },
+     "sample": "Bayreuth"
+    },
+    "frapo:isFundedBy": {
+     "n": 3931,
+     "maxValues": 5,
+     "types": {
+      "resource:item": 4083
+     },
+     "sample": "EXC2052/1 Africa Multiple, DFG Project number 390713894"
+    },
+    "dre:wisskiUrl": {
+     "n": 3303,
+     "maxValues": 2,
+     "types": {
+      "uri": 3389
+     },
+     "sample": "86359"
+    },
+    "dcterms:created": {
+     "n": 3274,
+     "maxValues": 1,
+     "types": {
+      "numeric:timestamp": 2672,
+      "numeric:interval": 602
+     },
+     "sample": "2013-01-01"
+    },
+    "dcterms:language": {
+     "n": 3012,
+     "maxValues": 4,
+     "types": {
+      "resource:item": 3105
+     },
+     "sample": "English"
+    },
+    "dcterms:description": {
+     "n": 2792,
+     "maxValues": 4,
+     "types": {
+      "literal": 3676
+     },
+     "sample": "Copyright held by Iwalewahaus, CBCIU."
+    },
+    "dcterms:provenance": {
+     "n": 2043,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 2049
+     },
+     "sample": "Bayreuth"
+    },
+    "dcterms:license": {
+     "n": 1707,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 1220,
+      "literal": 487
+     },
+     "sample": "CC-BY-NC-SA-4.0"
+    },
+    "dcterms:extent": {
+     "n": 1662,
+     "maxValues": 3,
+     "types": {
+      "literal": 2094
+     },
+     "sample": "2.20 MB"
+    },
+    "dcterms:abstract": {
+     "n": 1461,
+     "maxValues": 1,
+     "types": {
+      "literal": 1461
+     },
+     "sample": "This file contains colonial ethnological notes on Cameroons written by Meyer, Das Deutsche"
+    },
+    "dcterms:audience": {
+     "n": 1354,
+     "maxValues": 6,
+     "types": {
+      "resource:item": 2619
+     },
+     "sample": "Researchers"
+    },
+    "fabio:hasURL": {
+     "n": 1282,
+     "maxValues": 1,
+     "types": {
+      "uri": 1282
+     },
+     "sample": "https://fotoglasplatten.zns.uni-halle.de/"
+    },
+    "marcrel:aut": {
+     "n": 1150,
+     "maxValues": 4,
+     "types": {
+      "resource:item": 1425
+     },
+     "sample": "Beier, Ulli"
+    },
+    "bibo:doi": {
+     "n": 1073,
+     "maxValues": 1,
+     "types": {
+      "uri": 1073
+     },
+     "sample": "10.57880/rdspace-ubt-20"
+    },
+    "fabio:hasDateCollected": {
+     "n": 993,
+     "maxValues": 1,
+     "types": {
+      "numeric:timestamp": 993
+     },
+     "sample": "2019-01-01"
+    },
+    "marcrel:rtm": {
+     "n": 588,
+     "maxValues": 10,
+     "types": {
+      "resource:item": 1964
+     },
+     "sample": "Amarbat, Byambasuren"
+    },
+    "fabio:hasTranslatedTitle": {
+     "n": 571,
+     "maxValues": 1,
+     "types": {
+      "literal": 571
+     },
+     "sample": "Volume 8: Yoruba Architecture and Wall Painting. Digital scan in the Beier's estate"
+    },
+    "dcterms:modified": {
+     "n": 493,
+     "maxValues": 1,
+     "types": {
+      "numeric:timestamp": 493
+     },
+     "sample": "2021-12-07"
+    },
+    "marcrel:spn": {
+     "n": 486,
+     "maxValues": 10,
+     "types": {
+      "resource:item": 546
+     },
+     "sample": "Government of Liberia"
+    },
+    "marcrel:col": {
+     "n": 413,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 413
+     },
+     "sample": "Beier, Ulli"
+    },
+    "marcrel:mus": {
+     "n": 345,
+     "maxValues": 4,
+     "types": {
+      "resource:item": 391
+     },
+     "sample": "Lawunmi & Her Group"
+    },
+    "fabio:hasSubtitle": {
+     "n": 335,
+     "maxValues": 3,
+     "types": {
+      "literal": 337
+     },
+     "sample": "Sammlung Gerd Spittler"
+    },
+    "dcterms:issued": {
+     "n": 318,
+     "maxValues": 1,
+     "types": {
+      "numeric:timestamp": 293,
+      "numeric:interval": 25
+     },
+     "sample": "1973-01-01"
+    },
+    "marcrel:rps": {
+     "n": 316,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 316
+     },
+     "sample": "Ghana Broadcasting Corporation Gramophone Library"
+    },
+    "marcrel:ivr": {
+     "n": 299,
+     "maxValues": 3,
+     "types": {
+      "resource:item": 313
+     },
+     "sample": "Beier, Ulli"
+    },
+    "marcrel:prn": {
+     "n": 298,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 370
+     },
+     "sample": "DECCA"
+    },
+    "marcrel:cre": {
+     "n": 258,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 266
+     },
+     "sample": "Liberia Broadcasting System (LBS)"
+    },
+    "dcterms:alternative": {
+     "n": 248,
+     "maxValues": 1,
+     "types": {
+      "literal": 248
+     },
+     "sample": "Page of an album containing newspaper articles about the Iwalewahaus and photographs of th"
+    },
+    "marcrel:pbl": {
+     "n": 214,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 214
+     },
+     "sample": "Beier, Ulli"
+    },
+    "marcrel:ctb": {
+     "n": 180,
+     "maxValues": 15,
+     "types": {
+      "resource:item": 700
+     },
+     "sample": "Moschetti, Marta"
+    },
+    "dcterms:tableOfContents": {
+     "n": 171,
+     "maxValues": 1,
+     "types": {
+      "literal": 171
+     },
+     "sample": "1. Archive File Cover\n2. Ethnological Notes on the Cameroons"
+    },
+    "marcrel:pht": {
+     "n": 169,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 216
+     },
+     "sample": "Beier, Ulli"
+    },
+    "marcrel:rth": {
+     "n": 156,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 156
+     },
+     "sample": "Batjav, Batbuyan"
+    },
+    "marcrel:mod": {
+     "n": 150,
+     "maxValues": 5,
+     "types": {
+      "resource:item": 169
+     },
+     "sample": "Kronenburg García, Angela"
+    },
+    "dcterms:dateCopyrighted": {
+     "n": 143,
+     "maxValues": 1,
+     "types": {
+      "numeric:timestamp": 142,
+      "numeric:interval": 1
+     },
+     "sample": "2013-01-01"
+    },
+    "marcrel:ive": {
+     "n": 142,
+     "maxValues": 9,
+     "types": {
+      "resource:item": 164
+     },
+     "sample": "Toima, Mamus Litan"
+    },
+    "marcrel:res": {
+     "n": 137,
+     "maxValues": 9,
+     "types": {
+      "resource:item": 292
+     },
+     "sample": "Amarbat, Byambasuren"
+    },
+    "marcrel:pro": {
+     "n": 125,
+     "maxValues": 4,
+     "types": {
+      "resource:item": 136
+     },
+     "sample": "Liberia Broadcasting System (LBS)"
+    },
+    "dcterms:replaces": {
+     "n": 115,
+     "maxValues": 9,
+     "types": {
+      "resource:item": 182
+     },
+     "sample": "Interview of co-researcher from Bulgan aimag, January 5 and 11, 2022"
+    },
+    "dcterms:isReplacedBy": {
+     "n": 98,
+     "maxValues": 8,
+     "types": {
+      "resource:item": 126
+     },
+     "sample": "Research notes from interview in Bayankhongor aimag, March 13, 2022"
+    },
+    "dre:collectionUrl": {
+     "n": 86,
+     "maxValues": 1,
+     "types": {
+      "uri": 86
+     },
+     "sample": "12068@3c910145-7057-4112-9484-5d30f968f4d0"
+    },
+    "marcrel:edt": {
+     "n": 84,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 84
+     },
+     "sample": "Abbas, Nasir"
+    },
+    "dre:rdspaceHandle": {
+     "n": 75,
+     "maxValues": 1,
+     "types": {
+      "uri": 75
+     },
+     "sample": "rdspace-ubt/308"
+    },
+    "marcrel:nrt": {
+     "n": 70,
+     "maxValues": 4,
+     "types": {
+      "resource:item": 100
+     },
+     "sample": "Forh, Juah"
+    },
+    "marcrel:rcp": {
+     "n": 69,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 72
+     },
+     "sample": "Greven, Katharina"
+    },
+    "marcrel:asn": {
+     "n": 66,
+     "maxValues": 3,
+     "types": {
+      "resource:item": 103
+     },
+     "sample": "Beier, Ulli"
+    },
+    "marcrel:orm": {
+     "n": 66,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 66
+     },
+     "sample": "Fundação Gregório De Mattos"
+    },
+    "marcrel:drt": {
+     "n": 64,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 67
+     },
+     "sample": "Urey, Khrushchev Borbor"
+    },
+    "dcterms:valid": {
+     "n": 53,
+     "maxValues": 1,
+     "types": {
+      "numeric:timestamp": 1,
+      "numeric:interval": 52
+     },
+     "sample": "2021-09-08"
+    },
+    "marcrel:fmd": {
+     "n": 48,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 48
+     },
+     "sample": "Stephan, Klaus"
+    },
+    "marcrel:own": {
+     "n": 44,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 44
+     },
+     "sample": "de Oliveira, Norival Moreira"
+    },
+    "dcterms:hasVersion": {
+     "n": 43,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 43
+     },
+     "sample": "Shooting Script, Taiwo Shango Act1-7"
+    },
+    "marcrel:art": {
+     "n": 37,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 37
+     },
+     "sample": "Beier, Georgina"
+    },
+    "marcrel:ard": {
+     "n": 32,
+     "maxValues": 3,
+     "types": {
+      "resource:item": 55
+     },
+     "sample": "Flomo, Korkulor"
+    },
+    "dcterms:bibliographicCitation": {
+     "n": 31,
+     "maxValues": 2,
+     "types": {
+      "literal": 32
+     },
+     "sample": "Wild, F., & Stadelmann, D. (2022). Coastal proximity and individual living standards: Econ"
+    },
+    "marcrel:oth": {
+     "n": 22,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 22
+     },
+     "sample": "Heinzl, Manuela"
+    },
+    "dcterms:available": {
+     "n": 16,
+     "maxValues": 1,
+     "types": {
+      "numeric:timestamp": 10,
+      "numeric:interval": 6
+     },
+     "sample": "1982-01-01"
+    },
+    "marcrel:vdg": {
+     "n": 16,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 16
+     },
+     "sample": "Akinpelu, Deji"
+    },
+    "marcrel:arr": {
+     "n": 15,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 15
+     },
+     "sample": "Callist, Charles"
+    },
+    "marcrel:rpt": {
+     "n": 14,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 15
+     },
+     "sample": "Meda, Marc"
+    },
+    "marcrel:cmp": {
+     "n": 9,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 11
+     },
+     "sample": "Mrisho Kitaar, B. Jumu"
+    },
+    "dcterms:date": {
+     "n": 6,
+     "maxValues": 1,
+     "types": {
+      "numeric:timestamp": 6
+     },
+     "sample": "1969-08-22"
+    },
+    "marcrel:fmk": {
+     "n": 6,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 7
+     },
+     "sample": "Hotel Africa"
+    },
+    "marcrel:trl": {
+     "n": 6,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 6
+     },
+     "sample": "Lankes, Maximilian"
+    },
+    "dcterms:isVersionOf": {
+     "n": 5,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 5
+     },
+     "sample": "Recherche sur mobilité et conflits dans les grand lacs/cas de Hutu en Ituri"
+    },
+    "marcrel:aus": {
+     "n": 4,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 4
+     },
+     "sample": "Fischer-Stephan, Nina"
+    },
+    "marcrel:act": {
+     "n": 4,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 4
+     },
+     "sample": "Kolade, Christopher"
+    },
+    "marcrel:sec": {
+     "n": 4,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 4
+     },
+     "sample": "Pusl, Waltraud"
+    },
+    "marcrel:tld": {
+     "n": 4,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 4
+     },
+     "sample": "Wallenreiter, Christian"
+    },
+    "marcrel:cng": {
+     "n": 4,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 4
+     },
+     "sample": "Jörs, Dieter"
+    },
+    "marcrel:pan": {
+     "n": 4,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 4
+     },
+     "sample": "Korogo, Edgard"
+    },
+    "marcrel:trc": {
+     "n": 3,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 3
+     },
+     "sample": "Greven, Katharina"
+    },
+    "marcrel:cur": {
+     "n": 3,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 3
+     },
+     "sample": "Beier, Ulli"
+    },
+    "marcrel:com": {
+     "n": 2,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 3
+     },
+     "sample": "Kaisuma, Steve"
+    },
+    "marcrel:voc": {
+     "n": 2,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 2
+     },
+     "sample": "Grand Charo"
+    },
+    "marcrel:sng": {
+     "n": 2,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 3
+     },
+     "sample": "Mrisho Kitaar, B. Jumu"
+    },
+    "dcterms:hasFormat": {
+     "n": 2,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 2
+     },
+     "sample": "Replication dataset"
+    },
+    "marcrel:pat": {
+     "n": 2,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 2
+     },
+     "sample": "Olusola, Segun"
+    },
+    "marcrel:pbd": {
+     "n": 2,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 2
+     },
+     "sample": "Some, Désiré Boniface"
+    },
+    "marcrel:prv": {
+     "n": 1,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 1
+     },
+     "sample": "Museum of Yoruba Pottery"
+    },
+    "marcrel:fmo": {
+     "n": 1,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 1
+     },
+     "sample": "Idah, Ovia"
+    },
+    "marcrel:sgn": {
+     "n": 1,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 1
+     },
+     "sample": "Woldert, Siegfried"
+    },
+    "marcrel:cph": {
+     "n": 1,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 1
+     },
+     "sample": "Beier, Georgina"
+    },
+    "marcrel:dtc": {
+     "n": 1,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 1
+     },
+     "sample": "Abiodun, Rowland"
+    },
+    "marcrel:his": {
+     "n": 1,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 1
+     },
+     "sample": "Swakara Board of Namibia"
+    },
+    "marcrel:rcd": {
+     "n": 1,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 1
+     },
+     "sample": "Mkalama, Benedict Wandera"
+    },
+    "bibo:isbn": {
+     "n": 1,
+     "maxValues": 1,
+     "types": {
+      "literal": 1
+     },
+     "sample": "978-2-14-031485-8"
+    }
+   }
+  },
+  "publications_set": {
+   "query": "item_set_id=29918",
+   "total": 247,
+   "fetched": 247,
+   "templates": {
+    "11": 105,
+    "12": 31,
+    "13": 27,
+    "14": 51,
+    "15": 17,
+    "16": 4,
+    "17": 5,
+    "18": 4,
+    "19": 2,
+    "20": 1
+   },
+   "with_media": 52,
+   "with_thumbnail": 52,
+   "item_sets_top": {
+    "29918": 247
+   },
+   "classes": {
+    "218": 2,
+    "219": 17,
+    "220": 51,
+    "221": 4,
+    "242": 27,
+    "257": 1,
+    "266": 4,
+    "297": 105,
+    "299": 5,
+    "444": 31
+   },
+   "properties": {
+    "dcterms:title": {
+     "n": 247,
+     "maxValues": 1,
+     "types": {
+      "literal": 247
+     },
+     "sample": "European Migration Control and the Migrant Smuggling Enterprise in West Africa : Using the"
+    },
+    "dcterms:type": {
+     "n": 247,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 247
+     },
+     "sample": "Article"
+    },
+    "dcterms:date": {
+     "n": 247,
+     "maxValues": 1,
+     "types": {
+      "numeric:timestamp": 247
+     },
+     "sample": "2026"
+    },
+    "dcterms:identifier": {
+     "n": 247,
+     "maxValues": 1,
+     "types": {
+      "literal": 247
+     },
+     "sample": "eref-95983"
+    },
+    "bibo:uri": {
+     "n": 247,
+     "maxValues": 2,
+     "types": {
+      "uri": 297
+     },
+     "sample": "https://eref.uni-bayreuth.de/id/eprint/95983/"
+    },
+    "dcterms:language": {
+     "n": 240,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 240
+     },
+     "sample": "English"
+    },
+    "bibo:authorList": {
+     "n": 234,
+     "maxValues": 11,
+     "types": {
+      "resource:item": 430,
+      "literal": 3
+     },
+     "sample": "Iwuoha, Victor"
+    },
+    "dcterms:isPartOf": {
+     "n": 231,
+     "maxValues": 2,
+     "types": {
+      "literal": 254
+     },
+     "sample": "Society"
+    },
+    "bibo:abstract": {
+     "n": 172,
+     "maxValues": 1,
+     "types": {
+      "literal": 172
+     },
+     "sample": "This article discusses the European migration control system and its connection to the fac"
+    },
+    "bibo:volume": {
+     "n": 151,
+     "maxValues": 1,
+     "types": {
+      "numeric:integer": 146,
+      "literal": 5
+     },
+     "sample": "58"
+    },
+    "dcterms:subject": {
+     "n": 141,
+     "maxValues": 33,
+     "types": {
+      "resource:item": 940
+     },
+     "sample": "decoloniality"
+    },
+    "bibo:pageStart": {
+     "n": 131,
+     "maxValues": 1,
+     "types": {
+      "numeric:integer": 131
+     },
+     "sample": "241"
+    },
+    "bibo:pageEnd": {
+     "n": 129,
+     "maxValues": 1,
+     "types": {
+      "numeric:integer": 129
+     },
+     "sample": "259"
+    },
+    "bibo:doi": {
+     "n": 120,
+     "maxValues": 1,
+     "types": {
+      "uri": 120
+     },
+     "sample": "10.1007/s12115-026-01169-1"
+    },
+    "bibo:issn": {
+     "n": 113,
+     "maxValues": 1,
+     "types": {
+      "literal": 113
+     },
+     "sample": "1936-4725"
+    },
+    "bibo:editorList": {
+     "n": 87,
+     "maxValues": 8,
+     "types": {
+      "resource:item": 206,
+      "literal": 3
+     },
+     "sample": "Walther, Olivier"
+    },
+    "bibo:issue": {
+     "n": 77,
+     "maxValues": 1,
+     "types": {
+      "numeric:integer": 71,
+      "literal": 6
+     },
+     "sample": "2"
+    },
+    "dcterms:publisher": {
+     "n": 73,
+     "maxValues": 1,
+     "types": {
+      "literal": 73
+     },
+     "sample": "Routledge"
+    },
+    "bibo:isbn13": {
+     "n": 58,
+     "maxValues": 1,
+     "types": {
+      "literal": 58
+     },
+     "sample": "978-1-032-85779-4"
+    },
+    "bibo:numPages": {
+     "n": 49,
+     "maxValues": 1,
+     "types": {
+      "numeric:integer": 49
+     },
+     "sample": "202"
+    },
+    "bibo:pages": {
+     "n": 37,
+     "maxValues": 1,
+     "types": {
+      "literal": 37
+     },
+     "sample": "VI, 21"
+    }
+   }
+  },
+  "podcast": {
+   "query": "resource_template_id=21",
+   "total": 43,
+   "fetched": 43,
+   "templates": {
+    "21": 43
+   },
+   "with_media": 10,
+   "with_thumbnail": 10,
+   "item_sets_top": {
+    "39095": 43
+   },
+   "classes": {
+    "211": 43
+   },
+   "properties": {
+    "dcterms:title": {
+     "n": 43,
+     "maxValues": 1,
+     "types": {
+      "literal": 43
+     },
+     "sample": "Artist Fellow Dr. Migline Paroumanou and Prof. Dr. Ute Fendler talk about art, ritual and "
+    },
+    "dcterms:isPartOf": {
+     "n": 43,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 43
+     },
+     "sample": "Cluster Conversations"
+    },
+    "bibo:number": {
+     "n": 43,
+     "maxValues": 1,
+     "types": {
+      "numeric:integer": 43
+     },
+     "sample": "34"
+    },
+    "marcrel:spk": {
+     "n": 43,
+     "maxValues": 3,
+     "types": {
+      "customvocab:3": 82
+     },
+     "sample": "Paroumanou, Migline"
+    },
+    "fabio:hasURL": {
+     "n": 43,
+     "maxValues": 1,
+     "types": {
+      "uri": 43
+     },
+     "sample": "https://www.africamultiple.uni-bayreuth.de/en/1_4-Public-engagement_-engagement1/Podcasts/"
+    },
+    "dcterms:date": {
+     "n": 41,
+     "maxValues": 1,
+     "types": {
+      "numeric:timestamp": 41
+     },
+     "sample": "2026-01-28"
+    },
+    "dcterms:abstract": {
+     "n": 34,
+     "maxValues": 1,
+     "types": {
+      "literal": 34
+     },
+     "sample": "This latest episode of the Cluster Conversatioins features Prof. Dr. Ute Fendler and artis"
+    },
+    "marcrel:hst": {
+     "n": 9,
+     "maxValues": 1,
+     "types": {
+      "customvocab:3": 9
+     },
+     "sample": "Kinyera, Paddy Banya"
+    },
+    "marcrel:sde": {
+     "n": 9,
+     "maxValues": 1,
+     "types": {
+      "customvocab:3": 9
+     },
+     "sample": "Kummer, Anne-Sophie"
+    },
+    "dcterms:language": {
+     "n": 2,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 1,
+      "customvocab:5": 1
+     },
+     "sample": "French"
+    }
+   }
+  },
+  "video": {
+   "query": "resource_template_id=22",
+   "total": 140,
+   "fetched": 140,
+   "templates": {
+    "22": 140
+   },
+   "with_media": 140,
+   "with_thumbnail": 140,
+   "item_sets_top": {
+    "39192": 140
+   },
+   "classes": {
+    "38": 140
+   },
+   "properties": {
+    "dcterms:title": {
+     "n": 140,
+     "maxValues": 1,
+     "types": {
+      "literal": 140
+     },
+     "sample": "AfriKaleidoskop meets ARTE: Afrikas vergessene Geschichte – Wer war Jan Conny?: Diskussion"
+    },
+    "dcterms:date": {
+     "n": 140,
+     "maxValues": 1,
+     "types": {
+      "numeric:timestamp": 140
+     },
+     "sample": "2026-04-21"
+    },
+    "fabio:hasURL": {
+     "n": 140,
+     "maxValues": 1,
+     "types": {
+      "uri": 140
+     },
+     "sample": "https://www.youtube.com/watch?v=7Gs7l8NVrqo"
+    },
+    "dcterms:abstract": {
+     "n": 123,
+     "maxValues": 1,
+     "types": {
+      "literal": 123
+     },
+     "sample": "This video documents the public discussion following an ARTE screening hosted by the Afric"
+    },
+    "dcterms:language": {
+     "n": 122,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 122
+     },
+     "sample": "German"
+    },
+    "dcterms:isPartOf": {
+     "n": 119,
+     "maxValues": 2,
+     "types": {
+      "resource:item": 134
+     },
+     "sample": "Afrikaleidoskop meets ARTE"
+    },
+    "bibo:content": {
+     "n": 91,
+     "maxValues": 1,
+     "types": {
+      "literal": 91
+     },
+     "sample": "Stell dich kurz vor. Ja, genau. Fang einfach mal an die Stelle durchbrechen. Erstmal freue"
+    },
+    "marcrel:spk": {
+     "n": 1,
+     "maxValues": 1,
+     "types": {
+      "customvocab:3": 1
+     },
+     "sample": "Mark-Thiesen, Cassandra"
+    }
+   }
+  },
+  "playlists_set": {
+   "query": "item_set_id=39193",
+   "total": 24,
+   "fetched": 24,
+   "templates": {
+    "6": 24
+   },
+   "with_media": 0,
+   "with_thumbnail": 0,
+   "item_sets_top": {
+    "39193": 24
+   },
+   "classes": {
+    "212": 24
+   },
+   "properties": {
+    "dcterms:title": {
+     "n": 24,
+     "maxValues": 1,
+     "types": {
+      "literal": 24
+     },
+     "sample": "Cinema Africa 2025/26"
+    },
+    "dcterms:identifier": {
+     "n": 24,
+     "maxValues": 1,
+     "types": {
+      "uri": 24
+     },
+     "sample": "https://www.youtube.com/playlist?list=PLDlHB4qY36WjCq9RIsxLzeckaPB7nQxz9"
+    },
+    "dcterms:description": {
+     "n": 21,
+     "maxValues": 1,
+     "types": {
+      "literal": 21
+     },
+     "sample": "This playlist brings together all interviews recorded at the Cinema Africa 2025/26 Film Fe"
+    }
+   }
+  },
+  "languages_set": {
+   "query": "item_set_id=19",
+   "total": 28,
+   "fetched": 28,
+   "templates": {
+    "6": 28
+   },
+   "with_media": 0,
+   "with_thumbnail": 0,
+   "item_sets_top": {
+    "19": 28
+   },
+   "classes": {
+    "212": 28
+   },
+   "properties": {
+    "dcterms:title": {
+     "n": 28,
+     "maxValues": 1,
+     "types": {
+      "literal": 28
+     },
+     "sample": "Acholi"
+    },
+    "dcterms:alternative": {
+     "n": 28,
+     "maxValues": 1,
+     "types": {
+      "literal": 28
+     },
+     "sample": "ach"
+    },
+    "dcterms:type": {
+     "n": 28,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 28
+     },
+     "sample": "Language"
+    },
+    "dre:wisskiUrl": {
+     "n": 23,
+     "maxValues": 1,
+     "types": {
+      "uri": 23
+     },
+     "sample": "39804"
+    }
+   }
+  },
+  "genres_set": {
+   "query": "item_set_id=21",
+   "total": 129,
+   "fetched": 129,
+   "templates": {
+    "6": 129
+   },
+   "with_media": 0,
+   "with_thumbnail": 0,
+   "item_sets_top": {
+    "21": 129
+   },
+   "classes": {
+    "212": 129
+   },
+   "properties": {
+    "dcterms:title": {
+     "n": 129,
+     "maxValues": 1,
+     "types": {
+      "literal": 129
+     },
+     "sample": "Advertisement"
+    },
+    "dcterms:type": {
+     "n": 129,
+     "maxValues": 1,
+     "types": {
+      "resource:item": 129
+     },
+     "sample": "Genre"
+    },
+    "dre:wisskiUrl": {
+     "n": 96,
+     "maxValues": 1,
+     "types": {
+      "uri": 96
+     },
+     "sample": "87013"
+    }
+   }
+  }
+ },
+ "classTerms": {
+  "9": "dcterms:Location",
+  "38": "bibo:AudioVisualDocument",
+  "94": "foaf:Person",
+  "96": "foaf:Organization",
+  "99": "foaf:Project",
+  "176": "frapo:ResearchGroup",
+  "211": "fabio:AudioDocument",
+  "212": "fabio:AuthorityFile",
+  "218": "fabio:BlogPost",
+  "219": "fabio:Book",
+  "220": "fabio:BookChapter",
+  "221": "fabio:BookReview",
+  "242": "fabio:ConferencePaper",
+  "257": "fabio:Dataset",
+  "266": "fabio:DoctoralThesis",
+  "297": "fabio:JournalArticle",
+  "299": "fabio:JournalIssue",
+  "444": "fabio:WorkingPaper"
+ },
+ "propertyLabels": {
+  "dcterms:title": "Title",
+  "dcterms:creator": "Creator",
+  "dcterms:subject": "Subject",
+  "dcterms:description": "Description",
+  "dcterms:publisher": "Publisher",
+  "dcterms:contributor": "Contributor",
+  "dcterms:date": "Date",
+  "dcterms:type": "Type",
+  "dcterms:format": "Format",
+  "dcterms:identifier": "Identifier",
+  "dcterms:source": "Source",
+  "dcterms:language": "Language",
+  "dcterms:relation": "Relation",
+  "dcterms:coverage": "Coverage",
+  "dcterms:rights": "Rights",
+  "dcterms:audience": "Audience",
+  "dcterms:alternative": "Alternative Title",
+  "dcterms:tableOfContents": "Table Of Contents",
+  "dcterms:abstract": "Abstract",
+  "dcterms:created": "Date Created",
+  "dcterms:valid": "Date Valid",
+  "dcterms:available": "Date Available",
+  "dcterms:issued": "Date Issued",
+  "dcterms:modified": "Date Modified",
+  "dcterms:extent": "Extent",
+  "dcterms:medium": "Medium",
+  "dcterms:isVersionOf": "Is Version Of",
+  "dcterms:hasVersion": "Has Version",
+  "dcterms:isReplacedBy": "Is Replaced By",
+  "dcterms:replaces": "Replaces",
+  "dcterms:isRequiredBy": "Is Required By",
+  "dcterms:requires": "Requires",
+  "dcterms:isPartOf": "Is Part Of",
+  "dcterms:hasPart": "Has Part",
+  "dcterms:isReferencedBy": "Is Referenced By",
+  "dcterms:references": "References",
+  "dcterms:isFormatOf": "Is Format Of",
+  "dcterms:hasFormat": "Has Format",
+  "dcterms:conformsTo": "Conforms To",
+  "dcterms:spatial": "Spatial Coverage",
+  "dcterms:temporal": "Temporal Coverage",
+  "dcterms:mediator": "Mediator",
+  "dcterms:dateAccepted": "Date Accepted",
+  "dcterms:dateCopyrighted": "Date Copyrighted",
+  "dcterms:dateSubmitted": "Date Submitted",
+  "dcterms:educationLevel": "Audience Education Level",
+  "dcterms:accessRights": "Access Rights",
+  "dcterms:bibliographicCitation": "Bibliographic Citation",
+  "dcterms:license": "License",
+  "dcterms:rightsHolder": "Rights Holder",
+  "dcterms:provenance": "Provenance",
+  "dcterms:instructionalMethod": "Instructional Method",
+  "dcterms:accrualMethod": "Accrual Method",
+  "dcterms:accrualPeriodicity": "Accrual Periodicity",
+  "dcterms:accrualPolicy": "Accrual Policy",
+  "bibo:affirmedBy": "affirmedBy",
+  "bibo:annotates": "annotates",
+  "bibo:authorList": "list of authors",
+  "bibo:citedBy": "cited by",
+  "bibo:cites": "cites",
+  "bibo:contributorList": "list of contributors",
+  "bibo:court": "court",
+  "bibo:degree": "degree",
+  "bibo:director": "director",
+  "bibo:distributor": "distributor",
+  "bibo:editor": "editor",
+  "bibo:editorList": "list of editors",
+  "bibo:interviewee": "interviewee",
+  "bibo:interviewer": "interviewer",
+  "bibo:issuer": "issuer",
+  "bibo:organizer": "organizer",
+  "bibo:owner": "owner",
+  "bibo:performer": "performer",
+  "bibo:presentedAt": "presented at",
+  "bibo:presents": "presents",
+  "bibo:producer": "producer",
+  "bibo:recipient": "recipient",
+  "bibo:reproducedIn": "reproducedIn",
+  "bibo:reversedBy": "reversedBy",
+  "bibo:reviewOf": "review of",
+  "bibo:status": "status",
+  "bibo:subsequentLegalDecision": "subsequentLegalDecision",
+  "bibo:transcriptOf": "transcript of",
+  "bibo:translationOf": "translation of",
+  "bibo:translator": "translator",
+  "bibo:abstract": "abstract",
+  "bibo:argued": "date argued",
+  "bibo:asin": "asin",
+  "bibo:chapter": "chapter",
+  "bibo:coden": "coden",
+  "bibo:content": "content",
+  "bibo:doi": "doi",
+  "bibo:eanucc13": "eanucc13",
+  "bibo:edition": "edition",
+  "bibo:eissn": "eissn",
+  "bibo:gtin14": "gtin14",
+  "bibo:handle": "handle",
+  "bibo:identifier": "identifier",
+  "bibo:isbn": "isbn",
+  "bibo:isbn10": "isbn10",
+  "bibo:isbn13": "isbn13",
+  "bibo:issn": "issn",
+  "bibo:issue": "issue",
+  "bibo:lccn": "lccn",
+  "bibo:locator": "locator",
+  "bibo:numPages": "number of pages",
+  "bibo:numVolumes": "number of volumes",
+  "bibo:number": "number",
+  "bibo:oclcnum": "oclcnum",
+  "bibo:pageEnd": "page end",
+  "bibo:pageStart": "page start",
+  "bibo:pages": "pages",
+  "bibo:pmid": "pmid",
+  "bibo:prefixName": "prefix name",
+  "bibo:section": "section",
+  "bibo:shortDescription": "shortDescription",
+  "bibo:shortTitle": "short title",
+  "bibo:sici": "sici",
+  "bibo:suffixName": "suffix name",
+  "bibo:upc": "upc",
+  "bibo:uri": "uri",
+  "bibo:volume": "volume",
+  "foaf:mbox": "personal mailbox",
+  "foaf:mbox_sha1sum": "sha1sum of a personal mailbox URI name",
+  "foaf:gender": "gender",
+  "foaf:geekcode": "geekcode",
+  "foaf:dnaChecksum": "DNA checksum",
+  "foaf:sha1": "sha1sum (hex)",
+  "foaf:based_near": "based near",
+  "foaf:title": "title",
+  "foaf:nick": "nickname",
+  "foaf:jabberID": "jabber ID",
+  "foaf:aimChatID": "AIM chat ID",
+  "foaf:skypeID": "Skype ID",
+  "foaf:icqChatID": "ICQ chat ID",
+  "foaf:yahooChatID": "Yahoo chat ID",
+  "foaf:msnChatID": "MSN chat ID",
+  "foaf:name": "name",
+  "foaf:firstName": "firstName",
+  "foaf:lastName": "lastName",
+  "foaf:givenName": "Given name",
+  "foaf:givenname": "Given name",
+  "foaf:surname": "Surname",
+  "foaf:family_name": "family_name",
+  "foaf:familyName": "familyName",
+  "foaf:phone": "phone",
+  "foaf:homepage": "homepage",
+  "foaf:weblog": "weblog",
+  "foaf:openid": "openid",
+  "foaf:tipjar": "tipjar",
+  "foaf:plan": "plan",
+  "foaf:made": "made",
+  "foaf:maker": "maker",
+  "foaf:img": "image",
+  "foaf:depiction": "depiction",
+  "foaf:depicts": "depicts",
+  "foaf:thumbnail": "thumbnail",
+  "foaf:myersBriggs": "myersBriggs",
+  "foaf:workplaceHomepage": "workplace homepage",
+  "foaf:workInfoHomepage": "work info homepage",
+  "foaf:schoolHomepage": "schoolHomepage",
+  "foaf:knows": "knows",
+  "foaf:interest": "interest",
+  "foaf:topic_interest": "topic_interest",
+  "foaf:publications": "publications",
+  "foaf:currentProject": "current project",
+  "foaf:pastProject": "past project",
+  "foaf:fundedBy": "funded by",
+  "foaf:logo": "logo",
+  "foaf:topic": "topic",
+  "foaf:primaryTopic": "primary topic",
+  "foaf:focus": "focus",
+  "foaf:isPrimaryTopicOf": "is primary topic of",
+  "foaf:page": "page",
+  "foaf:theme": "theme",
+  "foaf:account": "account",
+  "foaf:holdsAccount": "account",
+  "foaf:accountServiceHomepage": "account service homepage",
+  "foaf:accountName": "account name",
+  "foaf:member": "member",
+  "foaf:membershipClass": "membershipClass",
+  "foaf:birthday": "birthday",
+  "foaf:age": "age",
+  "foaf:status": "status",
+  "frapo:appliesFor": "applies for",
+  "frapo:awards": "awards",
+  "frapo:collaboratesWith": "collaborates with",
+  "frapo:donates": "donates",
+  "frapo:employs": "employs",
+  "frapo:enables": "enables",
+  "frapo:evaluates": "evaluates",
+  "frapo:funds": "funds",
+  "frapo:hasCurriculumVitae": "has curriculum vitae",
+  "frapo:hasFundingAgency": "has funding agency",
+  "frapo:hasIPROwner": "has IPR owner",
+  "frapo:hasOutput": "has output",
+  "frapo:isAppliedForBy": "is applied for by",
+  "frapo:isAwardedBy": "is awarded by",
+  "frapo:isDonatedBy": "is donated by",
+  "frapo:isEmployedBy": "is employed by",
+  "frapo:isEnabledBy": "is enabled by",
+  "frapo:isEvaluatedBy": "is evaluated by",
+  "frapo:isFundedBy": "is funded by",
+  "frapo:isFundingAgencyFor": "is funding agency for",
+  "frapo:isManufacturedBy": "is manufactured by",
+  "frapo:isOutputOf": "is output of",
+  "frapo:isOwnedBy": "is owned by",
+  "frapo:isPurchasedBy": "was purchased by",
+  "frapo:isSubmittedBy": "is submitted by",
+  "frapo:isSuppliedBy": "is supplied by",
+  "frapo:isSupportedBy": "is supported by",
+  "frapo:manufactures": "manufactures",
+  "frapo:owns": "owns",
+  "frapo:ownsIRPOf": "owns IPR of",
+  "frapo:providesFractionOfTotalFunding": "percentage of total funding",
+  "frapo:providesService": "provides service",
+  "frapo:purchases": "purchases",
+  "frapo:purchasesFrom": "purchases from",
+  "frapo:sellsTo": "sells to",
+  "frapo:specifiesExpediture": "specifies expenditure",
+  "frapo:submits": "submits",
+  "frapo:supplies": "supplies",
+  "frapo:supports": "supports",
+  "frapo:usesEquipment": "uses equipment",
+  "frapo:usesFacility": "uses facility",
+  "frapo:usesService": "uses service",
+  "frapo:familyNameInitial": "family name initial",
+  "frapo:feeOrFree": "fee or free",
+  "frapo:givenNameInitial": "given name initial",
+  "frapo:hasAccountNumber": "has account number",
+  "frapo:hasAcronym": "has acronym",
+  "frapo:hasAgentInformation": "has information",
+  "frapo:hasApplicationDeadline": "has application deadline",
+  "frapo:hasApplicationOutcome": "has application outcome",
+  "frapo:hasAwardDate": "has award date",
+  "frapo:hasBatchNumber": "has batch number",
+  "frapo:hasBirthDate": "has birth date",
+  "frapo:hasCallIdentifier": "has call identifier",
+  "frapo:hasCatalogNumber": "has catalog number",
+  "frapo:hasCityOrTown": "has city or town",
+  "frapo:hasCode": "has code",
+  "frapo:hasCompletionDate": "has completion date",
+  "frapo:hasCost": "has cost",
+  "frapo:hasCountry": "has country",
+  "frapo:hasCountryCode": "has country code",
+  "frapo:hasCurrency": "has currency",
+  "frapo:hasCurrencyCode": "has currency code",
+  "frapo:hasCustomerNumber": "has customer number",
+  "frapo:hasDecisionDate": "has decision date",
+  "frapo:hasDegreeSuffix": "has degrees",
+  "frapo:hasDeliverable": "has deliverable",
+  "frapo:hasDeliveryDate": "has delivery date",
+  "frapo:hasDispatchDate": "has dispatch date",
+  "frapo:hasDomainName": "has domain name",
+  "frapo:hasEndDate": "has end date",
+  "frapo:hasExchangeRate": "has exchange rate",
+  "frapo:hasExpertise": "has expertise",
+  "frapo:hasExpiryDate": "has expiry date",
+  "frapo:hasFamilialSuffix": "has familiar suffix",
+  "frapo:hasFaxNumber": "has fax number",
+  "frapo:hasFunderIdentifier": "has funder identifer",
+  "frapo:hasGrantNumber": "has grant number",
+  "frapo:hasHeadcount": "has headcount",
+  "frapo:hasHonorificSuffix": "post-nominals",
+  "frapo:hasInvoiceDate": "has invoice date",
+  "frapo:hasJobTitle": "has job title",
+  "frapo:hasKeyword": "has keyword",
+  "frapo:hasLanguageCode": "has language code",
+  "frapo:hasLocation": "has location",
+  "frapo:hasManufactureDate": "has data of manufacture",
+  "frapo:hasMilestone": "has milestone",
+  "frapo:hasModelNumber": "has model number",
+  "frapo:hasMonetaryValue": "has value",
+  "frapo:hasNameSuffix": "has name suffix",
+  "frapo:hasORCID": "has ORCID",
+  "frapo:hasOrganizationalInformation": "has organizational information",
+  "frapo:hasPersonalIdentifier": "has personal identifier",
+  "frapo:hasPersonalInformation": "has contact information",
+  "frapo:hasPhoneNumber": "has phone number",
+  "frapo:hasPostCode": "has post code",
+  "frapo:hasPostalAddress": "has postal address",
+  "frapo:hasPostalAddressLine": "has postal address line",
+  "frapo:hasProfessionalName": "has alternate name",
+  "frapo:hasProjectIdentifier": "has project identifier",
+  "frapo:hasProvenance": "has provenance",
+  "frapo:hasPurchaseDate": "has purchase date",
+  "frapo:hasPurchaseOrderNumber": "has purchase order number",
+  "frapo:hasQualification": "has qualification",
+  "frapo:hasQuotationDate": "has quotation date",
+  "frapo:hasReferenceNumber": "has reference number",
+  "frapo:hasRegistrationDeadline": "has registration deadline",
+  "frapo:hasSerialNumber": "has serial number",
+  "frapo:hasStartDate": "has start date",
+  "frapo:hasSupplierNumber": "has supplier number",
+  "frapo:hasTemporalDuration": "has temporal duration",
+  "frapo:initial": "initials",
+  "fabio:hasDiscipline": "has discipline",
+  "fabio:hasManifestation": "has manifestation",
+  "fabio:hasPlaceOfPublication": "has place of publication",
+  "fabio:hasPortrayal": "has portrayal",
+  "fabio:hasPrimarySubjectTerm": "has primary subject term",
+  "fabio:hasRepresentation": "has representation",
+  "fabio:hasSubjectTerm": "has subject term",
+  "fabio:isDisciplineOf": "is discipline of",
+  "fabio:isManifestationOf": "is manifestation of",
+  "fabio:isPortrayalOf": "is portrayal of",
+  "fabio:isRepresentationOf": "is representation of",
+  "fabio:isSchemeOf": "is scheme of",
+  "fabio:isStoredOn": "is stored on",
+  "fabio:stores": "stores",
+  "fabio:dateLastUpdated": "date last updated",
+  "fabio:hasAccessDate": "has access date",
+  "fabio:hasArXivId": "has ArXiv identifier",
+  "fabio:hasCODEN": "has CODEN",
+  "fabio:hasCharacterCount": "has character count",
+  "fabio:hasCopyrightYear": "has copyright year",
+  "fabio:hasCorrectionDate": "has correction date",
+  "fabio:hasDateCollected": "has date collected",
+  "fabio:hasDateReceived": "has date received",
+  "fabio:hasDeadline": "has deadline",
+  "fabio:hasDecisionDate": "has decision date",
+  "fabio:hasDepositDate": "has deposit date",
+  "fabio:hasDistributionDate": "has preprint dissemination date",
+  "fabio:hasElectronicArticleIdentifier": "has electronic article identifier",
+  "fabio:hasEmbargoDate": "has embargo date",
+  "fabio:hasEmbargoDuration": "has embargo period",
+  "fabio:hasHandle": "has handle",
+  "fabio:hasIssnL": "has ISSN-L",
+  "fabio:hasNLMJournalTitleAbbreviation": "has National Library of Medicine journal title abbreviation",
+  "fabio:hasNationalLibraryOfMedicineJournalId": "has National Library of Medicine journal identifier",
+  "fabio:hasPII": "has PII",
+  "fabio:hasPageCount": "has page count",
+  "fabio:hasPatentNumber": "has patent number",
+  "fabio:hasPubMedCentralId": "has PubMed Central identifier",
+  "fabio:hasPubMedId": "has PubMed identifier",
+  "fabio:hasPublicationYear": "has publication year",
+  "fabio:hasRequestDate": "has request date",
+  "fabio:hasRetractionDate": "has retraction date",
+  "fabio:hasSICI": "has SICI",
+  "fabio:hasSeason": "has season",
+  "fabio:hasSequenceIdentifier": "has number",
+  "fabio:hasShortTitle": "has short title",
+  "fabio:hasStandardNumber": "has standard number",
+  "fabio:hasSubtitle": "has subtitle",
+  "fabio:hasTranslatedSubtitle": "has translated subtitle",
+  "fabio:hasTranslatedTitle": "has translated title",
+  "fabio:hasURL": "has URL",
+  "fabio:hasVolumeCount": "has volume count",
+  "fabio:usesCalendar": "uses calendar",
+  "geo:lat": "latitude",
+  "geo:location": "location",
+  "geo:long": "longitude",
+  "geo:alt": "altitude",
+  "geo:lat_long": "lat/long",
+  "marcrel:abr": "abridger",
+  "marcrel:act": "actor",
+  "marcrel:adp": "adapter",
+  "marcrel:rcp": "addressee",
+  "marcrel:anl": "analyst",
+  "marcrel:anm": "animator",
+  "marcrel:anc": "announcer",
+  "marcrel:ann": "annotator",
+  "marcrel:apl": "appellant",
+  "marcrel:ape": "appellee",
+  "marcrel:app": "applicant",
+  "marcrel:arc": "architect",
+  "marcrel:arr": "arranger",
+  "marcrel:acp": "art copyist",
+  "marcrel:adi": "art director",
+  "marcrel:art": "artist",
+  "marcrel:ard": "artistic director",
+  "marcrel:asg": "assignee",
+  "marcrel:asn": "associated name",
+  "marcrel:att": "attributed name",
+  "marcrel:auc": "auctioneer",
+  "marcrel:aue": "audio engineer",
+  "marcrel:aup": "audio producer",
+  "marcrel:aut": "author",
+  "marcrel:aqt": "author in quotations or text abstracts",
+  "marcrel:aft": "author of afterword, colophon, etc.",
+  "marcrel:aud": "author of dialog",
+  "marcrel:aui": "author of introduction, etc.",
+  "marcrel:ato": "autographer",
+  "marcrel:ant": "bibliographic antecedent",
+  "marcrel:bnd": "binder",
+  "marcrel:bdd": "binding designer",
+  "marcrel:blw": "blurb writer",
+  "marcrel:bka": "book artist",
+  "marcrel:bkd": "book designer",
+  "marcrel:bkp": "book producer",
+  "marcrel:bjd": "bookjacket designer",
+  "marcrel:bpd": "bookplate designer",
+  "marcrel:bsl": "bookseller",
+  "marcrel:brl": "braille embosser",
+  "marcrel:brd": "broadcaster",
+  "marcrel:cll": "calligrapher",
+  "marcrel:cop": "camera operator",
+  "marcrel:ctg": "cartographer",
+  "marcrel:cas": "caster",
+  "marcrel:cad": "casting director",
+  "marcrel:cns": "censor",
+  "marcrel:chr": "choreographer",
+  "marcrel:cng": "cinematographer",
+  "marcrel:cli": "client",
+  "marcrel:cor": "collection registrar",
+  "marcrel:col": "collector",
+  "marcrel:clt": "collotyper",
+  "marcrel:clr": "colorist",
+  "marcrel:cmm": "commentator",
+  "marcrel:cwt": "commentator for written text",
+  "marcrel:com": "compiler",
+  "marcrel:cpl": "complainant",
+  "marcrel:cpt": "complainant-appellant",
+  "marcrel:cpe": "complainant-appellee",
+  "marcrel:cmp": "composer",
+  "marcrel:cmt": "compositor",
+  "marcrel:ccp": "conceptor",
+  "marcrel:cnd": "conductor",
+  "marcrel:con": "conservator",
+  "marcrel:csl": "consultant",
+  "marcrel:csp": "consultant to a project",
+  "marcrel:cos": "contestant",
+  "marcrel:cot": "contestant-appellant",
+  "marcrel:coe": "contestant-appellee",
+  "marcrel:cts": "contestee",
+  "marcrel:ctt": "contestee-appellant",
+  "marcrel:cte": "contestee-appellee",
+  "marcrel:ctr": "contractor",
+  "marcrel:ctb": "contributor",
+  "marcrel:cpc": "copyright claimant",
+  "marcrel:cph": "copyright holder",
+  "marcrel:crr": "corrector",
+  "marcrel:crp": "correspondent",
+  "marcrel:cst": "costume designer",
+  "marcrel:cou": "court governed",
+  "marcrel:crt": "court reporter",
+  "marcrel:cov": "cover designer",
+  "marcrel:cre": "creator",
+  "marcrel:cur": "curator",
+  "marcrel:dnc": "dancer",
+  "marcrel:dtc": "data contributor",
+  "marcrel:dtm": "data manager",
+  "marcrel:dte": "dedicatee",
+  "marcrel:dto": "dedicator",
+  "marcrel:dfd": "defendant",
+  "marcrel:dft": "defendant-appellant",
+  "marcrel:dfe": "defendant-appellee",
+  "marcrel:dgc": "degree committee member",
+  "marcrel:dgg": "degree granting institution",
+  "marcrel:dgs": "degree supervisor",
+  "marcrel:dln": "delineator",
+  "marcrel:dpc": "depicted",
+  "marcrel:dpt": "depositor",
+  "marcrel:dsr": "designer",
+  "marcrel:drt": "director",
+  "marcrel:dis": "dissertant",
+  "marcrel:dbp": "distribution place",
+  "marcrel:dst": "distributor",
+  "marcrel:djo": "dj",
+  "marcrel:dnr": "donor",
+  "marcrel:drm": "draftsman",
+  "marcrel:dbd": "dubbing director",
+  "marcrel:dub": "dubious author",
+  "marcrel:edt": "editor",
+  "marcrel:edc": "editor of compilation",
+  "marcrel:edm": "editor of moving image work",
+  "marcrel:edd": "editorial director",
+  "marcrel:elg": "electrician",
+  "marcrel:elt": "electrotyper",
+  "marcrel:enj": "enacting jurisdiction",
+  "marcrel:eng": "engineer",
+  "marcrel:egr": "engraver",
+  "marcrel:etr": "etcher",
+  "marcrel:evp": "event place",
+  "marcrel:exp": "expert",
+  "marcrel:fac": "facsimilist",
+  "marcrel:fld": "field director",
+  "marcrel:fmd": "film director",
+  "marcrel:fds": "film distributor",
+  "marcrel:flm": "film editor",
+  "marcrel:fmp": "film producer",
+  "marcrel:fmk": "filmmaker",
+  "marcrel:fpy": "first party",
+  "marcrel:frg": "forger",
+  "marcrel:fmo": "former owner",
+  "marcrel:fon": "founder",
+  "marcrel:fnd": "funder",
+  "marcrel:gdv": "game developer",
+  "marcrel:gis": "geographic information specialist",
+  "marcrel:hnr": "honoree",
+  "marcrel:hst": "host",
+  "marcrel:his": "host institution",
+  "marcrel:ilu": "illuminator",
+  "marcrel:ill": "illustrator",
+  "marcrel:ink": "inker",
+  "marcrel:ins": "inscriber",
+  "marcrel:itr": "instrumentalist",
+  "marcrel:ive": "interviewee",
+  "marcrel:ivr": "interviewer",
+  "marcrel:inv": "inventor",
+  "marcrel:isb": "issuing body",
+  "marcrel:jud": "judge",
+  "marcrel:jug": "jurisdiction governed",
+  "marcrel:lbr": "laboratory",
+  "marcrel:ldr": "laboratory director",
+  "marcrel:lsa": "landscape architect",
+  "marcrel:led": "lead",
+  "marcrel:len": "lender",
+  "marcrel:ltr": "letterer",
+  "marcrel:lil": "libelant",
+  "marcrel:lit": "libelant-appellant",
+  "marcrel:lie": "libelant-appellee",
+  "marcrel:lel": "libelee",
+  "marcrel:let": "libelee-appellant",
+  "marcrel:lee": "libelee-appellee",
+  "marcrel:lbt": "librettist",
+  "marcrel:lse": "licensee",
+  "marcrel:lso": "licensor",
+  "marcrel:lgd": "lighting designer",
+  "marcrel:ltg": "lithographer",
+  "marcrel:lyr": "lyricist",
+  "marcrel:mka": "makeup artist",
+  "marcrel:mfp": "manufacture place",
+  "marcrel:mfr": "manufacturer",
+  "marcrel:mrb": "marbler",
+  "marcrel:mrk": "markup editor",
+  "marcrel:med": "medium",
+  "marcrel:mdc": "metadata contact",
+  "marcrel:mte": "metal engraver",
+  "marcrel:mtk": "minute taker",
+  "marcrel:mxe": "mixing engineer",
+  "marcrel:mod": "moderator",
+  "marcrel:mon": "monitor",
+  "marcrel:mcp": "music copyist",
+  "marcrel:mup": "music programmer",
+  "marcrel:msd": "musical director",
+  "marcrel:mus": "musician",
+  "marcrel:nrt": "narrator",
+  "marcrel:nan": "news anchor",
+  "marcrel:onp": "onscreen participant",
+  "marcrel:osp": "onscreen presenter",
+  "marcrel:opn": "opponent",
+  "marcrel:orm": "organizer",
+  "marcrel:org": "originator",
+  "marcrel:oth": "other",
+  "marcrel:own": "owner",
+  "marcrel:pan": "panelist",
+  "marcrel:ppm": "papermaker",
+  "marcrel:pta": "patent applicant",
+  "marcrel:pth": "patent holder",
+  "marcrel:pat": "patron",
+  "marcrel:pnc": "penciller",
+  "marcrel:prf": "performer",
+  "marcrel:pma": "permitting agency",
+  "marcrel:pht": "photographer",
+  "marcrel:pad": "place of address",
+  "marcrel:ptf": "plaintiff",
+  "marcrel:ptt": "plaintiff-appellant",
+  "marcrel:pte": "plaintiff-appellee",
+  "marcrel:plt": "platemaker",
+  "marcrel:pra": "praeses",
+  "marcrel:pre": "presenter",
+  "marcrel:prt": "printer",
+  "marcrel:pop": "printer of plates",
+  "marcrel:prm": "printmaker",
+  "marcrel:prc": "process contact",
+  "marcrel:pro": "producer",
+  "marcrel:prn": "production company",
+  "marcrel:prs": "production designer",
+  "marcrel:pmn": "production manager",
+  "marcrel:prd": "production personnel",
+  "marcrel:prp": "production place",
+  "marcrel:prg": "programmer",
+  "marcrel:pdr": "project director",
+  "marcrel:pfr": "proofreader",
+  "marcrel:prv": "provider",
+  "marcrel:pup": "publication place",
+  "marcrel:pbl": "publisher",
+  "marcrel:pbd": "publisher director",
+  "marcrel:ppt": "puppeteer",
+  "marcrel:rdd": "radio director",
+  "marcrel:rpc": "radio producer",
+  "marcrel:rap": "rapporteur",
+  "marcrel:rce": "recording engineer",
+  "marcrel:rcd": "recordist",
+  "marcrel:red": "redaktor",
+  "marcrel:rxa": "remix artist",
+  "marcrel:ren": "renderer",
+  "marcrel:rpt": "reporter",
+  "marcrel:rps": "repository",
+  "marcrel:rth": "research team head",
+  "marcrel:rtm": "research team member",
+  "marcrel:res": "researcher",
+  "marcrel:rsp": "respondent",
+  "marcrel:rst": "respondent-appellant",
+  "marcrel:rse": "respondent-appellee",
+  "marcrel:rpy": "responsible party",
+  "marcrel:rsg": "restager",
+  "marcrel:rsr": "restorationist",
+  "marcrel:rev": "reviewer",
+  "marcrel:rbr": "rubricator",
+  "marcrel:sce": "scenarist",
+  "marcrel:sad": "scientific advisor",
+  "marcrel:aus": "screenwriter",
+  "marcrel:scr": "scribe",
+  "marcrel:scl": "sculptor",
+  "marcrel:spy": "second party",
+  "marcrel:sec": "secretary",
+  "marcrel:sll": "seller",
+  "marcrel:std": "set designer",
+  "marcrel:stg": "setting",
+  "marcrel:sgn": "signer",
+  "marcrel:sng": "singer",
+  "marcrel:swd": "software developer",
+  "marcrel:sds": "sound designer",
+  "marcrel:sde": "sound engineer",
+  "marcrel:spk": "speaker",
+  "marcrel:sfx": "special effects provider",
+  "marcrel:spn": "sponsor",
+  "marcrel:sgd": "stage director",
+  "marcrel:stm": "stage manager",
+  "marcrel:stn": "standards body",
+  "marcrel:str": "stereotyper",
+  "marcrel:stl": "storyteller",
+  "marcrel:sht": "supporting host",
+  "marcrel:srv": "surveyor",
+  "marcrel:tad": "technical advisor",
+  "marcrel:tch": "teacher",
+  "marcrel:tcd": "technical director",
+  "marcrel:tld": "television director",
+  "marcrel:tlg": "television guest",
+  "marcrel:tlh": "television host",
+  "marcrel:tlp": "television producer",
+  "marcrel:tau": "television writer",
+  "marcrel:ths": "thesis advisor",
+  "marcrel:trc": "transcriber",
+  "marcrel:trl": "translator",
+  "marcrel:tyd": "type designer",
+  "marcrel:tyg": "typographer",
+  "marcrel:uvp": "university place",
+  "marcrel:vdg": "videographer",
+  "marcrel:vfx": "visual effects provider",
+  "marcrel:vac": "voice actor",
+  "marcrel:voc": "vocalist",
+  "marcrel:wit": "witness",
+  "marcrel:wde": "wood engraver",
+  "marcrel:wdc": "woodcutter",
+  "marcrel:wam": "writer of accompanying material",
+  "marcrel:wac": "writer of added commentary",
+  "marcrel:wal": "writer of added lyrics",
+  "marcrel:wat": "writer of added text",
+  "marcrel:waw": "writer of afterword",
+  "marcrel:wfs": "writer of film story",
+  "marcrel:wfw": "writer of foreword",
+  "marcrel:wft": "writer of intertitles",
+  "marcrel:win": "writer of introduction",
+  "marcrel:wpr": "writer of preface",
+  "marcrel:wst": "writer of supplementary textual content",
+  "marcrel:wts": "writer of television story",
+  "dre:id": "DRE ID",
+  "dre:security": "Security level",
+  "dre:bitstream": "Bitstream",
+  "dre:mongoId": "MongoDB ID",
+  "dre:rdspaceHandle": "RDSpace Handle",
+  "dre:wisskiUrl": "WissKI URL",
+  "dre:collectionUrl": "Collection URL"
+ }
+}
