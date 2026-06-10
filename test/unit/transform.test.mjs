@@ -9,6 +9,7 @@ import {
   maxModified,
   nameMatchesQuery,
   samePerson,
+  transformItemSet,
   transformLanguage,
   transformLocation,
   transformOrganisation,
@@ -267,4 +268,25 @@ test("name matching: order-independent, accent-insensitive", () => {
 
 test("itemUrl shape", () => {
   assert.equal(itemUrl(7392), "https://data.africamultiple.uni-bayreuth.de/s/amira/item/7392");
+});
+
+test("research item: item sets + thumbnail captured; transformItemSet", () => {
+  const out = transformResearchItem(
+    {
+      "o:id": 9,
+      "o:title": "X",
+      "o:item_set": [{ "o:id": 6259 }, { "o:id": 27724 }],
+      "o:media": [{ "o:id": 1 }],
+      thumbnail_display_urls: { large: "https://site/files/large/abc.jpg", medium: null, square: null },
+    },
+    ctx,
+    () => "external",
+  );
+  assert.deepEqual(out.item_sets, [6259, 27724]);
+  assert.equal(out.thumbnail, "https://site/files/large/abc.jpg");
+
+  assert.deepEqual(transformItemSet({ "o:id": 29918, "o:title": "Publications" }), {
+    o_id: 29918,
+    title: "Publications",
+  });
 });

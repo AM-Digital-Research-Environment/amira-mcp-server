@@ -9,6 +9,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   maxModified,
+  transformItemSet,
   transformLanguage,
   transformLocation,
   transformOrganisation,
@@ -100,8 +101,9 @@ async function fetchPropertyLabels(apiBase: string): Promise<Record<string, stri
   return out;
 }
 
-/** The crawl queries, per corpus (templates / item sets verified by the census). */
-const CORPUS_QUERIES: Record<CorpusName, string> = {
+/** The crawl queries, per /items corpus (templates / sets verified by the
+ * census). `item_sets` is special-cased: it comes from /api/item_sets. */
+const CORPUS_QUERIES: Record<Exclude<CorpusName, "item_sets">, string> = {
   persons: "resource_template_id=4",
   organisations: "resource_template_id=2",
   locations: "resource_template_id=3",
@@ -132,11 +134,23 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   const raw = {} as Record<CorpusName, OmekaItem[]>;
   let modified: string | null = null;
   for (const corpus of CORPORA) {
+    if (corpus === "item_sets") continue;
     const { items } = await crawlItems(apiBase, CORPUS_QUERIES[corpus]);
     raw[corpus] = items;
     modified = maxModified(items, modified);
     log(`crawled ${corpus}: ${items.length}`);
   }
+
+  // Item sets (collections) live on their own endpoint.
+  const itemSetsRaw: OmekaItem[] = [];
+  for (let p = 1; ; p++) {
+    const { body } = await fetchJSON<OmekaItem[]>(`${apiBase}/item_sets?per_page=${PER_PAGE}&page=${p}`);
+    itemSetsRaw.push(...body);
+    if (body.length < PER_PAGE) break;
+    await sleep(100);
+  }
+  raw.item_sets = itemSetsRaw;
+  log(`crawled item_sets: ${itemSetsRaw.length}`);
 
   // Resolve the publication fabio classes (a handful of ids).
   const pubClassIds = new Set<number>();
@@ -167,6 +181,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     videos: raw.videos.map((it) => transformVideo(it, ctx)),
     playlists: raw.playlists.map(transformPlaylist),
     languages: raw.languages.map(transformLanguage),
+    item_sets: raw.item_sets.map(transformItemSet),
   };
 
   const probe = await probeRemote(apiBase);

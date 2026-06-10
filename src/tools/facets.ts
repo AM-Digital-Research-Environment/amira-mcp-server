@@ -13,7 +13,7 @@ import {
   textResult,
   type Server,
 } from "./_shared.js";
-import { itemUrlOrNull } from "../urls.js";
+import { itemSetUrl, itemUrlOrNull } from "../urls.js";
 
 interface RefCount {
   label: string;
@@ -162,6 +162,49 @@ export function registerFacetTools(server: Server): void {
             };
           },
           { level, distinct_places: ranked.length, ...filtersEcho({ country: args.country, keyword: args.keyword }) },
+        ),
+      );
+    },
+  );
+
+  // === list_collections =====================================================
+  server.registerTool(
+    "list_collections",
+    {
+      title: "List collections",
+      description:
+        "List the collections (Omeka item sets) that research items belong to — per-project collections, " +
+        "external archives (e.g. the ILAM collection), and curated sets — ranked by how many research " +
+        "items each contains. Optional `keyword` filters by title; `limit` (default 50, max 200) and " +
+        "`offset` paginate. Each result: collection, item_count, `amira_url` (the browsable collection " +
+        "page). Feed the title or id into the `collection` filter of search_research_items.",
+      annotations: annotate("List collections"),
+      inputSchema: {
+        keyword: z.string().optional(),
+        limit: z.number().int().optional().describe("Default 50, max 200"),
+        offset: z.number().int().optional(),
+      },
+    },
+    async (args) => {
+      const store = await ensureStore();
+      const limit = capLimit(args.limit, 50, 200);
+      const offset = capOffset(args.offset);
+
+      const counts = new Map<number, number>();
+      for (const it of store.items) for (const id of it.item_sets) counts.set(id, (counts.get(id) ?? 0) + 1);
+
+      let ranked = [...counts.entries()]
+        .map(([oId, count]) => ({ oId, title: store.getItemSet(oId)?.title ?? `Collection ${oId}`, count }))
+        .sort((a, b) => b.count - a.count);
+      if (args.keyword) ranked = ranked.filter((r) => containsCI(r.title, args.keyword!));
+
+      return textResult(
+        pageOf(
+          ranked,
+          offset,
+          limit,
+          (r) => ({ collection: r.title, id: r.oId, item_count: r.count, amira_url: itemSetUrl(r.oId) }),
+          { distinct_collections: ranked.length, ...filtersEcho(args) },
         ),
       );
     },

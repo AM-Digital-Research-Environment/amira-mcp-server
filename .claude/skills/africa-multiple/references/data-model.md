@@ -25,7 +25,8 @@ The central artefact (image, text, audio, moving image, …). Returned in full b
 | `sponsors[]`, `provenance[]`, `access_rights[]`, `license` | Funding, holding source, rights. |
 | `identifiers[]`, `doi`, `external_urls[]`, `collection_url`, `wisski_url` | Provenance / external links. |
 | `related_items[]` | `{ relation (replaces/replaced by/has version/…), title, amira_url }` — resolvable links. |
-| `has_media` | Whether digitised media is attached on the site (open `amira_url` to view). |
+| `has_media` / `thumbnail` | Whether digitised media is attached; large-thumbnail URL when it is (open `amira_url` to view the full media). |
+| `collections[]` | The item sets the item belongs to `{ title, amira_url }` — browsable collection pages. |
 
 Search results are slimmer (no long text); profile views (`get_person`, `get_institution`,
 `find_related`) return slim refs `{ dre_id, title, type, date, amira_url }` — drill with

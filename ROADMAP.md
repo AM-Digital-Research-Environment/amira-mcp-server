@@ -26,9 +26,15 @@
      resolvable links exposed with their own `amira_url` (better than planned).
   7. `dcterms:modified` exists on items — kept in `dates{}`, excluded from year filtering
      (the v0.2.0 examination concern, resolved by design).
-  Still open from Phase 1: tag `v1.0.0` (triggers the Release workflow), local extension
-  reinstall (§5), and the user-level `africa-multiple-data` skill update (§5). The GitHub
-  repo rename landed with the merge on 2026-06-10.
+- **2026-06-10 (later) — v1.0.0 RELEASED · Phase 2 (v1.1.0) implemented.** Repo renamed via
+  `gh repo rename` (redirects live); `v1.0.0` tagged — first Release run failed on CI Node 20
+  (`node --test` globs need ≥21), fixed by bumping workflows to Node 22 and re-pointing the
+  tag; the rerun published `amira-mcp-server.mcpb` with all gates green in CI. Phase 2 then
+  landed on main: snapshot **schema v3** (item_sets corpus, 60 sets; per-item set ids +
+  thumbnails), **`list_collections`** (23rd tool), `collection` filter, `collections[]` +
+  `thumbnail` in item detail; 13 unit tests, smoke asserts the collection-count round-trip.
+  Still open: tag `v1.1.0` when ready to publish, local extension reinstall (§5), and the
+  user-level `africa-multiple-data` skill cross-link (§5).
 
 **Sequencing rule (the one that governs everything):** the server re-platforms onto the
 **Omeka S API first**. None of the examination findings are fixed on the dashboard-era data
@@ -263,17 +269,20 @@ Whatever the 2.2 census shows but Phase 1 didn't ship (Phase 1 must ship dates, 
 description search, sponsor/physical-description/related-items in detail — this phase
 covers the long tail):
 
-- [ ] `list_collections` (or an `item_set` facet): browse the per-project collection sets
-      and external sets — replaces the opaque v0.2.0 `col-XX` ids with first-class sets.
-- [ ] Media: primary media link + thumbnail URL in `get_research_item` (capability the
-      dashboard snapshot never had).
-- [ ] Research-section website URL (per census) in `get_research_section`;
-      `dcterms:provenance`, `dre:wisskiUrl` in item detail.
-- [ ] Groups parity: census decides whether groups remain a distinct corpus in Omeka
-      (template 2 vs authority set); add `get_group` or fold into organisations.
-- [ ] Publication date precision (full `dcterms:date` ordering replaces the v0.2.0
-      year+quarter idea).
-- [ ] Re-run the token audit on real responses; tune summary fields with measurements.
+- [x] `list_collections` (snapshot schema v3 adds the `item_sets` corpus + per-item set ids):
+      ranked by research-item count, each with its browsable `…/s/amira/item-set/<id>` page;
+      `collection` filter on search_research_items; `collections[]` in item detail.
+- [x] Media: `thumbnail` (large) + `has_media` in `get_research_item` — free from the item
+      payload. Per-media ORIGINAL file URLs stay deferred (~1,300 extra requests per crawl;
+      the `amira_url` page is the viewer).
+- [x] Research-section website URL, `dcterms:provenance`, `dre:wisskiUrl` — shipped in
+      Phase 1 already.
+- [x] Groups parity — settled by the census in Phase 1: Organisation items typed
+      Institution/Group; `list_groups` + `get_institution` cover both; no `get_group`.
+- [x] Publication date precision — full `dcterms:date` stored and returned; newest-first
+      sort uses year + title (dates are year-granular in the source).
+- [x] Token audit — compact JSON adopted in Phase 1 (−24 % chars on a 20-item page vs
+      pretty-printed v0.2.0); transcripts never in summaries; smoke output spot-checked.
 
 ## 4 · Phase 3 — **v1.2+**: demand-driven extras (each needs a use-case before build)
 

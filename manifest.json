@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "amira-mcp-server",
   "display_name": "AMIRA — Africa Multiple Research Data",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Read-only access to the Africa Multiple Cluster research data (AMIRA collection on Omeka S).",
   "long_description": "Search and explore the research data of the Africa Multiple Cluster of Excellence, as published on the cluster's public Omeka S site (https://data.africamultiple.uni-bayreuth.de): research projects across four partner universities (Bayreuth, Lagos, Joseph Ki-Zerbo, Bahia) plus external collections such as the International Library of African Music, organised into thematic research sections, with ~4,000 digitised research items, people, institutions, groups, an academic bibliography, podcast episodes, and the cluster's YouTube videos with searchable transcripts.\n\nNo API key, database, or VPN is required. A complete data snapshot is bundled in the extension, so the server works fully offline. When enabled (default), it also refreshes itself from the site's public API.\n\nEvery record carries an `amira_url` — its public page on the Omeka S site — so results can be cited as links back to the source.",
   "author": {
@@ -45,7 +45,7 @@
   "tools": [
     { "name": "get_collection_overview", "description": "Counts and breakdowns across the whole collection + snapshot freshness. Start here." },
     { "name": "search_research_items", "description": "Search ~4,000 research items by keyword, subject, location, contributor, project, section, university, resource type, format/genre, language, and year." },
-    { "name": "get_research_item", "description": "Full metadata for one research item by dre_id: dates, contributors with roles, places with hierarchy, sponsors, formats, related items." },
+    { "name": "get_research_item", "description": "Full metadata for one research item by dre_id: dates, contributors with roles, places with hierarchy, sponsors, formats, collections, related items, media thumbnail." },
     { "name": "search_projects", "description": "Search the cluster's research projects by keyword, university, section, PI, member, or funding institution." },
     { "name": "get_project", "description": "Full detail for one project, with item breakdown and top subjects." },
     { "name": "list_research_sections", "description": "The cluster's thematic sections with funding phases, PIs and counts." },
@@ -57,6 +57,7 @@
     { "name": "list_groups", "description": "List research groups." },
     { "name": "list_subjects", "description": "Subject headings (tags merged in) ranked by item frequency, each with its authority page." },
     { "name": "list_locations", "description": "Places (country/region/city via the place hierarchy) ranked by item count, with coordinates." },
+    { "name": "list_collections", "description": "Collections (item sets) ranked by research-item count, each with its browsable page." },
     { "name": "list_categories", "description": "Facet values: formats/genres, languages, resource types." },
     { "name": "search_publications", "description": "Search the cluster bibliography by keyword, author, type, or year." },
     { "name": "get_publication", "description": "Full metadata and BibTeX for one publication." },

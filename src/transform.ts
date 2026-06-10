@@ -6,10 +6,12 @@ import {
   allStrings,
   firstLinked,
   firstString,
+  itemSetIds,
   linkedRefs,
   oid,
   omekaTitle,
   systemDate,
+  thumbnailUrl,
   uriValues,
   values,
   valueText,
@@ -174,8 +176,15 @@ export function transformResearchItem(
     citation: allStrings(item, "dcterms:bibliographicCitation"),
     wisski_url: uriValues(item, "dre:wisskiUrl")[0]?.url ?? null,
     has_media: Array.isArray(item["o:media"]) && item["o:media"].length > 0,
+    thumbnail: thumbnailUrl(item),
+    item_sets: itemSetIds(item),
     university: universityOfProject(project?.o_id ?? null),
   };
+}
+
+/** An item set (collection) — fetched from /api/item_sets, not /api/items. */
+export function transformItemSet(itemSet: OmekaItem): { o_id: number; title: string } {
+  return { o_id: oid(itemSet), title: omekaTitle(itemSet) };
 }
 
 // --- authorities & registry corpora -------------------------------------------

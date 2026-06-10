@@ -144,8 +144,17 @@ export interface ResearchItemRec {
   citation: string[];
   wisski_url: string | null;
   has_media: boolean;
+  /** Large thumbnail of the primary media, when digitised media is attached. */
+  thumbnail: string | null;
+  /** o:ids of the item sets (collections) this item belongs to. */
+  item_sets: number[];
   /** Derived from the parent project's dre:id prefix. */
   university: University;
+}
+
+export interface ItemSetRec {
+  o_id: number;
+  title: string;
 }
 
 export interface PublicationRec {
@@ -242,6 +251,7 @@ export interface SnapshotData {
   videos: VideoRec[];
   playlists: PlaylistRec[];
   languages: LanguageRec[];
+  item_sets: ItemSetRec[];
 }
 
 export const CORPORA = [
@@ -256,6 +266,7 @@ export const CORPORA = [
   "videos",
   "playlists",
   "languages",
+  "item_sets",
 ] as const;
 export type CorpusName = (typeof CORPORA)[number];
 
@@ -271,4 +282,4 @@ export interface SnapshotManifest {
   counts: Record<CorpusName, number>;
 }
 
-export const SNAPSHOT_SCHEMA_VERSION = 2;
+export const SNAPSHOT_SCHEMA_VERSION = 3;

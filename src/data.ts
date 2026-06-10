@@ -15,6 +15,7 @@ import { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshotAtomic,
 import { LanguageIndex } from "./languages.js";
 import * as path from "node:path";
 import type {
+  ItemSetRec,
   LinkedRef,
   LocationRec,
   OrganisationRec,
@@ -53,6 +54,7 @@ export class DataStore {
   readonly podcasts: PodcastRec[];
   readonly videos: VideoRec[];
   readonly playlists: PlaylistRec[];
+  readonly itemSets: ItemSetRec[];
   readonly languageIndex: LanguageIndex;
 
   private readonly itemByDreId = new Map<string, ResearchItemRec>();
@@ -70,6 +72,7 @@ export class DataStore {
   private readonly podcastByOId = new Map<number, PodcastRec>();
   private readonly videoByOId = new Map<number, VideoRec>();
   private readonly playlistByOId = new Map<number, PlaylistRec>();
+  private readonly itemSetByOId = new Map<number, ItemSetRec>();
   private readonly itemsByProjectOId = new Map<number, ResearchItemRec[]>();
 
   constructor(source: "bundled" | "cache", data: SnapshotData, manifest: SnapshotManifest) {
@@ -85,6 +88,7 @@ export class DataStore {
     this.podcasts = data.podcasts;
     this.videos = data.videos;
     this.playlists = data.playlists;
+    this.itemSets = data.item_sets;
     this.languageIndex = new LanguageIndex(data.languages);
 
     for (const it of this.items) {
@@ -118,6 +122,7 @@ export class DataStore {
     for (const p of this.podcasts) this.podcastByOId.set(p.o_id, p);
     for (const v of this.videos) this.videoByOId.set(v.o_id, v);
     for (const p of this.playlists) this.playlistByOId.set(p.o_id, p);
+    for (const s of this.itemSets) this.itemSetByOId.set(s.o_id, s);
   }
 
   getItem(key: string): ResearchItemRec | undefined {
@@ -192,6 +197,9 @@ export class DataStore {
   }
   getLocationByName(name: string): LocationRec | undefined {
     return this.locationByName.get(name.trim().toLowerCase());
+  }
+  getItemSet(oId: number): ItemSetRec | undefined {
+    return this.itemSetByOId.get(oId);
   }
 }
 

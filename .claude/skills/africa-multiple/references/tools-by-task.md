@@ -1,6 +1,6 @@
 # Tools by task
 
-All 22 tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
+All 23 tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
 `{ count, total_matches, offset, has_more, next_offset?, results[] }` (plus a `filters` echo of the
 filters you actually passed). Every record carries a citable `amira_url`.
 
@@ -56,6 +56,7 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | --- | --- | --- |
 | Subjects ranked by item count | `list_subjects` | Tags merged in; each subject links to its own authority page |
 | Places ranked by item count | `list_locations` | `level` = country/region/city via the place hierarchy; items count toward ancestors too; returns coordinates |
+| Collections ranked by item count | `list_collections` | Per-project + external item sets; feed the title/id into the `collection` filter of search_research_items |
 | Formats / languages / resource types | `list_categories` | `category` ∈ formats (alias: genres) / languages / resource_types |
 
 ## Bibliography

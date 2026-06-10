@@ -121,6 +121,13 @@ export function systemDate(item: OmekaItem, key: "o:modified" | "o:created"): st
   return null;
 }
 
+/** Large thumbnail URL of the primary media, when the item has any. */
+export function thumbnailUrl(item: OmekaItem): string | null {
+  const t = item["thumbnail_display_urls"];
+  if (isObj(t) && typeof t["large"] === "string" && t["large"]) return t["large"] as string;
+  return null;
+}
+
 /** First 4-digit year found in a date-ish string, or null. */
 export function yearOf(text: string | null | undefined): number | null {
   if (!text) return null;

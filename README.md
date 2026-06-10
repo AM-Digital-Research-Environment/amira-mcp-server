@@ -9,9 +9,9 @@ It exposes the cluster's research **projects** (across the partner universities 
 Bayreuth, Lagos, Joseph Ki-Zerbo/Ouagadougou and Bahia, plus external collections
 such as the International Library of African Music), their thematic **research
 sections**, ~4,000 digitised **research items**, **people**, **institutions**,
-**groups**, the cluster **bibliography**, **podcast episodes**, and the cluster's
-**YouTube videos with searchable transcripts** — as 22 well-described tools an
-LLM can query.
+**groups**, **collections**, the cluster **bibliography**, **podcast episodes**, and
+the cluster's **YouTube videos with searchable transcripts** — as 23 well-described
+tools an LLM can query.
 
 Every record carries an **`amira_url`** — its public page on the Omeka S site
 (`…/s/amira/item/<id>`) — so findings can be **cited as links** back to the source.
@@ -41,13 +41,14 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | --- | --- |
 | `get_collection_overview` | Counts and breakdowns across the whole collection + snapshot freshness |
 | `search_research_items` | Find items by keyword, **subject**, **location** (hierarchy-aware), contributor, project, section, university, resource type, format/genre, language, year |
-| `get_research_item` | Full metadata for one item (by `dre_id`): typed dates, roles, places with their region/country chain, sponsors, related items |
+| `get_research_item` | Full metadata for one item (by `dre_id`): typed dates, roles, places with their region/country chain, sponsors, collections, related items, media thumbnail |
 | `search_projects` / `get_project` | Projects by keyword, university, section, PI, member, funder — detail with item breakdown + top subjects |
 | `list_research_sections` / `get_research_section` | Thematic sections with funding phases (AM 1.0 / AM 2.0), PIs, counts, projects |
 | `search_persons` / `get_person` | People (either name order works) — profile across projects, items, publications |
 | `list_institutions` / `get_institution` / `list_groups` | Organisations (institutions and research groups), their projects, people and items |
 | `list_subjects` | Subject headings (former tags merged in) ranked by item frequency |
 | `list_locations` | Places at country/region/city level via the place hierarchy, with coordinates |
+| `list_collections` | Collections (item sets) ranked by research-item count — pair with the `collection` filter |
 | `list_categories` | Facet values: formats/genres, languages, resource types |
 | `search_publications` / `get_publication` | The cluster bibliography (incl. generated BibTeX) |
 | `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities |
@@ -91,7 +92,7 @@ npm run typecheck     # tsc --noEmit
 npm run build         # esbuild -> server/{index,fetchCli,lib}.js
 npm test              # unit tests (transform fixtures — offline)
 npm run test:live     # integration tests against the live API (network)
-npm run smoke         # spawn the bundled server, exercise all 22 tools offline
+npm run smoke         # spawn the bundled server, exercise all 23 tools offline
 ```
 
 Pack the extension:

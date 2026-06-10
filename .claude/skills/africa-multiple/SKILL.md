@@ -103,8 +103,9 @@ Use the right entry point for the question:
 - Talks and audiovisual: `search_videos` (keyword reaches INTO transcripts; hits are flagged
   `matched_in: "transcript"`) and `search_podcasts`.
 - Discover vocabulary first when unsure of exact terms: `list_subjects` (tags are merged in),
-  `list_locations`, `list_categories` (formats/languages/resource_types), all ranked by item count.
-  Feed a returned value straight back into the matching filter.
+  `list_locations`, `list_collections` (item sets — pair with the `collection` filter),
+  `list_categories` (formats/languages/resource_types), all ranked by item count. Feed a returned
+  value straight back into the matching filter.
 
 Keep `limit` modest (10–25) while scoping; paginate with `offset` / `next_offset`.
 

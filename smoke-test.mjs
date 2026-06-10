@@ -24,7 +24,7 @@ function check(cond, label) {
 
 const tools = await client.listTools();
 console.log(`tools (${tools.tools.length}):`, tools.tools.map((t) => t.name).join(", "));
-check(tools.tools.length === 22, `expected 22 tools, got ${tools.tools.length}`);
+check(tools.tools.length === 23, `expected 23 tools, got ${tools.tools.length}`);
 
 async function call(name, args, { expect = [] } = {}) {
   const res = await client.callTool({ name, arguments: args });
@@ -58,6 +58,8 @@ await call("search_research_items", { language: "fre", limit: 1 }, { expect: [AM
 const item = await call("get_research_item", { dre_id: "abg-99-0000" }, { expect: [AMIRA, "sponsors"] });
 check(item.contributors?.some((c) => c.name === "Beier, Ulli"), "item: contributor with role");
 check("dates" in item, "item: dates exposed");
+check(Array.isArray(item.collections), "item: collections exposed");
+check("thumbnail" in item, "item: thumbnail exposed");
 
 await call("search_projects", { research_section: "Arts & Aesthetics", limit: 3 }, { expect: [AMIRA] });
 const proj = await call("get_project", { id: "Ext_ILAM" }, { expect: ["External"] });
@@ -68,6 +70,13 @@ await call("get_research_section", { name: "Translating" }, { expect: ["AM 2.0"]
 await call("list_subjects", { limit: 5 }, { expect: [AMIRA] });
 await call("list_locations", { level: "country", limit: 5 });
 await call("list_categories", { category: "formats", limit: 5 });
+
+const colls = await call("list_collections", { limit: 5 }, { expect: ["item-set"] });
+check(colls.results?.[0]?.item_count > 0, "collections: ranked by item count");
+if (colls.results?.[0]?.collection) {
+  const byColl = await call("search_research_items", { collection: colls.results[0].collection, limit: 2 });
+  check(byColl.total_matches === colls.results[0].item_count, "collection filter round-trips the count");
+}
 await call("search_persons", { keyword: "Beier", limit: 3 }, { expect: [AMIRA] });
 
 const person = await call("get_person", { name: "Ulli Beier" });

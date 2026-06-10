@@ -13,3 +13,8 @@ export function itemUrl(oId: number): string {
 export function itemUrlOrNull(oId: number | null | undefined): string | null {
   return oId == null ? null : itemUrl(oId);
 }
+
+/** Public page for an item set (collection): `<site>/s/amira/item-set/<o:id>`. */
+export function itemSetUrl(oId: number): string {
+  return `${SITE_BASE}/s/${SITE_SLUG}/item-set/${oId}`;
+}

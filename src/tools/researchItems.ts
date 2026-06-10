@@ -18,7 +18,7 @@ import {
   yearLabel,
   type Server,
 } from "./_shared.js";
-import { itemUrl, itemUrlOrNull } from "../urls.js";
+import { itemSetUrl, itemUrl, itemUrlOrNull } from "../urls.js";
 import { nameMatchesQuery } from "../names.js";
 
 function matchUniversity(item: ResearchItemRec, val: string): boolean {
@@ -69,6 +69,7 @@ export function registerResearchItemTools(server: Server): void {
         "  - university: ubt | unilag | ujkz | ufba | external (code or name)\n" +
         "  - resource_type: e.g. 'Image', 'Text', 'Audio', 'Moving image'\n" +
         "  - genre: format/genre descriptor, partial (e.g. 'interview', 'letter', 'photograph')\n" +
+        "  - collection: an item-set title (partial) or id from list_collections\n" +
         "  - language: name or ISO code — 'French', 'fr', 'fra' and the legacy 'fre' all match\n" +
         "  - year_from / year_to: keep items whose content dates overlap the range\n" +
         "  - limit (default 20, max 100), offset (pagination)\n\n" +
@@ -86,6 +87,7 @@ export function registerResearchItemTools(server: Server): void {
         university: z.string().optional(),
         resource_type: z.string().optional(),
         genre: z.string().optional(),
+        collection: z.string().optional(),
         language: z.string().optional(),
         year_from: z.number().int().optional(),
         year_to: z.number().int().optional(),
@@ -134,6 +136,14 @@ export function registerResearchItemTools(server: Server): void {
           !(anyContainsCI(refLabels(it.formats), args.genre) || anyContainsCI(it.format_notes, args.genre))
         )
           return false;
+        if (args.collection) {
+          const q = args.collection.trim();
+          const asId = Number(q);
+          const hit = it.item_sets.some(
+            (id) => id === asId || containsCI(store.getItemSet(id)?.title, q),
+          );
+          if (!hit) return false;
+        }
         if (args.language && !store.languageIndex.matches(it.languages, args.language)) return false;
         if ((args.year_from !== undefined || args.year_to !== undefined) && !yearsOverlap(it, args.year_from, args.year_to))
           return false;
@@ -155,11 +165,11 @@ export function registerResearchItemTools(server: Server): void {
         "Full metadata for one research item by `dre_id` (e.g. 'abg-99-0000'; the numeric Omeka o:id also " +
         "works). Returns titles, typed content dates (created/collected/issued/…), contributors with " +
         "roles, subjects, places (with their region/country chain), project + research sections + " +
-        "university, description, abstract, table of contents, formats and physical notes, sponsors, " +
-        "provenance (holding source), access rights, license, identifiers, DOI, external URLs, related " +
-        "items (with their own amira_url), languages, audiences, whether digitised media is attached, and " +
-        "the citable `amira_url`. Long text fields are truncated at 25,000 characters. Returns { error } " +
-        "if the id is unknown.",
+        "university, collections it belongs to, description, abstract, table of contents, formats and " +
+        "physical notes, sponsors, provenance (holding source), access rights, license, identifiers, DOI, " +
+        "external URLs, related items (with their own amira_url), languages, audiences, a media thumbnail " +
+        "when digitised media is attached, and the citable `amira_url`. Long text fields are truncated at " +
+        "25,000 characters. Returns { error } if the id is unknown.",
       annotations: annotate("Get research item detail"),
       inputSchema: {
         dre_id: z.string().describe("The item's DRE identifier, e.g. 'abg-99-0000' (or its Omeka o:id)"),
@@ -214,12 +224,17 @@ export function registerResearchItemTools(server: Server): void {
           amira_url: itemUrlOrNull(r.ref.o_id),
         })),
         citation: it.citation,
+        collections: it.item_sets.map((id) => ({
+          title: store.getItemSet(id)?.title ?? `Collection ${id}`,
+          amira_url: itemSetUrl(id),
+        })),
         description: description?.text ?? null,
         description_truncated: description?.truncated || undefined,
         abstract: abstract?.text ?? null,
         abstract_truncated: abstract?.truncated || undefined,
         table_of_contents: toc?.text ?? null,
         has_media: it.has_media,
+        thumbnail: it.thumbnail,
         amira_url: itemUrl(it.o_id),
       });
     },
