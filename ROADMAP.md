@@ -33,8 +33,9 @@
   landed on main: snapshot **schema v3** (item_sets corpus, 60 sets; per-item set ids +
   thumbnails), **`list_collections`** (23rd tool), `collection` filter, `collections[]` +
   `thumbnail` in item detail; 13 unit tests, smoke asserts the collection-count round-trip.
-  Still open: tag `v1.1.0` when ready to publish, local extension reinstall (§5), and the
-  user-level `africa-multiple-data` skill cross-link (§5).
+  **v1.1.0 released** the same day (workflow green end-to-end; `amira-mcp-server.mcpb`
+  attached) and the user-level `africa-multiple-data` skill cross-link is in place. The
+  only remaining §5 item is the local extension reinstall (grab the v1.1.0 `.mcpb`).
 
 **Sequencing rule (the one that governs everything):** the server re-platforms onto the
 **Omeka S API first**. None of the examination findings are fixed on the dashboard-era data
