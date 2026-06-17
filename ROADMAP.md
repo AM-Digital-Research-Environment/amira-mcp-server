@@ -1,6 +1,6 @@
 # Roadmap — amira-mcp-server
 
-**Status:** drafted 2026-06-10 · spine = [issue #1](https://github.com/AM-Digital-Research-Environment/africa-multiple-mcp-server/issues/1)
+**Status:** drafted 2026-06-10 · spine = [issue #1](https://github.com/AM-Digital-Research-Environment/amira-mcp-server/issues/1)
 (migration epic, all design decisions resolved) + the 2026-06-10 code/data examination of v0.2.0.
 
 **Progress log**
@@ -36,6 +36,20 @@
   **v1.1.0 released** the same day (workflow green end-to-end; `amira-mcp-server.mcpb`
   attached) and the user-level `africa-multiple-data` skill cross-link is in place. The
   only remaining §5 item is the local extension reinstall (grab the v1.1.0 `.mcpb`).
+- **2026-06-17 — Skill renamed `africa-multiple` → `amira-mcp` (D14 reversed); `list_years`
+  added (24th tool); repo-name sweep.** *Rename:* the repo rename to `amira-mcp-server` made the
+  old name ambiguous against the user-level `africa-multiple-data` skill (the revisit condition
+  the original D14 set). Folder + `name:` + README path updated, and the user-level skill's
+  cross-reference updated to match. *`list_years`:* in-memory date histogram by year/decade, with
+  a `from`/`to` window and `chronological|count` sort; an item's date range counts toward every
+  year it spans (mirrors the `year_from`/`year_to` filter), and the envelope carries
+  `dated_items`/`undated_items`/`year_range`. Counts bumped to 24 across manifest, README, both
+  skill docs, smoke (now asserts the year + decade shapes); typecheck + 13 unit + smoke all green.
+  *Repo-name sweep:* stale `africa-multiple-mcp-server` → `amira-mcp-server` in the snapshot
+  User-Agent, the ROADMAP spine link, and `package-lock.json` name/version (synced to 1.1.0).
+  Deliberately left: the `africa-multiple` manifest *keyword* (a valid discovery term) and the
+  `~/.africa-multiple-mcp` note in `config.ts` (an accurate pre-1.0 migration reference, not a
+  stale name). Follow-up: reinstall any copy already under `~/.claude/skills/africa-multiple/`.
 
 **Sequencing rule (the one that governs everything):** the server re-platforms onto the
 **Omeka S API first**. None of the examination findings are fixed on the dashboard-era data
@@ -90,7 +104,7 @@ nothing is silently lost.
 | D11 | Freshness probe = the **(max `o:modified`, per-template totals) pair** from the snapshot manifest vs the live API | `o:modified` alone misses deletions; totals alone miss edits |
 | D12 | `AMIRA_DASHBOARD_BASE` → **`AMIRA_SITE_BASE`**, accepting the old var with a deprecation warning for one minor version | Painless for existing installs |
 | D13 | Add **`get_podcast` / `get_video`** detail tools alongside the search tools | Transcripts are too big for search results; detail is where the capped transcript lives |
-| D14 | Companion skill keeps folder/name `africa-multiple` (content rewritten) | Renaming the skill breaks installed copies for zero functional gain; revisit only if the repo rename makes it confusing |
+| D14 | Companion skill renamed `africa-multiple` → **`amira-mcp`** (folder + `name:`) | Original D14 kept the name to avoid breaking installed copies; the repo rename to `amira-mcp-server` then made `africa-multiple` ambiguous against the user-level `africa-multiple-data` skill (the documented revisit condition), so the rename is now taken. Installed copies must be reinstalled under the new folder name |
 
 ### 1.3 Examination-findings triage (nothing lost, nothing wasted)
 

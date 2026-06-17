@@ -1,5 +1,5 @@
 ---
-name: africa-multiple
+name: amira-mcp
 description: |
   Research workflow and context for the AMIRA MCP server (amira-mcp-server) — the read-only interface to
   the Africa Multiple Cluster of Excellence research data, as published on the cluster's public Omeka S
@@ -84,7 +84,7 @@ Every entity is an Omeka item with a stable public page: its **`amira_url`**
 lookup key; either works in `get_research_item`.
 
 See [references/data-model.md](references/data-model.md) for field-level detail, and
-[references/tools-by-task.md](references/tools-by-task.md) for the full 22-tool catalogue.
+[references/tools-by-task.md](references/tools-by-task.md) for the full 24-tool catalogue.
 
 ## Workflow
 
@@ -105,7 +105,8 @@ Use the right entry point for the question:
 - Discover vocabulary first when unsure of exact terms: `list_subjects` (tags are merged in),
   `list_locations`, `list_collections` (item sets — pair with the `collection` filter),
   `list_categories` (formats/languages/resource_types), all ranked by item count. Feed a returned
-  value straight back into the matching filter.
+  value straight back into the matching filter. `list_years` gives the date distribution (by year or
+  decade) for coverage-over-time and most-covered-year questions.
 
 Keep `limit` modest (10–25) while scoping; paginate with `offset` / `next_offset`.
 

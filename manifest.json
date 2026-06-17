@@ -59,6 +59,7 @@
     { "name": "list_locations", "description": "Places (country/region/city via the place hierarchy) ranked by item count, with coordinates." },
     { "name": "list_collections", "description": "Collections (item sets) ranked by research-item count, each with its browsable page." },
     { "name": "list_categories", "description": "Facet values: formats/genres, languages, resource types." },
+    { "name": "list_years", "description": "Date histogram of research items by year or decade — coverage over time and the most-covered year/decade." },
     { "name": "search_publications", "description": "Search the cluster bibliography by keyword, author, type, or year." },
     { "name": "get_publication", "description": "Full metadata and BibTeX for one publication." },
     { "name": "find_related", "description": "Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities." },

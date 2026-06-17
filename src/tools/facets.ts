@@ -272,4 +272,94 @@ export function registerFacetTools(server: Server): void {
       );
     },
   );
+
+  // === list_years ===========================================================
+  server.registerTool(
+    "list_years",
+    {
+      title: "List years",
+      description:
+        "Date histogram of the research items: how many items fall in each year (or decade) of their " +
+        "content dates — for coverage-over-time and most-covered-year/decade questions.\n" +
+        "Parameters:\n" +
+        "  - bucket: 'year' (default) or 'decade'\n" +
+        "  - from / to: restrict to a year range (inclusive)\n" +
+        "  - sort: 'chronological' (default, oldest first) or 'count' (most items first)\n" +
+        "  - limit (default 200, max 500), offset\n\n" +
+        "Each result: year (or decade label + from/to span) and item_count. The envelope adds " +
+        "dated_items, undated_items, distinct_buckets and the observed year_range. An item whose content " +
+        "date is a RANGE counts toward every year it spans, so bucket counts can sum to more than " +
+        "dated_items — this mirrors the year_from/year_to filter of search_research_items, into which you " +
+        "can feed a year back. Years have no authority page, so results carry no amira_url.",
+      annotations: annotate("List years"),
+      inputSchema: {
+        bucket: z.enum(["year", "decade"]).optional().describe("Default 'year'"),
+        from: z.number().int().optional(),
+        to: z.number().int().optional(),
+        sort: z.enum(["chronological", "count"]).optional().describe("Default 'chronological'"),
+        limit: z.number().int().optional().describe("Default 200, max 500"),
+        offset: z.number().int().optional(),
+      },
+    },
+    async (args) => {
+      const store = await ensureStore();
+      const bucket = args.bucket ?? "year";
+      const sort = args.sort ?? "chronological";
+      const limit = capLimit(args.limit, 200, 500);
+      const offset = capOffset(args.offset);
+      const { from, to } = args;
+
+      const counts = new Map<number, number>(); // key = year, or decade-start year
+      let datedItems = 0;
+      let undatedItems = 0;
+      let yearRange: { min: number; max: number } | null = null;
+
+      for (const it of store.items) {
+        if (it.year_min == null) {
+          undatedItems++;
+          continue;
+        }
+        datedItems++;
+        const lo = it.year_min;
+        const hi = it.year_max ?? it.year_min;
+        yearRange = yearRange
+          ? { min: Math.min(yearRange.min, lo), max: Math.max(yearRange.max, hi) }
+          : { min: lo, max: hi };
+        // Count the item once per distinct bucket across its (windowed) span.
+        const spanLo = Math.max(lo, from ?? lo);
+        const spanHi = Math.min(hi, to ?? hi);
+        const seen = new Set<number>();
+        for (let y = spanLo; y <= spanHi; y++) {
+          const key = bucket === "decade" ? Math.floor(y / 10) * 10 : y;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+      }
+
+      const ranked = [...counts.entries()].map(([key, count]) => ({ key, count }));
+      ranked.sort(sort === "count" ? (a, b) => b.count - a.count || a.key - b.key : (a, b) => a.key - b.key);
+
+      return textResult(
+        pageOf(
+          ranked,
+          offset,
+          limit,
+          (r) =>
+            bucket === "decade"
+              ? { decade: `${r.key}s`, from: r.key, to: r.key + 9, item_count: r.count }
+              : { year: r.key, item_count: r.count },
+          {
+            bucket,
+            sort,
+            distinct_buckets: ranked.length,
+            dated_items: datedItems,
+            undated_items: undatedItems,
+            ...(yearRange ? { year_range: yearRange } : {}),
+            ...filtersEcho({ from, to }),
+          },
+        ),
+      );
+    },
+  );
 }

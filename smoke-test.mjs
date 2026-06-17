@@ -24,7 +24,7 @@ function check(cond, label) {
 
 const tools = await client.listTools();
 console.log(`tools (${tools.tools.length}):`, tools.tools.map((t) => t.name).join(", "));
-check(tools.tools.length === 23, `expected 23 tools, got ${tools.tools.length}`);
+check(tools.tools.length === 24, `expected 24 tools, got ${tools.tools.length}`);
 
 async function call(name, args, { expect = [] } = {}) {
   const res = await client.callTool({ name, arguments: args });
@@ -70,6 +70,13 @@ await call("get_research_section", { name: "Translating" }, { expect: ["AM 2.0"]
 await call("list_subjects", { limit: 5 }, { expect: [AMIRA] });
 await call("list_locations", { level: "country", limit: 5 });
 await call("list_categories", { category: "formats", limit: 5 });
+
+const years = await call("list_years", { from: 1900, to: 2000, sort: "count", limit: 5 });
+check(years.dated_items > 0, "list_years: dated_items counted");
+check(years.results?.[0]?.item_count > 0 && "year" in (years.results?.[0] ?? {}), "list_years: year buckets");
+check(years.results?.every((a, i, arr) => i === 0 || arr[i - 1].item_count >= a.item_count), "list_years: sort=count descending");
+const decades = await call("list_years", { bucket: "decade", limit: 3 });
+check(/^\d+s$/.test(decades.results?.[0]?.decade ?? ""), "list_years: decade label shape");
 
 const colls = await call("list_collections", { limit: 5 }, { expect: ["item-set"] });
 check(colls.results?.[0]?.item_count > 0, "collections: ranked by item count");

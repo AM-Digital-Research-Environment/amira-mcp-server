@@ -10,7 +10,7 @@ Bayreuth, Lagos, Joseph Ki-Zerbo/Ouagadougou and Bahia, plus external collection
 such as the International Library of African Music), their thematic **research
 sections**, ~4,000 digitised **research items**, **people**, **institutions**,
 **groups**, **collections**, the cluster **bibliography**, **podcast episodes**, and
-the cluster's **YouTube videos with searchable transcripts** — as 23 well-described
+the cluster's **YouTube videos with searchable transcripts** — as 24 well-described
 tools an LLM can query.
 
 Every record carries an **`amira_url`** — its public page on the Omeka S site
@@ -50,6 +50,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `list_locations` | Places at country/region/city level via the place hierarchy, with coordinates |
 | `list_collections` | Collections (item sets) ranked by research-item count — pair with the `collection` filter |
 | `list_categories` | Facet values: formats/genres, languages, resource types |
+| `list_years` | Date histogram of research items by year or decade — coverage over time, most-covered year/decade |
 | `search_publications` / `get_publication` | The cluster bibliography (incl. generated BibTeX) |
 | `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities |
 | `search_podcasts` / `get_podcast` | Cluster podcast episodes (transcript-ready) |
@@ -67,10 +68,11 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | "In which talks does anyone discuss **decoloniality**?" | `search_videos keyword=decolonial` (matches inside transcripts, flagged `matched_in`) |
 | "What themes travel with **Architecture** across projects?" | `find_related entity_type=subject value=Architecture` |
 | "When was this photograph taken?" | `get_research_item` → typed `dates` (created/collected/issued/…) |
+| "Which **decade** does the collection cover most?" | `list_years bucket=decade sort=count` |
 
 ## Companion skill
 
-A research-workflow skill ships in [`.claude/skills/africa-multiple/`](.claude/skills/africa-multiple/):
+A research-workflow skill ships in [`.claude/skills/amira-mcp/`](.claude/skills/amira-mcp/):
 cluster context, a query workflow, a tool-by-task map, the citation discipline, and coverage caveats.
 Install it by copying that folder into your Claude skills directory (e.g. `~/.claude/skills/`).
 
@@ -92,7 +94,7 @@ npm run typecheck     # tsc --noEmit
 npm run build         # esbuild -> server/{index,fetchCli,lib}.js
 npm test              # unit tests (transform fixtures — offline)
 npm run test:live     # integration tests against the live API (network)
-npm run smoke         # spawn the bundled server, exercise all 23 tools offline
+npm run smoke         # spawn the bundled server, exercise all 24 tools offline
 ```
 
 Pack the extension:

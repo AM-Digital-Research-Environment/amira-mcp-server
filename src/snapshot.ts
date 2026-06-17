@@ -36,7 +36,7 @@ import {
 
 const PER_PAGE = 100;
 const PAGE_CONCURRENCY = 4;
-const USER_AGENT = "amira-mcp-server (https://github.com/AM-Digital-Research-Environment/africa-multiple-mcp-server)";
+const USER_AGENT = "amira-mcp-server (https://github.com/AM-Digital-Research-Environment/amira-mcp-server)";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
