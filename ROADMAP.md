@@ -50,6 +50,10 @@
   Deliberately left: the `africa-multiple` manifest *keyword* (a valid discovery term) and the
   `~/.africa-multiple-mcp` note in `config.ts` (an accurate pre-1.0 migration reference, not a
   stale name). Follow-up: reinstall any copy already under `~/.claude/skills/africa-multiple/`.
+- **2026-06-17 (later) — v1.2.0 tagged.** Version bumped (manifest + package + lock → 1.2.0);
+  the `list_years` Phase-3 item moved to done in §4. The renamed `amira-mcp` companion skill ships
+  inside the `.mcpb` (kept by `.mcpbignore`). The Release workflow crawls a fresh public-API
+  snapshot, runs unit + live tests + smoke, packs, and publishes the `v1.2.0` GitHub Release.
 
 **Sequencing rule (the one that governs everything):** the server re-platforms onto the
 **Omeka S API first**. None of the examination findings are fixed on the dashboard-era data
@@ -301,7 +305,8 @@ covers the long tail):
 
 ## 4 · Phase 3 — **v1.2+**: demand-driven extras (each needs a use-case before build)
 
-- `list_years` / date-histogram facet (timeline questions currently need paging).
+- **Done (v1.2.0):** `list_years` / date-histogram facet — year/decade buckets, `from`/`to` window,
+  `chronological|count` sort; ranged items count toward every year they span (mirrors the year filter).
 - `find_related` upgrades: multi-seed AND, year-windowed co-occurrence.
 - **Semantic search** over descriptions/abstracts/transcripts — IWAC-parity, env-gated,
   embeddings **precomputed offline in the fetch pipeline** (never at request time),
