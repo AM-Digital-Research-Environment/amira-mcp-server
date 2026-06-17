@@ -1,0 +1,11 @@
+node_modules
+server
+data
+.git
+.github
+.census-cache
+*.mcpb
+.env
+.env.*
+*.log
+.DS_Store

@@ -85,16 +85,72 @@ No further configuration is required. The latest tagged release carries the
 current data; the rolling `data-latest` pre-release always tracks the freshest
 site snapshot.
 
+## Use it from ChatGPT, the API, or any remote client
+
+The `.mcpb` is the local, offline option for Claude Desktop. The same server can
+also run as a **remote Streamable HTTP endpoint** — one HTTPS URL that ChatGPT,
+Claude (web + desktop remote connectors), the OpenAI and Anthropic APIs, Cursor,
+VS Code and other clients connect to by pasting a URL (no download, always-fresh
+data). The remote surface serves the same 24 tools **plus** the
+OpenAI-compatible `search` / `fetch` tools that ChatGPT's connectors require (26
+total). Access is unauthenticated — the data is public and read-only.
+
+```bash
+npm run build && npm run start:http     # → http://localhost:8787/mcp
+# or, self-contained, via Docker:
+docker build -t amira-mcp . && docker run -p 8787:8787 amira-mcp
+```
+
+Endpoints: `POST /mcp` (the MCP endpoint) and `GET /healthz`. Bind with `PORT` /
+`HOST`.
+
+- **ChatGPT** → Settings → Connectors → Advanced → **Developer Mode** → add
+  `https://<your-host>/mcp`. Deep Research calls `search` + `fetch`; Developer
+  Mode can call any of the 26 tools.
+- **Claude** (web or desktop) → Settings → Connectors → **Add custom connector**
+  → `https://<your-host>/mcp`.
+- **OpenAI API** (Responses) — point the `mcp` tool at the endpoint:
+
+  ```json
+  { "type": "mcp", "server_label": "amira",
+    "server_url": "https://<your-host>/mcp",
+    "allowed_tools": ["search", "fetch"], "require_approval": "never" }
+  ```
+
+### Deploy (self-hosted, e.g. alongside the amira site)
+
+The multi-stage [`Dockerfile`](Dockerfile) crawls a fresh snapshot at build time
+and runs the self-contained bundle (no `node_modules` at runtime). On a Linux
+host you can equally run it under systemd behind a reverse proxy:
+
+```ini
+# /etc/systemd/system/amira-mcp.service
+[Service]
+ExecStart=/usr/bin/node /opt/amira-mcp/server/http.js
+Environment=PORT=8787 HOST=127.0.0.1 AMIRA_LIVE_REFRESH=true
+Restart=always
+User=www-data
+```
+
+```nginx
+location /mcp { proxy_pass http://127.0.0.1:8787/mcp; proxy_buffering off; }
+```
+
+`proxy_buffering off` keeps the Streamable-HTTP/SSE responses flowing. Running on
+the amira host lets the live refresh read the local Omeka API, so the snapshot
+stays current with no extra load.
+
 ## Develop / rebuild
 
 ```bash
 npm install
 npm run fetch-data    # crawl the public Omeka API -> ./data snapshot (~1 min)
 npm run typecheck     # tsc --noEmit
-npm run build         # esbuild -> server/{index,fetchCli,lib}.js
+npm run build         # esbuild -> server/{index,http,fetchCli,lib}.js
 npm test              # unit tests (transform fixtures — offline)
 npm run test:live     # integration tests against the live API (network)
-npm run smoke         # spawn the bundled server, exercise all 24 tools offline
+npm run smoke         # spawn the stdio server, exercise all 24 tools offline
+npm run smoke:http    # spawn the HTTP server, exercise search/fetch + parity (26 tools)
 ```
 
 Pack the extension:
@@ -137,6 +193,8 @@ credentials):
 | `AMIRA_SITE_BASE` | Site base URL (advanced) | `https://data.africamultiple.uni-bayreuth.de` | Base for citations + refresh (`AMIRA_DASHBOARD_BASE` is honoured with a deprecation warning) |
 | `AMIRA_SITE_SLUG` | — | `amira` | Omeka site slug used in `amira_url` |
 | `AMIRA_DATA_DIR` | — | bundled `data/` | Override the bundled snapshot path (dev) |
+| `PORT` | — | `8787` | Port for the remote HTTP transport (`server/http.js`); ignored by the `.mcpb` |
+| `HOST` | — | `0.0.0.0` | Bind address for the remote HTTP transport |
 
 ## Architecture
 

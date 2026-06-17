@@ -73,6 +73,10 @@ export const config = {
   cacheDir: resolveCacheDir(),
   /** When true (default), refresh the snapshot from the public Omeka API. */
   liveRefresh: parseBool(process.env.AMIRA_LIVE_REFRESH, true),
+  /** Bind for the remote HTTP transport (server/http.js); ignored by the stdio
+   * entry point. PORT/HOST are the conventional names; AMIRA_HTTP_* also work. */
+  httpPort: Number(process.env.PORT ?? process.env.AMIRA_HTTP_PORT ?? "8787"),
+  httpHost: (process.env.HOST ?? process.env.AMIRA_HTTP_HOST ?? "0.0.0.0").trim(),
 };
 
 export type Config = typeof config;

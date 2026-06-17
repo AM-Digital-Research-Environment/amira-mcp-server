@@ -1,5 +1,6 @@
 // Bundle the TypeScript server into self-contained ESM files under server/:
-//   server/index.js     — the MCP server (entry of the .mcpb)
+//   server/index.js     — the MCP server, stdio transport (entry of the .mcpb)
+//   server/http.js      — the MCP server, remote Streamable HTTP transport
 //   server/fetchCli.js  — the snapshot fetcher (build time + CI)
 //
 // No native bindings or optional cloud SDKs — the MCP SDK and zod inline
@@ -11,7 +12,7 @@ import { readFile } from "node:fs/promises";
 const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
 await esbuild.build({
-  entryPoints: ["src/index.ts", "src/fetchCli.ts", "src/lib.ts"],
+  entryPoints: ["src/index.ts", "src/http.ts", "src/fetchCli.ts", "src/lib.ts"],
   outdir: "server",
   bundle: true,
   platform: "node",

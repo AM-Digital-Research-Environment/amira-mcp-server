@@ -54,6 +54,18 @@
   the `list_years` Phase-3 item moved to done in §4. The renamed `amira-mcp` companion skill ships
   inside the `.mcpb` (kept by `.mcpbignore`). The Release workflow crawls a fresh public-API
   snapshot, runs unit + live tests + smoke, packs, and publishes the `v1.2.0` GitHub Release.
+- **2026-06-17 (later) — v1.3.0: remote Streamable HTTP transport + ChatGPT `search`/`fetch` (D15).**
+  Added a second entry point `src/http.ts` → `server/http.js` (stateless Streamable HTTP, `POST /mcp`
+  + `GET /healthz`, CORS-open) so the server is reachable by ChatGPT (Developer Mode / Deep Research),
+  the OpenAI + Anthropic APIs, and Claude.ai remote connectors — one URL, no download. Server identity,
+  instructions and tool registration moved into a shared `src/mcpServer.ts` factory used by both
+  transports: stdio keeps the 24-tool surface; HTTP adds the OpenAI-contract `search`/`fetch` adapters
+  (`src/tools/openai.ts`, typed `<kind>:<key>` ids over items/pubs/videos/podcasts, transcripts
+  included) for 26. Public, no-auth (data is public, read-only). Ships a multi-stage `Dockerfile` +
+  systemd/nginx recipe; intended to run on the amira Linux host so live refresh reads the local Omeka
+  API. New `smoke:http` (round-trips a real MCP client over HTTP) added to `prepack-mcpb`. Verified:
+  typecheck + 13 unit + stdio smoke (24) + HTTP smoke (26) green. Deploy (hosting the endpoint) is the
+  remaining ops step, on the cluster's side.
 
 **Sequencing rule (the one that governs everything):** the server re-platforms onto the
 **Omeka S API first**. None of the examination findings are fixed on the dashboard-era data
@@ -109,6 +121,7 @@ nothing is silently lost.
 | D12 | `AMIRA_DASHBOARD_BASE` → **`AMIRA_SITE_BASE`**, accepting the old var with a deprecation warning for one minor version | Painless for existing installs |
 | D13 | Add **`get_podcast` / `get_video`** detail tools alongside the search tools | Transcripts are too big for search results; detail is where the capped transcript lives |
 | D14 | Companion skill renamed `africa-multiple` → **`amira-mcp`** (folder + `name:`) | Original D14 kept the name to avoid breaking installed copies; the repo rename to `amira-mcp-server` then made `africa-multiple` ambiguous against the user-level `africa-multiple-data` skill (the documented revisit condition), so the rename is now taken. Installed copies must be reinstalled under the new folder name |
+| D15 | **Dual transport**: keep the stdio `.mcpb` (offline, local Claude) AND add a remote Streamable HTTP endpoint (`server/http.js`) serving the 24 tools + OpenAI `search`/`fetch`; **public, no-auth** | One hosted URL reaches ChatGPT, the OpenAI/Anthropic APIs and Claude's remote connectors; the data is already public + read-only, so auth would add ops for no security gain. stdio stays the zero-setup local path; `search`/`fetch` are HTTP-only so the `.mcpb` surface is unchanged |
 
 ### 1.3 Examination-findings triage (nothing lost, nothing wasted)
 
