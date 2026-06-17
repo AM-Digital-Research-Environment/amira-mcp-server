@@ -66,7 +66,7 @@ try {
   check(Array.isArray(search.results) && search.results.length > 0, "search: results returned");
   const first = search.results?.[0];
   check(!!first?.id && !!first?.title && !!first?.url, "search: result has id/title/url");
-  check(/^(item|pub|video|podcast):/.test(first?.id ?? ""), "search: typed id");
+  check(/^(item|pub|video|podcast|project|section):/.test(first?.id ?? ""), "search: typed id");
 
   // fetch(id) → {id,title,text,url,metadata}
   const doc = await call("fetch", { id: first.id });
@@ -78,6 +78,13 @@ try {
   // transcript reach: a term likely only inside a video transcript
   const tv = await call("search", { query: "decolonial" });
   check(Array.isArray(tv.results), "search: transcript query returns results array");
+
+  // token-aware matching: multi-word and natural-language queries must match
+  // (the old whole-phrase substring search returned ~nothing for these)
+  const multi = await call("search", { query: "Yoruba architecture wall painting" });
+  check(multi.results?.length > 1, "search: multi-word query matches (tokenized)");
+  const nl = await call("search", { query: "which projects study migration in West Africa" });
+  check(nl.results?.length > 0, "search: natural-language query returns results");
 
   // a rich tool works over HTTP too
   const overview = await call("get_collection_overview", {});

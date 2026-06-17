@@ -10,7 +10,7 @@
 // HTTP transport (src/http.ts), so the stdio .mcpb keeps its 24-tool surface.
 //
 // `id` is typed as `<kind>:<key>` (item:<dre_id>, pub:<pub_id>, video:<o_id>,
-// podcast:<o_id>) so fetch can route back to the right record.
+// podcast:<o_id>, project:<dre_id>, section:<o_id>) so fetch can route back.
 import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import type { DataStore } from "../data.js";
@@ -45,48 +45,101 @@ function placeWithCountry(store: DataStore, label: string, oId: number | null): 
   return country && country !== label ? `${label} (${country})` : label;
 }
 
-/** Rank the readable corpora (items, publications, videos, podcasts) for a query. */
+// Common EN/FR function words — dropped from queries so a natural-language
+// question ("which projects study migration?") matches on its content words.
+const STOPWORDS = new Set(
+  (
+    "the a an of in on at to for and or but with by from as is are was were be been which who whom whose what when " +
+    "where why how do does did about into over across this that these those there here their them they our your you we it its not no " +
+    "le la les un une des de du et ou mais avec par pour dans sur qui que quoi dont est sont ete etre ce ces cette aux au se sa son ses"
+  )
+    .split(/\s+/)
+    .filter(Boolean),
+);
+
+/** Lowercase content terms (>=2 chars, no stopwords, de-duplicated). */
+function tokenize(q: string): string[] {
+  const toks = q
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
+  return [...new Set(toks)];
+}
+
+function anyHas(strings: (string | null | undefined)[], term: string): boolean {
+  return strings.some((s) => containsCI(s, term));
+}
+
+/**
+ * Token-aware relevance: each query term scores at the weight of the best field
+ * it appears in (title 3 / mid 2 / body 1), so matches accumulate by how many
+ * terms land and where. A full-phrase title hit adds a bonus. This is what lets
+ * multi-word and natural-language queries match — the old whole-phrase substring
+ * test returned nothing for anything but an exact phrase.
+ */
+function scoreRecord(
+  terms: string[],
+  phrase: string,
+  title: (string | null | undefined)[],
+  mid: (string | null | undefined)[],
+  body: (string | null | undefined)[],
+): number {
+  let s = 0;
+  for (const t of terms) {
+    if (anyHas(title, t)) s += 3;
+    else if (anyHas(mid, t)) s += 2;
+    else if (anyHas(body, t)) s += 1;
+  }
+  if (s > 0 && terms.length > 1 && anyHas(title, phrase)) s += 4;
+  return s;
+}
+
+/** Rank the readable corpora (items, publications, videos, podcasts, projects,
+ * research sections) for a query by token-aware relevance. */
 function runSearch(store: DataStore, query: string): Hit[] {
-  const q = query.trim();
-  if (!q) return [];
+  const phrase = query.trim().toLowerCase();
+  const terms = tokenize(query);
+  if (!terms.length) return [];
   const hits: Hit[] = [];
+  const add = (id: string, title: string, url: string, score: number) => {
+    if (score > 0) hits.push({ id, title, url, score });
+  };
 
   for (const it of store.items) {
-    let s = 0;
-    if (containsCI(it.title, q)) s += 3;
-    if (it.alt_titles.some((t) => containsCI(t, q))) s += 2;
-    if (it.subjects.some((x) => containsCI(x.label, q))) s += 1;
-    if (containsCI(it.abstract, q) || containsCI(it.description, q) || containsCI(it.toc, q)) s += 1;
-    if (it.contributors.some((c) => containsCI(c.name, q))) s += 1;
-    if (it.identifiers.some((d) => containsCI(d, q)) || it.dre_id.toLowerCase() === q.toLowerCase()) s += 2;
-    if (s > 0) hits.push({ id: `item:${it.dre_id}`, title: it.title, url: itemUrl(it.o_id), score: s });
+    add(
+      `item:${it.dre_id}`, it.title, itemUrl(it.o_id),
+      scoreRecord(terms, phrase,
+        [it.title, ...it.alt_titles],
+        [...refLabels(it.subjects), ...it.contributors.map((c) => c.name), ...it.places.map((p) => p.label), ...refLabels(it.formats), ...it.identifiers, it.dre_id],
+        [it.abstract, it.description, it.toc]),
+    );
   }
-
   for (const p of store.publications) {
-    let s = 0;
-    if (containsCI(p.title, q)) s += 3;
-    if (p.authors.some((a) => containsCI(a.label, q)) || p.editors.some((e) => containsCI(e.label, q))) s += 1;
-    if (containsCI(p.abstract, q) || containsCI(p.venue, q)) s += 1;
-    if (p.subjects.some((x) => containsCI(x.label, q))) s += 1;
-    if (s > 0) hits.push({ id: `pub:${p.pub_id}`, title: p.title, url: p.doi ?? p.urls[0] ?? itemUrl(p.o_id), score: s });
+    add(
+      `pub:${p.pub_id}`, p.title, p.doi ?? p.urls[0] ?? itemUrl(p.o_id),
+      scoreRecord(terms, phrase, [p.title], [...refLabels(p.authors), ...refLabels(p.editors), p.venue, ...refLabels(p.subjects)], [p.abstract]),
+    );
   }
-
   for (const v of store.videos) {
-    let s = 0;
-    if (containsCI(v.title, q)) s += 3;
-    if (containsCI(v.abstract, q)) s += 1;
-    if (containsCI(v.transcript, q)) s += 2; // transcript hits are the point of video search
-    if (v.speakers.some((c) => containsCI(c.name, q))) s += 1;
-    if (s > 0) hits.push({ id: `video:${v.o_id}`, title: v.title, url: v.url ?? itemUrl(v.o_id), score: s });
+    add(
+      `video:${v.o_id}`, v.title, v.url ?? itemUrl(v.o_id),
+      scoreRecord(terms, phrase, [v.title], [...v.speakers.map((c) => c.name), ...refLabels(v.playlists)], [v.abstract, v.transcript]),
+    );
   }
-
   for (const p of store.podcasts) {
-    let s = 0;
-    if (containsCI(p.title, q)) s += 3;
-    if (containsCI(p.abstract, q)) s += 1;
-    if (containsCI(p.transcript, q)) s += 2;
-    if (p.people.some((c) => containsCI(c.name, q))) s += 1;
-    if (s > 0) hits.push({ id: `podcast:${p.o_id}`, title: p.title, url: p.url ?? itemUrl(p.o_id), score: s });
+    add(
+      `podcast:${p.o_id}`, p.title, p.url ?? itemUrl(p.o_id),
+      scoreRecord(terms, phrase, [p.title], [...p.people.map((c) => c.name), p.series?.label], [p.abstract, p.transcript]),
+    );
+  }
+  for (const p of store.projects) {
+    add(
+      `project:${p.dre_id}`, p.name, itemUrl(p.o_id),
+      scoreRecord(terms, phrase, [p.name], [...refLabels(p.sections), ...refLabels(p.pis), ...refLabels(p.members), ...refLabels(p.funded_by)], [p.description]),
+    );
+  }
+  for (const s of store.sections) {
+    add(`section:${s.o_id}`, s.name, itemUrl(s.o_id), scoreRecord(terms, phrase, [s.name], [...refLabels(s.pis)], [s.description]));
   }
 
   return hits.sort((a, b) => b.score - a.score).slice(0, SEARCH_LIMIT);
@@ -242,6 +295,58 @@ function fetchDoc(store: DataStore, id: string): Record<string, unknown> {
     };
   }
 
+  if (kind === "project") {
+    const p = store.getProject(key);
+    if (!p) return notFound;
+    const itemCount = store.itemsForProject(p.o_id).length;
+    const text = joinLines(
+      `Project: ${p.name}`,
+      `University: ${UNIVERSITY_LABELS[p.university]}`,
+      refLabels(p.sections).length ? `Research sections: ${refLabels(p.sections).join("; ")}` : null,
+      refLabels(p.pis).length ? `Principal investigators: ${refLabels(p.pis).join("; ")}` : null,
+      refLabels(p.members).length ? `Members: ${refLabels(p.members).join("; ")}` : null,
+      refLabels(p.funded_by).length ? `Funded by: ${refLabels(p.funded_by).join("; ")}` : null,
+      p.date.start || p.date.end ? `Dates: ${[p.date.start, p.date.end].filter(Boolean).join(" – ")}` : null,
+      itemCount ? `Digitised items: ${itemCount}` : null,
+      p.description ? `\nDescription:\n${p.description}` : null,
+    );
+    const { text: body, truncated } = capText(text);
+    return {
+      id,
+      title: p.name,
+      text: body,
+      url: itemUrl(p.o_id),
+      metadata: compact({
+        kind: "project",
+        dre_id: p.dre_id,
+        university: UNIVERSITY_LABELS[p.university],
+        research_sections: refLabels(p.sections),
+        item_count: itemCount,
+        truncated: truncated || undefined,
+      }),
+    };
+  }
+
+  if (kind === "section") {
+    const s = store.sections.find((x) => x.o_id === Number(key));
+    if (!s) return notFound;
+    const text = joinLines(
+      `Research section: ${s.name}`,
+      s.date.start || s.date.end ? `Dates: ${[s.date.start, s.date.end].filter(Boolean).join(" – ")}` : null,
+      refLabels(s.pis).length ? `Principal investigators: ${refLabels(s.pis).join("; ")}` : null,
+      s.spokesperson ? `Spokesperson: ${s.spokesperson}` : null,
+      s.description ? `\nDescription:\n${s.description}` : null,
+    );
+    const { text: body, truncated } = capText(text);
+    return {
+      id,
+      title: s.name,
+      text: body,
+      url: itemUrl(s.o_id),
+      metadata: compact({ kind: "research_section", dates: s.date, truncated: truncated || undefined }),
+    };
+  }
+
   return notFound;
 }
 
@@ -252,13 +357,17 @@ export function registerOpenAITools(server: Server): void {
     {
       title: "Search the AMIRA collection",
       description:
-        "Search the Africa Multiple (AMIRA) research collection and return matching records as a ranked " +
-        "list. Covers research items (digitised artefacts), the cluster bibliography, and podcast + " +
-        "YouTube-video records (keyword reaches INTO video/podcast transcripts). Returns " +
-        "{ results: [{ id, title, url }] }; pass an `id` to the fetch tool for the full record text. " +
-        "This is the ChatGPT/OpenAI-compatible entry point; richer filtered tools are also available.",
+        "Search the Africa Multiple (AMIRA) research collection and return matching records, ranked by " +
+        "relevance. Covers research items (digitised artefacts), the cluster bibliography, podcasts and " +
+        "YouTube videos (search reaches INTO their transcripts), and the cluster's projects and research " +
+        "sections. Query terms are matched individually, so use a few concise keywords, names, places or " +
+        "themes rather than a full sentence. Returns { results: [{ id, title, url }] }; pass an `id` to " +
+        "the fetch tool for the full record text. (This is the OpenAI/ChatGPT-compatible entry point; " +
+        "richer filtered tools — search_research_items, find_related, list_* — are also available.)",
       annotations: annotate("Search the AMIRA collection"),
-      inputSchema: { query: z.string().describe("Search terms, e.g. 'Yoruba architecture' or 'decoloniality'") },
+      inputSchema: {
+        query: z.string().describe("A few keywords/names/themes, e.g. 'Yoruba architecture' or 'migration West Africa'"),
+      },
     },
     async ({ query }) => {
       const store = await ensureStore();
@@ -274,9 +383,10 @@ export function registerOpenAITools(server: Server): void {
       title: "Fetch one AMIRA record",
       description:
         "Retrieve the full text and metadata of one AMIRA record by the `id` returned from the search tool " +
-        "(e.g. 'item:abg-99-0000', 'pub:eref-94882', 'video:39218', 'podcast:39121'). Returns " +
-        "{ id, title, text, url, metadata } — `text` concatenates the record's descriptive fields (and the " +
-        "full transcript for videos/podcasts), `url` is the citable public page, capped at 25,000 characters.",
+        "(e.g. 'item:abg-99-0000', 'project:UBT_ArtWorld2019', 'pub:eref-94882', 'video:39218', " +
+        "'podcast:39121', 'section:218'). Returns { id, title, text, url, metadata } — `text` concatenates " +
+        "the record's descriptive fields (and the full transcript for videos/podcasts), `url` is the " +
+        "citable public page, capped at 25,000 characters.",
       annotations: annotate("Fetch one AMIRA record"),
       inputSchema: { id: z.string().describe("A typed record id from search, e.g. 'item:abg-99-0000'") },
     },
