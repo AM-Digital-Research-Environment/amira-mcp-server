@@ -66,6 +66,13 @@
   API. New `smoke:http` (round-trips a real MCP client over HTTP) added to `prepack-mcpb`. Verified:
   typecheck + 13 unit + stdio smoke (24) + HTTP smoke (26) green. Deploy (hosting the endpoint) is the
   remaining ops step, on the cluster's side.
+- **2026-06-17 (later) — endpoint deployed; `search` fix; v1.3.0 released.** The HTTP endpoint went
+  live on the amira host. Probing it as a ChatGPT connector exposed a recall bug: the OpenAI `search`
+  tool matched the whole query as one substring, so multi-word / natural-language queries (what ChatGPT
+  sends) returned ~0 — "Yoruba architecture" → 1, a full question → 0. Fixed to tokenize, drop EN/FR
+  stopwords, and score per term (1 → 20, 0 → 20), and extended `search`/`fetch` to cover projects and
+  research sections; README documents the surface. **v1.3.0 tagged + released** (CI green, `.mcpb`
+  attached). The live endpoint must be redeployed from this tag to serve the fix.
 
 **Sequencing rule (the one that governs everything):** the server re-platforms onto the
 **Omeka S API first**. None of the examination findings are fixed on the dashboard-era data
