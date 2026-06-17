@@ -95,6 +95,11 @@ data). The remote surface serves the same 24 tools **plus** the
 OpenAI-compatible `search` / `fetch` tools that ChatGPT's connectors require (26
 total). Access is unauthenticated — the data is public and read-only.
 
+`search` takes plain keywords (matched term-by-term, not as an exact phrase) and
+returns ranked hits across research items, the bibliography, podcasts, videos,
+projects and research sections; `fetch` returns one record's full text — for
+videos and podcasts, the transcript too — by the id `search` hands back.
+
 ```bash
 npm run build && npm run start:http     # → http://localhost:8787/mcp
 # or, self-contained, via Docker:
