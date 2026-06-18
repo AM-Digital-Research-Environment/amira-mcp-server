@@ -8,6 +8,7 @@ import {
   capOffset,
   containsCI,
   filtersEcho,
+  limitEcho,
   pageOf,
   subjectEntry,
   textResult,
@@ -67,6 +68,7 @@ export function registerFacetTools(server: Server): void {
       return textResult(
         pageOf(ranked, offset, limit, (r) => subjectEntry(r.label, r.o_id, r.count), {
           distinct_subjects: ranked.length,
+          ...limitEcho(args.limit, 300, limit),
           ...filtersEcho(args),
         }),
       );
@@ -79,19 +81,18 @@ export function registerFacetTools(server: Server): void {
     {
       title: "List locations",
       description:
-        "List the places research items come from, ranked by item count, at a chosen level of the place " +
-        "hierarchy (locations link upward city → region → country).\n" +
+        "List every place the research items come from, ranked by item count — countries and cities in " +
+        "one flat list (there is no city/region/country level to choose). The place hierarchy is rolled " +
+        "up, so an item from Lagos counts toward both Lagos and Nigeria, and both appear.\n" +
         "Parameters:\n" +
-        "  - level: 'country' (default), 'region' or 'city'\n" +
-        "  - country: restrict regions/cities to one country\n" +
+        "  - country: narrow to places within one country (the country itself plus its cities/regions)\n" +
         "  - keyword: substring filter on the place name\n" +
         "  - limit (default 50, max 300), offset\n\n" +
-        "Each result: name, level, country (for region/city), item_count, latitude/longitude when known, " +
-        "and the place's `amira_url`. Items count toward a place AND its ancestors (an item from Lagos " +
-        "counts for Nigeria). Use the name as the `location`/`country` filter of search_research_items.",
+        "Each result: name, country (the parent country, omitted when the place is itself a country), " +
+        "item_count, latitude/longitude when known, and the place's `amira_url`. Feed the name straight " +
+        "into the `location` filter of search_research_items.",
       annotations: annotate("List locations"),
       inputSchema: {
-        level: z.enum(["country", "region", "city"]).optional().describe("Default 'country'"),
         country: z.string().optional(),
         keyword: z.string().optional(),
         limit: z.number().int().optional().describe("Default 50, max 300"),
@@ -100,12 +101,8 @@ export function registerFacetTools(server: Server): void {
     },
     async (args) => {
       const store = await ensureStore();
-      const level = args.level ?? "country";
       const limit = capLimit(args.limit, 50, 300);
       const offset = capOffset(args.offset);
-
-      // Depth in the location hierarchy: 0 = country, 1 = region, 2+ = city.
-      const wantedDepth = level === "country" ? 0 : level === "region" ? 1 : 2;
 
       interface PlaceCount extends RefCount {
         country: string | null;
@@ -114,26 +111,19 @@ export function registerFacetTools(server: Server): void {
       for (const it of store.items) {
         const seen = new Set<string>();
         for (const ref of it.places) {
-          // The place plus its ancestors, each at its own depth.
+          // The place plus its ancestors — each distinct name counts once per item.
           const chain = store.placeChain(ref); // [self, parent, ..., root]
+          const root = chain[chain.length - 1]!;
           for (let i = 0; i < chain.length; i++) {
-            const depth = chain.length - 1 - i;
-            const matches = level === "city" ? depth >= wantedDepth : depth === wantedDepth;
-            if (!matches) continue;
             const label = chain[i]!;
-            const root = chain[chain.length - 1]!;
-            const key = `${label}|${root}`.toLowerCase();
+            const isCountry = i === chain.length - 1;
+            const key = label.toLowerCase();
             if (seen.has(key)) continue;
             seen.add(key);
-            if (args.country && !containsCI(root, args.country) && depth > 0) continue;
-            if (args.country && depth === 0 && !containsCI(label, args.country)) continue;
+            // country filter keeps the country itself and any place under it.
+            if (args.country && !(containsCI(label, args.country) || containsCI(root, args.country))) continue;
             const oId = i === 0 ? ref.o_id : (store.getLocationByName(label)?.o_id ?? null);
-            const rec = counts.get(key) ?? {
-              label,
-              o_id: oId,
-              count: 0,
-              country: depth === 0 ? null : root,
-            };
+            const rec = counts.get(key) ?? { label, o_id: oId, count: 0, country: isCountry ? null : root };
             rec.count += 1;
             if (rec.o_id == null && oId != null) rec.o_id = oId;
             counts.set(key, rec);
@@ -153,7 +143,6 @@ export function registerFacetTools(server: Server): void {
             const loc = r.o_id != null ? store.getLocation(r.o_id) : undefined;
             return {
               name: r.label,
-              level,
               ...(r.country ? { country: r.country } : {}),
               item_count: r.count,
               latitude: loc?.latitude ?? null,
@@ -161,7 +150,11 @@ export function registerFacetTools(server: Server): void {
               amira_url: itemUrlOrNull(r.o_id),
             };
           },
-          { level, distinct_places: ranked.length, ...filtersEcho({ country: args.country, keyword: args.keyword }) },
+          {
+            distinct_places: ranked.length,
+            ...limitEcho(args.limit, 300, limit),
+            ...filtersEcho({ country: args.country, keyword: args.keyword }),
+          },
         ),
       );
     },
@@ -204,7 +197,7 @@ export function registerFacetTools(server: Server): void {
           offset,
           limit,
           (r) => ({ collection: r.title, id: r.oId, item_count: r.count, amira_url: itemSetUrl(r.oId) }),
-          { distinct_collections: ranked.length, ...filtersEcho(args) },
+          { distinct_collections: ranked.length, ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
         ),
       );
     },
@@ -267,7 +260,12 @@ export function registerFacetTools(server: Server): void {
             item_count: r.count,
             amira_url: itemUrlOrNull(r.o_id),
           }),
-          { category, distinct_values: ranked.length, ...filtersEcho({ keyword: args.keyword }) },
+          {
+            category,
+            distinct_values: ranked.length,
+            ...limitEcho(args.limit, 500, limit),
+            ...filtersEcho({ keyword: args.keyword }),
+          },
         ),
       );
     },
@@ -356,6 +354,7 @@ export function registerFacetTools(server: Server): void {
             dated_items: datedItems,
             undated_items: undatedItems,
             ...(yearRange ? { year_range: yearRange } : {}),
+            ...limitEcho(args.limit, 500, limit),
             ...filtersEcho({ from, to }),
           },
         ),

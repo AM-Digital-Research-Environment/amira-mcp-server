@@ -70,10 +70,15 @@ coordinates and Wikidata link when reconciled.
 
 ## Podcast episode / YouTube video
 
-Podcasts: `title`, `series`, `episode`, `date`, `abstract`, `people[]` (speaker/host/sound engineer),
-`url`, `transcript` (none filled as of 2026-06 — `has_transcript` tells you). Videos: `title`,
-`date`, `abstract`, `playlists[]`, `speakers[]`, `languages[]`, watch `url`, `transcript` (91/140
-filled; capped at 25k chars in `get_video`, searchable in full via `search_videos`).
+Podcasts: `title`, `series`, `episode`, `date`, `date_status` (published/scheduled/unknown),
+`abstract`, `people[]` (speaker/host/sound engineer), `url`, plus `has_transcript` /
+`transcript_length` (no episode carries a transcript as of 2026-06). Videos: `title`, `date`,
+`date_status`, `abstract`, `playlists[]`, `speakers[]`, `languages[]`, watch `url`, `has_transcript`
+(91/140 filled). Transcripts are searchable in full via `search_videos` (a transcript hit returns a
+`transcript_snippet`), but the detail tools (`get_video` / `get_podcast`) **omit the transcript text
+unless `include_transcript=true`** — then `transcript_offset` / `transcript_max_chars` page it (cap
+25k chars per call). The ChatGPT `fetch` tool appends the transcript by default; `include_transcript=false`
+/ `max_chars` bound it.
 
 ## Relationships to exploit
 

@@ -7,7 +7,9 @@ import {
   capOffset,
   containsCI,
   equalsCI,
+  errorResult,
   filtersEcho,
+  limitEcho,
   pageOf,
   projectSummary,
   refLabels,
@@ -82,7 +84,10 @@ export function registerProjectTools(server: Server): void {
       });
 
       return textResult(
-        pageOf(filtered, offset, limit, (p) => projectSummary(p, store.itemsForProject(p.o_id).length), filtersEcho(args)),
+        pageOf(filtered, offset, limit, (p) => projectSummary(p, store.itemsForProject(p.o_id).length), {
+          ...limitEcho(args.limit, 100, limit),
+          ...filtersEcho(args),
+        }),
       );
     },
   );
@@ -104,7 +109,7 @@ export function registerProjectTools(server: Server): void {
       const store = await ensureStore();
       const p = store.getProject(id);
       if (!p) {
-        return textResult({ error: `No project with id '${id}'. Use search_projects to find valid ids.` });
+        return errorResult("not_found", `No project with id '${id}'.`, { suggested_tool: "search_projects" });
       }
       const items = store.itemsForProject(p.o_id);
 

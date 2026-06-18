@@ -14,6 +14,19 @@ import { nameMatchesQuery } from "../names.js";
 
 type EntityType = "subject" | "location" | "person" | "project";
 
+/** How `value` is matched for each pivot — surfaced in the response and the tool
+ * description so the (sometimes surprising) counts are self-explaining (report §8). */
+const MATCHING: Record<EntityType, string> = {
+  subject:
+    "Items whose subject label CONTAINS the value (substring, case-insensitive; subjects include the former free-form tags). " +
+    "This is why matched_items can exceed an exact-heading count — and differ from list_subjects, which lists distinct headings, not items.",
+  location:
+    "Items whose place matches the value at ANY level of the city→country hierarchy (so 'Nigeria' also matches Lagos items).",
+  person:
+    "Items crediting a contributor whose name matches the value in either order and accent-insensitively (e.g. 'Ulli Beier' = 'Beier, Ulli').",
+  project: "Items in the project whose dre_id equals the value, or whose project label contains it.",
+};
+
 function topN(map: Map<string, number>, n: number): { name: string; count: number }[] {
   return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([name, count]) => ({ name, count }));
 }
@@ -38,10 +51,16 @@ export function registerRelatedTools(server: Server): void {
         "  - value (required): e.g. subject 'Islam', location 'Nigeria', person 'Beier, Ulli', project " +
         "'UBT_ArtWorld2019'\n" +
         "  - limit: max entries per related list (default 20, max 50)\n\n" +
+        "Matching semantics (also echoed in the response `matching` field):\n" +
+        "  - subject: substring match on subject labels (incl. former tags) — `matched_items` counts " +
+        "ITEMS, so it can differ from list_subjects, which counts distinct headings\n" +
+        "  - location: matches any level of the city→country hierarchy ('Nigeria' includes Lagos items)\n" +
+        "  - person: name match in either order, accent-insensitive\n" +
+        "  - project: dre_id equality or project-label substring\n\n" +
         "Returns the matched-item count plus ranked related_projects, related_research_sections, " +
-        "related_subjects, related_people, related_countries and related_formats (with co-occurrence " +
-        "counts), up to 10 sample_items (slim refs), and the seed's `amira_url` when resolvable. " +
-        "Returns matched_items=0 if nothing matches.",
+        "related_subjects, related_people, related_countries (rolled up to each place's top-level " +
+        "country) and related_formats (with co-occurrence counts), up to 10 sample_items (slim refs), " +
+        "and the seed's `amira_url` when resolvable. Returns matched_items=0 if nothing matches.",
       annotations: annotate("Find related entities"),
       inputSchema: {
         entity_type: z.enum(["subject", "location", "person", "project"]),
@@ -110,6 +129,7 @@ export function registerRelatedTools(server: Server): void {
       return textResult({
         entity_type: type,
         value,
+        matching: MATCHING[type],
         amira_url: itemUrlOrNull(seedOId),
         matched_items: seed.length,
         related_projects: topN(projects, limit),

@@ -73,6 +73,30 @@
   stopwords, and score per term (1 → 20, 0 → 20), and extended `search`/`fetch` to cover projects and
   research sections; README documents the surface. **v1.3.0 tagged + released** (CI green, `.mcpb`
   attached). The live endpoint must be redeployed from this tag to serve the fix.
+- **2026-06-18 — v1.4.0: ChatGPT test-report fixes (usability + clarity).** A 26-tool audit (via the
+  live ChatGPT connector) flagged response-size, matching-semantics, geodata and date issues — none
+  were crashes. Addressed across tools + skill + README + manifest:
+  - **Geodata simplified (owner decision).** Dropped the city/region/country *level* taxonomy
+    (`level=city&country=Nigeria` returned nothing because cities sit directly under countries here).
+    `list_locations` is now one flat, item-count-ranked list (hierarchy rolled up); `search_research_items`
+    keeps a single hierarchy-aware `location` filter — the separate `country` filter is removed (a stray
+    legacy `country` arg is routed to `location`, so nothing silently breaks).
+  - **Transcripts opt-in.** `get_video` / `get_podcast` omit the transcript by default (expose
+    `has_transcript` + `transcript_length`); `include_transcript=true` + `transcript_offset` /
+    `transcript_max_chars` page it (cap 25k/call). `search_videos` / `search_podcasts` return a
+    `transcript_snippet` around transcript matches. ChatGPT `fetch` keeps the transcript by default (the
+    connector can't pass flags) but gains `include_transcript` / `max_chars`; `search` gains `limit` + `types`.
+  - **Zero-result relaxation hints.** `search_research_items` returns `suggestions` (which single filter to
+    drop, and how many items that surfaces) when a strict AND set matches nothing.
+  - **Effective-limit reporting.** Capped `limit` now echoes `requested_limit` / `effective_limit`.
+  - **find_related matching documented.** Description + a response `matching` field explain substring vs
+    name vs hierarchy vs id matching, and why `matched_items` (items) can differ from `list_subjects`
+    (headings) — the count discrepancy the report queried.
+  - **Date quality.** Podcasts/videos carry `date_status` (published/scheduled/unknown), flagging
+    future-dated records without hiding them.
+  - **Uniform errors.** Misses return `{ error: { code, message, suggested_tool?, available_values? } }`.
+  - Verified: typecheck + 13 unit + stdio smoke (24) + HTTP smoke (26) green. Deferred to §4 (need
+    use-case/data work): multi-format citation export (RIS/CSL) and authority-alias/matched-form metadata.
 
 **Sequencing rule (the one that governs everything):** the server re-platforms onto the
 **Omeka S API first**. None of the examination findings are fixed on the dashboard-era data
@@ -328,6 +352,13 @@ covers the long tail):
 - **Done (v1.2.0):** `list_years` / date-histogram facet — year/decade buckets, `from`/`to` window,
   `chronological|count` sort; ranged items count toward every year they span (mirrors the year filter).
 - `find_related` upgrades: multi-seed AND, year-windowed co-occurrence.
+- **Citation export for research items** (report §8, deferred from v1.4.0): a generated citation string
+  and multi-format export (BibTeX/RIS/CSL-JSON) on `get_research_item`, mirroring `get_publication`'s
+  BibTeX. Needs a format decision + a `citation_style` param design; items already expose the raw
+  `citation` (dcterms:bibliographicCitation).
+- **Authority reconciliation metadata** (report §9, deferred from v1.4.0): return aliases + the matched
+  form for people/institutions/places so name-order/accent matching is auditable. Blocked on data —
+  aliases aren't in the current snapshot; needs a transform-pipeline change to carry them.
 - **Semantic search** over descriptions/abstracts/transcripts — IWAC-parity, env-gated,
   embeddings **precomputed offline in the fetch pipeline** (never at request time),
   `gemini-embedding-2`. Exploratory: needs a corpus-fit check first.

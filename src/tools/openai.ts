@@ -14,10 +14,32 @@
 import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import type { DataStore } from "../data.js";
-import { annotate, capText, containsCI, refLabels, textResult, yearLabel, type Server } from "./_shared.js";
+import {
+  annotate,
+  capText,
+  CHARACTER_LIMIT,
+  containsCI,
+  dateStatus,
+  refLabels,
+  textResult,
+  yearLabel,
+  type Server,
+} from "./_shared.js";
 import { itemUrl } from "../urls.js";
 
-const SEARCH_LIMIT = 20;
+const DEFAULT_SEARCH_LIMIT = 10;
+const MAX_SEARCH_LIMIT = 50;
+
+/** Friendly record-kind tokens (the `types` filter) → typed-id prefixes. */
+const TYPE_PREFIX: Record<string, string> = {
+  item: "item:",
+  publication: "pub:",
+  video: "video:",
+  podcast: "podcast:",
+  project: "project:",
+  section: "section:",
+};
+type SearchType = keyof typeof TYPE_PREFIX;
 
 interface Hit {
   id: string;
@@ -95,8 +117,9 @@ function scoreRecord(
 }
 
 /** Rank the readable corpora (items, publications, videos, podcasts, projects,
- * research sections) for a query by token-aware relevance. */
-function runSearch(store: DataStore, query: string): Hit[] {
+ * research sections) for a query by token-aware relevance, optionally restricted
+ * to a set of record kinds and capped at `limit`. */
+function runSearch(store: DataStore, query: string, limit: number, types?: SearchType[]): Hit[] {
   const phrase = query.trim().toLowerCase();
   const terms = tokenize(query);
   if (!terms.length) return [];
@@ -142,14 +165,23 @@ function runSearch(store: DataStore, query: string): Hit[] {
     add(`section:${s.o_id}`, s.name, itemUrl(s.o_id), scoreRecord(terms, phrase, [s.name], [...refLabels(s.pis)], [s.description]));
   }
 
-  return hits.sort((a, b) => b.score - a.score).slice(0, SEARCH_LIMIT);
+  let ranked = hits.sort((a, b) => b.score - a.score);
+  if (types && types.length) {
+    const prefixes = types.map((t) => TYPE_PREFIX[t]).filter((p): p is string => !!p);
+    if (prefixes.length) ranked = ranked.filter((h) => prefixes.some((p) => h.id.startsWith(p)));
+  }
+  return ranked.slice(0, limit);
 }
 
-function fetchDoc(store: DataStore, id: string): Record<string, unknown> {
+function fetchDoc(
+  store: DataStore,
+  id: string,
+  opts: { includeTranscript: boolean; maxChars: number },
+): Record<string, unknown> {
   const sep = id.indexOf(":");
   const kind = sep === -1 ? id : id.slice(0, sep);
   const key = sep === -1 ? "" : id.slice(sep + 1);
-  const notFound = { error: `No record with id '${id}'. Use the search tool to obtain valid ids.` };
+  const notFound = { error: { code: "not_found", message: `No record with id '${id}'.`, suggested_tool: "search" } };
 
   if (kind === "item") {
     const it = store.getItem(key);
@@ -175,7 +207,7 @@ function fetchDoc(store: DataStore, id: string): Record<string, unknown> {
       it.description ? `\nDescription:\n${it.description}` : null,
       it.toc ? `\nTable of contents:\n${it.toc}` : null,
     );
-    const { text: body, truncated } = capText(text);
+    const { text: body, truncated } = capText(text, opts.maxChars);
     return {
       id,
       title: it.title,
@@ -214,7 +246,7 @@ function fetchDoc(store: DataStore, id: string): Record<string, unknown> {
       p.doi ? `DOI: ${p.doi}` : null,
       p.abstract ? `\nAbstract:\n${p.abstract}` : null,
     );
-    const { text: body, truncated } = capText(text);
+    const { text: body, truncated } = capText(text, opts.maxChars);
     return {
       id,
       title: p.title,
@@ -244,9 +276,9 @@ function fetchDoc(store: DataStore, id: string): Record<string, unknown> {
       v.playlists.length ? `Playlists: ${refLabels(v.playlists).join("; ")}` : null,
       v.url ? `Watch: ${v.url}` : null,
       v.abstract ? `\nDescription:\n${v.abstract}` : null,
-      v.transcript ? `\nTranscript:\n${v.transcript}` : null,
+      opts.includeTranscript && v.transcript ? `\nTranscript:\n${v.transcript}` : null,
     );
-    const { text: body, truncated } = capText(text);
+    const { text: body, truncated } = capText(text, opts.maxChars);
     return {
       id,
       title: v.title,
@@ -255,9 +287,12 @@ function fetchDoc(store: DataStore, id: string): Record<string, unknown> {
       metadata: compact({
         kind: "youtube_video",
         date: v.date,
+        date_status: dateStatus(v.date),
         playlists: refLabels(v.playlists),
         speakers: v.speakers.map((c) => c.name),
         has_transcript: !!v.transcript,
+        transcript_included: opts.includeTranscript && !!v.transcript,
+        transcript_length: v.transcript?.length ?? 0,
         amira_url: itemUrl(v.o_id),
         truncated: truncated || undefined,
       }),
@@ -275,9 +310,9 @@ function fetchDoc(store: DataStore, id: string): Record<string, unknown> {
       p.people.length ? `People: ${p.people.map((c) => (c.role ? `${c.name} (${c.role})` : c.name)).join("; ")}` : null,
       p.url ? `Listen: ${p.url}` : null,
       p.abstract ? `\nDescription:\n${p.abstract}` : null,
-      p.transcript ? `\nTranscript:\n${p.transcript}` : null,
+      opts.includeTranscript && p.transcript ? `\nTranscript:\n${p.transcript}` : null,
     );
-    const { text: body, truncated } = capText(text);
+    const { text: body, truncated } = capText(text, opts.maxChars);
     return {
       id,
       title: p.title,
@@ -288,7 +323,9 @@ function fetchDoc(store: DataStore, id: string): Record<string, unknown> {
         series: p.series?.label ?? null,
         episode: p.episode,
         date: p.date,
+        date_status: dateStatus(p.date),
         has_transcript: !!p.transcript,
+        transcript_included: opts.includeTranscript && !!p.transcript,
         amira_url: itemUrl(p.o_id),
         truncated: truncated || undefined,
       }),
@@ -310,7 +347,7 @@ function fetchDoc(store: DataStore, id: string): Record<string, unknown> {
       itemCount ? `Digitised items: ${itemCount}` : null,
       p.description ? `\nDescription:\n${p.description}` : null,
     );
-    const { text: body, truncated } = capText(text);
+    const { text: body, truncated } = capText(text, opts.maxChars);
     return {
       id,
       title: p.name,
@@ -337,7 +374,7 @@ function fetchDoc(store: DataStore, id: string): Record<string, unknown> {
       s.spokesperson ? `Spokesperson: ${s.spokesperson}` : null,
       s.description ? `\nDescription:\n${s.description}` : null,
     );
-    const { text: body, truncated } = capText(text);
+    const { text: body, truncated } = capText(text, opts.maxChars);
     return {
       id,
       title: s.name,
@@ -361,17 +398,29 @@ export function registerOpenAITools(server: Server): void {
         "relevance. Covers research items (digitised artefacts), the cluster bibliography, podcasts and " +
         "YouTube videos (search reaches INTO their transcripts), and the cluster's projects and research " +
         "sections. Query terms are matched individually, so use a few concise keywords, names, places or " +
-        "themes rather than a full sentence. Returns { results: [{ id, title, url }] }; pass an `id` to " +
-        "the fetch tool for the full record text. (This is the OpenAI/ChatGPT-compatible entry point; " +
-        "richer filtered tools — search_research_items, find_related, list_* — are also available.)",
+        "themes rather than a full sentence. Optional `limit` (default 10, max 50) and `types` (restrict " +
+        "to item / publication / video / podcast / project / section) keep the result set tight. Returns " +
+        "{ results: [{ id, title, url }] }; pass an `id` to the fetch tool for the full record text. " +
+        "(This is the OpenAI/ChatGPT-compatible entry point; richer filtered tools — search_research_items, " +
+        "find_related, list_* — are also available.)",
       annotations: annotate("Search the AMIRA collection"),
       inputSchema: {
         query: z.string().describe("A few keywords/names/themes, e.g. 'Yoruba architecture' or 'migration West Africa'"),
+        limit: z.number().int().optional().describe("Max results, default 10, max 50"),
+        types: z
+          .array(z.enum(["item", "publication", "video", "podcast", "project", "section"]))
+          .optional()
+          .describe("Restrict to these record kinds"),
       },
     },
-    async ({ query }) => {
+    async ({ query, limit, types }) => {
       const store = await ensureStore();
-      const results = runSearch(store, query).map((h) => ({ id: h.id, title: h.title, url: h.url }));
+      const capped = Math.max(1, Math.min(Math.floor(limit ?? DEFAULT_SEARCH_LIMIT), MAX_SEARCH_LIMIT));
+      const results = runSearch(store, query, capped, types as SearchType[] | undefined).map((h) => ({
+        id: h.id,
+        title: h.title,
+        url: h.url,
+      }));
       return textResult({ results });
     },
   );
@@ -385,14 +434,20 @@ export function registerOpenAITools(server: Server): void {
         "Retrieve the full text and metadata of one AMIRA record by the `id` returned from the search tool " +
         "(e.g. 'item:abg-99-0000', 'project:UBT_ArtWorld2019', 'pub:eref-94882', 'video:39218', " +
         "'podcast:39121', 'section:218'). Returns { id, title, text, url, metadata } — `text` concatenates " +
-        "the record's descriptive fields (and the full transcript for videos/podcasts), `url` is the " +
-        "citable public page, capped at 25,000 characters.",
+        "the record's descriptive fields, `url` is the citable public page. For videos/podcasts the full " +
+        "transcript is appended by default; pass include_transcript=false to drop it, and `max_chars` to " +
+        "lower the cap (default/max 25,000 characters per call).",
       annotations: annotate("Fetch one AMIRA record"),
-      inputSchema: { id: z.string().describe("A typed record id from search, e.g. 'item:abg-99-0000'") },
+      inputSchema: {
+        id: z.string().describe("A typed record id from search, e.g. 'item:abg-99-0000'"),
+        include_transcript: z.boolean().optional().describe("Default true — set false to omit the video/podcast transcript"),
+        max_chars: z.number().int().optional().describe("Cap on returned text, default/max 25000"),
+      },
     },
-    async ({ id }) => {
+    async ({ id, include_transcript, max_chars }) => {
       const store = await ensureStore();
-      return textResult(fetchDoc(store, id));
+      const maxChars = Math.max(1, Math.min(Math.floor(max_chars ?? CHARACTER_LIMIT), CHARACTER_LIMIT));
+      return textResult(fetchDoc(store, id, { includeTranscript: include_transcript ?? true, maxChars }));
     },
   );
 }

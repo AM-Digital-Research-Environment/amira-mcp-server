@@ -47,14 +47,14 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `search_persons` / `get_person` | People (either name order works) — profile across projects, items, publications |
 | `list_institutions` / `get_institution` / `list_groups` | Organisations (institutions and research groups), their projects, people and items |
 | `list_subjects` | Subject headings (former tags merged in) ranked by item frequency |
-| `list_locations` | Places at country/region/city level via the place hierarchy, with coordinates |
+| `list_locations` | Every place — countries and cities in one flat list (hierarchy rolled up) — ranked by item count, with coordinates |
 | `list_collections` | Collections (item sets) ranked by research-item count — pair with the `collection` filter |
 | `list_categories` | Facet values: formats/genres, languages, resource types |
 | `list_years` | Date histogram of research items by year or decade — coverage over time, most-covered year/decade |
 | `search_publications` / `get_publication` | The cluster bibliography (incl. generated BibTeX) |
 | `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities |
-| `search_podcasts` / `get_podcast` | Cluster podcast episodes (transcript-ready) |
-| `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** |
+| `search_podcasts` / `get_podcast` | Cluster podcast episodes (transcript-ready; transcript opt-in on detail) |
+| `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; transcript opt-in on detail) |
 
 ### Example questions it can answer
 
@@ -63,7 +63,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | "What does the collection hold on Islam?" | `list_subjects keyword=Islam` → `search_research_items subject=Islam` |
 | "Show me all the **French**-language items" | `search_research_items language=French` (codes `fr`/`fra`/legacy `fre` work too) |
 | "What has Ulli Beier contributed?" | `get_person name="Ulli Beier"` (resolves to 'Beier, Ulli') |
-| "Which items come from **Nigeria**?" | `search_research_items country=Nigeria` (Lagos items count — the place hierarchy is walked) |
+| "Which items come from **Nigeria**?" | `search_research_items location=Nigeria` (Lagos items count too — `location` walks the place hierarchy, covering both countries and cities) |
 | "What audio recordings are in the ILAM collection?" | `search_research_items project_id=Ext_ILAM resource_type=Audio` |
 | "In which talks does anyone discuss **decoloniality**?" | `search_videos keyword=decolonial` (matches inside transcripts, flagged `matched_in`) |
 | "What themes travel with **Architecture** across projects?" | `find_related entity_type=subject value=Architecture` |
@@ -95,10 +95,13 @@ data). The remote surface serves the same 24 tools **plus** the
 OpenAI-compatible `search` / `fetch` tools that ChatGPT's connectors require (26
 total). Access is unauthenticated — the data is public and read-only.
 
-`search` takes plain keywords (matched term-by-term, not as an exact phrase) and
-returns ranked hits across research items, the bibliography, podcasts, videos,
-projects and research sections; `fetch` returns one record's full text — for
-videos and podcasts, the transcript too — by the id `search` hands back.
+`search` takes plain keywords (matched term-by-term, not as an exact phrase),
+with optional `limit` and `types` to keep the result set tight, and returns
+ranked hits across research items, the bibliography, podcasts, videos, projects
+and research sections; `fetch` returns one record's full text by the id `search`
+hands back — for videos and podcasts the transcript is appended by default, but
+`include_transcript=false` / `max_chars` bound the response when you only need
+the metadata.
 
 ```bash
 npm run build && npm run start:http     # → http://localhost:8787/mcp

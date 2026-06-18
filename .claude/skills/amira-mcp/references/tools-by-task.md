@@ -2,7 +2,10 @@
 
 All 24 tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
 `{ count, total_matches, offset, has_more, next_offset?, results[] }` (plus a `filters` echo of the
-filters you actually passed). Every record carries a citable `amira_url`.
+filters you actually passed). Ask for more than a tool's max and it also echoes `requested_limit` /
+`effective_limit`. `search_research_items` adds `suggestions` (which filter to drop) when a strict
+combination matches nothing. Lookups that miss return `{ error: { code, message, suggested_tool?,
+available_values? } }`. Every record carries a citable `amira_url`.
 
 ## Scoping
 
@@ -15,7 +18,7 @@ filters you actually passed). Every record carries a citable `amira_url`.
 | Task | Tool | Key params |
 | --- | --- | --- |
 | Find items about a subject | `search_research_items` | `subject` (e.g. "Islam", "Architecture") — tags are merged into subjects |
-| Find items from a place | `search_research_items` | `location` (hierarchy-aware: any level) or `country` (top level) |
+| Find items from a place | `search_research_items` | `location` — a country OR a city (hierarchy-aware: "Nigeria" includes Lagos items). One place filter, no level distinction |
 | Find items by a contributor | `search_research_items` | `contributor` (either name order) |
 | Items in a project / section / university | `search_research_items` | `project_id`, `research_section`, `university` |
 | By media type / language / format | `search_research_items` | `resource_type`, `language` (name or any ISO code incl. legacy `fre`/`ger`), `genre` (format descriptors) |
@@ -55,7 +58,7 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Task | Tool | Notes |
 | --- | --- | --- |
 | Subjects ranked by item count | `list_subjects` | Tags merged in; each subject links to its own authority page |
-| Places ranked by item count | `list_locations` | `level` = country/region/city via the place hierarchy; items count toward ancestors too; returns coordinates |
+| Places ranked by item count | `list_locations` | Flat list of every place — countries and cities together (hierarchy rolled up, so an item from Lagos counts toward both Lagos and Nigeria); optional `country` narrows; returns coordinates |
 | Collections ranked by item count | `list_collections` | Per-project + external item sets; feed the title/id into the `collection` filter of search_research_items |
 | Formats / languages / resource types | `list_categories` | `category` ∈ formats (alias: genres) / languages / resource_types |
 | Coverage over time (date histogram) | `list_years` | `bucket` = year/decade; `from`/`to` window; `sort` = chronological/count; ranged items count in every year they span |
@@ -71,10 +74,10 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 
 | Task | Tool | Key params |
 | --- | --- | --- |
-| Find podcast episodes | `search_podcasts` | `keyword`, `series`, `person`, year range |
-| One episode (+ transcript when available) | `get_podcast` | `id` (numeric, from search) |
-| Find videos — incl. INSIDE transcripts | `search_videos` | `keyword` (transcript hits flagged `matched_in`), `playlist`, `speaker`, `language`, year range |
-| One video + its transcript | `get_video` | `id` (numeric, from search); transcript capped at 25k chars |
+| Find podcast episodes | `search_podcasts` | `keyword`, `series`, `person`, year range; results carry `date_status` |
+| One episode (transcript opt-in) | `get_podcast` | `id` (numeric, from search); `include_transcript=true` + `transcript_offset`/`transcript_max_chars` for the text |
+| Find videos — incl. INSIDE transcripts | `search_videos` | `keyword` (transcript hits flagged `matched_in` + a `transcript_snippet`), `playlist`, `speaker`, `language`, year range |
+| One video (transcript opt-in) | `get_video` | `id` (numeric, from search); `include_transcript=true` to include it, paged via `transcript_offset`/`transcript_max_chars` (cap 25k chars/call) |
 
 ## Cross-entity discovery
 
@@ -82,8 +85,11 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | --- | --- | --- |
 | What connects to X? | `find_related` | `entity_type` (subject/location/person/project) + `value` |
 
-Returns ranked related projects, sections, subjects, people, countries, formats (with co-occurrence
-counts) plus slim sample items. The go-to tool for relational questions.
+Returns ranked related projects, sections, subjects, people, countries (rolled up to each place's
+top-level country), formats (with co-occurrence counts) plus slim sample items. The go-to tool for
+relational questions. Matching: subject = substring on labels (incl. former tags); person = name in
+either order; location = any hierarchy level; project = id/label. The rule is echoed in `matching`,
+and `matched_items` counts *items* (so it can differ from a `list_subjects` heading count).
 
 ## Worked patterns
 

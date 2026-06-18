@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "amira-mcp-server",
   "display_name": "AMIRA — Africa Multiple Research Data",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Read-only access to the Africa Multiple Cluster research data (AMIRA collection on Omeka S).",
   "long_description": "Search and explore the research data of the Africa Multiple Cluster of Excellence, as published on the cluster's public Omeka S site (https://data.africamultiple.uni-bayreuth.de): research projects across four partner universities (Bayreuth, Lagos, Joseph Ki-Zerbo, Bahia) plus external collections such as the International Library of African Music, organised into thematic research sections, with ~4,000 digitised research items, people, institutions, groups, an academic bibliography, podcast episodes, and the cluster's YouTube videos with searchable transcripts.\n\nNo API key, database, or VPN is required. A complete data snapshot is bundled in the extension, so the server works fully offline. When enabled (default), it also refreshes itself from the site's public API.\n\nEvery record carries an `amira_url` — its public page on the Omeka S site — so results can be cited as links back to the source.",
   "author": {
@@ -56,7 +56,7 @@
     { "name": "get_institution", "description": "One institution's or group's projects, affiliated people, and contributed items." },
     { "name": "list_groups", "description": "List research groups." },
     { "name": "list_subjects", "description": "Subject headings (tags merged in) ranked by item frequency, each with its authority page." },
-    { "name": "list_locations", "description": "Places (country/region/city via the place hierarchy) ranked by item count, with coordinates." },
+    { "name": "list_locations", "description": "Every place — countries and cities in one flat list (hierarchy rolled up) — ranked by item count, with coordinates." },
     { "name": "list_collections", "description": "Collections (item sets) ranked by research-item count, each with its browsable page." },
     { "name": "list_categories", "description": "Facet values: formats/genres, languages, resource types." },
     { "name": "list_years", "description": "Date histogram of research items by year or decade — coverage over time and the most-covered year/decade." },
@@ -64,9 +64,9 @@
     { "name": "get_publication", "description": "Full metadata and BibTeX for one publication." },
     { "name": "find_related", "description": "Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities." },
     { "name": "search_podcasts", "description": "Search cluster podcast episodes by keyword, series, person, or year." },
-    { "name": "get_podcast", "description": "Full detail for one podcast episode (incl. transcript when available)." },
-    { "name": "search_videos", "description": "Search the cluster's YouTube videos — including full-text search over transcripts." },
-    { "name": "get_video", "description": "Full detail for one video, including its transcript." }
+    { "name": "get_podcast", "description": "Full detail for one podcast episode; transcript opt-in via include_transcript, with offset/length paging." },
+    { "name": "search_videos", "description": "Search the cluster's YouTube videos — including full-text search over transcripts, with a match snippet." },
+    { "name": "get_video", "description": "Full detail for one video; transcript opt-in via include_transcript, with offset/length paging." }
   ],
   "compatibility": {
     "claude_desktop": ">=0.10.0",

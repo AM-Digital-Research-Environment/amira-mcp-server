@@ -9,6 +9,7 @@ import {
   containsCI,
   filtersEcho,
   itemRef,
+  limitEcho,
   pageOf,
   personSummary,
   publicationSummary,
@@ -68,7 +69,9 @@ export function registerPeopleTools(server: Server): void {
         return true;
       });
 
-      return textResult(pageOf(filtered, offset, limit, personSummary, filtersEcho(args)));
+      return textResult(
+        pageOf(filtered, offset, limit, personSummary, { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) }),
+      );
     },
   );
 
@@ -136,6 +139,7 @@ export function registerPeopleTools(server: Server): void {
         as_member: asMember.map((p) => ({ id: p.dre_id, name: p.name })),
         contributed_item_count: contributed.length,
         contributed_items: contributed.slice(0, 50).map(({ ref, role }) => ({ role, ...ref })),
+        contributed_items_truncated: contributed.length > 50 || undefined,
         publication_count: pubs.length,
         publications: pubs.map(({ p, role }) => ({ role, ...publicationSummary(p) })),
         amira_url: itemUrlOrNull(oId),

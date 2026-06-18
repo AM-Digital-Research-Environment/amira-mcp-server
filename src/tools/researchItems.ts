@@ -10,8 +10,10 @@ import {
   capText,
   containsCI,
   equalsCI,
+  errorResult,
   filtersEcho,
   itemSummary,
+  limitEcho,
   pageOf,
   refLabels,
   textResult,
@@ -25,17 +27,11 @@ function matchUniversity(item: ResearchItemRec, val: string): boolean {
   return item.university === val.trim().toLowerCase() || containsCI(UNIVERSITY_LABELS[item.university], val);
 }
 
-/** Place match across each place's full ancestor chain (city → country). */
+/** Place match across each place's full ancestor chain (city → country) — so
+ * `location` covers any level: a country, a region or a city alike (v1.4.0
+ * merged the old separate `country` filter into this one). */
 function placeMatches(store: DataStore, item: ResearchItemRec, needle: string): boolean {
   return item.places.some((p) => store.placeChain(p).some((label) => containsCI(label, needle)));
-}
-
-/** Country = the topmost ancestor of a place chain (or the place itself). */
-function countryMatches(store: DataStore, item: ResearchItemRec, needle: string): boolean {
-  return item.places.some((p) => {
-    const chain = store.placeChain(p);
-    return containsCI(chain[chain.length - 1] ?? null, needle);
-  });
 }
 
 function yearsOverlap(item: ResearchItemRec, from?: number, to?: number): boolean {
@@ -61,8 +57,9 @@ export function registerResearchItemTools(server: Server): void {
         "identifiers\n" +
         "  - subject: subject heading, partial match (e.g. 'Architecture', 'Islam'). Subjects include the " +
         "former free-form tags — there is no separate tag filter\n" +
-        "  - location: any place, matched through the place hierarchy (city, region or country)\n" +
-        "  - country: match the top-level place only\n" +
+        "  - location: a place — a country OR a city/region. Matched through the place hierarchy, so " +
+        "'Nigeria' finds Lagos items and 'Lagos' finds just Lagos. (This single filter replaces the old " +
+        "city/region/country distinction.)\n" +
         "  - contributor: a person/organisation name in the credits (either name order works)\n" +
         "  - project_id: e.g. 'UBT_ArtWorld2019', 'Ext_ILAM'\n" +
         "  - research_section: e.g. 'Arts & Aesthetics', 'Mobilities'\n" +
@@ -74,13 +71,14 @@ export function registerResearchItemTools(server: Server): void {
         "  - year_from / year_to: keep items whose content dates overlap the range\n" +
         "  - limit (default 20, max 100), offset (pagination)\n\n" +
         "Returns a paginated envelope { count, total_matches, offset, has_more, next_offset?, results[] }; " +
-        "each result carries a citable `amira_url`. Use get_research_item with a dre_id for full detail.",
+        "each result carries a citable `amira_url`. Use get_research_item with a dre_id for full detail. " +
+        "When a combined filter set matches nothing, the envelope adds `suggestions` naming which single " +
+        "filter to drop (and how many items that would surface).",
       annotations: annotate("Search research items"),
       inputSchema: {
         keyword: z.string().optional(),
         subject: z.string().optional(),
-        location: z.string().optional(),
-        country: z.string().optional(),
+        location: z.string().optional().describe("A country or a city/region (hierarchy-aware)"),
         contributor: z.string().optional(),
         project_id: z.string().optional(),
         research_section: z.string().optional(),
@@ -101,57 +99,73 @@ export function registerResearchItemTools(server: Server): void {
       const offset = capOffset(args.offset);
 
       const project = args.project_id ? store.getProject(args.project_id) : undefined;
+      // `country` was folded into the hierarchy-aware `location` filter (v1.4.0);
+      // a stray `country` from an older caller is routed to `location` so it
+      // still narrows rather than being silently ignored.
+      const locationArg = args.location ?? (args as { country?: string }).country;
 
-      const filtered = store.items.filter((it) => {
-        if (args.keyword) {
-          const k = args.keyword;
-          const hit =
-            containsCI(it.title, k) ||
-            anyContainsCI(it.alt_titles, k) ||
-            containsCI(it.description, k) ||
-            containsCI(it.abstract, k) ||
-            containsCI(it.toc, k) ||
-            anyContainsCI(it.identifiers, k) ||
-            equalsCI(it.dre_id, k);
-          if (!hit) return false;
-        }
-        if (args.subject && !it.subjects.some((s) => containsCI(s.label, args.subject!))) return false;
-        if (args.location && !placeMatches(store, it, args.location)) return false;
-        if (args.country && !countryMatches(store, it, args.country)) return false;
-        if (
-          args.contributor &&
-          !it.contributors.some(
+      // One predicate per active filter, so a zero-result set can be probed by
+      // dropping each filter in turn (relaxation hints).
+      const preds: Record<string, (it: ResearchItemRec) => boolean> = {};
+      if (args.keyword) {
+        const k = args.keyword;
+        preds.keyword = (it) =>
+          containsCI(it.title, k) ||
+          anyContainsCI(it.alt_titles, k) ||
+          containsCI(it.description, k) ||
+          containsCI(it.abstract, k) ||
+          containsCI(it.toc, k) ||
+          anyContainsCI(it.identifiers, k) ||
+          equalsCI(it.dre_id, k);
+      }
+      if (args.subject) preds.subject = (it) => it.subjects.some((s) => containsCI(s.label, args.subject!));
+      if (locationArg) preds.location = (it) => placeMatches(store, it, locationArg);
+      if (args.contributor)
+        preds.contributor = (it) =>
+          it.contributors.some(
             (c) => nameMatchesQuery(c.name, args.contributor!) || containsCI(c.name, args.contributor!),
-          )
-        )
-          return false;
-        if (args.project_id && (project ? it.project?.o_id !== project.o_id : !equalsCI(it.project?.label, args.project_id)))
-          return false;
-        if (args.research_section && !store.sectionsOfItem(it).some((s) => equalsCI(s, args.research_section!)))
-          return false;
-        if (args.university && !matchUniversity(it, args.university)) return false;
-        if (args.resource_type && !equalsCI(it.type, args.resource_type)) return false;
-        if (
-          args.genre &&
-          !(anyContainsCI(refLabels(it.formats), args.genre) || anyContainsCI(it.format_notes, args.genre))
-        )
-          return false;
-        if (args.collection) {
-          const q = args.collection.trim();
-          const asId = Number(q);
-          const hit = it.item_sets.some(
-            (id) => id === asId || containsCI(store.getItemSet(id)?.title, q),
           );
-          if (!hit) return false;
-        }
-        if (args.language && !store.languageIndex.matches(it.languages, args.language)) return false;
-        if ((args.year_from !== undefined || args.year_to !== undefined) && !yearsOverlap(it, args.year_from, args.year_to))
-          return false;
-        return true;
-      });
+      if (args.project_id)
+        preds.project_id = (it) =>
+          project ? it.project?.o_id === project.o_id : equalsCI(it.project?.label, args.project_id!);
+      if (args.research_section)
+        preds.research_section = (it) => store.sectionsOfItem(it).some((s) => equalsCI(s, args.research_section!));
+      if (args.university) preds.university = (it) => matchUniversity(it, args.university!);
+      if (args.resource_type) preds.resource_type = (it) => equalsCI(it.type, args.resource_type!);
+      if (args.genre)
+        preds.genre = (it) =>
+          anyContainsCI(refLabels(it.formats), args.genre!) || anyContainsCI(it.format_notes, args.genre!);
+      if (args.collection) {
+        const q = args.collection.trim();
+        const asId = Number(q);
+        preds.collection = (it) => it.item_sets.some((id) => id === asId || containsCI(store.getItemSet(id)?.title, q));
+      }
+      if (args.language) preds.language = (it) => store.languageIndex.matches(it.languages, args.language!);
+      if (args.year_from !== undefined || args.year_to !== undefined)
+        preds.year = (it) => yearsOverlap(it, args.year_from, args.year_to);
+
+      const keys = Object.keys(preds);
+      const passes = (it: ResearchItemRec, except?: string): boolean =>
+        keys.every((k) => k === except || preds[k]!(it));
+      const filtered = store.items.filter((it) => passes(it));
+
+      // Relaxation hints (report §3): when ≥2 filters combine to nothing, report
+      // which single filter, dropped, would surface items — and how many.
+      let suggestions: { remove_filter: string; would_match: number }[] | undefined;
+      if (filtered.length === 0 && keys.length >= 2) {
+        const probed = keys
+          .map((k) => ({ remove_filter: k, would_match: store.items.filter((it) => passes(it, k)).length }))
+          .filter((s) => s.would_match > 0)
+          .sort((a, b) => b.would_match - a.would_match);
+        if (probed.length) suggestions = probed;
+      }
 
       return textResult(
-        pageOf(filtered, offset, limit, (it) => itemSummary(it, store), filtersEcho(args)),
+        pageOf(filtered, offset, limit, (it) => itemSummary(it, store), {
+          ...limitEcho(args.limit, 100, limit),
+          ...filtersEcho({ ...args, country: undefined, location: locationArg }),
+          ...(suggestions ? { suggestions } : {}),
+        }),
       );
     },
   );
@@ -179,8 +193,8 @@ export function registerResearchItemTools(server: Server): void {
       const store = await ensureStore();
       const it = store.getItem(dre_id);
       if (!it) {
-        return textResult({
-          error: `No research item with id '${dre_id}'. Use search_research_items to find valid ids.`,
+        return errorResult("not_found", `No research item with id '${dre_id}'.`, {
+          suggested_tool: "search_research_items",
         });
       }
       const project = store.projectOf(it);

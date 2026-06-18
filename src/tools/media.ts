@@ -1,15 +1,20 @@
 // Podcasts + YouTube videos (issue #1 §4, D4/D13) — content that exists only in
-// Omeka. Both can carry full transcripts (bibo:content): searchable here, never
-// included in summaries, capped in the get_* detail tools.
+// Omeka. Both can carry full transcripts (bibo:content): searchable here (with a
+// match snippet), never included in summaries, and opt-in + windowable in the
+// get_* detail tools.
 import { z } from "zod";
 import { ensureStore } from "../data.js";
 import {
   annotate,
   capLimit,
   capOffset,
-  capText,
+  CHARACTER_LIMIT,
   containsCI,
+  dateStatus,
+  errorResult,
   filtersEcho,
+  limitEcho,
+  matchSnippet,
   pageOf,
   podcastSummary,
   refLabels,
@@ -24,6 +29,47 @@ function matchPerson(name: string, query: string): boolean {
   return nameMatchesQuery(name, query) || containsCI(name, query);
 }
 
+/**
+ * Transcript fields for a detail response. Off by default (report §1): the model
+ * sees `has_transcript` + `transcript_length` and opts in with
+ * include_transcript=true, optionally windowing a long one with
+ * transcript_offset / transcript_max_chars (capped at 25,000).
+ */
+function transcriptFields(
+  transcript: string | null,
+  opts: { include?: boolean; offset?: number; maxChars?: number },
+): Record<string, unknown> {
+  const total = transcript?.length ?? 0;
+  const has = total > 0;
+  if (!opts.include) {
+    return {
+      has_transcript: has,
+      transcript_length: total,
+      ...(has
+        ? { transcript_hint: "Set include_transcript=true for the text (page long ones with transcript_offset / transcript_max_chars)." }
+        : {}),
+    };
+  }
+  const offset = Math.max(0, Math.floor(opts.offset ?? 0));
+  const max = Math.max(1, Math.min(Math.floor(opts.maxChars ?? CHARACTER_LIMIT), CHARACTER_LIMIT));
+  const slice = (transcript ?? "").slice(offset, offset + max);
+  return {
+    has_transcript: has,
+    transcript: has ? slice : null,
+    transcript_length: total,
+    transcript_offset: offset,
+    transcript_returned_chars: slice.length,
+    transcript_truncated: offset + slice.length < total || undefined,
+  };
+}
+
+/** Shared opt-in transcript params for the get_podcast / get_video schemas. */
+const transcriptParams = {
+  include_transcript: z.boolean().optional().describe("Default false — set true to include the transcript text"),
+  transcript_offset: z.number().int().optional().describe("Start offset into the transcript (chars), with include_transcript"),
+  transcript_max_chars: z.number().int().optional().describe("Max transcript characters to return (default/max 25000)"),
+};
+
 export function registerMediaTools(server: Server): void {
   // === search_podcasts ======================================================
   server.registerTool(
@@ -35,13 +81,14 @@ export function registerMediaTools(server: Server): void {
         "Filters (optional, AND-combined):\n" +
         "  - keyword: match title, abstract — and the transcript when one exists (none do in the current " +
         "snapshot; the field is ready for when they land). A transcript-only hit is flagged " +
-        "`matched_in: 'transcript'`\n" +
+        "`matched_in: 'transcript'` and carries a `transcript_snippet` around the match\n" +
         "  - series: series title (partial)\n" +
         "  - person: a speaker/host name (either order)\n" +
         "  - year_from / year_to\n" +
         "  - limit (default 20, max 100), offset\n\n" +
-        "Each result: id, title, series, episode, date, people (with roles), episode url, " +
-        "has_transcript, `amira_url`. Use get_podcast for full detail + transcript.",
+        "Each result: id, title, series, episode, date, `date_status` (published/scheduled/unknown), " +
+        "people (with roles), episode url, has_transcript, `amira_url`. Use get_podcast for full detail; " +
+        "pass include_transcript=true there for the transcript.",
       annotations: annotate("Search podcasts"),
       inputSchema: {
         keyword: z.string().optional(),
@@ -80,11 +127,11 @@ export function registerMediaTools(server: Server): void {
           filtered,
           offset,
           limit,
-          (p) => ({
-            ...podcastSummary(p),
-            ...(transcriptOnly.has(p.o_id) ? { matched_in: "transcript" } : {}),
-          }),
-          filtersEcho(args),
+          (p) =>
+            transcriptOnly.has(p.o_id)
+              ? { ...podcastSummary(p), matched_in: "transcript", transcript_snippet: matchSnippet(p.transcript, args.keyword!) }
+              : podcastSummary(p),
+          { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) },
         ),
       );
     },
@@ -97,30 +144,35 @@ export function registerMediaTools(server: Server): void {
       title: "Get podcast episode detail",
       description:
         "Full detail for one podcast episode by `id` (the numeric id returned by search_podcasts). " +
-        "Returns title, series, episode number, date, abstract, people with roles, the episode URL, the " +
-        "full transcript when available (truncated at 25,000 characters, with transcript_length; " +
-        "currently no episode carries one), and the citable `amira_url`. Returns { error } if unknown.",
+        "Returns title, series, episode number, date, `date_status` (published/scheduled/unknown), " +
+        "abstract, people with roles, the episode URL, and the citable `amira_url`. The transcript is " +
+        "OMITTED by default (only has_transcript + transcript_length are shown); pass " +
+        "include_transcript=true to include it, and transcript_offset / transcript_max_chars to page a " +
+        "long one (capped at 25,000 chars per call). No episode carries a transcript in the current " +
+        "snapshot. Returns a structured { error } if the id is unknown.",
       annotations: annotate("Get podcast detail"),
-      inputSchema: { id: z.number().int().describe("Podcast id from search_podcasts") },
+      inputSchema: { id: z.number().int().describe("Podcast id from search_podcasts"), ...transcriptParams },
     },
-    async ({ id }) => {
+    async ({ id, include_transcript, transcript_offset, transcript_max_chars }) => {
       const store = await ensureStore();
       const p = store.getPodcast(id);
-      if (!p) return textResult({ error: `No podcast with id ${id}. Use search_podcasts to find ids.` });
-      const transcript = p.transcript ? capText(p.transcript) : null;
+      if (!p) return errorResult("not_found", `No podcast with id ${id}.`, { suggested_tool: "search_podcasts" });
       return textResult({
         id: p.o_id,
         title: p.title,
         series: p.series ? { title: p.series.label, amira_url: itemUrlOrNull(p.series.o_id) } : null,
         episode: p.episode,
         date: p.date,
+        date_status: dateStatus(p.date),
         abstract: p.abstract,
         people: p.people.map((c) => ({ name: c.name, role: c.role })),
         languages: refLabels(p.languages),
         url: p.url,
-        transcript: transcript?.text ?? null,
-        transcript_truncated: transcript?.truncated || undefined,
-        transcript_length: p.transcript?.length ?? 0,
+        ...transcriptFields(p.transcript, {
+          include: include_transcript,
+          offset: transcript_offset,
+          maxChars: transcript_max_chars,
+        }),
         amira_url: itemUrl(p.o_id),
       });
     },
@@ -135,14 +187,15 @@ export function registerMediaTools(server: Server): void {
         "Search the Africa Multiple YouTube channel videos catalogued in the collection (~140 videos, " +
         "lectures/interviews/events; 91 carry full transcripts). Filters (optional, AND-combined):\n" +
         "  - keyword: match title, abstract — and the TRANSCRIPT. A transcript-only hit is flagged " +
-        "`matched_in: 'transcript'` (this is the main full-text search over cluster talks)\n" +
+        "`matched_in: 'transcript'` and carries a `transcript_snippet` around the match (this is the main " +
+        "full-text search over cluster talks)\n" +
         "  - playlist: playlist title (partial)\n" +
         "  - speaker: a speaker name (either order)\n" +
         "  - language: name or ISO code\n" +
         "  - year_from / year_to (upload year)\n" +
         "  - limit (default 20, max 100), offset\n\n" +
-        "Each result: id, title, date, playlists, speakers, watch url, has_transcript, `amira_url`. " +
-        "Use get_video for full detail + transcript.",
+        "Each result: id, title, date, `date_status`, playlists, speakers, watch url, has_transcript, " +
+        "`amira_url`. Use get_video for full detail; pass include_transcript=true there for the transcript.",
       annotations: annotate("Search YouTube videos"),
       inputSchema: {
         keyword: z.string().optional(),
@@ -183,11 +236,11 @@ export function registerMediaTools(server: Server): void {
           filtered,
           offset,
           limit,
-          (v) => ({
-            ...videoSummary(v),
-            ...(transcriptOnly.has(v.o_id) ? { matched_in: "transcript" } : {}),
-          }),
-          filtersEcho(args),
+          (v) =>
+            transcriptOnly.has(v.o_id)
+              ? { ...videoSummary(v), matched_in: "transcript", transcript_snippet: matchSnippet(v.transcript, args.keyword!) }
+              : videoSummary(v),
+          { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) },
         ),
       );
     },
@@ -200,29 +253,33 @@ export function registerMediaTools(server: Server): void {
       title: "Get YouTube video detail",
       description:
         "Full detail for one YouTube video by `id` (the numeric id returned by search_videos). Returns " +
-        "title, upload date, abstract, playlists, speakers, languages, the watch URL, the full " +
-        "transcript when available (truncated at 25,000 characters, with transcript_length so you can " +
-        "tell), and the citable `amira_url`. Returns { error } if unknown.",
+        "title, upload date, `date_status`, abstract, playlists, speakers, languages, the watch URL, and " +
+        "the citable `amira_url`. The transcript is OMITTED by default (only has_transcript + " +
+        "transcript_length are shown, since transcripts are large); pass include_transcript=true to " +
+        "include it, and transcript_offset / transcript_max_chars to page a long one (capped at 25,000 " +
+        "chars per call). Returns a structured { error } if unknown.",
       annotations: annotate("Get video detail"),
-      inputSchema: { id: z.number().int().describe("Video id from search_videos") },
+      inputSchema: { id: z.number().int().describe("Video id from search_videos"), ...transcriptParams },
     },
-    async ({ id }) => {
+    async ({ id, include_transcript, transcript_offset, transcript_max_chars }) => {
       const store = await ensureStore();
       const v = store.getVideo(id);
-      if (!v) return textResult({ error: `No video with id ${id}. Use search_videos to find ids.` });
-      const transcript = v.transcript ? capText(v.transcript) : null;
+      if (!v) return errorResult("not_found", `No video with id ${id}.`, { suggested_tool: "search_videos" });
       return textResult({
         id: v.o_id,
         title: v.title,
         date: v.date,
+        date_status: dateStatus(v.date),
         abstract: v.abstract,
         playlists: v.playlists.map((p) => ({ title: p.label, amira_url: itemUrlOrNull(p.o_id) })),
         speakers: v.speakers.map((c) => c.name),
         languages: refLabels(v.languages),
         url: v.url,
-        transcript: transcript?.text ?? null,
-        transcript_truncated: transcript?.truncated || undefined,
-        transcript_length: v.transcript?.length ?? 0,
+        ...transcriptFields(v.transcript, {
+          include: include_transcript,
+          offset: transcript_offset,
+          maxChars: transcript_max_chars,
+        }),
         amira_url: itemUrl(v.o_id),
       });
     },

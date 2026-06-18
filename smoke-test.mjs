@@ -55,6 +55,22 @@ check(search.results?.[0]?.amira_url?.startsWith(AMIRA), "search: amira_url shap
 await call("search_research_items", { location: "Nigeria", resource_type: "Image", limit: 2 });
 await call("search_research_items", { language: "fre", limit: 1 }, { expect: [AMIRA] }); // legacy code alias
 
+// `country` was folded into `location` (v1.4.0); a stray legacy arg is still routed there.
+const legacyCountry = await call("search_research_items", { country: "Nigeria", limit: 1 });
+check(legacyCountry.total_matches > 0, "search: legacy `country` arg still narrows (routed to location)");
+
+// zero-result relaxation hints (report §3): an impossible combo names the filter to drop.
+const zero = await call("search_research_items", { subject: "Islam", resource_type: "NoSuchType" });
+check(zero.total_matches === 0, "search: impossible AND combo is empty");
+check(
+  zero.suggestions?.some((s) => s.remove_filter === "resource_type" && s.would_match > 0),
+  "search: zero-result suggests dropping resource_type",
+);
+
+// structured error shape (report §error-handling).
+const errItem = await call("get_research_item", { dre_id: "NO_SUCH_ID" }, { expect: ["error"] });
+check(errItem.error?.code === "not_found" && !!errItem.error?.suggested_tool, "get_research_item: structured error");
+
 const item = await call("get_research_item", { dre_id: "abg-99-0000" }, { expect: [AMIRA, "sponsors"] });
 check(item.contributors?.some((c) => c.name === "Beier, Ulli"), "item: contributor with role");
 check("dates" in item, "item: dates exposed");
@@ -68,7 +84,10 @@ check(proj.item_count >= 1000, "Ext_ILAM has its ~1k items");
 await call("list_research_sections", {}, { expect: ["funding_phase"] });
 await call("get_research_section", { name: "Translating" }, { expect: ["AM 2.0"] });
 await call("list_subjects", { limit: 5 }, { expect: [AMIRA] });
-await call("list_locations", { level: "country", limit: 5 });
+const locs = await call("list_locations", { limit: 5 });
+check(locs.results?.[0]?.item_count > 0 && !("level" in (locs.results?.[0] ?? {})), "list_locations: flat, ranked by item count (no level)");
+const cappedLocs = await call("list_locations", { limit: 9999 });
+check(cappedLocs.requested_limit === 9999 && cappedLocs.effective_limit === 300, "list_locations: effective-limit echo when capped");
 await call("list_categories", { category: "formats", limit: 5 });
 
 const years = await call("list_years", { from: 1900, to: 2000, sort: "count", limit: 5 });
@@ -105,19 +124,33 @@ if (pubs.results?.[0]?.id) {
   await call("get_publication", { id: pubs.results[0].id }, { expect: ["bibtex"] });
 }
 
-await call("find_related", { entity_type: "subject", value: "Architecture", limit: 8 });
+const rel = await call("find_related", { entity_type: "subject", value: "Architecture", limit: 8 });
+check(typeof rel.matching === "string" && rel.matching.length > 0, "find_related: matching semantics echoed");
 
 const pods = await call("search_podcasts", { limit: 3 });
-if (pods.results?.[0]?.id) await call("get_podcast", { id: pods.results[0].id });
+check(pods.results?.[0] ? "date_status" in pods.results[0] : true, "search_podcasts: date_status present");
+if (pods.results?.[0]?.id) {
+  const pod = await call("get_podcast", { id: pods.results[0].id });
+  check(!("transcript" in pod), "get_podcast: transcript omitted by default");
+}
 
 const vids = await call("search_videos", { keyword: "Africa", limit: 3 });
 check(vids.total_matches > 0, "videos: keyword search hits");
 const transcriptHit = (await call("search_videos", { keyword: "decolonial", limit: 3 })).results?.find(
   (v) => v.matched_in === "transcript",
 );
+if (transcriptHit) check(typeof transcriptHit.transcript_snippet === "string", "search_videos: transcript hit carries a snippet");
 if (vids.results?.[0]?.id) {
   const vid = await call("get_video", { id: vids.results[0].id });
   check("transcript_length" in vid, "get_video: transcript_length present");
+  check(!("transcript" in vid), "get_video: transcript omitted by default (opt-in)");
+}
+// opt-in transcript with slicing: find a video that carries one.
+const withTranscript = (await call("search_videos", { limit: 100 })).results?.find((v) => v.has_transcript);
+if (withTranscript) {
+  const full = await call("get_video", { id: withTranscript.id, include_transcript: true, transcript_max_chars: 500 });
+  check(typeof full.transcript === "string" && full.transcript.length <= 500, "get_video: include_transcript returns sliced text");
+  check(full.transcript_truncated === true, "get_video: transcript_truncated flag when sliced");
 }
 console.log(`\ntranscript-only hit found: ${transcriptHit ? "yes" : "no (keyword may appear in titles too)"}`);
 

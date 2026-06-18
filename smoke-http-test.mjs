@@ -86,6 +86,22 @@ try {
   const nl = await call("search", { query: "which projects study migration in West Africa" });
   check(nl.results?.length > 0, "search: natural-language query returns results");
 
+  // response-size controls (report §1): limit + types
+  const limited = await call("search", { query: "Africa", limit: 3 });
+  check((limited.results?.length ?? 99) <= 3, "search: limit caps the result set");
+  const onlyPubs = await call("search", { query: "Africa", types: ["publication"] });
+  check(
+    onlyPubs.results?.length > 0 && onlyPubs.results.every((r) => r.id.startsWith("pub:")),
+    "search: types filter restricts record kinds",
+  );
+
+  // fetch transcript control on a video
+  const vidHit = (await call("search", { query: "decolonial", types: ["video"] })).results?.[0];
+  if (vidHit) {
+    const noT = await call("fetch", { id: vidHit.id, include_transcript: false });
+    check(noT.metadata?.transcript_included === false, "fetch: include_transcript=false omits the transcript");
+  }
+
   // a rich tool works over HTTP too
   const overview = await call("get_collection_overview", {});
   check(overview.counts?.research_items >= 3975, "rich tool over HTTP: overview parity");

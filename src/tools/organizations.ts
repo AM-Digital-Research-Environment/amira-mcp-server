@@ -8,8 +8,10 @@ import {
   capOffset,
   containsCI,
   equalsCI,
+  errorResult,
   filtersEcho,
   itemRef,
+  limitEcho,
   pageOf,
   textResult,
   type Server,
@@ -64,7 +66,7 @@ export function registerOrganizationTools(server: Server): void {
             ...(o.latitude != null ? { latitude: o.latitude, longitude: o.longitude } : {}),
             amira_url: itemUrl(o.o_id),
           }),
-          filtersEcho(args),
+          { ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
         ),
       );
     },
@@ -87,7 +89,9 @@ export function registerOrganizationTools(server: Server): void {
       const store = await ensureStore();
       const record = store.getOrganisation(name);
       if (!record) {
-        return textResult({ error: `No institution or group matching '${name}'. Use list_institutions / list_groups.` });
+        return errorResult("not_found", `No institution or group matching '${name}'.`, {
+          suggested_tool: "list_institutions",
+        });
       }
       const projects = store.projects.filter((p) =>
         p.funded_by.some((f) => f.o_id === record.o_id || equalsCI(f.label, record.name)),
@@ -106,8 +110,10 @@ export function registerOrganizationTools(server: Server): void {
         projects: projects.map((p) => ({ id: p.dre_id, name: p.name })),
         affiliated_person_count: people.length,
         affiliated_persons: people.slice(0, 50).map((p) => p.name),
+        affiliated_persons_truncated: people.length > 50 || undefined,
         contributed_item_count: items.length,
         contributed_items: items.slice(0, 50).map(itemRef),
+        contributed_items_truncated: items.length > 50 || undefined,
         amira_url: itemUrl(record.o_id),
       });
     },
@@ -147,7 +153,7 @@ export function registerOrganizationTools(server: Server): void {
             contributed_item_count: contributedItems(store, g).length,
             amira_url: itemUrl(g.o_id),
           }),
-          filtersEcho(args),
+          { ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
         ),
       );
     },

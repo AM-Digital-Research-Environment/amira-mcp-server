@@ -9,7 +9,9 @@ import {
   capText,
   containsCI,
   equalsCI,
+  errorResult,
   filtersEcho,
+  limitEcho,
   pageOf,
   publicationSummary,
   refLabels,
@@ -121,7 +123,9 @@ export function registerPublicationTools(server: Server): void {
 
       filtered.sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title));
 
-      return textResult(pageOf(filtered, offset, limit, publicationSummary, filtersEcho(args)));
+      return textResult(
+        pageOf(filtered, offset, limit, publicationSummary, { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) }),
+      );
     },
   );
 
@@ -144,9 +148,7 @@ export function registerPublicationTools(server: Server): void {
       const store = await ensureStore();
       const p = store.getPublication(id);
       if (!p) {
-        return textResult({
-          error: `No publication with id '${id}'. Use search_publications to find valid ids.`,
-        });
+        return errorResult("not_found", `No publication with id '${id}'.`, { suggested_tool: "search_publications" });
       }
       return textResult({
         id: p.pub_id,

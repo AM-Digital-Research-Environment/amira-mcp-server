@@ -71,7 +71,7 @@ ResearchSection ── research projects belong to one or more sections
       │
    Project ──(items)── ResearchItem ──┬── contributors (Person / Institution / Group, with roles)
       │                               ├── subjects (incl. former "tags" — one merged facet)
-      ├── principal investigators     ├── places (city → region → country hierarchy)
+      ├── principal investigators     ├── places (countries + cities; `location` walks the chain)
       ├── members                     ├── typed dates (created / collected / issued / …)
       └── funding institutions        └── formats / languages / sponsors / related items
 
@@ -95,31 +95,42 @@ many projects are registry entries; only a subset carry digitised items.
 
 ### 2 — Search
 Use the right entry point for the question:
-- Things/artefacts → `search_research_items` (filters: keyword, **subject**, **location** —
-  hierarchy-aware, so `country=Nigeria` finds Lagos items — contributor, project_id, research_section,
-  university, resource_type, genre/format, language, year range).
+- Things/artefacts → `search_research_items` (filters: keyword, **subject**, **location** — one place
+  filter for a country OR a city; `location=Nigeria` finds Lagos items too, since the place hierarchy
+  is walked — contributor, project_id, research_section, university, resource_type, genre/format,
+  language, year range). When a strict AND combination returns nothing, the envelope adds
+  `suggestions` naming which single filter to drop (and how many items that would surface) — relax,
+  don't give up.
 - Projects → `search_projects`. Sections → `list_research_sections`. People → `search_persons`.
   Institutions → `list_institutions`. Bibliography → `search_publications`.
 - Talks and audiovisual: `search_videos` (keyword reaches INTO transcripts; hits are flagged
-  `matched_in: "transcript"`) and `search_podcasts`.
+  `matched_in: "transcript"` with a `transcript_snippet` around the match) and `search_podcasts`.
 - Discover vocabulary first when unsure of exact terms: `list_subjects` (tags are merged in),
   `list_locations`, `list_collections` (item sets — pair with the `collection` filter),
   `list_categories` (formats/languages/resource_types), all ranked by item count. Feed a returned
   value straight back into the matching filter. `list_years` gives the date distribution (by year or
   decade) for coverage-over-time and most-covered-year questions.
 
-Keep `limit` modest (10–25) while scoping; paginate with `offset` / `next_offset`.
+Keep `limit` modest (10–25) while scoping; paginate with `offset` / `next_offset`. Ask for more than
+a tool's max and it caps silently but tells you — the envelope echoes `requested_limit` /
+`effective_limit`.
 
 ### 3 — Drill
 `get_research_item` (by `dre_id`) returns the full record — including the **typed dates** and the
 place hierarchy. `get_project`, `get_research_section`, `get_person`, `get_institution`,
-`get_publication` (with generated BibTeX), `get_podcast`, `get_video` (with capped transcript)
-complete the detail layer. Profile views return slim item refs — follow up with `get_research_item`.
+`get_publication` (with generated BibTeX), `get_podcast`, `get_video` complete the detail layer.
+**Transcripts are opt-in:** `get_podcast` / `get_video` omit the transcript by default (you still see
+`has_transcript` + `transcript_length`); pass `include_transcript=true` for the text, and
+`transcript_offset` / `transcript_max_chars` to page a long one. Profile views return slim item refs —
+follow up with `get_research_item`.
 
 ### 4 — Connect
 `find_related` pivots from a subject / location / person / project to the entities that co-occur with
 it (related projects, sections, subjects, people, countries, formats, with counts). Use it to trace a
-theme across projects — the cluster's core analytic.
+theme across projects — the cluster's core analytic. Matching is by substring (subject), name in
+either order (person), any level of the place hierarchy (location) or id/label (project); the response
+echoes the rule in `matching`. `matched_items` counts *items*, so it can legitimately differ from a
+`list_subjects` heading count.
 
 ### 5 — Synthesise with citations
 Every record carries an **`amira_url`**. Cite each entity you mention as a **markdown link** to that
@@ -151,4 +162,14 @@ collection page.
 7. **Languages are canonical records.** One record per language ("French", code `fra`); the server
    accepts names, ISO 639-1/2 codes and the legacy bibliographic codes (`fre`, `ger`) alike.
 8. **Podcast transcripts are not filled yet** (0/43 as of 2026-06); video transcripts cover 91/140.
-   `has_transcript` on each result tells you; absence of a transcript is not an error.
+   `has_transcript` on each result tells you; absence of a transcript is not an error. The detail
+   tools omit the transcript text unless you pass `include_transcript=true` (see Drill).
+9. **One place facet, no levels.** There is no country/region/city distinction: `list_locations` is a
+   flat, item-count-ranked list (countries and cities together, hierarchy rolled up), and
+   `search_research_items` takes a single `location` filter that matches a country *or* a city. (A
+   legacy `country` argument is still honoured — routed to `location`.)
+10. **Dates carry a `date_status`.** Podcasts and videos label each date `published`, `scheduled`
+    (dated in the future — e.g. an episode page posted ahead of release) or `unknown`. Scheduled items
+    are returned, not hidden; flag them when a future date would mislead.
+11. **Errors are structured.** A miss returns `{ error: { code, message, suggested_tool?,
+    available_values? } }` — read `suggested_tool`/`available_values` to recover rather than guessing.

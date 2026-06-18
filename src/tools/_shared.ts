@@ -44,6 +44,22 @@ export function textResult(payload: Record<string, unknown>): {
   };
 }
 
+/**
+ * Uniform structured error (report §error-handling): `{ error: { code, message,
+ * suggested_tool?, available_values? } }`. `code` is a stable machine token
+ * (`not_found`, `invalid_id`, …); `message` stays human-readable.
+ */
+export function errorResult(
+  code: string,
+  message: string,
+  extra: { suggested_tool?: string; available_values?: unknown[] } = {},
+): ReturnType<typeof textResult> {
+  const error: Record<string, unknown> = { code, message };
+  if (extra.suggested_tool) error.suggested_tool = extra.suggested_tool;
+  if (extra.available_values && extra.available_values.length) error.available_values = extra.available_values;
+  return textResult({ error });
+}
+
 // --- input capping (lenient clamp, not rejection) ---------------------------
 
 export function capLimit(v: number | undefined, def: number, max: number): number {
@@ -54,6 +70,18 @@ export function capLimit(v: number | undefined, def: number, max: number): numbe
 export function capOffset(v: number | undefined): number {
   if (v === undefined || Number.isNaN(v)) return 0;
   return Math.max(0, Math.floor(v));
+}
+
+/**
+ * Surface a capped limit (report §effective-limit): when the caller asks for
+ * more than `max`, echo both the request and what was actually applied. Returns
+ * `{}` when the request was honoured, so uncapped responses stay noise-free.
+ */
+export function limitEcho(requested: number | undefined, max: number, effective: number): Record<string, unknown> {
+  if (requested !== undefined && Number.isFinite(requested) && Math.floor(requested) > max) {
+    return { requested_limit: Math.floor(requested), effective_limit: effective };
+  }
+  return {};
 }
 
 export function capText(text: string, limit = CHARACTER_LIMIT): { text: string; truncated: boolean } {
@@ -125,6 +153,35 @@ export const refLabels = (refs: LinkedRef[] | undefined): string[] => (refs ?? [
 export function brief(text: string | null | undefined, n = 280): string | null {
   if (!text) return null;
   return text.length <= n ? text : `${text.slice(0, n).trimEnd()}…`;
+}
+
+/**
+ * A short context window around the first occurrence of `query` in `text`, with
+ * ellipses where it was clipped — so a transcript hit shows WHY it matched
+ * without shipping the whole transcript (report §5). Returns null when absent.
+ */
+export function matchSnippet(text: string | null | undefined, query: string, radius = 140): string | null {
+  if (!text || !query) return null;
+  const i = text.toLowerCase().indexOf(query.toLowerCase());
+  if (i === -1) return null;
+  const start = Math.max(0, i - radius);
+  const end = Math.min(text.length, i + query.length + radius);
+  let snip = text.slice(start, end).replace(/\s+/g, " ").trim();
+  if (start > 0) snip = `…${snip}`;
+  if (end < text.length) snip = `${snip}…`;
+  return snip;
+}
+
+/**
+ * Classify a record date against the present (report §6): a date in the future
+ * is `scheduled` (e.g. an episode page published ahead of release), an empty or
+ * unparseable date is `unknown`, everything else is `published`.
+ */
+export function dateStatus(date: string | null | undefined): "published" | "scheduled" | "unknown" {
+  if (!date) return "unknown";
+  const t = Date.parse(date);
+  if (Number.isNaN(t)) return "unknown";
+  return t > Date.now() ? "scheduled" : "published";
 }
 
 // --- entity summaries (search results) -----------------------------------------
@@ -235,6 +292,7 @@ export function podcastSummary(p: PodcastRec): Record<string, unknown> {
     series: p.series?.label ?? null,
     episode: p.episode,
     date: p.date,
+    date_status: dateStatus(p.date),
     people: p.people.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
     url: p.url,
     has_transcript: !!p.transcript,
@@ -247,6 +305,7 @@ export function videoSummary(v: VideoRec): Record<string, unknown> {
     id: v.o_id,
     title: v.title,
     date: v.date,
+    date_status: dateStatus(v.date),
     playlists: refLabels(v.playlists),
     speakers: v.speakers.map((c) => c.name),
     url: v.url,

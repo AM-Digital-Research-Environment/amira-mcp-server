@@ -4,6 +4,7 @@ import {
   annotate,
   capText,
   equalsCI,
+  errorResult,
   fundingPhase,
   projectSummary,
   refLabels,
@@ -60,7 +61,8 @@ export function registerResearchSectionTools(server: Server): void {
         "funding_phase (AM 1.0 / 2019–2025 or AM 2.0 / 2026–2032) and its date range, the full " +
         "description, principal investigators, members, spokesperson, the section's page on the cluster " +
         "website, the projects belonging to it (with item counts), the total item count, and a citable " +
-        "`amira_url`. Returns { error, available_sections } if the name is unknown.",
+        "`amira_url`. Returns a structured { error } (with the valid names in `available_values`) if the " +
+        "name is unknown.",
       annotations: annotate("Get research section detail"),
       inputSchema: { name: z.string().describe("Section name, e.g. 'Arts & Aesthetics'") },
     },
@@ -68,9 +70,9 @@ export function registerResearchSectionTools(server: Server): void {
       const store = await ensureStore();
       const s = store.getSection(name);
       if (!s) {
-        return textResult({
-          error: `No research section named '${name}'.`,
-          available_sections: store.sections.map((x) => x.name),
+        return errorResult("not_found", `No research section named '${name}'.`, {
+          suggested_tool: "list_research_sections",
+          available_values: store.sections.map((x) => x.name),
         });
       }
       const projects = store.projects.filter((p) => p.sections.some((x) => equalsCI(x.label, s.name)));
