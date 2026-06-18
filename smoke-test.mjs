@@ -55,9 +55,15 @@ check(search.results?.[0]?.amira_url?.startsWith(AMIRA), "search: amira_url shap
 await call("search_research_items", { location: "Nigeria", resource_type: "Image", limit: 2 });
 await call("search_research_items", { language: "fre", limit: 1 }, { expect: [AMIRA] }); // legacy code alias
 
-// `country` was folded into `location` (v1.4.0); a stray legacy arg is still routed there.
-const legacyCountry = await call("search_research_items", { country: "Nigeria", limit: 1 });
-check(legacyCountry.total_matches > 0, "search: legacy `country` arg still narrows (routed to location)");
+// `country` is a real, advertised filter again (v1.4.1): it must NARROW to the
+// country — not silently return the whole collection (the reported regression) —
+// and stay a subset of the any-level `location` match for the same name.
+const fullCount = overview.counts?.research_items ?? 3975;
+const byCountry = await call("search_research_items", { country: "Nigeria", limit: 1 });
+const byLocation = await call("search_research_items", { location: "Nigeria", limit: 1 });
+check(byCountry.total_matches > 0 && byCountry.total_matches < fullCount, "search: `country` narrows (not the full collection)");
+check(byCountry.filters?.country === "Nigeria", "search: `country` is echoed in filters");
+check(byCountry.total_matches <= byLocation.total_matches, "search: country match ⊆ location match");
 
 // zero-result relaxation hints (report §3): an impossible combo names the filter to drop.
 const zero = await call("search_research_items", { subject: "Islam", resource_type: "NoSuchType" });

@@ -105,9 +105,10 @@ total). Access is unauthenticated — the data is public and read-only.
 with optional `limit` and `types` to keep the result set tight, and returns
 ranked hits across research items, the bibliography, podcasts, videos, projects
 and research sections; `fetch` returns one record's full text by the id `search`
-hands back — for videos and podcasts the transcript is appended by default, but
-`include_transcript=false` / `max_chars` bound the response when you only need
-the metadata.
+hands back — for videos and podcasts the transcript is omitted by default
+(metadata + description only, since a full one can run to tens of thousands of
+characters), and `include_transcript=true` / `max_chars` pull it in when you want
+it.
 
 ```bash
 npm run build && npm run start:http     # → http://localhost:8787/mcp

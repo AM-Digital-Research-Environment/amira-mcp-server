@@ -18,7 +18,7 @@ available_values? } }`. Every record carries a citable `amira_url`.
 | Task | Tool | Key params |
 | --- | --- | --- |
 | Find items about a subject | `search_research_items` | `subject` (e.g. "Islam", "Architecture") — tags are merged into subjects |
-| Find items from a place | `search_research_items` | `location` — a country OR a city (hierarchy-aware: "Nigeria" includes Lagos items). One place filter, no level distinction |
+| Find items from a place | `search_research_items` | `location` — any level, a country OR a city (hierarchy-aware: "Nigeria" includes Lagos items); or `country` to narrow to the country level specifically |
 | Find items by a contributor | `search_research_items` | `contributor` (either name order) |
 | Items in a project / section / university | `search_research_items` | `project_id`, `research_section`, `university` |
 | By media type / language / format | `search_research_items` | `resource_type`, `language` (name or any ISO code incl. legacy `fre`/`ger`), `genre` (format descriptors) |

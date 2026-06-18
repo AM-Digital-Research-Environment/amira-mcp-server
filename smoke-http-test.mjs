@@ -95,11 +95,19 @@ try {
     "search: types filter restricts record kinds",
   );
 
-  // fetch transcript control on a video
+  // fetch transcript control on a video (report §fetch): OMITTED BY DEFAULT now
+  // (a full transcript can be tens of thousands of chars and tripped ChatGPT's
+  // safety layer); opt in with include_transcript=true.
   const vidHit = (await call("search", { query: "decolonial", types: ["video"] })).results?.[0];
   if (vidHit) {
-    const noT = await call("fetch", { id: vidHit.id, include_transcript: false });
-    check(noT.metadata?.transcript_included === false, "fetch: include_transcript=false omits the transcript");
+    const def = await call("fetch", { id: vidHit.id });
+    if (def.metadata?.has_transcript) {
+      check(def.metadata?.transcript_included === false, "fetch: video transcript omitted by default");
+      check(typeof def.metadata?.transcript_hint === "string", "fetch: omitted transcript carries an opt-in hint");
+      const withT = await call("fetch", { id: vidHit.id, include_transcript: true });
+      check(withT.metadata?.transcript_included === true, "fetch: include_transcript=true appends the transcript");
+      check(withT.text.length > def.text.length, "fetch: text body grows when transcript included");
+    }
   }
 
   // a rich tool works over HTTP too

@@ -97,6 +97,32 @@
   - **Uniform errors.** Misses return `{ error: { code, message, suggested_tool?, available_values? } }`.
   - Verified: typecheck + 13 unit + stdio smoke (24) + HTTP smoke (26) green. Deferred to §4 (need
     use-case/data work): multi-format citation export (RIS/CSL) and authority-alias/matched-form metadata.
+- **2026-06-18 (later) — v1.4.1: two genuine regressions from a v1.4.0 retest.** A second 26-tool
+  ChatGPT audit reported ~6 issues; triage against `src` showed **only two were real in the shipped
+  code** — the rest (get_video transcript params "rejected", `list_locations` still showing `level=…`,
+  `search` missing `limit`/`types`) were the **connector caching pre-v1.4.0 tool schemas**: the
+  `"Additional properties are not allowed"` error is client-side Ajv against the stale schema, and the
+  report even quoted v1.4.0's own `transcript_hint` text in the live response — proving the server was
+  current. Fixed the two real ones:
+  1. **`country` filter restored as a real, advertised param.** v1.4.0 removed it from the schema and
+     tried to route a stray `country` arg into `location`, but MCP/zod strips unknown keys before the
+     handler runs, so `country=Nigeria` was silently ignored and returned the whole 3,975-item
+     collection. `country` is now its own predicate matching the **country level (chain root)**, so it
+     narrows (304 for Nigeria, == the any-level `location` count), is echoed in `filters`, and is a
+     drop-candidate in zero-result `suggestions`. Re-adding (vs documenting-away) also un-breaks
+     still-cached connectors, which keep sending `country`.
+  2. **ChatGPT `fetch` is metadata-only by default for video/podcast.** v1.4.0 appended the transcript
+     by default (rationale: Deep Research can't pass flags) — but a ~46k-char transcript tripped
+     OpenAI's safety layer and **blocked `fetch(video:…)` entirely**. Default flipped to
+     `include_transcript=false`; the omitted case adds a `transcript_hint` + `transcript_length` and a
+     text marker, and `include_transcript=true` still appends it. A failed-open metadata fetch beats a
+     blocked one.
+  - Smoke tests strengthened: the old `country` check asserted only `total_matches > 0` (passed *because*
+    the bug returned everything); now asserts it narrows below the full count, echoes the filter, and
+    stays ⊆ the `location` match. HTTP smoke now asserts fetch omits-by-default + opt-in grows the body.
+  - Verified: typecheck + 13 unit + stdio smoke (24) + HTTP smoke (26) green. **Action for the user:**
+    redeploy the HTTP endpoint and **refresh/reconnect the ChatGPT connector** so it re-pulls the tool
+    schemas — that alone clears the cache-only "regressions".
 
 **Sequencing rule (the one that governs everything):** the server re-platforms onto the
 **Omeka S API first**. None of the examination findings are fixed on the dashboard-era data

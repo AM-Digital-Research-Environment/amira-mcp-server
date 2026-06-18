@@ -77,8 +77,8 @@ Podcasts: `title`, `series`, `episode`, `date`, `date_status` (published/schedul
 (91/140 filled). Transcripts are searchable in full via `search_videos` (a transcript hit returns a
 `transcript_snippet`), but the detail tools (`get_video` / `get_podcast`) **omit the transcript text
 unless `include_transcript=true`** — then `transcript_offset` / `transcript_max_chars` page it (cap
-25k chars per call). The ChatGPT `fetch` tool appends the transcript by default; `include_transcript=false`
-/ `max_chars` bound it.
+25k chars per call). The ChatGPT `fetch` tool also omits the transcript by default (metadata +
+description only); `include_transcript=true` / `max_chars` pull it in.
 
 ## Relationships to exploit
 

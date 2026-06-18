@@ -28,10 +28,24 @@ function matchUniversity(item: ResearchItemRec, val: string): boolean {
 }
 
 /** Place match across each place's full ancestor chain (city → country) — so
- * `location` covers any level: a country, a region or a city alike (v1.4.0
- * merged the old separate `country` filter into this one). */
+ * `location` covers any level: a country or a city alike. */
 function placeMatches(store: DataStore, item: ResearchItemRec, needle: string): boolean {
   return item.places.some((p) => store.placeChain(p).some((label) => containsCI(label, needle)));
+}
+
+/** Country match: the value matches the COUNTRY (root of the place chain) of any
+ * of the item's places — narrower than `location`, which matches any level.
+ * Cities sit directly under countries in this data, so the chain root is the
+ * country; an item tagged only with a city whose country ancestor is missing
+ * won't match (the same gap `location` has). v1.4.1 restored this as a real,
+ * advertised filter — v1.4.0 dropped it from the schema and tried to route a
+ * stray `country` arg into `location`, but validation strips unknown keys before
+ * the handler runs, so `country` was silently ignored (the reported regression). */
+function countryMatches(store: DataStore, item: ResearchItemRec, needle: string): boolean {
+  return item.places.some((p) => {
+    const chain = store.placeChain(p);
+    return containsCI(chain[chain.length - 1], needle);
+  });
 }
 
 function yearsOverlap(item: ResearchItemRec, from?: number, to?: number): boolean {
@@ -57,9 +71,10 @@ export function registerResearchItemTools(server: Server): void {
         "identifiers\n" +
         "  - subject: subject heading, partial match (e.g. 'Architecture', 'Islam'). Subjects include the " +
         "former free-form tags — there is no separate tag filter\n" +
-        "  - location: a place — a country OR a city/region. Matched through the place hierarchy, so " +
-        "'Nigeria' finds Lagos items and 'Lagos' finds just Lagos. (This single filter replaces the old " +
-        "city/region/country distinction.)\n" +
+        "  - location: a place at ANY level — country or city. Matched through the place hierarchy, so " +
+        "'Nigeria' finds Lagos items and 'Lagos' finds just Lagos\n" +
+        "  - country: restrict to one country specifically (matches the country level of the place " +
+        "hierarchy). Use `location` instead to match a city or any level\n" +
         "  - contributor: a person/organisation name in the credits (either name order works)\n" +
         "  - project_id: e.g. 'UBT_ArtWorld2019', 'Ext_ILAM'\n" +
         "  - research_section: e.g. 'Arts & Aesthetics', 'Mobilities'\n" +
@@ -78,7 +93,8 @@ export function registerResearchItemTools(server: Server): void {
       inputSchema: {
         keyword: z.string().optional(),
         subject: z.string().optional(),
-        location: z.string().optional().describe("A country or a city/region (hierarchy-aware)"),
+        location: z.string().optional().describe("A place at any level — country or city (hierarchy-aware)"),
+        country: z.string().optional().describe("Restrict to a country specifically (the country level of the hierarchy)"),
         contributor: z.string().optional(),
         project_id: z.string().optional(),
         research_section: z.string().optional(),
@@ -99,10 +115,6 @@ export function registerResearchItemTools(server: Server): void {
       const offset = capOffset(args.offset);
 
       const project = args.project_id ? store.getProject(args.project_id) : undefined;
-      // `country` was folded into the hierarchy-aware `location` filter (v1.4.0);
-      // a stray `country` from an older caller is routed to `location` so it
-      // still narrows rather than being silently ignored.
-      const locationArg = args.location ?? (args as { country?: string }).country;
 
       // One predicate per active filter, so a zero-result set can be probed by
       // dropping each filter in turn (relaxation hints).
@@ -119,7 +131,8 @@ export function registerResearchItemTools(server: Server): void {
           equalsCI(it.dre_id, k);
       }
       if (args.subject) preds.subject = (it) => it.subjects.some((s) => containsCI(s.label, args.subject!));
-      if (locationArg) preds.location = (it) => placeMatches(store, it, locationArg);
+      if (args.location) preds.location = (it) => placeMatches(store, it, args.location!);
+      if (args.country) preds.country = (it) => countryMatches(store, it, args.country!);
       if (args.contributor)
         preds.contributor = (it) =>
           it.contributors.some(
@@ -163,7 +176,7 @@ export function registerResearchItemTools(server: Server): void {
       return textResult(
         pageOf(filtered, offset, limit, (it) => itemSummary(it, store), {
           ...limitEcho(args.limit, 100, limit),
-          ...filtersEcho({ ...args, country: undefined, location: locationArg }),
+          ...filtersEcho(args),
           ...(suggestions ? { suggestions } : {}),
         }),
       );

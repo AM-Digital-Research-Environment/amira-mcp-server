@@ -95,10 +95,10 @@ many projects are registry entries; only a subset carry digitised items.
 
 ### 2 — Search
 Use the right entry point for the question:
-- Things/artefacts → `search_research_items` (filters: keyword, **subject**, **location** — one place
-  filter for a country OR a city; `location=Nigeria` finds Lagos items too, since the place hierarchy
-  is walked — contributor, project_id, research_section, university, resource_type, genre/format,
-  language, year range). When a strict AND combination returns nothing, the envelope adds
+- Things/artefacts → `search_research_items` (filters: keyword, **subject**, **location** (any level —
+  a country OR a city; `location=Nigeria` finds Lagos items too, since the place hierarchy is walked),
+  **country** (the country level specifically), contributor, project_id, research_section, university,
+  resource_type, genre/format, language, year range). When a strict AND combination returns nothing, the envelope adds
   `suggestions` naming which single filter to drop (and how many items that would surface) — relax,
   don't give up.
 - Projects → `search_projects`. Sections → `list_research_sections`. People → `search_persons`.
@@ -164,10 +164,10 @@ collection page.
 8. **Podcast transcripts are not filled yet** (0/43 as of 2026-06); video transcripts cover 91/140.
    `has_transcript` on each result tells you; absence of a transcript is not an error. The detail
    tools omit the transcript text unless you pass `include_transcript=true` (see Drill).
-9. **One place facet, no levels.** There is no country/region/city distinction: `list_locations` is a
-   flat, item-count-ranked list (countries and cities together, hierarchy rolled up), and
-   `search_research_items` takes a single `location` filter that matches a country *or* a city. (A
-   legacy `country` argument is still honoured — routed to `location`.)
+9. **Places: flat facet, hierarchy-aware filters.** `list_locations` is a flat, item-count-ranked list
+   (countries and cities together, hierarchy rolled up — no level to choose). On
+   `search_research_items`, `location` matches a place at ANY level (a country *or* a city —
+   `location=Nigeria` includes Lagos items), and `country` narrows to the country level specifically.
 10. **Dates carry a `date_status`.** Podcasts and videos label each date `published`, `scheduled`
     (dated in the future — e.g. an episode page posted ahead of release) or `unknown`. Scheduled items
     are returned, not hidden; flag them when a future date would mislead.

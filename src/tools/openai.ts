@@ -277,6 +277,9 @@ function fetchDoc(
       v.url ? `Watch: ${v.url}` : null,
       v.abstract ? `\nDescription:\n${v.abstract}` : null,
       opts.includeTranscript && v.transcript ? `\nTranscript:\n${v.transcript}` : null,
+      !opts.includeTranscript && v.transcript
+        ? `\n[Transcript omitted (${v.transcript.length} chars) — call fetch again with include_transcript=true to append it.]`
+        : null,
     );
     const { text: body, truncated } = capText(text, opts.maxChars);
     return {
@@ -293,6 +296,8 @@ function fetchDoc(
         has_transcript: !!v.transcript,
         transcript_included: opts.includeTranscript && !!v.transcript,
         transcript_length: v.transcript?.length ?? 0,
+        transcript_hint:
+          v.transcript && !opts.includeTranscript ? "Set include_transcript=true to append the transcript." : undefined,
         amira_url: itemUrl(v.o_id),
         truncated: truncated || undefined,
       }),
@@ -311,6 +316,9 @@ function fetchDoc(
       p.url ? `Listen: ${p.url}` : null,
       p.abstract ? `\nDescription:\n${p.abstract}` : null,
       opts.includeTranscript && p.transcript ? `\nTranscript:\n${p.transcript}` : null,
+      !opts.includeTranscript && p.transcript
+        ? `\n[Transcript omitted (${p.transcript.length} chars) — call fetch again with include_transcript=true to append it.]`
+        : null,
     );
     const { text: body, truncated } = capText(text, opts.maxChars);
     return {
@@ -326,6 +334,9 @@ function fetchDoc(
         date_status: dateStatus(p.date),
         has_transcript: !!p.transcript,
         transcript_included: opts.includeTranscript && !!p.transcript,
+        transcript_length: p.transcript?.length ?? 0,
+        transcript_hint:
+          p.transcript && !opts.includeTranscript ? "Set include_transcript=true to append the transcript." : undefined,
         amira_url: itemUrl(p.o_id),
         truncated: truncated || undefined,
       }),
@@ -434,20 +445,21 @@ export function registerOpenAITools(server: Server): void {
         "Retrieve the full text and metadata of one AMIRA record by the `id` returned from the search tool " +
         "(e.g. 'item:abg-99-0000', 'project:UBT_ArtWorld2019', 'pub:eref-94882', 'video:39218', " +
         "'podcast:39121', 'section:218'). Returns { id, title, text, url, metadata } — `text` concatenates " +
-        "the record's descriptive fields, `url` is the citable public page. For videos/podcasts the full " +
-        "transcript is appended by default; pass include_transcript=false to drop it, and `max_chars` to " +
-        "lower the cap (default/max 25,000 characters per call).",
+        "the record's descriptive fields, `url` is the citable public page. For videos/podcasts the " +
+        "transcript is OMITTED by default (metadata + description only, since a full transcript can run tens " +
+        "of thousands of characters); the metadata reports `has_transcript` / `transcript_length`. Pass " +
+        "include_transcript=true to append it, and `max_chars` to lower the 25,000-character cap per call.",
       annotations: annotate("Fetch one AMIRA record"),
       inputSchema: {
         id: z.string().describe("A typed record id from search, e.g. 'item:abg-99-0000'"),
-        include_transcript: z.boolean().optional().describe("Default true — set false to omit the video/podcast transcript"),
+        include_transcript: z.boolean().optional().describe("Default false — set true to append the video/podcast transcript"),
         max_chars: z.number().int().optional().describe("Cap on returned text, default/max 25000"),
       },
     },
     async ({ id, include_transcript, max_chars }) => {
       const store = await ensureStore();
       const maxChars = Math.max(1, Math.min(Math.floor(max_chars ?? CHARACTER_LIMIT), CHARACTER_LIMIT));
-      return textResult(fetchDoc(store, id, { includeTranscript: include_transcript ?? true, maxChars }));
+      return textResult(fetchDoc(store, id, { includeTranscript: include_transcript ?? false, maxChars }));
     },
   );
 }
