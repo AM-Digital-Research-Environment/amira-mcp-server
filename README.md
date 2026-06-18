@@ -74,7 +74,13 @@ Call `get_collection_overview` first to scope the data, then drill in.
 
 A research-workflow skill ships in [`.claude/skills/amira-mcp/`](.claude/skills/amira-mcp/):
 cluster context, a query workflow, a tool-by-task map, the citation discipline, and coverage caveats.
-Install it by copying that folder into your Claude skills directory (e.g. `~/.claude/skills/`).
+Install it either way:
+
+- **Download** `amira-mcp-skill.zip` from the
+  [releases page](https://github.com/AM-Digital-Research-Environment/amira-mcp-server/releases) and
+  unzip it into your Claude skills directory (e.g. `~/.claude/skills/`) — it expands to
+  `~/.claude/skills/amira-mcp/`.
+- **Or copy** the [`.claude/skills/amira-mcp/`](.claude/skills/amira-mcp/) folder from this repo there.
 
 ## Install (end users)
 
@@ -179,7 +185,8 @@ Two GitHub Actions automate distribution (both crawl the **public** API — no
 credentials):
 
 - **Release** (`.github/workflows/release.yml`) — on a pushed `v*` tag: fresh
-  snapshot, unit + live tests, smoke, pack, attach to the GitHub Release.
+  snapshot, unit + live tests, smoke, pack the `.mcpb` and zip the companion
+  skill (`amira-mcp-skill.zip`), and attach both to the GitHub Release.
 - **Refresh data snapshot** (`.github/workflows/refresh-data.yml`) — weekly and
   on demand; rebuilds **only when the data's freshness signature (max
   `o:modified` + per-corpus counts) changed**, updating the rolling
