@@ -1,6 +1,6 @@
 {
   "name": "amira-mcp-server-bundle",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Node MCP server for the Africa Multiple research data (AMIRA collection on Omeka S), packaged as a Claude Desktop extension (.mcpb).",
   "private": true,
   "type": "module",

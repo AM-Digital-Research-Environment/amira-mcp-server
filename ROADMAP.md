@@ -123,6 +123,20 @@
   - Verified: typecheck + 13 unit + stdio smoke (24) + HTTP smoke (26) green. **Action for the user:**
     redeploy the HTTP endpoint and **refresh/reconnect the ChatGPT connector** so it re-pulls the tool
     schemas — that alone clears the cache-only "regressions".
+- **2026-06-18 (later) — v1.4.2: align `fetch` transcript paging with `get_video`/`get_podcast`.** A
+  *third* ChatGPT v1.4.1 audit re-reported the same cache-shaped symptoms; a live `tools/list` + tool-call
+  probe of the shipped server confirmed `get_video` transcript paging, `search_videos` `matched_in`/snippet
+  and `search_podcasts` `date_status` **all work** — the `"additional properties"` errors are client-side
+  Ajv against the connector's cached pre-v1.4.0 schemas (`additionalProperties:false` on every tool). The
+  one genuine, reproducible inconsistency: `fetch` accepted `include_transcript` + `max_chars` but **not**
+  `transcript_offset`/`transcript_max_chars`, so a model that read `get_video`'s paging hint and tried the
+  same params on `fetch` got them rejected (and `fetch` ignored offset anyway). Fixed: a shared
+  `transcriptWindow()` helper now backs both video/podcast branches of `fetchDoc`; `fetch` gains
+  `transcript_offset`/`transcript_max_chars` (capped 25k, same semantics as the get_* tools), keeps
+  `max_chars` as the whole-body cap, and its metadata/hint advertise the paging. HTTP smoke now asserts the
+  window (`transcript_returned_chars`, `transcript_offset`, `transcript_truncated`). Deferred to GitHub
+  issues (not blockers): **#3** `list_locations` `level` output field, **#4** research-item citation/BibTeX.
+  Verified: typecheck + 13 unit + stdio smoke (24) + HTTP smoke (26) green.
 
 **Sequencing rule (the one that governs everything):** the server re-platforms onto the
 **Omeka S API first**. None of the examination findings are fixed on the dashboard-era data

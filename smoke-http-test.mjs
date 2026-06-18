@@ -107,6 +107,17 @@ try {
       const withT = await call("fetch", { id: vidHit.id, include_transcript: true });
       check(withT.metadata?.transcript_included === true, "fetch: include_transcript=true appends the transcript");
       check(withT.text.length > def.text.length, "fetch: text body grows when transcript included");
+      // transcript paging aligns with get_video/get_podcast (the report's one real
+      // cross-tool inconsistency): transcript_offset / transcript_max_chars window it.
+      const paged = await call("fetch", {
+        id: vidHit.id,
+        include_transcript: true,
+        transcript_offset: 0,
+        transcript_max_chars: 200,
+      });
+      check(paged.metadata?.transcript_returned_chars === 200, "fetch: transcript_max_chars windows the transcript");
+      check(paged.metadata?.transcript_offset === 0, "fetch: transcript_offset echoed");
+      check(paged.metadata?.transcript_truncated === true, "fetch: windowed transcript flags more remaining");
     }
   }
 

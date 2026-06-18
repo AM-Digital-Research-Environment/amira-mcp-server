@@ -173,10 +173,56 @@ function runSearch(store: DataStore, query: string, limit: number, types?: Searc
   return ranked.slice(0, limit);
 }
 
+/**
+ * Window a video/podcast transcript for `fetch`, aligning it with the
+ * get_video / get_podcast paging contract: `include_transcript` opts in,
+ * `transcript_offset` / `transcript_max_chars` (cap 25k) page a long one.
+ * Returns the text to append plus the paging metadata. Keeping the same param
+ * names across fetch and the get_* tools is the fix for the report's only real
+ * inconsistency — the model would read get_video's hint and then have fetch
+ * reject those same params.
+ */
+function transcriptWindow(
+  transcript: string | null,
+  opts: { includeTranscript: boolean; transcriptOffset?: number; transcriptMaxChars?: number },
+): { append: string | null; meta: Record<string, unknown> } {
+  const total = transcript?.length ?? 0;
+  const has = total > 0;
+  if (!opts.includeTranscript || !has) {
+    return {
+      append: has
+        ? `\n[Transcript omitted (${total} chars) — call fetch again with include_transcript=true to append it (page long ones with transcript_offset / transcript_max_chars).]`
+        : null,
+      meta: {
+        has_transcript: has,
+        transcript_included: false,
+        transcript_length: total,
+        transcript_hint: has
+          ? "Set include_transcript=true to append the transcript (page long ones with transcript_offset / transcript_max_chars)."
+          : undefined,
+      },
+    };
+  }
+  const offset = Math.max(0, Math.floor(opts.transcriptOffset ?? 0));
+  const max = Math.max(1, Math.min(Math.floor(opts.transcriptMaxChars ?? CHARACTER_LIMIT), CHARACTER_LIMIT));
+  const slice = (transcript ?? "").slice(offset, offset + max);
+  return {
+    append: `\nTranscript:\n${slice}`,
+    meta: {
+      has_transcript: true,
+      transcript_included: true,
+      transcript_length: total,
+      transcript_offset: offset,
+      transcript_returned_chars: slice.length,
+      transcript_truncated: offset + slice.length < total || undefined,
+    },
+  };
+}
+
 function fetchDoc(
   store: DataStore,
   id: string,
-  opts: { includeTranscript: boolean; maxChars: number },
+  opts: { includeTranscript: boolean; maxChars: number; transcriptOffset?: number; transcriptMaxChars?: number },
 ): Record<string, unknown> {
   const sep = id.indexOf(":");
   const kind = sep === -1 ? id : id.slice(0, sep);
@@ -269,6 +315,7 @@ function fetchDoc(
   if (kind === "video") {
     const v = store.getVideo(Number(key));
     if (!v) return notFound;
+    const tw = transcriptWindow(v.transcript, opts);
     const text = joinLines(
       `Title: ${v.title}`,
       v.date ? `Date: ${v.date}` : null,
@@ -276,10 +323,7 @@ function fetchDoc(
       v.playlists.length ? `Playlists: ${refLabels(v.playlists).join("; ")}` : null,
       v.url ? `Watch: ${v.url}` : null,
       v.abstract ? `\nDescription:\n${v.abstract}` : null,
-      opts.includeTranscript && v.transcript ? `\nTranscript:\n${v.transcript}` : null,
-      !opts.includeTranscript && v.transcript
-        ? `\n[Transcript omitted (${v.transcript.length} chars) — call fetch again with include_transcript=true to append it.]`
-        : null,
+      tw.append,
     );
     const { text: body, truncated } = capText(text, opts.maxChars);
     return {
@@ -293,11 +337,7 @@ function fetchDoc(
         date_status: dateStatus(v.date),
         playlists: refLabels(v.playlists),
         speakers: v.speakers.map((c) => c.name),
-        has_transcript: !!v.transcript,
-        transcript_included: opts.includeTranscript && !!v.transcript,
-        transcript_length: v.transcript?.length ?? 0,
-        transcript_hint:
-          v.transcript && !opts.includeTranscript ? "Set include_transcript=true to append the transcript." : undefined,
+        ...tw.meta,
         amira_url: itemUrl(v.o_id),
         truncated: truncated || undefined,
       }),
@@ -307,6 +347,7 @@ function fetchDoc(
   if (kind === "podcast") {
     const p = store.getPodcast(Number(key));
     if (!p) return notFound;
+    const tw = transcriptWindow(p.transcript, opts);
     const text = joinLines(
       `Title: ${p.title}`,
       p.series ? `Series: ${p.series.label}` : null,
@@ -315,10 +356,7 @@ function fetchDoc(
       p.people.length ? `People: ${p.people.map((c) => (c.role ? `${c.name} (${c.role})` : c.name)).join("; ")}` : null,
       p.url ? `Listen: ${p.url}` : null,
       p.abstract ? `\nDescription:\n${p.abstract}` : null,
-      opts.includeTranscript && p.transcript ? `\nTranscript:\n${p.transcript}` : null,
-      !opts.includeTranscript && p.transcript
-        ? `\n[Transcript omitted (${p.transcript.length} chars) — call fetch again with include_transcript=true to append it.]`
-        : null,
+      tw.append,
     );
     const { text: body, truncated } = capText(text, opts.maxChars);
     return {
@@ -332,11 +370,7 @@ function fetchDoc(
         episode: p.episode,
         date: p.date,
         date_status: dateStatus(p.date),
-        has_transcript: !!p.transcript,
-        transcript_included: opts.includeTranscript && !!p.transcript,
-        transcript_length: p.transcript?.length ?? 0,
-        transcript_hint:
-          p.transcript && !opts.includeTranscript ? "Set include_transcript=true to append the transcript." : undefined,
+        ...tw.meta,
         amira_url: itemUrl(p.o_id),
         truncated: truncated || undefined,
       }),
@@ -448,18 +482,29 @@ export function registerOpenAITools(server: Server): void {
         "the record's descriptive fields, `url` is the citable public page. For videos/podcasts the " +
         "transcript is OMITTED by default (metadata + description only, since a full transcript can run tens " +
         "of thousands of characters); the metadata reports `has_transcript` / `transcript_length`. Pass " +
-        "include_transcript=true to append it, and `max_chars` to lower the 25,000-character cap per call.",
+        "include_transcript=true to append it, and page a long one with transcript_offset / " +
+        "transcript_max_chars (same names as get_video / get_podcast, capped at 25,000 chars per call); " +
+        "`max_chars` caps the whole text body.",
       annotations: annotate("Fetch one AMIRA record"),
       inputSchema: {
         id: z.string().describe("A typed record id from search, e.g. 'item:abg-99-0000'"),
         include_transcript: z.boolean().optional().describe("Default false — set true to append the video/podcast transcript"),
-        max_chars: z.number().int().optional().describe("Cap on returned text, default/max 25000"),
+        transcript_offset: z.number().int().optional().describe("Start offset into the transcript (chars), with include_transcript"),
+        transcript_max_chars: z.number().int().optional().describe("Max transcript characters to return (default/max 25000)"),
+        max_chars: z.number().int().optional().describe("Cap on the whole returned text body, default/max 25000"),
       },
     },
-    async ({ id, include_transcript, max_chars }) => {
+    async ({ id, include_transcript, transcript_offset, transcript_max_chars, max_chars }) => {
       const store = await ensureStore();
       const maxChars = Math.max(1, Math.min(Math.floor(max_chars ?? CHARACTER_LIMIT), CHARACTER_LIMIT));
-      return textResult(fetchDoc(store, id, { includeTranscript: include_transcript ?? false, maxChars }));
+      return textResult(
+        fetchDoc(store, id, {
+          includeTranscript: include_transcript ?? false,
+          maxChars,
+          transcriptOffset: transcript_offset,
+          transcriptMaxChars: transcript_max_chars,
+        }),
+      );
     },
   );
 }
