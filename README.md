@@ -107,8 +107,9 @@ ranked hits across research items, the bibliography, podcasts, videos, projects
 and research sections; `fetch` returns one record's full text by the id `search`
 hands back — for videos and podcasts the transcript is omitted by default
 (metadata + description only, since a full one can run to tens of thousands of
-characters), and `include_transcript=true` / `max_chars` pull it in when you want
-it.
+characters), and `include_transcript=true` pulls it in — paged with
+`transcript_offset` / `transcript_max_chars` (the same names get_video /
+get_podcast use), with `max_chars` capping the whole text body.
 
 ```bash
 npm run build && npm run start:http     # → http://localhost:8787/mcp
