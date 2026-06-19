@@ -13,6 +13,7 @@ tsconfig.json
 # Tests
 test/
 smoke-test.mjs
+smoke-http-test.mjs
 
 # Local caches
 .census-cache/
@@ -20,6 +21,7 @@ smoke-test.mjs
 # Dev metadata
 .gitignore
 .gitattributes
+.agents/
 .git/
 .github/
 .DS_Store

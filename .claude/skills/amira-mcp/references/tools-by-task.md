@@ -20,11 +20,11 @@ available_values? } }`. Every record carries a citable `amira_url`.
 | Find items about a subject | `search_research_items` | `subject` (e.g. "Islam", "Architecture") — tags are merged into subjects |
 | Find items from a place | `search_research_items` | `location` — any level, a country OR a city (hierarchy-aware: "Nigeria" includes Lagos items); or `country` to narrow to the country level specifically |
 | Find items by a contributor | `search_research_items` | `contributor` (either name order) |
-| Items in a project / section / university | `search_research_items` | `project_id`, `research_section`, `university` |
+| Items in a project / section / university | `search_research_items` | `project_id` (Omeka id preferred), `research_section`, `university` |
 | By media type / language / format | `search_research_items` | `resource_type`, `language` (name or any ISO code incl. legacy `fre`/`ger`), `genre` (format descriptors) |
-| By date | `search_research_items` | `year_from`, `year_to` (overlaps the item's content-date range) |
+| By date | `search_research_items` | `year_from`, `year_to` (overlaps the item's derived content-date range; rights/admin dates are not used; inverted ranges return `invalid_range`) |
 | Free text | `search_research_items` | `keyword` (titles, description, abstract, ToC, identifiers) |
-| Full record of one item | `get_research_item` | `dre_id` (e.g. "abg-99-0000") — includes typed `dates`, place hierarchy, sponsors, related items |
+| Full record of one item | `get_research_item` | `id` / `omeka_id` (e.g. `7392`) — includes typed `dates`, place hierarchy, sponsors, related items |
 
 Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 
@@ -33,7 +33,7 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Task | Tool | Key params |
 | --- | --- | --- |
 | Find projects | `search_projects` | `keyword`, `university`, `research_section`, `principal_investigator`, `member` (either name order), `institution` (funder) |
-| Full project detail | `get_project` | `id` (e.g. "UBT_ArtWorld2019", "Ext_ILAM") — item breakdown + top subjects |
+| Full project detail | `get_project` | Omeka `id` (e.g. `37700`) — item breakdown + top subjects |
 
 `item_count` distinguishes projects with digitised items from registry-only entries.
 
@@ -61,14 +61,14 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Places ranked by item count | `list_locations` | Flat list of every place — countries and cities together (hierarchy rolled up, so an item from Lagos counts toward both Lagos and Nigeria); optional `country` narrows; returns coordinates |
 | Collections ranked by item count | `list_collections` | Per-project + external item sets; feed the title/id into the `collection` filter of search_research_items |
 | Formats / languages / resource types | `list_categories` | `category` ∈ formats (alias: genres) / languages / resource_types |
-| Coverage over time (date histogram) | `list_years` | `bucket` = year/decade; `from`/`to` window; `sort` = chronological/count; ranged items count in every year they span |
+| Coverage over time (date histogram) | `list_years` | `bucket` = year/decade; `from`/`to` window; `sort` = chronological/count; ranged items count in every year they span; rights/admin dates are not used |
 
 ## Bibliography
 
 | Task | Tool | Key params |
 | --- | --- | --- |
 | Search publications | `search_publications` | `keyword`, `author`, `type`, `year_from`/`year_to` |
-| Full publication + BibTeX | `get_publication` | `id` (e.g. "eref-94882") — BibTeX is generated from the structured fields |
+| Full publication + BibTeX | `get_publication` | Omeka `id` — BibTeX is generated from the structured fields |
 
 ## Podcasts & YouTube videos
 
@@ -98,6 +98,7 @@ and `matched_items` counts *items* (so it can differ from a `list_subjects` head
   `get_research_item` on the best hits → cite each `amira_url`.
 - *"Map a person's footprint."* → `get_person name="Ulli Beier"` (projects, items, publications).
 - *"Where is decoloniality discussed in cluster talks?"* → `search_videos keyword=decolonial` →
-  `get_video` for the transcript context → cite the watch `url` + `amira_url`.
+  `get_video` for the transcript context → cite the AMIRA `amira_url`; add the watch `url` only as a
+  secondary link if useful.
 - *"How do Arts & Aesthetics projects relate to a place?"* → `search_projects research_section="Arts & Aesthetics"`
   → `find_related entity_type=location value="Nigeria"`.

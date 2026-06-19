@@ -7,6 +7,7 @@ import {
   capLimit,
   capOffset,
   containsCI,
+  errorResult,
   filtersEcho,
   limitEcho,
   pageOf,
@@ -306,6 +307,9 @@ export function registerFacetTools(server: Server): void {
       const limit = capLimit(args.limit, 200, 500);
       const offset = capOffset(args.offset);
       const { from, to } = args;
+      if (from !== undefined && to !== undefined && from > to) {
+        return errorResult("invalid_range", "`from` must be less than or equal to `to`.");
+      }
 
       const counts = new Map<number, number>(); // key = year, or decade-start year
       let datedItems = 0;

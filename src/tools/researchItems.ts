@@ -55,6 +55,10 @@ function yearsOverlap(item: ResearchItemRec, from?: number, to?: number): boolea
   return lo <= (to ?? Infinity) && hi >= (from ?? -Infinity);
 }
 
+function invalidYearRange(from?: number, to?: number): boolean {
+  return from !== undefined && to !== undefined && from > to;
+}
+
 export function registerResearchItemTools(server: Server): void {
   // === search_research_items ================================================
   server.registerTool(
@@ -76,7 +80,7 @@ export function registerResearchItemTools(server: Server): void {
         "  - country: restrict to one country specifically (matches the country level of the place " +
         "hierarchy). Use `location` instead to match a city or any level\n" +
         "  - contributor: a person/organisation name in the credits (either name order works)\n" +
-        "  - project_id: e.g. 'UBT_ArtWorld2019', 'Ext_ILAM'\n" +
+        "  - project_id: Omeka o:id preferred; legacy project-key values also work\n" +
         "  - research_section: e.g. 'Arts & Aesthetics', 'Mobilities'\n" +
         "  - university: ubt | unilag | ujkz | ufba | external (code or name)\n" +
         "  - resource_type: e.g. 'Image', 'Text', 'Audio', 'Moving image'\n" +
@@ -86,7 +90,8 @@ export function registerResearchItemTools(server: Server): void {
         "  - year_from / year_to: keep items whose content dates overlap the range\n" +
         "  - limit (default 20, max 100), offset (pagination)\n\n" +
         "Returns a paginated envelope { count, total_matches, offset, has_more, next_offset?, results[] }; " +
-        "each result carries a citable `amira_url`. Use get_research_item with a dre_id for full detail. " +
+        "each result carries `id` / `omeka_id` plus a citable `amira_url`. Use get_research_item with the " +
+        "Omeka id for full detail. " +
         "When a combined filter set matches nothing, the envelope adds `suggestions` naming which single " +
         "filter to drop (and how many items that would surface).",
       annotations: annotate("Search research items"),
@@ -96,7 +101,7 @@ export function registerResearchItemTools(server: Server): void {
         location: z.string().optional().describe("A place at any level — country or city (hierarchy-aware)"),
         country: z.string().optional().describe("Restrict to a country specifically (the country level of the hierarchy)"),
         contributor: z.string().optional(),
-        project_id: z.string().optional(),
+        project_id: z.union([z.string(), z.number()]).optional(),
         research_section: z.string().optional(),
         university: z.string().optional(),
         resource_type: z.string().optional(),
@@ -113,8 +118,11 @@ export function registerResearchItemTools(server: Server): void {
       const store = await ensureStore();
       const limit = capLimit(args.limit, 20, 100);
       const offset = capOffset(args.offset);
+      if (invalidYearRange(args.year_from, args.year_to)) {
+        return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
+      }
 
-      const project = args.project_id ? store.getProject(args.project_id) : undefined;
+      const project = args.project_id != null ? store.getProject(String(args.project_id)) : undefined;
 
       // One predicate per active filter, so a zero-result set can be probed by
       // dropping each filter in turn (relaxation hints).
@@ -138,9 +146,9 @@ export function registerResearchItemTools(server: Server): void {
           it.contributors.some(
             (c) => nameMatchesQuery(c.name, args.contributor!) || containsCI(c.name, args.contributor!),
           );
-      if (args.project_id)
+      if (args.project_id != null)
         preds.project_id = (it) =>
-          project ? it.project?.o_id === project.o_id : equalsCI(it.project?.label, args.project_id!);
+          project ? it.project?.o_id === project.o_id : equalsCI(it.project?.label, String(args.project_id));
       if (args.research_section)
         preds.research_section = (it) => store.sectionsOfItem(it).some((s) => equalsCI(s, args.research_section!));
       if (args.university) preds.university = (it) => matchUniversity(it, args.university!);
@@ -189,8 +197,9 @@ export function registerResearchItemTools(server: Server): void {
     {
       title: "Get research item detail",
       description:
-        "Full metadata for one research item by `dre_id` (e.g. 'abg-99-0000'; the numeric Omeka o:id also " +
-        "works). Returns titles, typed content dates (created/collected/issued/…), contributors with " +
+        "Full metadata for one research item by Omeka `id` / `omeka_id` (the numeric o:id in its " +
+        "`amira_url`; legacy DRE-key values also work when passed as `id`). Returns titles, typed content dates " +
+        "(created/collected/issued/…), contributors with " +
         "roles, subjects, places (with their region/country chain), project + research sections + " +
         "university, collections it belongs to, description, abstract, table of contents, formats and " +
         "physical notes, sponsors, provenance (holding source), access rights, license, identifiers, DOI, " +
@@ -199,14 +208,15 @@ export function registerResearchItemTools(server: Server): void {
         "25,000 characters. Returns { error } if the id is unknown.",
       annotations: annotate("Get research item detail"),
       inputSchema: {
-        dre_id: z.string().describe("The item's DRE identifier, e.g. 'abg-99-0000' (or its Omeka o:id)"),
+        id: z.union([z.string(), z.number()]).describe("The item's Omeka o:id, e.g. 7392"),
       },
     },
-    async ({ dre_id }) => {
+    async ({ id }) => {
       const store = await ensureStore();
-      const it = store.getItem(dre_id);
+      const key = String(id);
+      const it = store.getItem(key);
       if (!it) {
-        return errorResult("not_found", `No research item with id '${dre_id}'.`, {
+        return errorResult("not_found", `No research item with id '${key}'.`, {
           suggested_tool: "search_research_items",
         });
       }
@@ -216,12 +226,13 @@ export function registerResearchItemTools(server: Server): void {
       const toc = it.toc ? capText(it.toc) : null;
 
       return textResult({
-        dre_id: it.dre_id,
+        id: String(it.o_id),
+        omeka_id: it.o_id,
         title: it.title,
         alternative_titles: it.alt_titles,
         type: it.type,
         university: UNIVERSITY_LABELS[it.university],
-        project: project ? { id: project.dre_id, name: project.name, amira_url: itemUrl(project.o_id) } : null,
+        project: project ? { id: String(project.o_id), omeka_id: project.o_id, name: project.name, amira_url: itemUrl(project.o_id) } : null,
         research_sections: store.sectionsOfItem(it),
         dates: it.dates,
         date: yearLabel(it),

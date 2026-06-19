@@ -67,13 +67,17 @@ try {
   const first = search.results?.[0];
   check(!!first?.id && !!first?.title && !!first?.url, "search: result has id/title/url");
   check(/^(item|pub|video|podcast|project|section):/.test(first?.id ?? ""), "search: typed id");
+  check(/^(item|pub|video|podcast|project|section):\d+$/.test(first?.id ?? ""), "search: typed id uses Omeka numeric id");
+  check(first.url.includes("/s/amira/item/"), "search: result url is the AMIRA record page");
 
   // fetch(id) → {id,title,text,url,metadata}
   const doc = await call("fetch", { id: first.id });
   check(doc.id === first.id, "fetch: echoes id");
   check(typeof doc.text === "string" && doc.text.length > 0, "fetch: text body present");
   check(typeof doc.url === "string" && doc.url.startsWith("http"), "fetch: url present");
+  check(doc.url.includes("/s/amira/item/"), "fetch: url is the AMIRA record page");
   check(!!doc.metadata, "fetch: metadata present");
+  check(!("dre_id" in (doc.metadata ?? {})), "fetch: metadata does not expose DRE ids");
 
   // transcript reach: a term likely only inside a video transcript
   const tv = await call("search", { query: "decolonial" });
@@ -91,8 +95,9 @@ try {
   check((limited.results?.length ?? 99) <= 3, "search: limit caps the result set");
   const onlyPubs = await call("search", { query: "Africa", types: ["publication"] });
   check(
-    onlyPubs.results?.length > 0 && onlyPubs.results.every((r) => r.id.startsWith("pub:")),
-    "search: types filter restricts record kinds",
+    onlyPubs.results?.length > 0 &&
+      onlyPubs.results.every((r) => r.id.startsWith("pub:") && r.url.includes("/s/amira/item/")),
+    "search: types filter restricts record kinds and keeps AMIRA urls",
   );
 
   // fetch transcript control on a video (report §fetch): OMITTED BY DEFAULT now
@@ -100,10 +105,11 @@ try {
   // safety layer); opt in with include_transcript=true.
   const vidHit = (await call("search", { query: "decolonial", types: ["video"] })).results?.[0];
   if (vidHit) {
-    const def = await call("fetch", { id: vidHit.id });
-    if (def.metadata?.has_transcript) {
-      check(def.metadata?.transcript_included === false, "fetch: video transcript omitted by default");
-      check(typeof def.metadata?.transcript_hint === "string", "fetch: omitted transcript carries an opt-in hint");
+      const def = await call("fetch", { id: vidHit.id });
+      if (def.metadata?.has_transcript) {
+        check(def.metadata?.transcript_included === false, "fetch: video transcript omitted by default");
+        check(typeof def.metadata?.transcript_hint === "string", "fetch: omitted transcript carries an opt-in hint");
+        check(typeof def.metadata?.watch_url === "string", "fetch: video keeps watch_url as secondary metadata");
       const withT = await call("fetch", { id: vidHit.id, include_transcript: true });
       check(withT.metadata?.transcript_included === true, "fetch: include_transcript=true appends the transcript");
       check(withT.text.length > def.text.length, "fetch: text body grows when transcript included");

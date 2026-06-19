@@ -61,8 +61,10 @@ Beyond the research items, the collection carries the cluster **bibliography** (
 full **transcripts**, making `search_videos keyword=…` the collection's main full-text search over
 talks and lectures.
 
-The data is **read from a snapshot of the public Omeka S API** — the server contacts no live backend,
-works offline, and needs no key or credentials.
+The data is **read from a snapshot of the public Omeka S API**. The server works offline from the
+bundled snapshot and needs no key or credentials; when live refresh is enabled, it may probe and
+refresh a local cache from the public API. `get_collection_overview` reports which snapshot source is
+serving and when it was fetched.
 
 ## The entities (and how they connect)
 
@@ -80,8 +82,8 @@ Podcast / YouTube video ── speakers reconciled to People; videos carry trans
 ```
 
 Every entity is an Omeka item with a stable public page: its **`amira_url`**
-(`…/s/amira/item/<id>`). Research items additionally keep their `dre_id` (e.g. `abg-99-0000`) as the
-lookup key; either works in `get_research_item`.
+(`…/s/amira/item/<id>`). The preferred identifier is the Omeka `id` / `omeka_id`, i.e. the final
+number in that URL; use that when an identifier is needed.
 
 See [references/data-model.md](references/data-model.md) for field-level detail, and
 [references/tools-by-task.md](references/tools-by-task.md) for the full 24-tool catalogue.
@@ -97,7 +99,8 @@ many projects are registry entries; only a subset carry digitised items.
 Use the right entry point for the question:
 - Things/artefacts → `search_research_items` (filters: keyword, **subject**, **location** (any level —
   a country OR a city; `location=Nigeria` finds Lagos items too, since the place hierarchy is walked),
-  **country** (the country level specifically), contributor, project_id, research_section, university,
+  **country** (the country level specifically), contributor, project_id (Omeka id preferred),
+  research_section, university,
   resource_type, genre/format, language, year range). When a strict AND combination returns nothing, the envelope adds
   `suggestions` naming which single filter to drop (and how many items that would surface) — relax,
   don't give up.
@@ -109,14 +112,15 @@ Use the right entry point for the question:
   `list_locations`, `list_collections` (item sets — pair with the `collection` filter),
   `list_categories` (formats/languages/resource_types), all ranked by item count. Feed a returned
   value straight back into the matching filter. `list_years` gives the date distribution (by year or
-  decade) for coverage-over-time and most-covered-year questions.
+  decade) for coverage-over-time and most-covered-year questions. For date ranges, pass `from <= to`
+  / `year_from <= year_to`; inverted ranges return a structured `invalid_range` error.
 
 Keep `limit` modest (10–25) while scoping; paginate with `offset` / `next_offset`. Ask for more than
 a tool's max and it caps silently but tells you — the envelope echoes `requested_limit` /
 `effective_limit`.
 
 ### 3 — Drill
-`get_research_item` (by `dre_id`) returns the full record — including the **typed dates** and the
+`get_research_item` (by Omeka `id` / `omeka_id`) returns the full record — including the **typed dates** and the
 place hierarchy. `get_project`, `get_research_section`, `get_person`, `get_institution`,
 `get_publication` (with generated BibTeX), `get_podcast`, `get_video` complete the detail layer.
 **Transcripts are opt-in:** `get_podcast` / `get_video` omit the transcript by default (you still see
@@ -134,16 +138,20 @@ echoes the rule in `matching`. `matched_items` counts *items*, so it can legitim
 
 ### 5 — Synthesise with citations
 Every record carries an **`amira_url`**. Cite each entity you mention as a **markdown link** to that
-URL. For publications, lead with the `url` (DOI or repository permalink); `amira_url` is the
-collection page.
+URL whenever possible. For publications, videos, and podcasts, you may also include DOI, repository,
+watch, or listen URLs when useful, but they should supplement rather than replace the AMIRA record
+link.
 
 ## Citation rules (important)
 
 - ALWAYS render an entity's `amira_url` as a markdown link, e.g.
   `[Volume 8: Yoruba Architecture…](https://data.africamultiple.uni-bayreuth.de/s/amira/item/7392)`.
-- **Never** print a bare id (`abg-99-0000`) and **never** collapse items into an id range. List each
-  referenced item as its own full link — a bulleted list is the right shape when there are several.
-- For a publication, lead with its own `url`/DOI; `amira_url` points to the collection record.
+- **Never** print legacy DRE identifiers. If an identifier is explicitly needed, use
+  the Omeka `id` / `omeka_id` (the final number in the `amira_url`). Never collapse items into an id
+  range. List each referenced item as its own full link — a bulleted list is the right shape when
+  there are several.
+- For a publication, video, or podcast, include the AMIRA `amira_url` as the main source link; add DOI,
+  repository, watch, or listen URLs only as secondary links where they help.
 - Do not invent links or ids — only use the URLs the tools return.
 
 ## Caveats
@@ -171,5 +179,9 @@ collection page.
 10. **Dates carry a `date_status`.** Podcasts and videos label each date `published`, `scheduled`
     (dated in the future — e.g. an episode page posted ahead of release) or `unknown`. Scheduled items
     are returned, not hidden; flag them when a future date would mislead.
-11. **Errors are structured.** A miss returns `{ error: { code, message, suggested_tool?,
+11. **Research-item year ranges are content ranges.** `get_research_item.dates` still exposes typed
+    rights/admin dates such as `copyrighted`, `available`, `valid`, and `modified`, but derived `date`,
+    `year_from`/`year_to` filtering, `list_years`, and `content_date_range` are based on content dates
+    such as `created`, `collected`, `issued`, and `date`.
+12. **Errors are structured.** A miss or invalid input returns `{ error: { code, message, suggested_tool?,
     available_values? } }` — read `suggested_tool`/`available_values` to recover rather than guessing.

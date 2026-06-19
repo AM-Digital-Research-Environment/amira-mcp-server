@@ -41,7 +41,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | --- | --- |
 | `get_collection_overview` | Counts and breakdowns across the whole collection + snapshot freshness |
 | `search_research_items` | Find items by keyword, **subject**, **location** (hierarchy-aware), contributor, project, section, university, resource type, format/genre, language, year |
-| `get_research_item` | Full metadata for one item (by `dre_id`): typed dates, roles, places with their region/country chain, sponsors, collections, related items, media thumbnail |
+| `get_research_item` | Full metadata for one item (by Omeka `id` / `omeka_id`): typed dates, roles, places with their region/country chain, sponsors, collections, related items, media thumbnail |
 | `search_projects` / `get_project` | Projects by keyword, university, section, PI, member, funder — detail with item breakdown + top subjects |
 | `list_research_sections` / `get_research_section` | Thematic sections with funding phases (AM 1.0 / AM 2.0), PIs, counts, projects |
 | `search_persons` / `get_person` | People (either name order works) — profile across projects, items, publications |
@@ -64,7 +64,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | "Show me all the **French**-language items" | `search_research_items language=French` (codes `fr`/`fra`/legacy `fre` work too) |
 | "What has Ulli Beier contributed?" | `get_person name="Ulli Beier"` (resolves to 'Beier, Ulli') |
 | "Which items come from **Nigeria**?" | `search_research_items location=Nigeria` (Lagos items count too — `location` walks the place hierarchy, covering both countries and cities) |
-| "What audio recordings are in the ILAM collection?" | `search_research_items project_id=Ext_ILAM resource_type=Audio` |
+| "What audio recordings are in the ILAM collection?" | `search_research_items project_id=37700 resource_type=Audio` |
 | "In which talks does anyone discuss **decoloniality**?" | `search_videos keyword=decolonial` (matches inside transcripts, flagged `matched_in`) |
 | "What themes travel with **Architecture** across projects?" | `find_related entity_type=subject value=Architecture` |
 | "When was this photograph taken?" | `get_research_item` → typed `dates` (created/collected/issued/…) |
@@ -104,8 +104,10 @@ total). Access is unauthenticated — the data is public and read-only.
 `search` takes plain keywords (matched term-by-term, not as an exact phrase),
 with optional `limit` and `types` to keep the result set tight, and returns
 ranked hits across research items, the bibliography, podcasts, videos, projects
-and research sections; `fetch` returns one record's full text by the id `search`
-hands back — for videos and podcasts the transcript is omitted by default
+and research sections. The `url` on `search` results and `fetch` documents is
+always the AMIRA/Omeka public record page; DOI, YouTube/watch, and podcast/listen
+URLs are kept as secondary metadata/text links. `fetch` returns one record's full
+text by the id `search` hands back — for videos and podcasts the transcript is omitted by default
 (metadata + description only, since a full one can run to tens of thousands of
 characters), and `include_transcript=true` pulls it in — paged with
 `transcript_offset` / `transcript_max_chars` (the same names get_video /

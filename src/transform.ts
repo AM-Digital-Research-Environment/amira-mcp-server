@@ -74,7 +74,7 @@ function contributorsOf(item: OmekaItem, ctx: TransformContext): Contributor[] {
 
 // --- research items -----------------------------------------------------------
 
-/** Date term -> short key. `modified` is record admin, not a content date. */
+/** Date term -> short key. Rights/admin dates are exposed but do not drive content-year ranges. */
 const DATE_TERMS: Record<string, string> = {
   "dcterms:created": "created",
   "fabio:hasDateCollected": "collected",
@@ -85,7 +85,7 @@ const DATE_TERMS: Record<string, string> = {
   "dcterms:valid": "valid",
   "dcterms:modified": "modified",
 };
-const NON_CONTENT_DATE_KEYS = new Set(["modified"]);
+const NON_CONTENT_DATE_KEYS = new Set(["copyrighted", "available", "valid", "modified"]);
 
 const RELATED_TERMS: Record<string, string> = {
   "dcterms:replaces": "replaces",

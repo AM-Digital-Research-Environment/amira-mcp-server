@@ -22,5 +22,8 @@ data/
 # Local-only Claude settings (keep the skill, drop local config)
 .claude/settings.local.json
 
+# Local Codex/agent skill copies are not release artifacts.
+.agents/
+
 # Census raw-page cache (scripts/census.mjs)
 .census-cache/

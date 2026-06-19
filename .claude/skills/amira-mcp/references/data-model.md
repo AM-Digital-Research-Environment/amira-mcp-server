@@ -10,10 +10,10 @@ The central artefact (image, text, audio, moving image, …). Returned in full b
 
 | Field | Meaning |
 | --- | --- |
-| `dre_id` | Stable identifier (e.g. `abg-99-0000`). The key for `get_research_item` and the human-readable id. |
+| `id` / `omeka_id` | Omeka item id (e.g. `7392`), the final number in `amira_url` and the preferred key for `get_research_item`. Do not surface legacy DRE identifiers in final answers. |
 | `title` / `alternative_titles[]` | Main title; translated titles, subtitles and variants. |
 | `type` | Text · Image · Audio · Moving image · Manuscript · Dataset · … |
-| `dates{}` / `date` | Typed content dates keyed `created` / `collected` / `issued` / `copyrighted` / … (`modified` is record admin and excluded from the year range). `date` is the derived year (range). |
+| `dates{}` / `date` | Typed dates keyed `created` / `collected` / `issued` / `copyrighted` / … Rights/admin dates (`copyrighted`, `available`, `valid`, `modified`) are exposed in `dates{}` but excluded from the derived content year range. `date` is the derived content year (range). |
 | `contributors[]` | `{ name, role }` — 50+ MARC relator roles (Author, Photographer, Interviewee, Musician, …). |
 | `subjects[]` | Subject headings `{ label, amira_url }` — **includes the former free-form tags** (one merged facet). |
 | `places[]` | `{ name, within[], amira_url }` — `within` is the region → country chain. |
@@ -29,12 +29,12 @@ The central artefact (image, text, audio, moving image, …). Returned in full b
 | `collections[]` | The item sets the item belongs to `{ title, amira_url }` — browsable collection pages. |
 
 Search results are slimmer (no long text); profile views (`get_person`, `get_institution`,
-`find_related`) return slim refs `{ dre_id, title, type, date, amira_url }` — drill with
+`find_related`) return slim refs `{ id, omeka_id, title, type, date, amira_url }` — drill with
 `get_research_item`.
 
 ## Project
 
-`id` (e.g. `UBT_ArtWorld2019`, `Ext_ILAM`), `name`, `description`, `date {start,end}`, `university`,
+`id` / `omeka_id` (Omeka o:id), `name`, `description`, `date {start,end}`, `university`,
 `research_sections[]`, `principal_investigators[]`, `members[]`, `funded_by[]` (funding
 institutions), `website`, `item_count` (0 for registry-only projects); `get_project` adds
 `items_by_resource_type` and `top_subjects`.
@@ -62,24 +62,23 @@ coordinates and Wikidata link when reconciled.
 
 ## Publication
 
-`id` (e.g. `eref-94882`), `type` (article/book/chapter/conference/doctoral_thesis/working_paper/…),
+`id` / `omeka_id` (Omeka o:id), `type` (article/book/chapter/conference/doctoral_thesis/working_paper/…),
 `title`, `year`, `authors[]`, `editors[]`, `venue` (journal/book/series title), `volume`, `issue`,
 `pages`, `publisher`, `doi`, `isbn`/`issn`, `subjects[]`, `abstract`, `language`,
-`repository_urls[]` (ERef/EPub), `url` (DOI else repository permalink — **cite this**), and `bibtex`
-(generated from the structured fields).
+`repository_urls[]` (ERef/EPub), `url` (publication DOI/repository link), `amira_url` (the AMIRA
+record link to cite whenever possible), and `bibtex` (generated from the structured fields).
 
 ## Podcast episode / YouTube video
 
 Podcasts: `title`, `series`, `episode`, `date`, `date_status` (published/scheduled/unknown),
-`abstract`, `people[]` (speaker/host/sound engineer), `url`, plus `has_transcript` /
+`abstract`, `people[]` (speaker/host/sound engineer), `url` plus `amira_url`, and `has_transcript` /
 `transcript_length` (no episode carries a transcript as of 2026-06). Videos: `title`, `date`,
-`date_status`, `abstract`, `playlists[]`, `speakers[]`, `languages[]`, watch `url`, `has_transcript`
-(91/140 filled). Transcripts are searchable in full via `search_videos` (a transcript hit returns a
+`date_status`, `abstract`, `playlists[]`, `speakers[]`, `languages[]`, watch `url`, `amira_url`,
+`has_transcript` (91/140 filled). Transcripts are searchable in full via `search_videos` (a transcript hit returns a
 `transcript_snippet`), but the detail tools (`get_video` / `get_podcast`) **omit the transcript text
 unless `include_transcript=true`** — then `transcript_offset` / `transcript_max_chars` page it (cap
-25k chars per call). The ChatGPT `fetch` tool also omits the transcript by default (metadata +
-description only); `include_transcript=true` pulls it in, paged with the same `transcript_offset` /
-`transcript_max_chars` (and `max_chars` caps the whole text body).
+25k chars per call). The ChatGPT `search` / `fetch` tools use the AMIRA/Omeka page as the primary
+`url`; DOI, watch, or listen URLs appear in metadata/text as secondary links.
 
 ## Relationships to exploit
 

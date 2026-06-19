@@ -194,13 +194,15 @@ export function yearLabel(it: ResearchItemRec): string | null {
 
 /** Search-result summary of a research item. */
 export function itemSummary(it: ResearchItemRec, store: DataStore): Record<string, unknown> {
+  const project = store.projectOf(it);
   return {
-    dre_id: it.dre_id,
+    id: String(it.o_id),
+    omeka_id: it.o_id,
     title: it.title,
     type: it.type,
     date: yearLabel(it),
     project: it.project?.label ?? null,
-    project_id: store.projectOf(it)?.dre_id ?? null,
+    project_omeka_id: project?.o_id ?? null,
     university: UNIVERSITY_LABELS[it.university],
     contributors: it.contributors.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
     subjects: refLabels(it.subjects),
@@ -212,7 +214,8 @@ export function itemSummary(it: ResearchItemRec, store: DataStore): Record<strin
 /** SLIM item reference for profile/related views (detail is one get away). */
 export function itemRef(it: ResearchItemRec): Record<string, unknown> {
   return {
-    dre_id: it.dre_id,
+    id: String(it.o_id),
+    omeka_id: it.o_id,
     title: it.title,
     type: it.type,
     date: yearLabel(it),
@@ -222,7 +225,8 @@ export function itemRef(it: ResearchItemRec): Record<string, unknown> {
 
 export function projectSummary(p: ProjectRec, itemCount?: number): Record<string, unknown> {
   return {
-    id: p.dre_id,
+    id: String(p.o_id),
+    omeka_id: p.o_id,
     name: p.name,
     university: UNIVERSITY_LABELS[p.university],
     research_sections: refLabels(p.sections),
@@ -234,6 +238,8 @@ export function projectSummary(p: ProjectRec, itemCount?: number): Record<string
 
 export function personSummary(p: PersonRec): Record<string, unknown> {
   return {
+    id: String(p.o_id),
+    omeka_id: p.o_id,
     name: p.name,
     affiliations: refLabels(p.affiliations),
     amira_url: itemUrl(p.o_id),
@@ -262,6 +268,8 @@ export function sectionSummary(
     date: s.date,
     principal_investigators: refLabels(s.pis),
     member_count: s.members.length,
+    id: String(s.o_id),
+    omeka_id: s.o_id,
     ...(counts.projectCount !== undefined ? { project_count: counts.projectCount } : {}),
     ...(counts.itemCount !== undefined ? { item_count: counts.itemCount } : {}),
     description: brief(s.description),
@@ -272,7 +280,8 @@ export function sectionSummary(
 
 export function publicationSummary(p: PublicationRec): Record<string, unknown> {
   return {
-    id: p.pub_id,
+    id: String(p.o_id),
+    omeka_id: p.o_id,
     title: p.title,
     type: p.type,
     year: p.year,
@@ -288,6 +297,7 @@ export function publicationSummary(p: PublicationRec): Record<string, unknown> {
 export function podcastSummary(p: PodcastRec): Record<string, unknown> {
   return {
     id: p.o_id,
+    omeka_id: p.o_id,
     title: p.title,
     series: p.series?.label ?? null,
     episode: p.episode,
@@ -303,6 +313,7 @@ export function podcastSummary(p: PodcastRec): Record<string, unknown> {
 export function videoSummary(v: VideoRec): Record<string, unknown> {
   return {
     id: v.o_id,
+    omeka_id: v.o_id,
     title: v.title,
     date: v.date,
     date_status: dateStatus(v.date),
@@ -315,5 +326,5 @@ export function videoSummary(v: VideoRec): Record<string, unknown> {
 }
 
 export function subjectEntry(label: string, oId: number | null, count: number): Record<string, unknown> {
-  return { subject: label, item_count: count, amira_url: itemUrlOrNull(oId) };
+  return { subject: label, ...(oId != null ? { id: String(oId), omeka_id: oId } : {}), item_count: count, amira_url: itemUrlOrNull(oId) };
 }

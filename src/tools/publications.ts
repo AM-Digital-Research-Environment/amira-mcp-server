@@ -135,23 +135,24 @@ export function registerPublicationTools(server: Server): void {
     {
       title: "Get publication detail",
       description:
-        "Full metadata for one publication by `id` (e.g. 'eref-94882'; the numeric Omeka o:id also " +
-        "works). Returns title, type, authors, editors, year, venue (journal/book/series), volume, " +
+        "Full metadata for one publication by Omeka `id` (preferred; the numeric o:id in `amira_url`) or " +
+        "legacy publication-key values. Returns title, type, authors, editors, year, venue (journal/book/series), volume, " +
         "issue, pages, publisher, DOI, ISBN/ISSN, abstract (truncated at 25,000 chars), subjects, " +
         "language, repository links (ERef/EPub), BibTeX generated from the structured fields, and the " +
         "citable `amira_url`. Cite the `url` (DOI or repository permalink) as the primary reference. " +
         "Returns { error } if the id is unknown.",
       annotations: annotate("Get publication detail"),
-      inputSchema: { id: z.string().describe("Publication id, e.g. 'eref-94882'") },
+      inputSchema: { id: z.union([z.string(), z.number()]).describe("Publication Omeka o:id") },
     },
     async ({ id }) => {
       const store = await ensureStore();
-      const p = store.getPublication(id);
+      const p = store.getPublication(String(id));
       if (!p) {
         return errorResult("not_found", `No publication with id '${id}'.`, { suggested_tool: "search_publications" });
       }
       return textResult({
-        id: p.pub_id,
+        id: String(p.o_id),
+        omeka_id: p.o_id,
         title: p.title,
         type: p.type,
         year: p.year,

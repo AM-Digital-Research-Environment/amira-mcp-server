@@ -107,7 +107,7 @@ export function registerOrganizationTools(server: Server): void {
         ...(record.latitude != null ? { latitude: record.latitude, longitude: record.longitude } : {}),
         wikidata: record.wikidata,
         project_count: projects.length,
-        projects: projects.map((p) => ({ id: p.dre_id, name: p.name })),
+        projects: projects.map((p) => ({ id: String(p.o_id), omeka_id: p.o_id, name: p.name })),
         affiliated_person_count: people.length,
         affiliated_persons: people.slice(0, 50).map((p) => p.name),
         affiliated_persons_truncated: people.length > 50 || undefined,

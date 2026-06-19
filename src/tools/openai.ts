@@ -9,8 +9,9 @@
 // in-memory store the rich tools use; they are registered only on the remote
 // HTTP transport (src/http.ts), so the stdio .mcpb keeps its 24-tool surface.
 //
-// `id` is typed as `<kind>:<key>` (item:<dre_id>, pub:<pub_id>, video:<o_id>,
-// podcast:<o_id>, project:<dre_id>, section:<o_id>) so fetch can route back.
+// `id` is typed as `<kind>:<omeka_o_id>` (item:7392, pub:30001, video:39218,
+// podcast:39121, project:37700, section:218) so fetch can route back and a
+// human can reconstruct the Omeka URL from the final number.
 import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import type { DataStore } from "../data.js";
@@ -130,7 +131,7 @@ function runSearch(store: DataStore, query: string, limit: number, types?: Searc
 
   for (const it of store.items) {
     add(
-      `item:${it.dre_id}`, it.title, itemUrl(it.o_id),
+      `item:${it.o_id}`, it.title, itemUrl(it.o_id),
       scoreRecord(terms, phrase,
         [it.title, ...it.alt_titles],
         [...refLabels(it.subjects), ...it.contributors.map((c) => c.name), ...it.places.map((p) => p.label), ...refLabels(it.formats), ...it.identifiers, it.dre_id],
@@ -139,25 +140,25 @@ function runSearch(store: DataStore, query: string, limit: number, types?: Searc
   }
   for (const p of store.publications) {
     add(
-      `pub:${p.pub_id}`, p.title, p.doi ?? p.urls[0] ?? itemUrl(p.o_id),
+      `pub:${p.o_id}`, p.title, itemUrl(p.o_id),
       scoreRecord(terms, phrase, [p.title], [...refLabels(p.authors), ...refLabels(p.editors), p.venue, ...refLabels(p.subjects)], [p.abstract]),
     );
   }
   for (const v of store.videos) {
     add(
-      `video:${v.o_id}`, v.title, v.url ?? itemUrl(v.o_id),
+      `video:${v.o_id}`, v.title, itemUrl(v.o_id),
       scoreRecord(terms, phrase, [v.title], [...v.speakers.map((c) => c.name), ...refLabels(v.playlists)], [v.abstract, v.transcript]),
     );
   }
   for (const p of store.podcasts) {
     add(
-      `podcast:${p.o_id}`, p.title, p.url ?? itemUrl(p.o_id),
+      `podcast:${p.o_id}`, p.title, itemUrl(p.o_id),
       scoreRecord(terms, phrase, [p.title], [...p.people.map((c) => c.name), p.series?.label], [p.abstract, p.transcript]),
     );
   }
   for (const p of store.projects) {
     add(
-      `project:${p.dre_id}`, p.name, itemUrl(p.o_id),
+      `project:${p.o_id}`, p.name, itemUrl(p.o_id),
       scoreRecord(terms, phrase, [p.name], [...refLabels(p.sections), ...refLabels(p.pis), ...refLabels(p.members), ...refLabels(p.funded_by)], [p.description]),
     );
   }
@@ -235,6 +236,7 @@ function fetchDoc(
     const project = store.projectOf(it);
     const text = joinLines(
       `Title: ${it.title}`,
+      `AMIRA record: ${itemUrl(it.o_id)}`,
       it.alt_titles.length ? `Alternative titles: ${it.alt_titles.join("; ")}` : null,
       it.type ? `Type: ${it.type}` : null,
       `University: ${UNIVERSITY_LABELS[it.university]}`,
@@ -261,10 +263,11 @@ function fetchDoc(
       url: itemUrl(it.o_id),
       metadata: compact({
         kind: "research_item",
-        dre_id: it.dre_id,
+        omeka_id: it.o_id,
+        amira_url: itemUrl(it.o_id),
         type: it.type,
         university: UNIVERSITY_LABELS[it.university],
-        project_id: project?.dre_id ?? null,
+        project_omeka_id: project?.o_id ?? null,
         date: yearLabel(it),
         subjects: refLabels(it.subjects),
         places: it.places.map((p) => p.label),
@@ -282,6 +285,7 @@ function fetchDoc(
       .join(", ");
     const text = joinLines(
       `Title: ${p.title}`,
+      `AMIRA record: ${itemUrl(p.o_id)}`,
       `Type: ${p.type}`,
       p.authors.length ? `Authors: ${refLabels(p.authors).join("; ")}` : null,
       p.editors.length ? `Editors: ${refLabels(p.editors).join("; ")}` : null,
@@ -297,16 +301,18 @@ function fetchDoc(
       id,
       title: p.title,
       text: body,
-      url: p.doi ?? p.urls[0] ?? itemUrl(p.o_id),
+      url: itemUrl(p.o_id),
       metadata: compact({
         kind: "publication",
-        pub_id: p.pub_id,
+        omeka_id: p.o_id,
+        amira_url: itemUrl(p.o_id),
         type: p.type,
         year: p.year,
         authors: refLabels(p.authors),
         venue: p.venue,
         doi: p.doi,
-        amira_url: itemUrl(p.o_id),
+        publication_url: p.doi ?? p.urls[0] ?? null,
+        repository_urls: p.urls,
         truncated: truncated || undefined,
       }),
     };
@@ -318,6 +324,7 @@ function fetchDoc(
     const tw = transcriptWindow(v.transcript, opts);
     const text = joinLines(
       `Title: ${v.title}`,
+      `AMIRA record: ${itemUrl(v.o_id)}`,
       v.date ? `Date: ${v.date}` : null,
       v.speakers.length ? `Speakers: ${v.speakers.map((c) => c.name).join("; ")}` : null,
       v.playlists.length ? `Playlists: ${refLabels(v.playlists).join("; ")}` : null,
@@ -330,15 +337,17 @@ function fetchDoc(
       id,
       title: v.title,
       text: body,
-      url: v.url ?? itemUrl(v.o_id),
+      url: itemUrl(v.o_id),
       metadata: compact({
         kind: "youtube_video",
+        omeka_id: v.o_id,
+        amira_url: itemUrl(v.o_id),
         date: v.date,
         date_status: dateStatus(v.date),
         playlists: refLabels(v.playlists),
         speakers: v.speakers.map((c) => c.name),
+        watch_url: v.url,
         ...tw.meta,
-        amira_url: itemUrl(v.o_id),
         truncated: truncated || undefined,
       }),
     };
@@ -350,6 +359,7 @@ function fetchDoc(
     const tw = transcriptWindow(p.transcript, opts);
     const text = joinLines(
       `Title: ${p.title}`,
+      `AMIRA record: ${itemUrl(p.o_id)}`,
       p.series ? `Series: ${p.series.label}` : null,
       p.episode != null ? `Episode: ${p.episode}` : null,
       p.date ? `Date: ${p.date}` : null,
@@ -363,15 +373,17 @@ function fetchDoc(
       id,
       title: p.title,
       text: body,
-      url: p.url ?? itemUrl(p.o_id),
+      url: itemUrl(p.o_id),
       metadata: compact({
         kind: "podcast",
+        omeka_id: p.o_id,
+        amira_url: itemUrl(p.o_id),
         series: p.series?.label ?? null,
         episode: p.episode,
         date: p.date,
         date_status: dateStatus(p.date),
+        listen_url: p.url,
         ...tw.meta,
-        amira_url: itemUrl(p.o_id),
         truncated: truncated || undefined,
       }),
     };
@@ -383,6 +395,7 @@ function fetchDoc(
     const itemCount = store.itemsForProject(p.o_id).length;
     const text = joinLines(
       `Project: ${p.name}`,
+      `AMIRA record: ${itemUrl(p.o_id)}`,
       `University: ${UNIVERSITY_LABELS[p.university]}`,
       refLabels(p.sections).length ? `Research sections: ${refLabels(p.sections).join("; ")}` : null,
       refLabels(p.pis).length ? `Principal investigators: ${refLabels(p.pis).join("; ")}` : null,
@@ -400,7 +413,8 @@ function fetchDoc(
       url: itemUrl(p.o_id),
       metadata: compact({
         kind: "project",
-        dre_id: p.dre_id,
+        omeka_id: p.o_id,
+        amira_url: itemUrl(p.o_id),
         university: UNIVERSITY_LABELS[p.university],
         research_sections: refLabels(p.sections),
         item_count: itemCount,
@@ -414,6 +428,7 @@ function fetchDoc(
     if (!s) return notFound;
     const text = joinLines(
       `Research section: ${s.name}`,
+      `AMIRA record: ${itemUrl(s.o_id)}`,
       s.date.start || s.date.end ? `Dates: ${[s.date.start, s.date.end].filter(Boolean).join(" – ")}` : null,
       refLabels(s.pis).length ? `Principal investigators: ${refLabels(s.pis).join("; ")}` : null,
       s.spokesperson ? `Spokesperson: ${s.spokesperson}` : null,
@@ -425,7 +440,7 @@ function fetchDoc(
       title: s.name,
       text: body,
       url: itemUrl(s.o_id),
-      metadata: compact({ kind: "research_section", dates: s.date, truncated: truncated || undefined }),
+      metadata: compact({ kind: "research_section", omeka_id: s.o_id, amira_url: itemUrl(s.o_id), dates: s.date, truncated: truncated || undefined }),
     };
   }
 
@@ -445,7 +460,8 @@ export function registerOpenAITools(server: Server): void {
         "sections. Query terms are matched individually, so use a few concise keywords, names, places or " +
         "themes rather than a full sentence. Optional `limit` (default 10, max 50) and `types` (restrict " +
         "to item / publication / video / podcast / project / section) keep the result set tight. Returns " +
-        "{ results: [{ id, title, url }] }; pass an `id` to the fetch tool for the full record text. " +
+        "{ results: [{ id, title, url }] }, where `url` is always the AMIRA/Omeka public record page. " +
+        "Pass an `id` to the fetch tool for the full record text. " +
         "(This is the OpenAI/ChatGPT-compatible entry point; richer filtered tools — search_research_items, " +
         "find_related, list_* — are also available.)",
       annotations: annotate("Search the AMIRA collection"),
@@ -477,9 +493,10 @@ export function registerOpenAITools(server: Server): void {
       title: "Fetch one AMIRA record",
       description:
         "Retrieve the full text and metadata of one AMIRA record by the `id` returned from the search tool " +
-        "(e.g. 'item:abg-99-0000', 'project:UBT_ArtWorld2019', 'pub:eref-94882', 'video:39218', " +
+        "(e.g. 'item:7392', 'project:37700', 'pub:30001', 'video:39218', " +
         "'podcast:39121', 'section:218'). Returns { id, title, text, url, metadata } — `text` concatenates " +
-        "the record's descriptive fields, `url` is the citable public page. For videos/podcasts the " +
+        "the record's descriptive fields, `url` is the citable AMIRA/Omeka public page, and original DOI, " +
+        "watch or listen URLs are included in metadata when available. For videos/podcasts the " +
         "transcript is OMITTED by default (metadata + description only, since a full transcript can run tens " +
         "of thousands of characters); the metadata reports `has_transcript` / `transcript_length`. Pass " +
         "include_transcript=true to append it, and page a long one with transcript_offset / " +
@@ -487,7 +504,7 @@ export function registerOpenAITools(server: Server): void {
         "`max_chars` caps the whole text body.",
       annotations: annotate("Fetch one AMIRA record"),
       inputSchema: {
-        id: z.string().describe("A typed record id from search, e.g. 'item:abg-99-0000'"),
+        id: z.string().describe("A typed record id from search, e.g. 'item:7392'"),
         include_transcript: z.boolean().optional().describe("Default false — set true to append the video/podcast transcript"),
         transcript_offset: z.number().int().optional().describe("Start offset into the transcript (chars), with include_transcript"),
         transcript_max_chars: z.number().int().optional().describe("Max transcript characters to return (default/max 25000)"),

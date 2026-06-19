@@ -31,6 +31,7 @@ async function call(name, args, { expect = [] } = {}) {
   const body = res.content?.[0]?.text ?? "";
   console.log(`\n[${name}] ${body.slice(0, 260).replace(/\s+/g, " ")}${body.length > 260 ? "…" : ""}`);
   check(!body.includes("dashboard_url"), `${name}: no dashboard_url`);
+  check(!body.includes('"dre_id"'), `${name}: no DRE id fields in responses`);
   let parsed;
   try {
     parsed = JSON.parse(body);
@@ -51,6 +52,7 @@ check(overview.counts?.publications >= 240, "overview: >= 240 publications");
 
 const search = await call("search_research_items", { subject: "Islam", limit: 3 }, { expect: [AMIRA] });
 check(search.results?.[0]?.amira_url?.startsWith(AMIRA), "search: amira_url shape");
+check(search.results?.[0]?.omeka_id && search.results?.[0]?.id === String(search.results[0].omeka_id), "search: Omeka id exposed as id/omeka_id");
 
 await call("search_research_items", { location: "Nigeria", resource_type: "Image", limit: 2 });
 await call("search_research_items", { language: "fre", limit: 1 }, { expect: [AMIRA] }); // legacy code alias
@@ -72,20 +74,23 @@ check(
   zero.suggestions?.some((s) => s.remove_filter === "resource_type" && s.would_match > 0),
   "search: zero-result suggests dropping resource_type",
 );
+const badYearSearch = await call("search_research_items", { year_from: 2000, year_to: 1900 }, { expect: ["error"] });
+check(badYearSearch.error?.code === "invalid_range", "search: inverted year range is a structured error");
 
 // structured error shape (report §error-handling).
-const errItem = await call("get_research_item", { dre_id: "NO_SUCH_ID" }, { expect: ["error"] });
+const errItem = await call("get_research_item", { id: "NO_SUCH_ID" }, { expect: ["error"] });
 check(errItem.error?.code === "not_found" && !!errItem.error?.suggested_tool, "get_research_item: structured error");
 
-const item = await call("get_research_item", { dre_id: "abg-99-0000" }, { expect: [AMIRA, "sponsors"] });
+const item = await call("get_research_item", { id: 7392 }, { expect: [AMIRA, "sponsors"] });
+check(item.omeka_id === 7392 && item.id === "7392", "item: Omeka id exposed as id/omeka_id");
 check(item.contributors?.some((c) => c.name === "Beier, Ulli"), "item: contributor with role");
 check("dates" in item, "item: dates exposed");
 check(Array.isArray(item.collections), "item: collections exposed");
 check("thumbnail" in item, "item: thumbnail exposed");
 
 await call("search_projects", { research_section: "Arts & Aesthetics", limit: 3 }, { expect: [AMIRA] });
-const proj = await call("get_project", { id: "Ext_ILAM" }, { expect: ["External"] });
-check(proj.item_count >= 1000, "Ext_ILAM has its ~1k items");
+const proj = await call("get_project", { id: 37700 }, { expect: ["External"] });
+check(proj.item_count >= 1000, "ILAM project has its ~1k items");
 
 await call("list_research_sections", {}, { expect: ["funding_phase"] });
 await call("get_research_section", { name: "Translating" }, { expect: ["AM 2.0"] });
@@ -100,6 +105,8 @@ const years = await call("list_years", { from: 1900, to: 2000, sort: "count", li
 check(years.dated_items > 0, "list_years: dated_items counted");
 check(years.results?.[0]?.item_count > 0 && "year" in (years.results?.[0] ?? {}), "list_years: year buckets");
 check(years.results?.every((a, i, arr) => i === 0 || arr[i - 1].item_count >= a.item_count), "list_years: sort=count descending");
+const badYearFacet = await call("list_years", { from: 2000, to: 1900 }, { expect: ["error"] });
+check(badYearFacet.error?.code === "invalid_range", "list_years: inverted year range is a structured error");
 const decades = await call("list_years", { bucket: "decade", limit: 3 });
 check(/^\d+s$/.test(decades.results?.[0]?.decade ?? ""), "list_years: decade label shape");
 
@@ -132,6 +139,10 @@ if (pubs.results?.[0]?.id) {
 
 const rel = await call("find_related", { entity_type: "subject", value: "Architecture", limit: 8 });
 check(typeof rel.matching === "string" && rel.matching.length > 0, "find_related: matching semantics echoed");
+const relPerson = await call("find_related", { entity_type: "person", value: "Ulli Beier", limit: 1 }, { expect: [AMIRA] });
+check(relPerson.matched_items > 0 && relPerson.amira_url?.startsWith(AMIRA), "find_related: person seed URL resolves from either name order");
+const relProject = await call("find_related", { entity_type: "project", value: "International Library of African Music", limit: 1 }, { expect: [AMIRA] });
+check(relProject.matched_items > 0 && relProject.amira_url?.startsWith(AMIRA), "find_related: project seed URL resolves from label");
 
 const pods = await call("search_podcasts", { limit: 3 });
 check(pods.results?.[0] ? "date_status" in pods.results[0] : true, "search_podcasts: date_status present");

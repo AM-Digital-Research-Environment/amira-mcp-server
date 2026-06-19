@@ -54,6 +54,7 @@ test("research item: every value type lands in the right field", () => {
     "marcrel:aut": [res(149, "Beier, Ulli")],
     "dcterms:created": [ts("2013-01-01")],
     "fabio:hasDateCollected": [interval("1950-01-01/1960-12-31")],
+    "dcterms:dateCopyrighted": [ts("2049-01-01")], // rights date: kept in dates, excluded from years
     "dcterms:modified": [ts("2024-05-05")], // admin date: kept in dates, excluded from years
     "dcterms:description": [lit("First."), lit("Second.")],
     "frapo:isFundedBy": [res(99, "DFG")],
@@ -83,9 +84,10 @@ test("research item: every value type lands in the right field", () => {
   assert.deepEqual(out.formats, [{ label: "book", o_id: 3193 }]);
   assert.deepEqual(out.format_notes, ["handwritten manuscript"]);
   assert.deepEqual(out.contributors, [{ name: "Beier, Ulli", role: "Author", o_id: 149 }]);
-  // dates: timestamp + interval, admin `modified` excluded from year range
+  // dates: timestamp + interval; rights/admin dates are exposed but excluded from the year range
   assert.equal(out.dates.created, "2013-01-01");
   assert.equal(out.dates.collected, "1950-01-01/1960-12-31");
+  assert.equal(out.dates.copyrighted, "2049-01-01");
   assert.equal(out.dates.modified, "2024-05-05");
   assert.equal(out.year_min, 1950);
   assert.equal(out.year_max, 2013);

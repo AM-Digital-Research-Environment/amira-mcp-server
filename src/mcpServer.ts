@@ -26,16 +26,20 @@ export const INSTRUCTIONS =
   "https://data.africamultiple.uni-bayreuth.de/s/amira/item/7392). Whenever you mention an item, person, " +
   "project, subject, place, podcast or video, render its `amira_url` as a markdown link, e.g. " +
   "[Volume 8: Yoruba Architecture…](https://data.africamultiple.uni-bayreuth.de/s/amira/item/7392).\n" +
-  "• NEVER print a bare identifier such as `abg-99-0000`, and NEVER collapse several items into an id " +
-  "range like `abg-99-0007 through abg-99-0014`. Reference each item as its own full markdown link (a " +
+  "• NEVER print legacy DRE identifiers. If an identifier is explicitly needed, use the " +
+  "Omeka `omeka_id` / `id` (the final number in the `amira_url`), but citations should normally be links. " +
+  "Never collapse several items into an id " +
+  "range. Reference each item as its own full markdown link (a " +
   "bulleted list of links is good when there are several).\n" +
-  "• Use only URLs returned by the tools — never invent one. For a publication, cite its own `url` " +
-  "(DOI or repository permalink) as the primary reference, with `amira_url` as the collection page.\n\n" +
+  "• Use only URLs returned by the tools — never invent one. Prefer the AMIRA `amira_url` / Omeka page " +
+  "as the citation link whenever possible. For publications, videos or podcasts, include DOI, watch or " +
+  "listen URLs only as additional links when useful; do not let them replace the AMIRA record link.\n\n" +
   "NAMES: people are stored 'Surname, Forename' (e.g. `Baumann, Oliver`) — always display and cite that " +
   "form. All person filters accept either order and ignore accents, so 'Oliver Baumann' still finds " +
   "'Baumann, Oliver'; get_person echoes the canonical `name`.\n\n" +
-  "DATA NOTES: results come from a snapshot of the public Omeka S API — the server queries no live " +
-  "backend, so it works offline; get_collection_overview reports the snapshot's freshness. Treat the " +
+  "DATA NOTES: results come from a bundled or refreshed snapshot of the public Omeka S API. The server " +
+  "works offline from the bundled snapshot; when live refresh is enabled, it may probe and refresh from " +
+  "the public API. get_collection_overview reports the snapshot source and freshness. Treat the " +
   "collection as curated, not exhaustive: absence of a result is not proof of absence.";
 
 export interface CreateServerOptions {

@@ -37,7 +37,7 @@ export function registerProjectTools(server: Server): void {
         "'Baumann, Oliver')\n" +
         "  - institution: funding/affiliated institution name (partial)\n" +
         "  - limit (default 25, max 100), offset\n\n" +
-        "Each result has id, name, university, research_sections, principal_investigators, item_count and " +
+        "Each result has Omeka id, name, university, research_sections, principal_investigators, item_count and " +
         "a citable `amira_url`. Use get_project for full detail.",
       annotations: annotate("Search projects"),
       inputSchema: {
@@ -98,16 +98,17 @@ export function registerProjectTools(server: Server): void {
     {
       title: "Get project detail",
       description:
-        "Full detail for one project by `id` (e.g. 'UBT_ArtWorld2019', 'ULG_WOPP2021', 'Ext_ILAM'). " +
+        "Full detail for one project by Omeka `id` (preferred; the numeric o:id in `amira_url`). " +
+        "Legacy project-key values are still accepted for compatibility. " +
         "Returns name, university, research sections, principal investigators, members, description, " +
         "start/end dates, funding institutions, project website, item_count, a breakdown of its items by " +
         "resource type, its top subjects, and a citable `amira_url`. Returns { error } if the id is unknown.",
       annotations: annotate("Get project detail"),
-      inputSchema: { id: z.string().describe("Project id, e.g. 'UBT_ArtWorld2019'") },
+      inputSchema: { id: z.union([z.string(), z.number()]).describe("Project Omeka o:id, e.g. 37700") },
     },
     async ({ id }) => {
       const store = await ensureStore();
-      const p = store.getProject(id);
+      const p = store.getProject(String(id));
       if (!p) {
         return errorResult("not_found", `No project with id '${id}'.`, { suggested_tool: "search_projects" });
       }
@@ -126,7 +127,8 @@ export function registerProjectTools(server: Server): void {
         .map(([subject, count]) => ({ subject, item_count: count }));
 
       return textResult({
-        id: p.dre_id,
+        id: String(p.o_id),
+        omeka_id: p.o_id,
         name: p.name,
         university: UNIVERSITY_LABELS[p.university],
         research_sections: refLabels(p.sections),

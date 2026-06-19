@@ -10,7 +10,7 @@ import {
   type Server,
 } from "./_shared.js";
 import { itemUrlOrNull } from "../urls.js";
-import { nameMatchesQuery } from "../names.js";
+import { nameMatchesQuery, samePerson } from "../names.js";
 
 type EntityType = "subject" | "location" | "person" | "project";
 
@@ -24,7 +24,7 @@ const MATCHING: Record<EntityType, string> = {
     "Items whose place matches the value at ANY level of the city→country hierarchy (so 'Nigeria' also matches Lagos items).",
   person:
     "Items crediting a contributor whose name matches the value in either order and accent-insensitively (e.g. 'Ulli Beier' = 'Beier, Ulli').",
-  project: "Items in the project whose dre_id equals the value, or whose project label contains it.",
+  project: "Items in the project whose Omeka id or legacy project key equals the value, or whose project label contains it.",
 };
 
 function topN(map: Map<string, number>, n: number): { name: string; count: number }[] {
@@ -49,14 +49,14 @@ export function registerRelatedTools(server: Server): void {
         "  - entity_type (required): 'subject' | 'location' | 'person' | 'project' (tags are merged into " +
         "subjects)\n" +
         "  - value (required): e.g. subject 'Islam', location 'Nigeria', person 'Beier, Ulli', project " +
-        "'UBT_ArtWorld2019'\n" +
+        "Omeka id '37700' or label 'International Library of African Music'\n" +
         "  - limit: max entries per related list (default 20, max 50)\n\n" +
         "Matching semantics (also echoed in the response `matching` field):\n" +
         "  - subject: substring match on subject labels (incl. former tags) — `matched_items` counts " +
         "ITEMS, so it can differ from list_subjects, which counts distinct headings\n" +
         "  - location: matches any level of the city→country hierarchy ('Nigeria' includes Lagos items)\n" +
         "  - person: name match in either order, accent-insensitive\n" +
-        "  - project: dre_id equality or project-label substring\n\n" +
+        "  - project: Omeka id or legacy key equality, or project-label substring\n\n" +
         "Returns the matched-item count plus ranked related_projects, related_research_sections, " +
         "related_subjects, related_people, related_countries (rolled up to each place's top-level " +
         "country) and related_formats (with co-occurrence counts), up to 10 sample_items (slim refs), " +
@@ -86,7 +86,7 @@ export function registerRelatedTools(server: Server): void {
           case "person":
             return it.contributors.some((c) => matchesPerson(c.name));
           case "project":
-            return equalsCI(store.projectOf(it)?.dre_id, value) || containsCI(it.project?.label, value);
+            return equalsCI(String(store.projectOf(it)?.o_id), value) || equalsCI(store.projectOf(it)?.dre_id, value) || containsCI(it.project?.label, value);
         }
       };
 
@@ -113,10 +113,24 @@ export function registerRelatedTools(server: Server): void {
 
       // Best-effort amira_url for the seed entity itself.
       let seedOId: number | null = null;
-      if (type === "person") seedOId = store.getPersonByName(value)?.o_id ?? null;
-      else if (type === "project") seedOId = store.getProject(value)?.o_id ?? null;
-      else if (type === "location") seedOId = store.getLocationByName(value)?.o_id ?? null;
-      else {
+      if (type === "person") {
+        seedOId =
+          store.getPersonByName(value)?.o_id ??
+          store.persons.find((p) => samePerson(p.name, value) || nameMatchesQuery(p.name, value))?.o_id ??
+          null;
+      } else if (type === "project") {
+        seedOId =
+          store.getProject(value)?.o_id ??
+          store.projects.find((p) => equalsCI(p.name, value))?.o_id ??
+          store.projects.find((p) => containsCI(p.name, value))?.o_id ??
+          null;
+      } else if (type === "location") {
+        seedOId =
+          store.getLocationByName(value)?.o_id ??
+          store.locations.find((l) => equalsCI(l.name, value))?.o_id ??
+          store.locations.find((l) => containsCI(l.name, value))?.o_id ??
+          null;
+      } else {
         for (const it of seed) {
           const hit = it.subjects.find((s) => equalsCI(s.label, value)) ?? it.subjects.find((s) => containsCI(s.label, value));
           if (hit?.o_id != null) {
