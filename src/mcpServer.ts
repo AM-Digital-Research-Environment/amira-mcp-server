@@ -10,13 +10,18 @@ import { registerOpenAITools } from "./tools/openai.js";
 export const VERSION = typeof __SERVER_VERSION__ !== "undefined" ? __SERVER_VERSION__ : "dev";
 
 export const INSTRUCTIONS =
-  "Read-only access to the research data of the Africa Multiple Cluster of Excellence (AMIRA collection), " +
-  "as published on the cluster's public Omeka S site (https://data.africamultiple.uni-bayreuth.de). The " +
-  "collection spans research projects across four partner universities (Bayreuth, Lagos, Joseph " +
-  "Ki-Zerbo/Ouagadougou, Bahia) plus external collections (e.g. the International Library of African " +
-  "Music), organised into thematic research sections, with ~4,000 digitised research items, people, " +
-  "institutions, groups, an academic bibliography, podcast episodes, and the cluster's YouTube videos " +
-  "with searchable transcripts.\n\n" +
+  "Read-only access to the Africa Multiple Interactive Research Atlas (AMIRA), the research-data platform " +
+  "of the Africa Multiple Cluster of Excellence at the University of Bayreuth. AMIRA is built and " +
+  "maintained by the Cluster's Digital Research Environment (DRE), its digital infrastructure unit. The " +
+  "platform connects researchers across the Africa Multiple Research Centres (AMRCs) and partner " +
+  "institutions worldwide. Curation and description are joint efforts with AMRC partners at Université " +
+  "Joseph Ki-Zerbo, Rhodes University, the University of Lagos, and Moi University; Federal University of " +
+  "Bahia is a privileged partner, not an AMRC. The DRE runs the shared infrastructure and metadata layer " +
+  "in Bayreuth, while storage stays distributed by default: research data remains in local repositories " +
+  "and becomes findable without being relocated.\n\n" +
+  "The AMIRA MCP server exposes Omeka S metadata for research items, projects, research sections, people, " +
+  "institutions, groups, collections, publications, podcast episodes, YouTube videos and searchable " +
+  "transcripts, plus the places, languages and subjects that connect them.\n\n" +
   "GETTING STARTED: call get_collection_overview first to scope the data, then use the search_* / list_* " +
   "tools to find records and the get_* tools to drill into one. find_related pivots from any " +
   "subject/place/person/project to the entities that co-occur with it. Subjects include the former " +

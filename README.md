@@ -1,20 +1,36 @@
 # AMIRA MCP Server
 
 Read-only [Model Context Protocol](https://modelcontextprotocol.io) server for the
-**Africa Multiple Cluster of Excellence** research data (the AMIRA collection), as
-published on the cluster's public **Omeka S** site at
+**Africa Multiple Interactive Research Atlas (AMIRA)**, the research-data platform
+of the **Africa Multiple Cluster of Excellence** at the University of Bayreuth.
+AMIRA is published on the cluster's public **Omeka S** site at
 [data.africamultiple.uni-bayreuth.de](https://data.africamultiple.uni-bayreuth.de).
 
-It exposes the cluster's research **projects** (across the partner universities in
-Bayreuth, Lagos, Joseph Ki-Zerbo/Ouagadougou and Bahia, plus external collections
-such as the International Library of African Music), their thematic **research
-sections**, ~4,000 digitised **research items**, **people**, **institutions**,
-**groups**, **collections**, the cluster **bibliography**, **podcast episodes**, and
-the cluster's **YouTube videos with searchable transcripts** — as 24 well-described
-tools an LLM can query.
+AMIRA is built and maintained by the Cluster's **Digital Research Environment
+(DRE)**, its digital infrastructure unit. The DRE designs, builds, and maintains
+the data systems that connect researchers across the **Africa Multiple Research
+Centres (AMRCs)** and partner institutions worldwide. Curation and description are
+joint efforts with the AMRC partners at **Université Joseph Ki-Zerbo**, **Rhodes
+University**, the **University of Lagos**, and **Moi University**. **Federal
+University of Bahia** is a privileged partner, not an AMRC.
+
+Storage stays distributed by default: data remains in its local repository, while
+Bayreuth holds the metadata layer that points to it. Research data becomes
+findable without being relocated. High-quality metadata makes researchers' data
+more discoverable and their work more visible to a wider community of peers.
+
+This server exposes AMIRA's **projects**, thematic **research sections**, ~4,000
+digitised **research items**, **people**, **institutions**, **groups**,
+**collections**, the cluster **bibliography**, **podcast episodes**, and the
+cluster's **YouTube videos with searchable transcripts** — as 24 core tools an LLM
+can query. From one MCP interface, clients can move across records and the places,
+languages, and subjects that connect them.
 
 Every record carries an **`amira_url`** — its public page on the Omeka S site
 (`…/s/amira/item/<id>`) — so findings can be **cited as links** back to the source.
+AMIRA focuses on the Cluster's research data. For news, events, and general
+information about the Africa Multiple Cluster of Excellence, visit
+[africamultiple.uni-bayreuth.de](https://www.africamultiple.uni-bayreuth.de/).
 
 ## How it gets its data — and why nothing else is needed
 

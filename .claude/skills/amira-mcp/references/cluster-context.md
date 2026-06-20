@@ -39,21 +39,23 @@ to everything that co-occurs with it across the collection.
 
 ## Partner research centres
 
-The cluster operates as a network of African Cluster Centres (ACCs) / Africa Multiple Research Centres
-(AMRCs), coordinated from Bayreuth:
+The cluster operates through Africa Multiple Research Centres (AMRCs) and partner institutions worldwide,
+with the shared infrastructure coordinated from Bayreuth by the Digital Research Environment (DRE).
+Curation and description are joint efforts with the AMRC partners:
 
-- **University of Bayreuth** (Germany) — coordinating centre
 - **Université Joseph Ki-Zerbo**, Ouagadougou (Burkina Faso)
+- **Rhodes University**, Makhanda (South Africa) — hosts the International Library of African Music (ILAM)
 - **University of Lagos** (Nigeria)
 - **Moi University**, Eldoret (Kenya)
-- **Rhodes University**, Makhanda (South Africa) — hosts the International Library of African Music (ILAM)
-- **Centro de Estudos Afro-Orientais (CEAO)**, Federal University of Bahia (Brazil)
 
-In AMIRA's data, projects are grouped under four id prefixes — **UBT** (Bayreuth), **ULG** (Lagos),
-**UJKZ** (Ouagadougou), **UFB** (Bahia) — plus an **External** bucket for outside collections (e.g. ILAM
-at Rhodes, Bayreuth Global / Bayreuth Postkolonial). Kenya's Moi centre has no projects in the current
-snapshot, and Rhodes material surfaces via the External ILAM collection rather than its own prefix — so
-don't read the data's university split as the full institutional map of the cluster.
+The **University of Bayreuth** hosts the coordinating DRE infrastructure and metadata layer. The
+**Centro de Estudos Afro-Orientais (CEAO), Federal University of Bahia** (Brazil), is a privileged
+partner, not an AMRC.
+
+In AMIRA's current data, projects are grouped under metadata/source prefixes — **UBT** (Bayreuth),
+**ULG** (Lagos), **UJKZ** (Ouagadougou), **UFB** (Bahia) — plus an **External** bucket for outside
+collections (e.g. ILAM at Rhodes, Bayreuth Global / Bayreuth Postkolonial). Treat this `university`
+facet as a data label, not as the full institutional map of the cluster and not as a formal AMRC list.
 
 ## Research sections
 

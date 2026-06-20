@@ -33,7 +33,12 @@ relationships rather than fixed entities; `find_related` is the tool that puts t
 into practice. See [references/cluster-context.md](references/cluster-context.md) for the fuller
 picture — mission, funding phases, research centres, the DRE.
 
-Each project's `university` is one of four id-prefixed partners, plus a bucket for outside collections:
+AMIRA connects research data across the Africa Multiple Research Centres (AMRCs) and partner
+institutions worldwide. The AMRC partners named by the DRE are Université Joseph Ki-Zerbo, Rhodes
+University, the University of Lagos, and Moi University. Federal University of Bahia is a privileged
+partner, not an AMRC.
+
+Each project's `university` field is a current AMIRA metadata/source facet, not a formal AMRC list:
 
 - **UBT** — University of Bayreuth (Germany)
 - **ULG** — University of Lagos (Nigeria)

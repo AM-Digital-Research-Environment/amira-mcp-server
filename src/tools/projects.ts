@@ -26,12 +26,13 @@ export function registerProjectTools(server: Server): void {
     {
       title: "Search research projects",
       description:
-        "Search the cluster's research projects across the four partner universities plus external " +
-        "collections. Every registered project is searchable; `item_count` shows how many have digitised " +
-        "items (a subset do). All filters optional and AND-combined; omit all to list every project.\n\n" +
+        "Search the cluster's research projects across AMIRA's current partner/source metadata labels plus " +
+        "external collections. Every registered project is searchable; `item_count` shows how many have " +
+        "digitised items (a subset do). All filters optional and AND-combined; omit all to list every " +
+        "project.\n\n" +
         "Filters:\n" +
         "  - keyword: match project name or description\n" +
-        "  - university: ubt | unilag | ujkz | ufba | external (code or name)\n" +
+        "  - university: ubt | unilag | ujkz | ufba | external (code or name; a data facet, not a full AMRC list)\n" +
         "  - research_section: e.g. 'Knowledges', 'Moralities'\n" +
         "  - principal_investigator / member: a person name (either order — 'Oliver Baumann' finds " +
         "'Baumann, Oliver')\n" +
