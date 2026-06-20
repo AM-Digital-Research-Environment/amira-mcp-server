@@ -14,11 +14,11 @@ export const INSTRUCTIONS =
   "of the Africa Multiple Cluster of Excellence at the University of Bayreuth. AMIRA is built and " +
   "maintained by the Cluster's Digital Research Environment (DRE), its digital infrastructure unit. The " +
   "platform connects researchers across the Africa Multiple Research Centres (AMRCs) and partner " +
-  "institutions worldwide. Curation and description are joint efforts with AMRC partners at Université " +
-  "Joseph Ki-Zerbo, Rhodes University, the University of Lagos, and Moi University; Federal University of " +
-  "Bahia is a privileged partner, not an AMRC. The DRE runs the shared infrastructure and metadata layer " +
-  "in Bayreuth, while storage stays distributed by default: research data remains in local repositories " +
-  "and becomes findable without being relocated.\n\n" +
+  "institutions worldwide. Curation and description are joint efforts with partners at the AMRCs in " +
+  "Université Joseph Ki-Zerbo, Rhodes University, the University of Lagos, and Moi University. Bayreuth " +
+  "hosts the coordinating DRE infrastructure and metadata layer. Federal University of Bahia is a " +
+  "privileged partner, not an AMRC. Storage stays distributed by default: research data remains in local " +
+  "repositories and becomes findable without being relocated.\n\n" +
   "The AMIRA MCP server exposes Omeka S metadata for research items, projects, research sections, people, " +
   "institutions, groups, collections, publications, podcast episodes, YouTube videos and searchable " +
   "transcripts, plus the places, languages and subjects that connect them.\n\n" +

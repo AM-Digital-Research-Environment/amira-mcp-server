@@ -18,6 +18,112 @@ import {
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
 
+type PartnerCategoryKey = "amrc" | "privileged" | "cooperation" | "global";
+
+interface PartnerCategory {
+  key: PartnerCategoryKey;
+  name: string;
+  o_id: number;
+  description: string;
+}
+
+const PARTNER_CATEGORIES: PartnerCategory[] = [
+  {
+    key: "amrc",
+    name: "Africa Multiple Research Centres",
+    o_id: 37685,
+    description:
+      "AMRC/coordinating host institutions represented in Omeka's partner-category authority.",
+  },
+  {
+    key: "privileged",
+    name: "Privileged partner",
+    o_id: 39073,
+    description: "Privileged partner institution; Bahia/CEAO belongs here, not under AMRCs.",
+  },
+  {
+    key: "cooperation",
+    name: "Cooperation partners",
+    o_id: 39072,
+    description: "Africa Multiple cooperation partners.",
+  },
+  {
+    key: "global",
+    name: "Global partner Centres of African Studies",
+    o_id: 39071,
+    description: "Global partner centres of African Studies.",
+  },
+];
+
+const PARTNER_CATEGORY_NAMES: Record<PartnerCategoryKey, string[]> = {
+  amrc: [
+    "University of Bayreuth",
+    "Université Joseph Ki-Zerbo",
+    "Moi University",
+    "Rhodes University",
+    "University of Lagos",
+  ],
+  privileged: ["Center for Afro-Oriental Studies"],
+  cooperation: [
+    "Les Afriques dans le monde",
+    "Council for the Development of Social Science Research in Africa",
+    "Université d’Abomey Calavi",
+    "University of Dar es Salaam",
+    "Mohammed V University of Rabat",
+    "University of Sousse",
+    "Eduardo Mondlane University",
+    "Institute of African Studies, Hankuk University of Foreign Studies",
+    "Centre for African Studies, Jawaharlal Nehru University",
+    "Point Sud — Centre for Research on Local Knowledge",
+    "Merian Institute for Advanced Studies in Africa",
+  ],
+  global: [
+    "Université de Montréal",
+    "University of Toronto",
+    "African Studies Program, Indiana University Bloomington",
+    "Universidad de Oriente (Santiago de Cuba)",
+    "Universidad de Costa Rica",
+    "Universidad de Cartagena",
+    "Center for African Area Studies, Kyoto University",
+    "Curtin University",
+    "African Institute in Indigenous Knowledge Systems, University of KwaZulu-Natal",
+  ],
+};
+
+function resolvePartnerCategory(input: string | undefined): PartnerCategory | null {
+  if (!input) return null;
+  const q = input.trim().toLowerCase();
+  return (
+    PARTNER_CATEGORIES.find(
+      (c) => c.key === q || c.name.toLowerCase() === q || c.name.toLowerCase().includes(q),
+    ) ?? null
+  );
+}
+
+function partnerCategoriesFor(org: OrganisationRec): PartnerCategory[] {
+  if (org.kind !== "institution") return [];
+  const parentRefs = org.part_of ?? [];
+  const fromRefs = PARTNER_CATEGORIES.filter((c) =>
+    parentRefs.some((p) => p.o_id === c.o_id || equalsCI(p.label, c.name)),
+  );
+  if (fromRefs.length > 0) return fromRefs;
+
+  // Older bundled snapshots did not preserve organisation dcterms:isPartOf.
+  // Keep the tool useful offline by mirroring MongoDB2OmekaS CLUSTER_PARTNER_GROUPS.
+  return PARTNER_CATEGORIES.filter((c) => PARTNER_CATEGORY_NAMES[c.key].some((name) => equalsCI(org.name, name)));
+}
+
+function partnerSummary(org: OrganisationRec): Record<string, unknown> {
+  return {
+    id: String(org.o_id),
+    omeka_id: org.o_id,
+    name: org.name,
+    ...(org.latitude != null ? { latitude: org.latitude, longitude: org.longitude } : {}),
+    wikidata: org.wikidata,
+    amira_url: itemUrl(org.o_id),
+  };
+}
+
 function projectCountFor(store: DataStore, org: OrganisationRec): number {
   return store.projects.filter((p) =>
     p.funded_by.some((f) => f.o_id === org.o_id || equalsCI(f.label, org.name)),
@@ -63,6 +169,9 @@ export function registerOrganizationTools(server: Server): void {
           (o) => ({
             name: o.name,
             project_count: projectCountFor(store, o),
+            ...(partnerCategoriesFor(o).length > 0
+              ? { partner_categories: partnerCategoriesFor(o).map((c) => c.name) }
+              : {}),
             ...(o.latitude != null ? { latitude: o.latitude, longitude: o.longitude } : {}),
             amira_url: itemUrl(o.o_id),
           }),
@@ -104,6 +213,18 @@ export function registerOrganizationTools(server: Server): void {
       return textResult({
         name: record.name,
         kind: record.kind,
+        part_of: (record.part_of ?? []).map((p) => ({
+          id: p.o_id != null ? String(p.o_id) : null,
+          omeka_id: p.o_id,
+          name: p.label,
+          amira_url: p.o_id != null ? itemUrl(p.o_id) : null,
+        })),
+        partner_categories: partnerCategoriesFor(record).map((c) => ({
+          key: c.key,
+          name: c.name,
+          omeka_id: c.o_id,
+          amira_url: itemUrl(c.o_id),
+        })),
         ...(record.latitude != null ? { latitude: record.latitude, longitude: record.longitude } : {}),
         wikidata: record.wikidata,
         project_count: projects.length,
@@ -115,6 +236,63 @@ export function registerOrganizationTools(server: Server): void {
         contributed_items: items.slice(0, 50).map(itemRef),
         contributed_items_truncated: items.length > 50 || undefined,
         amira_url: itemUrl(record.o_id),
+      });
+    },
+  );
+
+  // === list_cluster_partners ===============================================
+  server.registerTool(
+    "list_cluster_partners",
+    {
+      title: "List cluster partner institutions",
+      description:
+        "List Africa Multiple partner institutions by Omeka partner-category authority: Africa Multiple " +
+        "Research Centres, Privileged partner, Cooperation partners, and Global partner Centres of " +
+        "African Studies. Optional `category` accepts amrc, privileged, cooperation, global, or a " +
+        "category label. Results include institution coordinates, Wikidata URI, category authority " +
+        "Omeka ids, and citable `amira_url` links.",
+      annotations: annotate("List cluster partners"),
+      inputSchema: {
+        category: z
+          .string()
+          .optional()
+          .describe("Optional: amrc | privileged | cooperation | global, or a category label"),
+      },
+    },
+    async ({ category }) => {
+      const store = await ensureStore();
+      const selected = category ? resolvePartnerCategory(category) : null;
+      if (category && !selected) {
+        return errorResult("invalid_category", `Unknown partner category '${category}'.`, {
+          suggested_tool: "list_cluster_partners",
+          available_values: PARTNER_CATEGORIES.map((c) => ({ key: c.key, name: c.name })),
+        });
+      }
+
+      const categories = selected ? [selected] : PARTNER_CATEGORIES;
+      const grouped = categories.map((c) => {
+        const members = store.organisations
+          .filter((o) => partnerCategoriesFor(o).some((pc) => pc.key === c.key))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        return {
+          key: c.key,
+          name: c.name,
+          omeka_id: c.o_id,
+          description: c.description,
+          member_count: members.length,
+          amira_url: itemUrl(c.o_id),
+          partners: members.map(partnerSummary),
+        };
+      });
+      const uniquePartnerIds = new Set(grouped.flatMap((g) => g.partners.map((p) => p.omeka_id)));
+
+      return textResult({
+        source:
+          "Organisation dcterms:isPartOf category links when present; MongoDB2OmekaS CLUSTER_PARTNER_GROUPS fallback for older offline snapshots.",
+        ...(category ? { filters: { category } } : {}),
+        category_count: grouped.length,
+        partner_count: uniquePartnerIds.size,
+        categories: grouped,
       });
     },
   );

@@ -1,6 +1,6 @@
 # Tools by task
 
-All 24 tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
+All 25 tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
 `{ count, total_matches, offset, has_more, next_offset?, results[] }` (plus a `filters` echo of the
 filters you actually passed). Ask for more than a tool's max and it also echoes `requested_limit` /
 `effective_limit`. `search_research_items` adds `suggestions` (which filter to drop) when a strict
@@ -51,6 +51,7 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Search people | `search_persons` | `keyword` (either name order), `affiliation` |
 | Full person profile (PI/member/contributor/author) | `get_person` | `name` — either order resolves to 'Surname, Forename' |
 | List / detail institutions | `list_institutions` / `get_institution` | `keyword` / `name` (get_institution also resolves groups) |
+| Africa Multiple partner institutions by category | `list_cluster_partners` | Optional `category` (`amrc`, `privileged`, `cooperation`, `global`) |
 | List research groups | `list_groups` | `keyword` |
 
 ## Discovery facets (vocabulary)

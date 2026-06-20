@@ -24,7 +24,7 @@ function check(cond, label) {
 
 const tools = await client.listTools();
 console.log(`tools (${tools.tools.length}):`, tools.tools.map((t) => t.name).join(", "));
-check(tools.tools.length === 24, `expected 24 tools, got ${tools.tools.length}`);
+check(tools.tools.length === 25, `expected 25 tools, got ${tools.tools.length}`);
 
 async function call(name, args, { expect = [] } = {}) {
   const res = await client.callTool({ name, arguments: args });
@@ -127,6 +127,18 @@ if (insts.results?.[0]?.name) {
   const inst = await call("get_institution", { name: insts.results[0].name }, { expect: [AMIRA] });
   check(typeof inst.contributed_item_count === "number", "get_institution: contributed_item_count");
 }
+const partners = await call("list_cluster_partners", {});
+check(partners.partner_count >= 26, "list_cluster_partners: partner network exposed");
+const privileged = await call("list_cluster_partners", { category: "privileged" });
+check(
+  privileged.categories?.[0]?.partners?.some((p) => p.name === "Center for Afro-Oriental Studies"),
+  "list_cluster_partners: Bahia/CEAO is a privileged partner",
+);
+const amrc = await call("list_cluster_partners", { category: "amrc" });
+check(
+  !(amrc.categories?.[0]?.partners ?? []).some((p) => p.name === "Center for Afro-Oriental Studies"),
+  "list_cluster_partners: Bahia/CEAO is not listed under AMRCs",
+);
 const groups = await call("list_groups", { limit: 3 });
 if (groups.results?.[0]?.name) {
   await call("get_institution", { name: groups.results[0].name }, { expect: ["group"] });

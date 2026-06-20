@@ -30,6 +30,8 @@ export interface OrganisationRec {
   name: string;
   /** dcterms:type on the item: "Institution" (508) or "Group" (84). */
   kind: "institution" | "group" | "organisation";
+  /** dcterms:isPartOf -> parent/category authority records, including cluster-partner categories. */
+  part_of: LinkedRef[];
   latitude: number | null;
   longitude: number | null;
   /** dcterms:identifier (Wikidata URI) when reconciled. */
@@ -200,7 +202,7 @@ export interface PodcastRec {
   people: Contributor[];
   /** fabio:hasURL — episode page / audio. */
   url: string | null;
-  /** bibo:content — none filled as of 2026-06 (0/43); kept for when they land. */
+  /** bibo:content — full transcript when present (43/43 filled in the refreshed 2026-06 snapshot). */
   transcript: string | null;
   languages: LinkedRef[];
 }
@@ -218,7 +220,7 @@ export interface VideoRec {
   languages: LinkedRef[];
   /** fabio:hasURL — the YouTube watch URL. */
   url: string | null;
-  /** bibo:content — full transcript (91/140 filled as of 2026-06). */
+  /** bibo:content — full transcript when present (most videos filled as of 2026-06). */
   transcript: string | null;
 }
 

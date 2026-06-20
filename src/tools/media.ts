@@ -148,8 +148,7 @@ export function registerMediaTools(server: Server): void {
         "abstract, people with roles, the episode URL, and the citable `amira_url`. The transcript is " +
         "OMITTED by default (only has_transcript + transcript_length are shown); pass " +
         "include_transcript=true to include it, and transcript_offset / transcript_max_chars to page a " +
-        "long one (capped at 25,000 chars per call). No episode carries a transcript in the current " +
-        "snapshot. Returns a structured { error } if the id is unknown.",
+        "long one (capped at 25,000 chars per call). Returns a structured { error } if the id is unknown.",
       annotations: annotate("Get podcast detail"),
       inputSchema: { id: z.number().int().describe("Podcast id from search_podcasts"), ...transcriptParams },
     },

@@ -7,7 +7,7 @@
 // Both must return `structuredContent` alongside the JSON content array — which
 // our `textResult` helper already does. These adapters sit OVER the same
 // in-memory store the rich tools use; they are registered only on the remote
-// HTTP transport (src/http.ts), so the stdio .mcpb keeps its 24-tool surface.
+// HTTP transport (src/http.ts), so the stdio .mcpb keeps its 25-tool surface.
 //
 // `id` is typed as `<kind>:<omeka_o_id>` (item:7392, pub:30001, video:39218,
 // podcast:39121, project:37700, section:218) so fetch can route back and a

@@ -35,8 +35,8 @@ picture — mission, funding phases, research centres, the DRE.
 
 AMIRA connects research data across the Africa Multiple Research Centres (AMRCs) and partner
 institutions worldwide. The AMRC partners named by the DRE are Université Joseph Ki-Zerbo, Rhodes
-University, the University of Lagos, and Moi University. Federal University of Bahia is a privileged
-partner, not an AMRC.
+University, the University of Lagos, and Moi University. Bayreuth hosts the coordinating DRE
+infrastructure and metadata layer. Federal University of Bahia is a privileged partner, not an AMRC.
 
 Each project's `university` field is a current AMIRA metadata/source facet, not a formal AMRC list:
 
@@ -62,9 +62,9 @@ Each section carries a `funding_phase` label and `date` range, so you can group 
 directly. Filter with the exact strings the tool returns (note "In/securities", "Re:membering").
 
 Beyond the research items, the collection carries the cluster **bibliography** (~250 publications),
-**podcast episodes** (e.g. *Cluster Conversations*), and the cluster's **YouTube videos** — most with
-full **transcripts**, making `search_videos keyword=…` the collection's main full-text search over
-talks and lectures.
+**podcast episodes** (e.g. *Cluster Conversations*) with transcripts, and the cluster's **YouTube
+videos** — most with full **transcripts**. Use `search_podcasts keyword=…` and
+`search_videos keyword=…` for full-text search over talks and lectures.
 
 The data is **read from a snapshot of the public Omeka S API**. The server works offline from the
 bundled snapshot and needs no key or credentials; when live refresh is enabled, it may probe and
@@ -91,7 +91,7 @@ Every entity is an Omeka item with a stable public page: its **`amira_url`**
 number in that URL; use that when an identifier is needed.
 
 See [references/data-model.md](references/data-model.md) for field-level detail, and
-[references/tools-by-task.md](references/tools-by-task.md) for the full 24-tool catalogue.
+[references/tools-by-task.md](references/tools-by-task.md) for the full 25-tool catalogue.
 
 ## Workflow
 
@@ -174,8 +174,9 @@ link.
    collection now stores both as subjects. There is no tag filter — use `subject`.
 7. **Languages are canonical records.** One record per language ("French", code `fra`); the server
    accepts names, ISO 639-1/2 codes and the legacy bibliographic codes (`fre`, `ger`) alike.
-8. **Podcast transcripts are not filled yet** (0/43 as of 2026-06); video transcripts cover 91/140.
-   `has_transcript` on each result tells you; absence of a transcript is not an error. The detail
+8. **Transcripts are opt-in on detail calls.** Podcast transcripts cover 43/43 episodes in the
+   refreshed 2026-06 snapshot; video transcripts cover most videos. `has_transcript` on each result
+   tells you whether one is present; absence of a transcript is not an error. The detail
    tools omit the transcript text unless you pass `include_transcript=true` (see Drill).
 9. **Places: flat facet, hierarchy-aware filters.** `list_locations` is a flat, item-count-ranked list
    (countries and cities together, hierarchy rolled up — no level to choose). On

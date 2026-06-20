@@ -52,8 +52,9 @@ try {
   const tools = await client.listTools();
   const names = tools.tools.map((t) => t.name);
   console.log(`tools (${names.length}):`, names.join(", "));
-  check(names.length === 26, `expected 26 tools over HTTP, got ${names.length}`);
+  check(names.length === 27, `expected 27 tools over HTTP, got ${names.length}`);
   check(names.includes("search") && names.includes("fetch"), "HTTP exposes search + fetch");
+  check(names.includes("list_cluster_partners"), "HTTP exposes cluster partner tool");
   check(names.includes("get_collection_overview"), "HTTP exposes the rich tools too");
 
   async function call(name, args) {

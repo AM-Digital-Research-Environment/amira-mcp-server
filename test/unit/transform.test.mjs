@@ -201,10 +201,12 @@ test("organisation kinds + location parents + person affiliations", () => {
     "o:id": 7,
     "o:title": "Iwalewahaus",
     "dcterms:type": [res(1, "Institution")],
+    "dcterms:isPartOf": [res(37685, "Africa Multiple Research Centres")],
     "geo:lat": [lit("49.94")],
     "geo:long": [lit("11.57")],
   });
   assert.equal(org.kind, "institution");
+  assert.deepEqual(org.part_of, [{ label: "Africa Multiple Research Centres", o_id: 37685 }]);
   assert.equal(org.latitude, 49.94);
   const group = transformOrganisation({ "o:id": 8, "o:title": "RG X", "dcterms:type": [res(2, "Group")] });
   assert.equal(group.kind, "group");

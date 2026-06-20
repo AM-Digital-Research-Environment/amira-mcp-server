@@ -205,6 +205,7 @@ export function transformOrganisation(item: OmekaItem): OrganisationRec {
     o_id: oid(item),
     name: omekaTitle(item),
     kind: type === "institution" ? "institution" : type === "group" ? "group" : "organisation",
+    part_of: linkedRefs(item, "dcterms:isPartOf"),
     latitude: Number.isFinite(lat) ? lat : null,
     longitude: Number.isFinite(lng) ? lng : null,
     wikidata: uriValues(item, "dcterms:identifier")[0]?.url ?? null,

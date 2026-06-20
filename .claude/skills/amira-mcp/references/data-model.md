@@ -57,8 +57,10 @@ hardcode it.
 ## Institution / Group
 
 Organisation authority records, typed: `kind` = institution (508) or group (84). `get_institution`
-(works for both) adds funded/hosted projects, affiliated persons, and contributed items (slim refs);
-coordinates and Wikidata link when reconciled.
+(works for both) adds `part_of[]`, `partner_categories[]`, funded/hosted projects, affiliated
+persons, and contributed items (slim refs); coordinates and Wikidata link when reconciled.
+`list_cluster_partners` groups the Africa Multiple institutional partner network by Omeka category:
+`amrc`, `privileged`, `cooperation`, and `global`.
 
 ## Publication
 
@@ -72,11 +74,12 @@ record link to cite whenever possible), and `bibtex` (generated from the structu
 
 Podcasts: `title`, `series`, `episode`, `date`, `date_status` (published/scheduled/unknown),
 `abstract`, `people[]` (speaker/host/sound engineer), `url` plus `amira_url`, and `has_transcript` /
-`transcript_length` (no episode carries a transcript as of 2026-06). Videos: `title`, `date`,
+`transcript_length` (43/43 filled in the refreshed 2026-06 snapshot). Videos: `title`, `date`,
 `date_status`, `abstract`, `playlists[]`, `speakers[]`, `languages[]`, watch `url`, `amira_url`,
-`has_transcript` (91/140 filled). Transcripts are searchable in full via `search_videos` (a transcript hit returns a
-`transcript_snippet`), but the detail tools (`get_video` / `get_podcast`) **omit the transcript text
-unless `include_transcript=true`** — then `transcript_offset` / `transcript_max_chars` page it (cap
+and `has_transcript` (most videos have transcripts). Transcripts are searchable in full via
+`search_podcasts` and `search_videos` (a transcript hit returns a `transcript_snippet`), but the
+detail tools (`get_video` / `get_podcast`) **omit the transcript text unless
+`include_transcript=true`** — then `transcript_offset` / `transcript_max_chars` page it (cap
 25k chars per call). The ChatGPT `search` / `fetch` tools use the AMIRA/Omeka page as the primary
 `url`; DOI, watch, or listen URLs appear in metadata/text as secondary links.
 

@@ -10,8 +10,9 @@ AMIRA is built and maintained by the Cluster's **Digital Research Environment
 (DRE)**, its digital infrastructure unit. The DRE designs, builds, and maintains
 the data systems that connect researchers across the **Africa Multiple Research
 Centres (AMRCs)** and partner institutions worldwide. Curation and description are
-joint efforts with the AMRC partners at **Université Joseph Ki-Zerbo**, **Rhodes
-University**, the **University of Lagos**, and **Moi University**. **Federal
+joint efforts with partners at the AMRCs in **Université Joseph Ki-Zerbo**,
+**Rhodes University**, the **University of Lagos**, and **Moi University**.
+Bayreuth hosts the coordinating DRE infrastructure and metadata layer. **Federal
 University of Bahia** is a privileged partner, not an AMRC.
 
 Storage stays distributed by default: data remains in its local repository, while
@@ -22,7 +23,7 @@ more discoverable and their work more visible to a wider community of peers.
 This server exposes AMIRA's **projects**, thematic **research sections**, ~4,000
 digitised **research items**, **people**, **institutions**, **groups**,
 **collections**, the cluster **bibliography**, **podcast episodes**, and the
-cluster's **YouTube videos with searchable transcripts** — as 24 core tools an LLM
+cluster's **YouTube videos with searchable transcripts** — as 25 core tools an LLM
 can query. From one MCP interface, clients can move across records and the places,
 languages, and subjects that connect them.
 
@@ -61,7 +62,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `search_projects` / `get_project` | Projects by keyword, university, section, PI, member, funder — detail with item breakdown + top subjects |
 | `list_research_sections` / `get_research_section` | Thematic sections with funding phases (AM 1.0 / AM 2.0), PIs, counts, projects |
 | `search_persons` / `get_person` | People (either name order works) — profile across projects, items, publications |
-| `list_institutions` / `get_institution` / `list_groups` | Organisations (institutions and research groups), their projects, people and items |
+| `list_institutions` / `get_institution` / `list_cluster_partners` / `list_groups` | Organisations (institutions, Africa Multiple partner categories, and research groups), their projects, people and items |
 | `list_subjects` | Subject headings (former tags merged in) ranked by item frequency |
 | `list_locations` | Every place — countries and cities in one flat list (hierarchy rolled up) — ranked by item count, with coordinates |
 | `list_collections` | Collections (item sets) ranked by research-item count — pair with the `collection` filter |
@@ -69,7 +70,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `list_years` | Date histogram of research items by year or decade — coverage over time, most-covered year/decade |
 | `search_publications` / `get_publication` | The cluster bibliography (incl. generated BibTeX) |
 | `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities |
-| `search_podcasts` / `get_podcast` | Cluster podcast episodes (transcript-ready; transcript opt-in on detail) |
+| `search_podcasts` / `get_podcast` | Cluster podcast episodes with searchable transcripts; transcript text is opt-in on detail |
 | `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; transcript opt-in on detail) |
 
 ### Example questions it can answer
@@ -113,8 +114,8 @@ The `.mcpb` is the local, offline option for Claude Desktop. The same server can
 also run as a **remote Streamable HTTP endpoint** — one HTTPS URL that ChatGPT,
 Claude (web + desktop remote connectors), the OpenAI and Anthropic APIs, Cursor,
 VS Code and other clients connect to by pasting a URL (no download, always-fresh
-data). The remote surface serves the same 24 tools **plus** the
-OpenAI-compatible `search` / `fetch` tools that ChatGPT's connectors require (26
+data). The remote surface serves the same 25 tools **plus** the
+OpenAI-compatible `search` / `fetch` tools that ChatGPT's connectors require (27
 total). Access is unauthenticated — the data is public and read-only.
 
 `search` takes plain keywords (matched term-by-term, not as an exact phrase),
@@ -140,7 +141,7 @@ Endpoints: `POST /mcp` (the MCP endpoint) and `GET /healthz`. Bind with `PORT` /
 
 - **ChatGPT** → Settings → Connectors → Advanced → **Developer Mode** → add
   `https://<your-host>/mcp`. Deep Research calls `search` + `fetch`; Developer
-  Mode can call any of the 26 tools.
+  Mode can call any of the 27 tools.
 - **Claude** (web or desktop) → Settings → Connectors → **Add custom connector**
   → `https://<your-host>/mcp`.
 - **OpenAI API** (Responses) — point the `mcp` tool at the endpoint:
@@ -183,8 +184,8 @@ npm run typecheck     # tsc --noEmit
 npm run build         # esbuild -> server/{index,http,fetchCli,lib}.js
 npm test              # unit tests (transform fixtures — offline)
 npm run test:live     # integration tests against the live API (network)
-npm run smoke         # spawn the stdio server, exercise all 24 tools offline
-npm run smoke:http    # spawn the HTTP server, exercise search/fetch + parity (26 tools)
+npm run smoke         # spawn the stdio server, exercise all 25 tools offline
+npm run smoke:http    # spawn the HTTP server, exercise search/fetch + parity (27 tools)
 ```
 
 Pack the extension:

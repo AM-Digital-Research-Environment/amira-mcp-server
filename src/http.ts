@@ -61,7 +61,7 @@ function healthBody(): Record<string, unknown> {
 }
 
 async function handleMcp(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const server = createAmiraServer({ openai: true }); // 24 rich tools + search/fetch
+  const server = createAmiraServer({ openai: true }); // 25 rich tools + search/fetch
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on("close", () => {
     void transport.close();
