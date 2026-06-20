@@ -5,7 +5,7 @@
 #   docker build -t amira-mcp .
 #   docker run -p 8787:8787 amira-mcp     # → http://localhost:8787/mcp
 
-FROM node:22-slim AS build
+FROM node:26-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -15,7 +15,7 @@ COPY scripts ./scripts
 # Bundles the server (incl. server/http.js) AND writes the data/ snapshot.
 RUN npm run fetch-data
 
-FROM node:22-slim AS run
+FROM node:26-slim AS run
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8787 \

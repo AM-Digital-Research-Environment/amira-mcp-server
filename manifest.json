@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "amira-mcp-server",
   "display_name": "AMIRA — Africa Multiple Research Data",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Read-only access to the Africa Multiple Cluster research data (AMIRA collection on Omeka S).",
   "long_description": "Search and explore the research data of the Africa Multiple Cluster of Excellence, as published on the cluster's public Omeka S site (https://data.africamultiple.uni-bayreuth.de): research projects across four partner universities (Bayreuth, Lagos, Joseph Ki-Zerbo, Bahia) plus external collections such as the International Library of African Music, organised into thematic research sections, with ~4,000 digitised research items, people, institutions, groups, an academic bibliography, podcast episodes, and the cluster's YouTube videos with searchable transcripts.\n\nNo API key, database, or VPN is required. A complete data snapshot is bundled in the extension, so the server works fully offline. When enabled (default), it also refreshes itself from the site's public API.\n\nEvery record carries an `amira_url` — its public page on the Omeka S site — so results can be cited as links back to the source.",
   "author": {

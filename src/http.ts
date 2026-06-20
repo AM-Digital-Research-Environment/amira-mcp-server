@@ -15,9 +15,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createAmiraServer, VERSION } from "./mcpServer.js";
 import { config } from "./config.js";
-import { ensureStore } from "./data.js";
+import { ensureStore, type DataStore } from "./data.js";
 
 const MCP_PATH = "/mcp";
+let readyStore: DataStore | null = null;
+let startupError: string | null = null;
 
 /** Public, read-only data → permissive CORS so browser-based clients can connect. */
 function setCors(res: ServerResponse): void {
@@ -33,6 +35,29 @@ function setCors(res: ServerResponse): void {
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
+}
+
+function healthBody(): Record<string, unknown> {
+  return {
+    name: "amira-mcp-server",
+    version: VERSION,
+    status: startupError ? "error" : readyStore ? "ok" : "loading",
+    transport: "streamable-http",
+    mcp_endpoint: MCP_PATH,
+    site: config.siteBase,
+    ...(readyStore
+      ? {
+          data_snapshot: {
+            source: readyStore.source,
+            fetched_at: readyStore.manifest.fetchedAt,
+            research_items: readyStore.items.length,
+            projects: readyStore.projects.length,
+            youtube_videos: readyStore.videos.length,
+          },
+        }
+      : {}),
+    ...(startupError ? { error: startupError } : {}),
+  };
 }
 
 async function handleMcp(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -57,13 +82,7 @@ const httpServer = createServer((req, res) => {
   }
 
   if (path === "/" || path === "/healthz") {
-    sendJson(res, 200, {
-      name: "amira-mcp-server",
-      version: VERSION,
-      transport: "streamable-http",
-      mcp_endpoint: MCP_PATH,
-      site: config.siteBase,
-    });
+    sendJson(res, readyStore && !startupError ? 200 : 503, healthBody());
     return;
   }
 
@@ -80,13 +99,17 @@ const httpServer = createServer((req, res) => {
 
 // Warm the snapshot (and kick off the background refresh) before traffic.
 void ensureStore()
-  .then((store) =>
+  .then((store) => {
+    readyStore = store;
     console.error(
       `[amira] loaded ${store.items.length} research items / ${store.projects.length} projects / ` +
         `${store.videos.length} videos from ${store.source} snapshot (fetchedAt=${store.manifest.fetchedAt})`,
-    ),
-  )
-  .catch((err) => console.error(`[amira] initial data load failed: ${(err as Error).message}`));
+    );
+  })
+  .catch((err) => {
+    startupError = (err as Error).message;
+    console.error(`[amira] initial data load failed: ${startupError}`);
+  });
 
 httpServer.listen(config.httpPort, config.httpHost, () => {
   console.error(

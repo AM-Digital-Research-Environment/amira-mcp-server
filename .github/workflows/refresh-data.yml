@@ -29,10 +29,10 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "26"
           cache: npm
       - run: npm ci
 
@@ -79,7 +79,7 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         run: |
           npm run prepack-mcpb
-          npx -y @anthropic-ai/mcpb@latest pack . amira-mcp-server.mcpb
+          npm exec -- mcpb pack . amira-mcp-server.mcpb
 
       - name: Publish / update rolling pre-release
         if: steps.check.outputs.changed == 'true'

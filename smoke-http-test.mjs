@@ -40,8 +40,10 @@ try {
   // Health endpoint reports identity + the MCP path.
   await waitReady(`${BASE}/healthz`);
   const health = await (await fetch(`${BASE}/healthz`)).json();
+  check(health.status === "ok", "healthz: ready status reported");
   check(health.transport === "streamable-http", "healthz: transport reported");
   check(health.mcp_endpoint === "/mcp", "healthz: mcp_endpoint reported");
+  check(health.data_snapshot?.research_items >= 3975, "healthz: snapshot counts reported");
 
   const transport = new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`));
   client = new Client({ name: "smoke-http", version: "0.0.0" });

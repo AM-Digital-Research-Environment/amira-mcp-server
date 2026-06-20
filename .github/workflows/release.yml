@@ -17,10 +17,10 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "26"
           cache: npm
       - run: npm ci
       - name: Build data snapshot from the public Omeka S API
@@ -32,7 +32,7 @@ jobs:
       - name: Type-check, bundle, smoke-test
         run: npm run prepack-mcpb
       - name: Pack .mcpb
-        run: npx -y @anthropic-ai/mcpb@latest pack . amira-mcp-server.mcpb
+        run: npm exec -- mcpb pack . amira-mcp-server.mcpb
       - name: Pack companion skill
         # Zip the skill with `amira-mcp/` at the archive root, so end users can
         # unzip it straight into their Claude skills dir (~/.claude/skills/).
