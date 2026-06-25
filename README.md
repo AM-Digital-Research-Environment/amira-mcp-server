@@ -40,12 +40,12 @@ The server is **self-contained and offline-first**. It reads from two sources:
 1. A complete **data snapshot bundled inside the `.mcpb`** — crawled from the
    public Omeka S REST API at build time and transformed into compact typed
    records, so the server works fully offline with zero setup.
-2. *(optional, on by default)* the **Omeka S API** over HTTPS. At startup a
-   one-request probe compares the snapshot's freshness signature (max
-   `o:modified` + item totals) against the live API; only when stale does a full
-   re-crawl run — staged on disk and **atomically promoted**, so a failed or
-   interrupted refresh can never corrupt the cache. If the site is unreachable,
-   the bundled snapshot keeps serving.
+2. *(optional, on by default)* the **Omeka S API** over HTTPS. At startup, and
+   then once per day while the server keeps running, a one-request probe compares
+   the snapshot's freshness signature (max `o:modified` + item totals) against
+   the live API; only when stale does a full re-crawl run — staged on disk and
+   **atomically promoted**, so a failed or interrupted refresh can never corrupt
+   the cache. If the site is unreachable, the bundled snapshot keeps serving.
 
 End users need **no API key, no credentials, and no VPN** — it's the same openly
 published data that powers the public site.
@@ -224,7 +224,8 @@ credentials):
 
 | Env var | Extension setting | Default | Meaning |
 | --- | --- | --- | --- |
-| `AMIRA_LIVE_REFRESH` | Refresh data from the live site | `true` | Probe + refresh the snapshot from the public API at startup |
+| `AMIRA_LIVE_REFRESH` | Refresh data from the live site | `true` | Probe + refresh the snapshot from the public API at startup and on the periodic interval |
+| `AMIRA_REFRESH_INTERVAL_HOURS` | — | `24` | When live refresh is on, repeat the freshness probe this often while the server is running; set `0` to disable periodic checks |
 | `AMIRA_CACHE_DIR` | Refreshed-data cache directory | `~/.amira-mcp/cache` | Where refreshed snapshots are stored |
 | `AMIRA_SITE_BASE` | Site base URL (advanced) | `https://data.africamultiple.uni-bayreuth.de` | Base for citations + refresh (`AMIRA_DASHBOARD_BASE` is honoured with a deprecation warning) |
 | `AMIRA_SITE_SLUG` | — | `amira` | Omeka site slug used in `amira_url` |

@@ -65,6 +65,12 @@ function parseBool(v: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
+function parseNonNegativeNumber(v: string | undefined, fallback: number): number {
+  if (v === undefined || v.trim() === "") return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
 export const config = {
   siteBase: SITE_BASE,
   siteSlug: SITE_SLUG,
@@ -73,6 +79,8 @@ export const config = {
   cacheDir: resolveCacheDir(),
   /** When true (default), refresh the snapshot from the public Omeka API. */
   liveRefresh: parseBool(process.env.AMIRA_LIVE_REFRESH, true),
+  /** Periodic freshness check interval. 0 disables periodic checks. */
+  refreshIntervalHours: parseNonNegativeNumber(process.env.AMIRA_REFRESH_INTERVAL_HOURS, 24),
   /** Bind for the remote HTTP transport (server/http.js); ignored by the stdio
    * entry point. PORT/HOST are the conventional names; AMIRA_HTTP_* also work. */
   httpPort: Number(process.env.PORT ?? process.env.AMIRA_HTTP_PORT ?? "8787"),

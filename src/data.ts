@@ -4,8 +4,9 @@
 //   1. A snapshot BUNDLED in the .mcpb — the server is fully usable from it
 //      alone, with no network access.
 //   2. With live refresh on (default), a one-request probe checks the public
-//      Omeka API; only when stale does a full re-crawl run, staged + atomically
-//      promoted into the cache (D9), then hot-swapped into memory.
+//      Omeka API at startup and periodically; only when stale does a full
+//      re-crawl run, staged + atomically promoted into the cache (D9), then
+//      hot-swapped into memory.
 //
 // Whichever of {bundled, cache} carries the NEWER manifest wins at startup, so
 // an old cache can never shadow a fresher bundled snapshot or vice versa.
@@ -209,6 +210,8 @@ export class DataStore {
 
 let current: DataStore | null = null;
 let loading: Promise<DataStore> | null = null;
+let refreshInFlight: Promise<void> | null = null;
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 function cacheSnapshotDir(): string {
   return path.join(config.cacheDir, "current");
@@ -243,11 +246,27 @@ export async function ensureStore(): Promise<DataStore> {
   if (!loading) {
     loading = loadInitial().then((store) => {
       current = store;
-      if (config.liveRefresh) void backgroundRefresh();
+      if (config.liveRefresh) startBackgroundRefresh();
       return store;
     });
   }
   return loading;
+}
+
+function startBackgroundRefresh(): void {
+  triggerBackgroundRefresh();
+
+  if (refreshTimer || config.refreshIntervalHours <= 0) return;
+  const intervalMs = config.refreshIntervalHours * 60 * 60 * 1000;
+  refreshTimer = setInterval(() => triggerBackgroundRefresh(), intervalMs);
+  refreshTimer.unref?.();
+}
+
+function triggerBackgroundRefresh(): void {
+  if (refreshInFlight) return;
+  refreshInFlight = backgroundRefresh().finally(() => {
+    refreshInFlight = null;
+  });
 }
 
 /**

@@ -12,7 +12,7 @@ import { readFile } from "node:fs/promises";
 const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
 await esbuild.build({
-  entryPoints: ["src/index.ts", "src/http.ts", "src/fetchCli.ts", "src/lib.ts"],
+  entryPoints: ["./src/index.ts", "./src/http.ts", "./src/fetchCli.ts", "./src/lib.ts"],
   outdir: "server",
   bundle: true,
   platform: "node",

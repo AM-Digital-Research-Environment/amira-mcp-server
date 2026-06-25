@@ -80,7 +80,7 @@
     "live_refresh": {
       "type": "boolean",
       "title": "Refresh data from the live site",
-      "description": "When on, the server checks the public Omeka S API for newer data at startup and updates its local cache. Turn off to run fully offline using only the bundled snapshot.",
+      "description": "When on, the server checks the public Omeka S API for newer data at startup and periodically while running, then updates its local cache. Turn off to run fully offline using only the bundled snapshot.",
       "default": true
     },
     "cache_dir": {
