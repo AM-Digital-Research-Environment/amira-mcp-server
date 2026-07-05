@@ -171,8 +171,10 @@ export interface PublicationRec {
   /** bibo:authorList / bibo:editorList — linked Person items or literal names. */
   authors: LinkedRef[];
   editors: LinkedRef[];
-  /** dcterms:isPartOf literal — journal / book / series title. */
+  /** dcterms:isPartOf label — journal / book / series title. */
   venue: string | null;
+  /** dcterms:isPartOf as a link when it points at a Journal authority item. */
+  venue_ref: LinkedRef | null;
   volume: string | null;
   issue: string | null;
   pages: string | null;
@@ -186,6 +188,32 @@ export interface PublicationRec {
   language: string | null;
   /** bibo:uri — ERef / EPub repository links, in source order. */
   urls: string[];
+  /** bibo:status label, e.g. "Peer reviewed". */
+  status: string | null;
+  /** frapo:isFundedBy → funder authority items (DFG, the EXC 2052 grant, …). */
+  funders: LinkedRef[];
+  /** marcrel:pup → places of publication (linked to Location items). */
+  places_of_publication: LinkedRef[];
+  /** dcterms:relation — grant titles and typed related links, as text. */
+  relations: string[];
+  /** bibo:content — extracted full text of the open-access PDF, when present. */
+  fulltext: string | null;
+  /** True when the open-access PDF is attached as media (EPub-sourced). */
+  has_media: boolean;
+  /** Large thumbnail of the attached PDF, when present. */
+  thumbnail: string | null;
+}
+
+/** A publication venue (Journal authority item, template 23 / set 41268). */
+export interface JournalRec {
+  o_id: number;
+  title: string;
+  /** bibo:issn. */
+  issn: string | null;
+  /** dcterms:spatial → country of publication. */
+  country: LinkedRef | null;
+  /** dcterms:identifier URI — journal homepage / authority link. */
+  url: string | null;
 }
 
 export interface PodcastRec {
@@ -249,6 +277,7 @@ export interface SnapshotData {
   research_sections: SectionRec[];
   research_items: ResearchItemRec[];
   publications: PublicationRec[];
+  journals: JournalRec[];
   podcasts: PodcastRec[];
   videos: VideoRec[];
   playlists: PlaylistRec[];
@@ -264,6 +293,7 @@ export const CORPORA = [
   "research_sections",
   "research_items",
   "publications",
+  "journals",
   "podcasts",
   "videos",
   "playlists",
@@ -284,4 +314,5 @@ export interface SnapshotManifest {
   counts: Record<CorpusName, number>;
 }
 
-export const SNAPSHOT_SCHEMA_VERSION = 3;
+/** v4: publication fulltext/venue_ref/status/funders/media + journals corpus. */
+export const SNAPSHOT_SCHEMA_VERSION = 4;

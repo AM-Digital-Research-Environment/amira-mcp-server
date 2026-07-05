@@ -1,5 +1,6 @@
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import { SITE_BASE } from "../config.js";
+import { allowStructured, exposureLevel } from "../exposure.js";
 import { annotate, textResult, type Server } from "./_shared.js";
 import type { University } from "../types.js";
 
@@ -37,6 +38,10 @@ export function registerOverviewTools(server: Server): void {
         if (it.year_max != null && (yearMax == null || it.year_max > yearMax)) yearMax = it.year_max;
       }
 
+      const pubsWithFulltext = store.publications.filter((p) => p.fulltext).length;
+      const videosWithTranscript = store.videos.filter((v) => v.transcript).length;
+      const podcastsWithTranscript = store.podcasts.filter((p) => p.transcript).length;
+
       return textResult({
         collection_name: "Africa Multiple Cluster of Excellence — research data (AMIRA)",
         site_url: SITE_BASE,
@@ -48,18 +53,28 @@ export function registerOverviewTools(server: Server): void {
           groups: store.organisations.filter((o) => o.kind === "group").length,
           research_sections: store.sections.length,
           publications: store.publications.length,
+          publications_with_fulltext: pubsWithFulltext,
+          journals: store.journals.length,
           podcasts: store.podcasts.length,
+          podcasts_with_transcript: podcastsWithTranscript,
           youtube_videos: store.videos.length,
+          videos_with_transcript: videosWithTranscript,
         },
-        universities: Object.fromEntries(
-          (Object.keys(UNIVERSITY_LABELS) as University[]).map((u) => [u, UNIVERSITY_LABELS[u]]),
-        ),
-        items_by_university: tally(store.items, (it) => UNIVERSITY_LABELS[it.university]),
-        items_by_research_section: tally(store.items, (it) => store.sectionsOfItem(it)),
-        items_by_resource_type: tally(store.items, (it) => it.type),
-        items_by_language: tally(store.items, (it) => it.languages.map((l) => l.label)),
+        // Relational breakdowns are structured-level metadata.
+        ...(allowStructured()
+          ? {
+              universities: Object.fromEntries(
+                (Object.keys(UNIVERSITY_LABELS) as University[]).map((u) => [u, UNIVERSITY_LABELS[u]]),
+              ),
+              items_by_university: tally(store.items, (it) => UNIVERSITY_LABELS[it.university]),
+              items_by_research_section: tally(store.items, (it) => store.sectionsOfItem(it)),
+              items_by_resource_type: tally(store.items, (it) => it.type),
+              items_by_language: tally(store.items, (it) => it.languages.map((l) => l.label)),
+              research_sections: store.sections.map((s) => s.name),
+            }
+          : { items_by_resource_type: tally(store.items, (it) => it.type) }),
         content_date_range: yearMin != null ? { earliest: yearMin, latest: yearMax } : null,
-        research_sections: store.sections.map((s) => s.name),
+        ...(exposureLevel() !== "full" ? { metadata_exposure: exposureLevel() } : {}),
         data_snapshot: {
           source: store.source,
           fetched_at: store.manifest.fetchedAt,

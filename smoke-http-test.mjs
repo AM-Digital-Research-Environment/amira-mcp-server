@@ -52,10 +52,13 @@ try {
   const tools = await client.listTools();
   const names = tools.tools.map((t) => t.name);
   console.log(`tools (${names.length}):`, names.join(", "));
-  check(names.length === 27, `expected 27 tools over HTTP, got ${names.length}`);
+  check(names.length === 28, `expected 28 tools over HTTP, got ${names.length}`);
   check(names.includes("search") && names.includes("fetch"), "HTTP exposes search + fetch");
   check(names.includes("list_cluster_partners"), "HTTP exposes cluster partner tool");
+  check(names.includes("list_journals"), "HTTP exposes the journals tool");
   check(names.includes("get_collection_overview"), "HTTP exposes the rich tools too");
+  const searchTool = tools.tools.find((t) => t.name === "search");
+  check(!!searchTool?.outputSchema, "search declares an outputSchema (structured-output contract)");
 
   async function call(name, args) {
     const res = await client.callTool({ name, arguments: args });
@@ -130,9 +133,27 @@ try {
     }
   }
 
+  // publication FULL TEXT over fetch: omitted by default, opt-in + windowed
+  // (same params as get_publication — the shared textWindowAppend contract).
+  const ftSearch = await call("search", { query: "zxqvjkqzweirdtoken" });
+  check(Array.isArray(ftSearch.results) && ftSearch.results.length === 0, "search: nonsense query returns empty results");
+  const ftPub = (await call("search_publications", { has_fulltext: true, limit: 1 })).results?.[0];
+  if (ftPub) {
+    const def = await call("fetch", { id: `pub:${ftPub.omeka_id}` });
+    check(def.metadata?.has_fulltext === true, "fetch: publication reports has_fulltext");
+    check(def.metadata?.fulltext_included === false, "fetch: publication fulltext omitted by default");
+    check(typeof def.metadata?.fulltext_hint === "string", "fetch: omitted fulltext carries an opt-in hint");
+    const paged = await call("fetch", { id: `pub:${ftPub.omeka_id}`, include_fulltext: true, fulltext_offset: 0, fulltext_max_chars: 300 });
+    check(paged.metadata?.fulltext_included === true, "fetch: include_fulltext=true appends the full text");
+    check(paged.metadata?.fulltext_returned_chars === 300, "fetch: fulltext_max_chars windows the full text");
+    check(paged.metadata?.fulltext_truncated === true, "fetch: windowed fulltext flags more remaining");
+    check(paged.text.length > def.text.length, "fetch: text body grows when fulltext included");
+  }
+
   // a rich tool works over HTTP too
   const overview = await call("get_collection_overview", {});
   check(overview.counts?.research_items >= 3975, "rich tool over HTTP: overview parity");
+  check(overview.counts?.journals >= 50, "rich tool over HTTP: journals corpus present");
 
   await client.close();
 } catch (err) {

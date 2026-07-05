@@ -17,6 +17,7 @@ import { LanguageIndex } from "./languages.js";
 import * as path from "node:path";
 import type {
   ItemSetRec,
+  JournalRec,
   LinkedRef,
   LocationRec,
   OrganisationRec,
@@ -52,6 +53,7 @@ export class DataStore {
   readonly locations: LocationRec[];
   readonly sections: SectionRec[];
   readonly publications: PublicationRec[];
+  readonly journals: JournalRec[];
   readonly podcasts: PodcastRec[];
   readonly videos: VideoRec[];
   readonly playlists: PlaylistRec[];
@@ -69,7 +71,10 @@ export class DataStore {
   private readonly locationByOId = new Map<number, LocationRec>();
   private readonly locationByName = new Map<string, LocationRec>();
   private readonly sectionByName = new Map<string, SectionRec>();
+  private readonly sectionByOId = new Map<number, SectionRec>();
   private readonly publicationByPubId = new Map<string, PublicationRec>();
+  private readonly publicationByOId = new Map<number, PublicationRec>();
+  private readonly journalByOId = new Map<number, JournalRec>();
   private readonly podcastByOId = new Map<number, PodcastRec>();
   private readonly videoByOId = new Map<number, VideoRec>();
   private readonly playlistByOId = new Map<number, PlaylistRec>();
@@ -86,6 +91,7 @@ export class DataStore {
     this.locations = data.locations;
     this.sections = data.research_sections;
     this.publications = data.publications;
+    this.journals = data.journals;
     this.podcasts = data.podcasts;
     this.videos = data.videos;
     this.playlists = data.playlists;
@@ -118,8 +124,15 @@ export class DataStore {
       this.locationByOId.set(l.o_id, l);
       this.locationByName.set(l.name.toLowerCase(), l);
     }
-    for (const s of this.sections) this.sectionByName.set(s.name.toLowerCase(), s);
-    for (const p of this.publications) this.publicationByPubId.set(p.pub_id.toLowerCase(), p);
+    for (const s of this.sections) {
+      this.sectionByName.set(s.name.toLowerCase(), s);
+      this.sectionByOId.set(s.o_id, s);
+    }
+    for (const p of this.publications) {
+      this.publicationByPubId.set(p.pub_id.toLowerCase(), p);
+      this.publicationByOId.set(p.o_id, p);
+    }
+    for (const j of this.journals) this.journalByOId.set(j.o_id, j);
     for (const p of this.podcasts) this.podcastByOId.set(p.o_id, p);
     for (const v of this.videos) this.videoByOId.set(v.o_id, v);
     for (const p of this.playlists) this.playlistByOId.set(p.o_id, p);
@@ -152,12 +165,18 @@ export class DataStore {
   getSection(name: string): SectionRec | undefined {
     return this.sectionByName.get(name.trim().toLowerCase());
   }
+  getSectionByOId(oId: number): SectionRec | undefined {
+    return this.sectionByOId.get(oId);
+  }
   getPublication(pubIdOrOId: string): PublicationRec | undefined {
     const k = pubIdOrOId.trim().toLowerCase();
-    return (
-      this.publicationByPubId.get(k) ??
-      this.publications.find((p) => Number.isInteger(Number(k)) && p.o_id === Number(k))
-    );
+    const byPubId = this.publicationByPubId.get(k);
+    if (byPubId) return byPubId;
+    const asOId = Number(k);
+    return Number.isInteger(asOId) ? this.publicationByOId.get(asOId) : undefined;
+  }
+  getJournal(oId: number): JournalRec | undefined {
+    return this.journalByOId.get(oId);
   }
   getPodcast(oId: number): PodcastRec | undefined {
     return this.podcastByOId.get(oId);
@@ -192,6 +211,12 @@ export class DataStore {
   /** A place ref + all its ancestors (self first) — for location matching. */
   placeChain(ref: LinkedRef): string[] {
     return [ref.label, ...this.locationAncestors(ref.o_id)];
+  }
+  /** The COUNTRY a place belongs to: the root of its ancestor chain (cities sit
+   * directly under countries in this data; a country is its own root). */
+  countryOf(ref: LinkedRef): string {
+    const chain = this.placeChain(ref);
+    return chain[chain.length - 1]!;
   }
   getLocation(oId: number): LocationRec | undefined {
     return this.locationByOId.get(oId);

@@ -20,8 +20,10 @@ export const INSTRUCTIONS =
   "privileged partner, not an AMRC. Storage stays distributed by default: research data remains in local " +
   "repositories and becomes findable without being relocated.\n\n" +
   "The AMIRA MCP server exposes Omeka S metadata for research items, projects, research sections, people, " +
-  "institutions, groups, collections, publications, podcast episodes, YouTube videos and searchable " +
-  "transcripts, plus the places, languages and subjects that connect them.\n\n" +
+  "institutions, groups, collections, publications (open-access ones with searchable extracted full " +
+  "text), journals, podcast episodes, YouTube videos and searchable transcripts, plus the places, " +
+  "languages and subjects that connect them. Transcripts and publication full text are opt-in on the " +
+  "detail tools (include_transcript / include_fulltext, with offset/max paging).\n\n" +
   "GETTING STARTED: call get_collection_overview first to scope the data, then use the search_* / list_* " +
   "tools to find records and the get_* tools to drill into one. find_related pivots from any " +
   "subject/place/person/project to the entities that co-occur with it. Subjects include the former " +
@@ -54,7 +56,18 @@ export interface CreateServerOptions {
 
 /** Build a fully-configured AMIRA MCP server (tools registered, not yet connected). */
 export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
-  const server = new McpServer({ name: "amira-mcp-server", version: VERSION }, { instructions: INSTRUCTIONS });
+  const server = new McpServer(
+    {
+      name: "amira-mcp-server",
+      version: VERSION,
+      title: "AMIRA — Africa Multiple Research Data",
+      description:
+        "Read-only access to AMIRA, the research-data platform of the Africa Multiple Cluster of " +
+        "Excellence at the University of Bayreuth (Omeka S).",
+      websiteUrl: "https://data.africamultiple.uni-bayreuth.de",
+    },
+    { instructions: INSTRUCTIONS },
+  );
   registerTools(server);
   if (opts.openai) registerOpenAITools(server);
   return server;

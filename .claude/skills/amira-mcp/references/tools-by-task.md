@@ -1,6 +1,6 @@
 # Tools by task
 
-All 25 tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
+All 26 tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
 `{ count, total_matches, offset, has_more, next_offset?, results[] }` (plus a `filters` echo of the
 filters you actually passed). Ask for more than a tool's max and it also echoes `requested_limit` /
 `effective_limit`. `search_research_items` adds `suggestions` (which filter to drop) when a strict
@@ -64,12 +64,13 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Formats / languages / resource types | `list_categories` | `category` ∈ formats (alias: genres) / languages / resource_types |
 | Coverage over time (date histogram) | `list_years` | `bucket` = year/decade; `from`/`to` window; `sort` = chronological/count; ranged items count in every year they span; rights/admin dates are not used |
 
-## Bibliography
+## Bibliography & journals
 
 | Task | Tool | Key params |
 | --- | --- | --- |
-| Search publications | `search_publications` | `keyword`, `author`, `type`, `year_from`/`year_to` |
-| Full publication + BibTeX | `get_publication` | Omeka `id` — BibTeX is generated from the structured fields |
+| Search publications — incl. INSIDE full text | `search_publications` | `keyword` (title, abstract, venue, subjects, and the extracted full text of open-access PDFs — full-text hits flagged `matched_in: "fulltext"` + a `fulltext_snippet`), `author`, `type`, `venue`, `has_fulltext`, `year_from`/`year_to` |
+| Full publication + BibTeX (full text opt-in) | `get_publication` | Omeka `id` — BibTeX generated from the structured fields; peer-review `status`, `funders`, venue `amira_url` when it is a Journal record; `include_fulltext=true` + `fulltext_offset`/`fulltext_max_chars` for the extracted text (cap 25k chars/call — full texts run ~100k, always page) |
+| Journals the cluster publishes in | `list_journals` | `keyword`; ranked by publication count, with ISSN + country; feed the title into the `venue` filter |
 
 ## Podcasts & YouTube videos
 
@@ -87,10 +88,11 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | What connects to X? | `find_related` | `entity_type` (subject/location/person/project) + `value` |
 
 Returns ranked related projects, sections, subjects, people, countries (rolled up to each place's
-top-level country), formats (with co-occurrence counts) plus slim sample items. The go-to tool for
-relational questions. Matching: subject = substring on labels (incl. former tags); person = name in
-either order; location = any hierarchy level; project = id/label. The rule is echoed in `matching`,
-and `matched_items` counts *items* (so it can differ from a `list_subjects` heading count).
+top-level country), formats (with co-occurrence counts) plus slim sample items. For subject/person
+seeds the bibliography joins in: `matched_publications` + up to 10 `related_publications`. The go-to
+tool for relational questions. Matching: subject = substring on labels (incl. former tags); person =
+name in either order; location = any hierarchy level; project = id/label. The rule is echoed in
+`matching`, and `matched_items` counts *items* (so it can differ from a `list_subjects` heading count).
 
 ## Worked patterns
 
@@ -103,3 +105,7 @@ and `matched_items` counts *items* (so it can differ from a `list_subjects` head
   secondary link if useful.
 - *"How do Arts & Aesthetics projects relate to a place?"* → `search_projects research_section="Arts & Aesthetics"`
   → `find_related entity_type=location value="Nigeria"`.
+- *"What do cluster publications say about migration control?"* →
+  `search_publications keyword="migration control"` (watch for `matched_in: "fulltext"`) →
+  `get_publication include_fulltext=true fulltext_max_chars=25000` and page onward → cite the
+  `amira_url`, with the DOI as a secondary link.

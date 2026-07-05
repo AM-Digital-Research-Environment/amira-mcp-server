@@ -65,10 +65,25 @@ persons, and contributed items (slim refs); coordinates and Wikidata link when r
 ## Publication
 
 `id` / `omeka_id` (Omeka o:id), `type` (article/book/chapter/conference/doctoral_thesis/working_paper/…),
-`title`, `year`, `authors[]`, `editors[]`, `venue` (journal/book/series title), `volume`, `issue`,
-`pages`, `publisher`, `doi`, `isbn`/`issn`, `subjects[]`, `abstract`, `language`,
-`repository_urls[]` (ERef/EPub), `url` (publication DOI/repository link), `amira_url` (the AMIRA
-record link to cite whenever possible), and `bibtex` (generated from the structured fields).
+`title`, `year`, `authors[]`, `editors[]`, `venue` (journal/book/series title — for journal articles
+also `venue_omeka_id` / `venue_amira_url` / `venue_issn`, linking the Journal authority record),
+`volume`, `issue`, `pages`, `publisher`, `doi`, `isbn`/`issn`, `status` (peer-review flag),
+`funders[]`, `places_of_publication[]`, `subjects[]`, `abstract`, `language`,
+`repository_urls[]` (ERef/EPub), `url` (publication DOI/repository link), `has_media` (open-access
+PDF attached) + `thumbnail`, `amira_url` (the AMIRA record link to cite whenever possible), and
+`bibtex` (generated from the structured fields).
+
+Open-access publications carry the **extracted full text** of their PDF: summaries show
+`has_fulltext`, `search_publications keyword=…` reaches into it (`matched_in: "fulltext"` +
+`fulltext_snippet`), and `get_publication` returns the text only with `include_fulltext=true`,
+windowed by `fulltext_offset` / `fulltext_max_chars` (cap 25k chars/call — full texts run ~100k,
+always page).
+
+## Journal
+
+The publication-venue authority (`list_journals`): `journal` (title), `id` / `omeka_id`, `issn`,
+`country` (+ `country_amira_url`), `publication_count` (bibliography entries linked to it),
+`website`, `amira_url`. Journal articles link here via `venue`; series/book titles stay literal.
 
 ## Podcast episode / YouTube video
 
@@ -88,7 +103,7 @@ detail tools (`get_video` / `get_podcast`) **omit the transcript text unless
 - Item → Project (`project.id`) → Research sections; Item → People/Organisations (contributor
   roles); Item → Subjects, Places (hierarchy), Formats, Languages; Item → related items.
 - Project → PIs / members / funders / sections.
-- Publication contributors ↔ People; Podcast/Video speakers ↔ People.
+- Publication contributors ↔ People; Publication venue → Journal; Podcast/Video speakers ↔ People.
 
 `find_related` operationalises these: it gathers the items matching a seed entity and ranks
 everything that co-occurs with them. Coordinates come from the Location authority records (returned

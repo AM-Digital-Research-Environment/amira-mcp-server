@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
+import { allowStructured } from "../exposure.js";
 import {
   annotate,
   anyContainsCI,
@@ -8,6 +9,7 @@ import {
   containsCI,
   equalsCI,
   errorResult,
+  exposureRestrictedResult,
   filtersEcho,
   limitEcho,
   pageOf,
@@ -54,6 +56,7 @@ export function registerProjectTools(server: Server): void {
     },
     async (args) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "search_projects");
       const limit = capLimit(args.limit, 25, 100);
       const offset = capOffset(args.offset);
 
@@ -109,6 +112,7 @@ export function registerProjectTools(server: Server): void {
     },
     async ({ id }) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "get_project");
       const p = store.getProject(String(id));
       if (!p) {
         return errorResult("not_found", `No project with id '${id}'.`, { suggested_tool: "search_projects" });

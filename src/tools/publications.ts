@@ -1,6 +1,11 @@
+// The cluster bibliography (ERef/EPub harvest) + the Journal venue authority.
+// Open-access publications carry extracted PDF full text (bibo:content):
+// searchable here (with a match snippet), never included in summaries, and
+// opt-in + windowable in get_publication — the same discipline as transcripts.
 import { z } from "zod";
 import { ensureStore } from "../data.js";
 import type { PublicationRec } from "../types.js";
+import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
 import {
   annotate,
   anyContainsCI,
@@ -10,15 +15,19 @@ import {
   containsCI,
   equalsCI,
   errorResult,
+  exposureRestrictedResult,
   filtersEcho,
   limitEcho,
+  matchSnippet,
   pageOf,
   publicationSummary,
   refLabels,
+  textAccessDisabledResult,
   textResult,
+  textWindowFields,
   type Server,
 } from "./_shared.js";
-import { itemUrl } from "../urls.js";
+import { itemUrl, itemUrlOrNull } from "../urls.js";
 import { nameMatchesQuery } from "../names.js";
 
 const BIBTEX_ENTRY: Record<string, string> = {
@@ -67,23 +76,30 @@ export function registerPublicationTools(server: Server): void {
     {
       title: "Search publications",
       description:
-        "Search the cluster bibliography (~250 academic publications harvested from ERef/EPub Bayreuth " +
+        "Search the cluster bibliography (~280 academic publications harvested from ERef/EPub Bayreuth " +
         "into the collection: journal articles, books, chapters, theses, conference papers, working " +
-        "papers, etc.). Filters (optional, AND-combined):\n" +
-        "  - keyword: match title, abstract, venue or subjects\n" +
+        "papers, etc.). Open-access publications carry extracted FULL TEXT of their PDF, and keyword " +
+        "search reaches into it. Filters (optional, AND-combined):\n" +
+        "  - keyword: match title, abstract, venue, subjects — and the full text when one exists. A " +
+        "full-text-only hit is flagged `matched_in: 'fulltext'` and carries a `fulltext_snippet` around " +
+        "the match\n" +
         "  - author: a contributor name (either order works)\n" +
         "  - type: article | book | chapter | conference | doctoral_thesis | working_paper | " +
         "journal_issue | book_review | online_post | research_data\n" +
+        "  - venue: journal / book / series title (partial; journal titles come from list_journals)\n" +
+        "  - has_fulltext: true keeps only publications with searchable full text\n" +
         "  - year_from / year_to: publication-year range\n" +
         "  - limit (default 25, max 100), offset\n\n" +
-        "Results are newest-first. Each has id, title, type, year, authors, venue, doi, `url` (the " +
-        "publication's own DOI/permalink — the primary citation) and its `amira_url`. Use " +
-        "get_publication for full metadata and BibTeX.",
+        "Results are newest-first. Each has id, title, type, year, authors, venue, doi, has_fulltext, " +
+        "`url` (the publication's own DOI/permalink — the primary citation) and its `amira_url`. Use " +
+        "get_publication for full metadata, BibTeX, and the full text (opt-in there).",
       annotations: annotate("Search publications"),
       inputSchema: {
         keyword: z.string().optional(),
         author: z.string().optional(),
         type: z.string().optional(),
+        venue: z.string().optional().describe("Journal/book/series title, partial match"),
+        has_fulltext: z.boolean().optional().describe("true → only publications with extracted full text"),
         year_from: z.number().int().optional(),
         year_to: z.number().int().optional(),
         limit: z.number().int().optional().describe("Default 25, max 100"),
@@ -94,19 +110,20 @@ export function registerPublicationTools(server: Server): void {
       const store = await ensureStore();
       const limit = capLimit(args.limit, 25, 100);
       const offset = capOffset(args.offset);
+      if (args.author && !allowStructured()) return exposureRestrictedResult("structured", "The `author` filter");
+      if (args.venue && !allowStructured()) return exposureRestrictedResult("structured", "The `venue` filter");
 
+      const fulltextOnly = new Set<number>();
       const filtered = store.publications.filter((p) => {
         if (args.keyword) {
           const k = args.keyword;
-          if (
-            !(
-              containsCI(p.title, k) ||
-              containsCI(p.abstract, k) ||
-              containsCI(p.venue, k) ||
-              anyContainsCI(refLabels(p.subjects), k)
-            )
-          )
-            return false;
+          const inMeta =
+            containsCI(p.title, k) ||
+            (allowDescriptive() && containsCI(p.abstract, k)) ||
+            (allowStructured() && (containsCI(p.venue, k) || anyContainsCI(refLabels(p.subjects), k)));
+          const inFulltext = !inMeta && allowFullText() && containsCI(p.fulltext, k);
+          if (!inMeta && !inFulltext) return false;
+          if (inFulltext) fulltextOnly.add(p.o_id);
         }
         if (
           args.author &&
@@ -116,6 +133,8 @@ export function registerPublicationTools(server: Server): void {
         )
           return false;
         if (args.type && !equalsCI(p.type, args.type)) return false;
+        if (args.venue && !containsCI(p.venue, args.venue)) return false;
+        if (args.has_fulltext !== undefined && !!p.fulltext !== args.has_fulltext) return false;
         if (args.year_from !== undefined && (p.year ?? -Infinity) < args.year_from) return false;
         if (args.year_to !== undefined && (p.year ?? Infinity) > args.year_to) return false;
         return true;
@@ -124,7 +143,16 @@ export function registerPublicationTools(server: Server): void {
       filtered.sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title));
 
       return textResult(
-        pageOf(filtered, offset, limit, publicationSummary, { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) }),
+        pageOf(
+          filtered,
+          offset,
+          limit,
+          (p) =>
+            fulltextOnly.has(p.o_id)
+              ? { ...publicationSummary(p), matched_in: "fulltext", fulltext_snippet: matchSnippet(p.fulltext, args.keyword!) }
+              : publicationSummary(p),
+          { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) },
+        ),
       );
     },
   );
@@ -136,20 +164,33 @@ export function registerPublicationTools(server: Server): void {
       title: "Get publication detail",
       description:
         "Full metadata for one publication by Omeka `id` (preferred; the numeric o:id in `amira_url`) or " +
-        "legacy publication-key values. Returns title, type, authors, editors, year, venue (journal/book/series), volume, " +
-        "issue, pages, publisher, DOI, ISBN/ISSN, abstract (truncated at 25,000 chars), subjects, " +
-        "language, repository links (ERef/EPub), BibTeX generated from the structured fields, and the " +
-        "citable `amira_url`. Cite the `url` (DOI or repository permalink) as the primary reference. " +
-        "Returns { error } if the id is unknown.",
+        "legacy publication-key values. Returns title, type, authors, editors, year, venue " +
+        "(journal/book/series — with the journal's own `amira_url` when it is a Journal authority " +
+        "record), volume, issue, pages, publisher, DOI, ISBN/ISSN, peer-review status, funders, places " +
+        "of publication, abstract (truncated at 25,000 chars), subjects, language, repository links " +
+        "(ERef/EPub), whether the open-access PDF is attached, BibTeX generated from the structured " +
+        "fields, and the citable `amira_url`. The extracted FULL TEXT is OMITTED by default (only " +
+        "has_fulltext + fulltext_length are shown); pass include_fulltext=true to include it, and " +
+        "fulltext_offset / fulltext_max_chars to page a long one (capped at 25,000 chars per call). " +
+        "Cite the `url` (DOI or repository permalink) as the primary reference. Returns { error } if " +
+        "the id is unknown.",
       annotations: annotate("Get publication detail"),
-      inputSchema: { id: z.union([z.string(), z.number()]).describe("Publication Omeka o:id") },
+      inputSchema: {
+        id: z.union([z.string(), z.number()]).describe("Publication Omeka o:id"),
+        include_fulltext: z.boolean().optional().describe("Default false — set true to include the extracted full text"),
+        fulltext_offset: z.number().int().optional().describe("Start offset into the full text (chars), with include_fulltext"),
+        fulltext_max_chars: z.number().int().optional().describe("Max full-text characters to return (default/max 25000)"),
+      },
     },
-    async ({ id }) => {
+    async ({ id, include_fulltext, fulltext_offset, fulltext_max_chars }) => {
       const store = await ensureStore();
       const p = store.getPublication(String(id));
       if (!p) {
         return errorResult("not_found", `No publication with id '${id}'.`, { suggested_tool: "search_publications" });
       }
+      if (include_fulltext && !allowFullText()) return textAccessDisabledResult("fulltext");
+      const journal = p.venue_ref?.o_id != null ? store.getJournal(p.venue_ref.o_id) : undefined;
+
       return textResult({
         id: String(p.o_id),
         omeka_id: p.o_id,
@@ -157,9 +198,24 @@ export function registerPublicationTools(server: Server): void {
         type: p.type,
         year: p.year,
         date: p.date,
-        authors: refLabels(p.authors),
-        editors: refLabels(p.editors),
-        venue: p.venue,
+        ...(allowStructured()
+          ? {
+              authors: refLabels(p.authors),
+              editors: refLabels(p.editors),
+              venue: p.venue,
+              ...(p.venue_ref?.o_id != null
+                ? {
+                    venue_omeka_id: p.venue_ref.o_id,
+                    venue_amira_url: itemUrl(p.venue_ref.o_id),
+                    ...(journal?.issn ? { venue_issn: journal.issn } : {}),
+                  }
+                : {}),
+              subjects: refLabels(p.subjects),
+              funders: refLabels(p.funders),
+              places_of_publication: refLabels(p.places_of_publication),
+              relations: p.relations,
+            }
+          : {}),
         volume: p.volume,
         issue: p.issue,
         pages: p.pages,
@@ -167,14 +223,77 @@ export function registerPublicationTools(server: Server): void {
         doi: p.doi,
         isbn: p.isbn,
         issn: p.issn,
-        subjects: refLabels(p.subjects),
+        status: p.status,
         language: p.language,
-        abstract: p.abstract ? capText(p.abstract).text : null,
+        abstract: allowDescriptive() && p.abstract ? capText(p.abstract).text : null,
         url: p.doi ?? p.urls[0] ?? null,
         repository_urls: p.urls,
+        has_media: p.has_media,
+        thumbnail: p.thumbnail,
+        ...textWindowFields("fulltext", p.fulltext, {
+          include: include_fulltext,
+          offset: fulltext_offset,
+          maxChars: fulltext_max_chars,
+        }),
         bibtex: toBibtex(p),
         amira_url: itemUrl(p.o_id),
       });
+    },
+  );
+
+  // === list_journals ========================================================
+  server.registerTool(
+    "list_journals",
+    {
+      title: "List journals",
+      description:
+        "List the journals the cluster publishes in (the Journal venue authority), ranked by how many " +
+        "publications in the bibliography appeared in each. Optional `keyword` filters by journal title; " +
+        "`limit` (default 50, max 200) and `offset` paginate. Each result: journal, ISSN, country of " +
+        "publication, publication_count, the journal's website when known, and its citable `amira_url`. " +
+        "Feed the title into the `venue` filter of search_publications to retrieve the articles.",
+      annotations: annotate("List journals"),
+      inputSchema: {
+        keyword: z.string().optional(),
+        limit: z.number().int().optional().describe("Default 50, max 200"),
+        offset: z.number().int().optional(),
+      },
+    },
+    async (args) => {
+      const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "list_journals");
+      const limit = capLimit(args.limit, 50, 200);
+      const offset = capOffset(args.offset);
+
+      const pubCounts = new Map<number, number>();
+      for (const p of store.publications) {
+        if (p.venue_ref?.o_id != null) pubCounts.set(p.venue_ref.o_id, (pubCounts.get(p.venue_ref.o_id) ?? 0) + 1);
+      }
+
+      let ranked = store.journals
+        .map((j) => ({ j, count: pubCounts.get(j.o_id) ?? 0 }))
+        .sort((a, b) => b.count - a.count || a.j.title.localeCompare(b.j.title));
+      if (args.keyword) ranked = ranked.filter((r) => containsCI(r.j.title, args.keyword!));
+
+      return textResult(
+        pageOf(
+          ranked,
+          offset,
+          limit,
+          (r) => ({
+            journal: r.j.title,
+            id: String(r.j.o_id),
+            omeka_id: r.j.o_id,
+            issn: r.j.issn,
+            country: r.j.country?.label ?? null,
+            country_amira_url: itemUrlOrNull(r.j.country?.o_id),
+            publication_count: r.count,
+            website: r.j.url,
+            amira_url: itemUrl(r.j.o_id),
+          }),
+          { distinct_journals: ranked.length, ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
+        ),
+      );
     },
   );
 }

@@ -22,6 +22,7 @@ import {
 import type {
   Contributor,
   ItemDates,
+  JournalRec,
   LanguageRec,
   LinkedRef,
   LocationRec,
@@ -283,6 +284,9 @@ export function transformPublication(item: OmekaItem, ctx: TransformContext, cla
   const date = firstString(item, "dcterms:date");
   const pageStart = firstString(item, "bibo:pageStart");
   const pageEnd = firstString(item, "bibo:pageEnd");
+  // dcterms:isPartOf is a resource link when the venue is a Journal authority
+  // item (template 23); series/book titles remain literals. Keep both faces.
+  const venueRef = firstLinked(item, "dcterms:isPartOf");
   return {
     o_id: oid(item),
     pub_id: firstString(item, "dcterms:identifier") ?? `omeka-${oid(item)}`,
@@ -292,7 +296,8 @@ export function transformPublication(item: OmekaItem, ctx: TransformContext, cla
     year: yearOf(date),
     authors: linkedRefs(item, "bibo:authorList"),
     editors: linkedRefs(item, "bibo:editorList"),
-    venue: firstString(item, "dcterms:isPartOf"),
+    venue: venueRef?.label ?? null,
+    venue_ref: venueRef?.o_id != null ? venueRef : null,
     volume: firstString(item, "bibo:volume"),
     issue: firstString(item, "bibo:issue"),
     pages: firstString(item, "bibo:pages") ?? (pageStart && pageEnd ? `${pageStart}-${pageEnd}` : pageStart),
@@ -304,6 +309,24 @@ export function transformPublication(item: OmekaItem, ctx: TransformContext, cla
     subjects: linkedRefs(item, "dcterms:subject"),
     language: firstString(item, "dcterms:language"),
     urls: uriValues(item, "bibo:uri").map((u) => u.url),
+    status: firstString(item, "bibo:status"),
+    funders: linkedRefs(item, "frapo:isFundedBy"),
+    places_of_publication: linkedRefs(item, "marcrel:pup"),
+    relations: allStrings(item, "dcterms:relation"),
+    fulltext: firstString(item, "bibo:content"),
+    has_media: Array.isArray(item["o:media"]) && item["o:media"].length > 0,
+    thumbnail: thumbnailUrl(item),
+  };
+}
+
+/** A publication venue — Journal authority item (template 23, set 41268). */
+export function transformJournal(item: OmekaItem): JournalRec {
+  return {
+    o_id: oid(item),
+    title: omekaTitle(item),
+    issn: firstString(item, "bibo:issn"),
+    country: firstLinked(item, "dcterms:spatial"),
+    url: uriValues(item, "dcterms:identifier")[0]?.url ?? null,
   };
 }
 

@@ -24,7 +24,7 @@ function check(cond, label) {
 
 const tools = await client.listTools();
 console.log(`tools (${tools.tools.length}):`, tools.tools.map((t) => t.name).join(", "));
-check(tools.tools.length === 25, `expected 25 tools, got ${tools.tools.length}`);
+check(tools.tools.length === 26, `expected 26 tools, got ${tools.tools.length}`);
 
 async function call(name, args, { expect = [] } = {}) {
   const res = await client.callTool({ name, arguments: args });
@@ -49,6 +49,8 @@ const AMIRA = "https://data.africamultiple.uni-bayreuth.de/s/amira/item/";
 const overview = await call("get_collection_overview", {}, { expect: ["podcasts", "youtube_videos"] });
 check(overview.counts?.research_items >= 3975, "overview: >= 3975 research items (v0.2.0 parity)");
 check(overview.counts?.publications >= 240, "overview: >= 240 publications");
+check(overview.counts?.publications_with_fulltext >= 1, "overview: publications with fulltext counted");
+check(overview.counts?.journals >= 50, "overview: journals corpus present");
 
 const search = await call("search_research_items", { subject: "Islam", limit: 3 }, { expect: [AMIRA] });
 check(search.results?.[0]?.amira_url?.startsWith(AMIRA), "search: amira_url shape");
@@ -149,6 +151,32 @@ if (pubs.results?.[0]?.id) {
   await call("get_publication", { id: pubs.results[0].id }, { expect: ["bibtex"] });
 }
 
+// Publication FULL TEXT (v1.6.0): opt-in + windowed, mirroring transcripts.
+const ftPubs = await call("search_publications", { has_fulltext: true, limit: 3 });
+check(ftPubs.total_matches >= 1, "search_publications: has_fulltext filter finds full-text publications");
+check(ftPubs.results?.every((p) => p.has_fulltext === true), "search_publications: has_fulltext echoed on results");
+if (ftPubs.results?.[0]?.id) {
+  const ftDefault = await call("get_publication", { id: ftPubs.results[0].id });
+  check(ftDefault.has_fulltext === true && !("fulltext" in ftDefault), "get_publication: fulltext omitted by default");
+  check(ftDefault.fulltext_length > 0, "get_publication: fulltext_length reported");
+  const ftWindow = await call("get_publication", { id: ftPubs.results[0].id, include_fulltext: true, fulltext_max_chars: 500 });
+  check(typeof ftWindow.fulltext === "string" && ftWindow.fulltext.length <= 500, "get_publication: include_fulltext returns sliced text");
+  check(ftWindow.fulltext_truncated === true, "get_publication: fulltext_truncated flag when sliced");
+}
+
+// Journals (v1.6.0): venue authority round-trips into the venue filter.
+const journals = await call("list_journals", { limit: 5 }, { expect: [AMIRA] });
+check(journals.total_matches >= 50, "list_journals: journal authority listed");
+const topJournal = journals.results?.find((j) => j.publication_count > 0);
+if (topJournal) {
+  const byVenue = await call("search_publications", { venue: topJournal.journal, limit: 3 });
+  check(byVenue.total_matches >= topJournal.publication_count, "venue filter finds at least the journal's linked publications");
+  if (byVenue.results?.[0]?.id) {
+    const linked = await call("get_publication", { id: byVenue.results[0].id });
+    check(typeof linked.venue === "string" && linked.venue.length > 0, "get_publication: venue label present");
+  }
+}
+
 const rel = await call("find_related", { entity_type: "subject", value: "Architecture", limit: 8 });
 check(typeof rel.matching === "string" && rel.matching.length > 0, "find_related: matching semantics echoed");
 const relPerson = await call("find_related", { entity_type: "person", value: "Ulli Beier", limit: 1 }, { expect: [AMIRA] });
@@ -158,6 +186,7 @@ check(relProject.matched_items > 0 && relProject.amira_url?.startsWith(AMIRA), "
 
 const pods = await call("search_podcasts", { limit: 3 });
 check(pods.results?.[0] ? "date_status" in pods.results[0] : true, "search_podcasts: date_status present");
+check(pods.results?.some((p) => p.has_transcript === true), "search_podcasts: podcast transcripts present (bulk-loaded 2026-06)");
 if (pods.results?.[0]?.id) {
   const pod = await call("get_podcast", { id: pods.results[0].id });
   check(!("transcript" in pod), "get_podcast: transcript omitted by default");

@@ -61,10 +61,12 @@ hardcode the list (read it from the tool), but expect:
 Each section carries a `funding_phase` label and `date` range, so you can group or filter the two sets
 directly. Filter with the exact strings the tool returns (note "In/securities", "Re:membering").
 
-Beyond the research items, the collection carries the cluster **bibliography** (~250 publications),
-**podcast episodes** (e.g. *Cluster Conversations*) with transcripts, and the cluster's **YouTube
-videos** — most with full **transcripts**. Use `search_podcasts keyword=…` and
-`search_videos keyword=…` for full-text search over talks and lectures.
+Beyond the research items, the collection carries the cluster **bibliography** (~280 publications;
+open-access ones carry the **extracted full text of their PDFs**, searchable via
+`search_publications keyword=…`), the **journals** they appear in (`list_journals`), **podcast
+episodes** (e.g. *Cluster Conversations*) with transcripts, and the cluster's **YouTube videos** —
+most with full **transcripts**. Use `search_podcasts keyword=…` and `search_videos keyword=…` for
+full-text search over talks and lectures.
 
 The data is **read from a snapshot of the public Omeka S API**. The server works offline from the
 bundled snapshot and needs no key or credentials; when live refresh is enabled, it may probe and
@@ -82,7 +84,8 @@ ResearchSection ── research projects belong to one or more sections
       ├── members                     ├── typed dates (created / collected / issued / …)
       └── funding institutions        └── formats / languages / sponsors / related items
 
-Publication (bibliography) ── authors/editors reconciled to People
+Publication (bibliography) ── authors/editors reconciled to People; venue → Journal authority;
+                              open-access PDFs carry extracted full text
 Podcast / YouTube video ── speakers reconciled to People; videos carry transcripts
 ```
 
@@ -91,7 +94,7 @@ Every entity is an Omeka item with a stable public page: its **`amira_url`**
 number in that URL; use that when an identifier is needed.
 
 See [references/data-model.md](references/data-model.md) for field-level detail, and
-[references/tools-by-task.md](references/tools-by-task.md) for the full 25-tool catalogue.
+[references/tools-by-task.md](references/tools-by-task.md) for the full 26-tool catalogue.
 
 ## Workflow
 
@@ -110,9 +113,13 @@ Use the right entry point for the question:
   `suggestions` naming which single filter to drop (and how many items that would surface) — relax,
   don't give up.
 - Projects → `search_projects`. Sections → `list_research_sections`. People → `search_persons`.
-  Institutions → `list_institutions`. Bibliography → `search_publications`.
+  Institutions → `list_institutions`. Bibliography → `search_publications` (keyword reaches INTO the
+  extracted full text of open-access publications — hits are flagged `matched_in: "fulltext"` with a
+  `fulltext_snippet`; filter with `has_fulltext`, `venue`, `author`, `type`, years). Journals →
+  `list_journals` (ranked by publication count; feed a title into the `venue` filter).
 - Talks and audiovisual: `search_videos` (keyword reaches INTO transcripts; hits are flagged
-  `matched_in: "transcript"` with a `transcript_snippet` around the match) and `search_podcasts`.
+  `matched_in: "transcript"` with a `transcript_snippet` around the match) and `search_podcasts`
+  (transcripts searched the same way).
 - Discover vocabulary first when unsure of exact terms: `list_subjects` (tags are merged in),
   `list_locations`, `list_collections` (item sets — pair with the `collection` filter),
   `list_categories` (formats/languages/resource_types), all ranked by item count. Feed a returned
@@ -127,16 +134,21 @@ a tool's max and it caps silently but tells you — the envelope echoes `request
 ### 3 — Drill
 `get_research_item` (by Omeka `id` / `omeka_id`) returns the full record — including the **typed dates** and the
 place hierarchy. `get_project`, `get_research_section`, `get_person`, `get_institution`,
-`get_publication` (with generated BibTeX), `get_podcast`, `get_video` complete the detail layer.
-**Transcripts are opt-in:** `get_podcast` / `get_video` omit the transcript by default (you still see
-`has_transcript` + `transcript_length`); pass `include_transcript=true` for the text, and
-`transcript_offset` / `transcript_max_chars` to page a long one. Profile views return slim item refs —
+`get_publication` (with generated BibTeX, peer-review status, funders, and the venue's own
+`amira_url` when it is a Journal record), `get_podcast`, `get_video` complete the detail layer.
+**Transcripts and publication full text are opt-in:** `get_podcast` / `get_video` omit the transcript
+by default (you still see `has_transcript` + `transcript_length`); pass `include_transcript=true` for
+the text, and `transcript_offset` / `transcript_max_chars` to page a long one. `get_publication`
+works identically with `include_fulltext=true` + `fulltext_offset` / `fulltext_max_chars` (full texts
+run to ~100k characters — always page). Profile views return slim item refs —
 follow up with `get_research_item`.
 
 ### 4 — Connect
 `find_related` pivots from a subject / location / person / project to the entities that co-occur with
 it (related projects, sections, subjects, people, countries, formats, with counts). Use it to trace a
-theme across projects — the cluster's core analytic. Matching is by substring (subject), name in
+theme across projects — the cluster's core analytic. For subject and person seeds the bibliography
+joins the pivot: `matched_publications` counts publications whose subjects or authors/editors match,
+with up to 10 `related_publications`. Matching is by substring (subject), name in
 either order (person), any level of the place hierarchy (location) or id/label (project); the response
 echoes the rule in `matching`. `matched_items` counts *items*, so it can legitimately differ from a
 `list_subjects` heading count.
@@ -174,10 +186,11 @@ link.
    collection now stores both as subjects. There is no tag filter — use `subject`.
 7. **Languages are canonical records.** One record per language ("French", code `fra`); the server
    accepts names, ISO 639-1/2 codes and the legacy bibliographic codes (`fre`, `ger`) alike.
-8. **Transcripts are opt-in on detail calls.** Podcast transcripts cover 43/43 episodes in the
-   refreshed 2026-06 snapshot; video transcripts cover most videos. `has_transcript` on each result
-   tells you whether one is present; absence of a transcript is not an error. The detail
-   tools omit the transcript text unless you pass `include_transcript=true` (see Drill).
+8. **Transcripts and full text are opt-in on detail calls.** Podcast transcripts cover all episodes;
+   video transcripts cover most videos; publication full text covers the open-access subset (~53 of
+   ~280 — `has_fulltext` on each result tells you, and `get_collection_overview` reports the counts).
+   Absence of a transcript or full text is not an error. The detail tools omit the text unless you
+   pass `include_transcript=true` / `include_fulltext=true` (see Drill).
 9. **Places: flat facet, hierarchy-aware filters.** `list_locations` is a flat, item-count-ranked list
    (countries and cities together, hierarchy rolled up — no level to choose). On
    `search_research_items`, `location` matches a place at ANY level (a country *or* a city —

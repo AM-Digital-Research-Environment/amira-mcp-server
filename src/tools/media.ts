@@ -1,24 +1,27 @@
 // Podcasts + YouTube videos (issue #1 §4, D4/D13) — content that exists only in
 // Omeka. Both can carry full transcripts (bibo:content): searchable here (with a
 // match snippet), never included in summaries, and opt-in + windowable in the
-// get_* detail tools.
+// get_* detail tools via the shared textWindowFields helper.
 import { z } from "zod";
 import { ensureStore } from "../data.js";
+import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
 import {
   annotate,
   capLimit,
   capOffset,
-  CHARACTER_LIMIT,
   containsCI,
   dateStatus,
   errorResult,
+  exposureRestrictedResult,
   filtersEcho,
   limitEcho,
   matchSnippet,
   pageOf,
   podcastSummary,
   refLabels,
+  textAccessDisabledResult,
   textResult,
+  textWindowFields,
   videoSummary,
   type Server,
 } from "./_shared.js";
@@ -27,40 +30,6 @@ import { nameMatchesQuery } from "../names.js";
 
 function matchPerson(name: string, query: string): boolean {
   return nameMatchesQuery(name, query) || containsCI(name, query);
-}
-
-/**
- * Transcript fields for a detail response. Off by default (report §1): the model
- * sees `has_transcript` + `transcript_length` and opts in with
- * include_transcript=true, optionally windowing a long one with
- * transcript_offset / transcript_max_chars (capped at 25,000).
- */
-function transcriptFields(
-  transcript: string | null,
-  opts: { include?: boolean; offset?: number; maxChars?: number },
-): Record<string, unknown> {
-  const total = transcript?.length ?? 0;
-  const has = total > 0;
-  if (!opts.include) {
-    return {
-      has_transcript: has,
-      transcript_length: total,
-      ...(has
-        ? { transcript_hint: "Set include_transcript=true for the text (page long ones with transcript_offset / transcript_max_chars)." }
-        : {}),
-    };
-  }
-  const offset = Math.max(0, Math.floor(opts.offset ?? 0));
-  const max = Math.max(1, Math.min(Math.floor(opts.maxChars ?? CHARACTER_LIMIT), CHARACTER_LIMIT));
-  const slice = (transcript ?? "").slice(offset, offset + max);
-  return {
-    has_transcript: has,
-    transcript: has ? slice : null,
-    transcript_length: total,
-    transcript_offset: offset,
-    transcript_returned_chars: slice.length,
-    transcript_truncated: offset + slice.length < total || undefined,
-  };
 }
 
 /** Shared opt-in transcript params for the get_podcast / get_video schemas. */
@@ -77,10 +46,9 @@ export function registerMediaTools(server: Server): void {
     {
       title: "Search podcasts",
       description:
-        "Search the cluster's podcast episodes (e.g. the 'Cluster Conversations' series; ~43 episodes). " +
-        "Filters (optional, AND-combined):\n" +
-        "  - keyword: match title, abstract — and the transcript when one exists (none do in the current " +
-        "snapshot; the field is ready for when they land). A transcript-only hit is flagged " +
+        "Search the cluster's podcast episodes (e.g. the 'Cluster Conversations' series; ~43 episodes, " +
+        "all with full AI-generated transcripts). Filters (optional, AND-combined):\n" +
+        "  - keyword: match title, abstract — and the TRANSCRIPT. A transcript-only hit is flagged " +
         "`matched_in: 'transcript'` and carries a `transcript_snippet` around the match\n" +
         "  - series: series title (partial)\n" +
         "  - person: a speaker/host name (either order)\n" +
@@ -104,13 +72,15 @@ export function registerMediaTools(server: Server): void {
       const store = await ensureStore();
       const limit = capLimit(args.limit, 20, 100);
       const offset = capOffset(args.offset);
+      if (args.series && !allowStructured()) return exposureRestrictedResult("structured", "The `series` filter");
+      if (args.person && !allowStructured()) return exposureRestrictedResult("structured", "The `person` filter");
 
       const transcriptOnly = new Set<number>();
       const filtered = store.podcasts.filter((p) => {
         if (args.keyword) {
           const k = args.keyword;
-          const inMeta = containsCI(p.title, k) || containsCI(p.abstract, k);
-          const inTranscript = !inMeta && containsCI(p.transcript, k);
+          const inMeta = containsCI(p.title, k) || (allowDescriptive() && containsCI(p.abstract, k));
+          const inTranscript = !inMeta && allowFullText() && containsCI(p.transcript, k);
           if (!inMeta && !inTranscript) return false;
           if (inTranscript) transcriptOnly.add(p.o_id);
         }
@@ -156,18 +126,23 @@ export function registerMediaTools(server: Server): void {
       const store = await ensureStore();
       const p = store.getPodcast(id);
       if (!p) return errorResult("not_found", `No podcast with id ${id}.`, { suggested_tool: "search_podcasts" });
+      if (include_transcript && !allowFullText()) return textAccessDisabledResult("transcript");
       return textResult({
         id: p.o_id,
         title: p.title,
-        series: p.series ? { title: p.series.label, amira_url: itemUrlOrNull(p.series.o_id) } : null,
         episode: p.episode,
         date: p.date,
         date_status: dateStatus(p.date),
-        abstract: p.abstract,
-        people: p.people.map((c) => ({ name: c.name, role: c.role })),
-        languages: refLabels(p.languages),
+        abstract: allowDescriptive() ? p.abstract : null,
+        ...(allowStructured()
+          ? {
+              series: p.series ? { title: p.series.label, amira_url: itemUrlOrNull(p.series.o_id) } : null,
+              people: p.people.map((c) => ({ name: c.name, role: c.role })),
+              languages: refLabels(p.languages),
+            }
+          : {}),
         url: p.url,
-        ...transcriptFields(p.transcript, {
+        ...textWindowFields("transcript", p.transcript, {
           include: include_transcript,
           offset: transcript_offset,
           maxChars: transcript_max_chars,
@@ -184,7 +159,7 @@ export function registerMediaTools(server: Server): void {
       title: "Search YouTube videos",
       description:
         "Search the Africa Multiple YouTube channel videos catalogued in the collection (~140 videos, " +
-        "lectures/interviews/events; 91 carry full transcripts). Filters (optional, AND-combined):\n" +
+        "lectures/interviews/events; most carry full transcripts). Filters (optional, AND-combined):\n" +
         "  - keyword: match title, abstract — and the TRANSCRIPT. A transcript-only hit is flagged " +
         "`matched_in: 'transcript'` and carries a `transcript_snippet` around the match (this is the main " +
         "full-text search over cluster talks)\n" +
@@ -211,13 +186,16 @@ export function registerMediaTools(server: Server): void {
       const store = await ensureStore();
       const limit = capLimit(args.limit, 20, 100);
       const offset = capOffset(args.offset);
+      if (args.playlist && !allowStructured()) return exposureRestrictedResult("structured", "The `playlist` filter");
+      if (args.speaker && !allowStructured()) return exposureRestrictedResult("structured", "The `speaker` filter");
+      if (args.language && !allowStructured()) return exposureRestrictedResult("structured", "The `language` filter");
 
       const transcriptOnly = new Set<number>();
       const filtered = store.videos.filter((v) => {
         if (args.keyword) {
           const k = args.keyword;
-          const inMeta = containsCI(v.title, k) || containsCI(v.abstract, k);
-          const inTranscript = !inMeta && containsCI(v.transcript, k);
+          const inMeta = containsCI(v.title, k) || (allowDescriptive() && containsCI(v.abstract, k));
+          const inTranscript = !inMeta && allowFullText() && containsCI(v.transcript, k);
           if (!inMeta && !inTranscript) return false;
           if (inTranscript) transcriptOnly.add(v.o_id);
         }
@@ -264,17 +242,22 @@ export function registerMediaTools(server: Server): void {
       const store = await ensureStore();
       const v = store.getVideo(id);
       if (!v) return errorResult("not_found", `No video with id ${id}.`, { suggested_tool: "search_videos" });
+      if (include_transcript && !allowFullText()) return textAccessDisabledResult("transcript");
       return textResult({
         id: v.o_id,
         title: v.title,
         date: v.date,
         date_status: dateStatus(v.date),
-        abstract: v.abstract,
-        playlists: v.playlists.map((p) => ({ title: p.label, amira_url: itemUrlOrNull(p.o_id) })),
-        speakers: v.speakers.map((c) => c.name),
-        languages: refLabels(v.languages),
+        abstract: allowDescriptive() ? v.abstract : null,
+        ...(allowStructured()
+          ? {
+              playlists: v.playlists.map((p) => ({ title: p.label, amira_url: itemUrlOrNull(p.o_id) })),
+              speakers: v.speakers.map((c) => c.name),
+              languages: refLabels(v.languages),
+            }
+          : {}),
         url: v.url,
-        ...transcriptFields(v.transcript, {
+        ...textWindowFields("transcript", v.transcript, {
           include: include_transcript,
           offset: transcript_offset,
           maxChars: transcript_max_chars,

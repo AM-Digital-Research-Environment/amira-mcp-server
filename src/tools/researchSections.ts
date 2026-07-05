@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { ensureStore } from "../data.js";
+import { allowStructured } from "../exposure.js";
 import {
   annotate,
   capText,
   equalsCI,
   errorResult,
+  exposureRestrictedResult,
   fundingPhase,
   projectSummary,
   refLabels,
@@ -34,6 +36,7 @@ export function registerResearchSectionTools(server: Server): void {
     },
     async () => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "list_research_sections");
       const itemCountBySection = new Map<string, number>();
       for (const it of store.items) {
         for (const s of store.sectionsOfItem(it))
@@ -68,6 +71,7 @@ export function registerResearchSectionTools(server: Server): void {
     },
     async ({ name }) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "get_research_section");
       const s = store.getSection(name);
       if (!s) {
         return errorResult("not_found", `No research section named '${name}'.`, {

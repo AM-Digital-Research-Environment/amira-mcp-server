@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ensureStore } from "../data.js";
 import type { DataStore } from "../data.js";
 import type { OrganisationRec } from "../types.js";
+import { allowStructured } from "../exposure.js";
 import {
   annotate,
   capLimit,
@@ -9,6 +10,7 @@ import {
   containsCI,
   equalsCI,
   errorResult,
+  exposureRestrictedResult,
   filtersEcho,
   itemRef,
   limitEcho,
@@ -156,6 +158,7 @@ export function registerOrganizationTools(server: Server): void {
     },
     async (args) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "list_institutions");
       const limit = capLimit(args.limit, 50, 200);
       const offset = capOffset(args.offset);
       const filtered = store.organisations.filter(
@@ -196,6 +199,7 @@ export function registerOrganizationTools(server: Server): void {
     },
     async ({ name }) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "get_institution");
       const record = store.getOrganisation(name);
       if (!record) {
         return errorResult("not_found", `No institution or group matching '${name}'.`, {
@@ -261,6 +265,7 @@ export function registerOrganizationTools(server: Server): void {
     },
     async ({ category }) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "list_cluster_partners");
       const selected = category ? resolvePartnerCategory(category) : null;
       if (category && !selected) {
         return errorResult("invalid_category", `Unknown partner category '${category}'.`, {
@@ -316,6 +321,7 @@ export function registerOrganizationTools(server: Server): void {
     },
     async (args) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "list_groups");
       const limit = capLimit(args.limit, 50, 200);
       const offset = capOffset(args.offset);
       const filtered = store.organisations.filter(

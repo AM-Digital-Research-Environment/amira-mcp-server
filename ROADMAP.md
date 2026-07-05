@@ -123,6 +123,43 @@
   - Verified: typecheck + 13 unit + stdio smoke (24) + HTTP smoke (26) green. **Action for the user:**
     redeploy the HTTP endpoint and **refresh/reconnect the ChatGPT connector** so it re-pulls the tool
     schemas — that alone clears the cache-only "regressions".
+- **2026-06-19…07-04 — v1.4.3–v1.4.5 released; `list_cluster_partners` (25th tool); periodic live
+  refresh (v1.5.0, unreleased).** Backfill entry: 1.4.3 shipped Omeka IDs and AMIRA links polish; 1.4.4/1.4.5
+  were release-hygiene bumps; `feat: add cluster partner listings` added the partner-category tool
+  (with the MongoDB2OmekaS CLUSTER_PARTNER_GROUPS offline fallback); `codex/periodic-refresh` added the
+  `AMIRA_REFRESH_INTERVAL_HOURS` periodic freshness probe. v1.5.0 was version-bumped but never tagged —
+  superseded by v1.6.0 below.
+- **2026-07-05 — v1.6.0: publication FULL TEXT + journals + exposure levels + tool-layer test harness.**
+  Grounded by a live-API probe (53/277 publications now carry `bibo:content` extracted from the EPub
+  open-access PDFs, 72k–121k chars each; 87 Journal authority items on template 23 / set 41268; journal
+  articles' `dcterms:isPartOf` is now a resource link). Snapshot **schema v4**; snapshot grows ~5 MB.
+  - **Publications**: transform captures `fulltext`, `venue_ref`, `status` (peer review), `funders`,
+    `places_of_publication`, `relations`, `has_media`/`thumbnail`. `search_publications` keyword reaches
+    into the full text (`matched_in: "fulltext"` + `fulltext_snippet`; new `venue` + `has_fulltext`
+    filters); `get_publication` returns the new fields, the venue's `amira_url`/ISSN, and the full text
+    opt-in + windowed (`include_fulltext`, `fulltext_offset`/`fulltext_max_chars` — same discipline as
+    transcripts). ChatGPT `fetch` mirrors the same params for `pub:` ids; `search` scores fulltext.
+  - **`list_journals` (26th tool)**: the venue authority ranked by publication count (ISSN, country,
+    website, `amira_url`); feeds the `venue` filter.
+  - **`find_related`**: publications join subject/person pivots (`matched_publications` +
+    `related_publications`; pub subjects/authors feed the co-occurrence tallies).
+  - **Refactors**: one shared `textWindowFields`/`textWindowAppend` behind transcripts AND fulltext
+    across get_*/fetch (the v1.4.2 drift now impossible by construction); `publicationByOId`/`sectionByOId`
+    maps (last linear scans gone); `store.countryOf()` centralises chain-root semantics; `filtersEcho`
+    strips limit/offset; `get_person.publications` capped at 50 like items; stale "podcasts have no
+    transcripts" description fixed (43/43 since 2026-06).
+  - **`AMIRA_EXPOSURE` (benchmark RQ5)**: `minimal|descriptive|structured|full` gates keyword haystacks,
+    structured filters, entity/facet tools (structured `exposure_restricted` errors), response fields,
+    and transcript/fulltext access (`text_access_disabled`; existence flags stay visible). Experiment
+    flag, default `full`, read per call. Documented in README.
+  - **MCP spec 2025-11-25 alignment**: `search`/`fetch` declare `outputSchema` (SDK-validated);
+    Implementation carries `title`/`description`/`websiteUrl`. Deps were already at latest (SDK 1.29).
+  - **Tests**: new fixture-snapshot harness drives the REAL server in-process via InMemoryTransport
+    (`test/unit/tools.test.mjs`, 15 tests: filters, suggestions, country⊆location, list_years bucketing,
+    fulltext/transcript windowing edges, journals, exposure levels) + snapshot-lifecycle invariants
+    (`test/unit/snapshot.test.mjs`, 6 tests: schema/count rejection, manifest-last, atomic promote,
+    isStale pair) — 34 unit tests total. Live tests add fulltext + journals contracts. Smoke: 26-tool
+    stdio + 28-tool HTTP with fulltext round-trips. Census gains the journal target.
 - **2026-06-18 (later) — v1.4.2: align `fetch` transcript paging with `get_video`/`get_podcast`.** A
   *third* ChatGPT v1.4.1 audit re-reported the same cache-shaped symptoms; a live `tools/list` + tool-call
   probe of the shipped server confirmed `get_video` transcript paging, `search_videos` `matched_in`/snippet

@@ -11,6 +11,7 @@ import {
   containsCI,
   equalsCI,
   errorResult,
+  exposureRestrictedResult,
   filtersEcho,
   itemSummary,
   limitEcho,
@@ -22,6 +23,7 @@ import {
 } from "./_shared.js";
 import { itemSetUrl, itemUrl, itemUrlOrNull } from "../urls.js";
 import { nameMatchesQuery } from "../names.js";
+import { allowDescriptive, allowStructured } from "../exposure.js";
 
 function matchUniversity(item: ResearchItemRec, val: string): boolean {
   return item.university === val.trim().toLowerCase() || containsCI(UNIVERSITY_LABELS[item.university], val);
@@ -33,19 +35,15 @@ function placeMatches(store: DataStore, item: ResearchItemRec, needle: string): 
   return item.places.some((p) => store.placeChain(p).some((label) => containsCI(label, needle)));
 }
 
-/** Country match: the value matches the COUNTRY (root of the place chain) of any
- * of the item's places — narrower than `location`, which matches any level.
- * Cities sit directly under countries in this data, so the chain root is the
- * country; an item tagged only with a city whose country ancestor is missing
- * won't match (the same gap `location` has). v1.4.1 restored this as a real,
- * advertised filter — v1.4.0 dropped it from the schema and tried to route a
- * stray `country` arg into `location`, but validation strips unknown keys before
- * the handler runs, so `country` was silently ignored (the reported regression). */
+/** Country match: the value matches the COUNTRY (chain root, store.countryOf) of
+ * any of the item's places — narrower than `location`, which matches any level.
+ * An item tagged only with a city whose country ancestor is missing won't match
+ * (the same gap `location` has). v1.4.1 restored this as a real, advertised
+ * filter — v1.4.0 dropped it from the schema and tried to route a stray
+ * `country` arg into `location`, but validation strips unknown keys before the
+ * handler runs, so `country` was silently ignored (the reported regression). */
 function countryMatches(store: DataStore, item: ResearchItemRec, needle: string): boolean {
-  return item.places.some((p) => {
-    const chain = store.placeChain(p);
-    return containsCI(chain[chain.length - 1], needle);
-  });
+  return item.places.some((p) => containsCI(store.countryOf(p), needle));
 }
 
 function yearsOverlap(item: ResearchItemRec, from?: number, to?: number): boolean {
@@ -121,6 +119,13 @@ export function registerResearchItemTools(server: Server): void {
       if (invalidYearRange(args.year_from, args.year_to)) {
         return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
       }
+      // Structured-metadata filters are refused under restricted exposure, so a
+      // benchmark model cannot narrow by fields it is not allowed to see.
+      if (!allowStructured()) {
+        const gated = ["subject", "location", "country", "contributor", "project_id", "research_section", "university", "genre", "collection", "language"] as const;
+        const used = gated.filter((g) => (args as Record<string, unknown>)[g] != null);
+        if (used.length) return exposureRestrictedResult("structured", `The ${used.map((u) => `\`${u}\``).join(", ")} filter${used.length > 1 ? "s" : ""}`);
+      }
 
       const project = args.project_id != null ? store.getProject(String(args.project_id)) : undefined;
 
@@ -132,11 +137,12 @@ export function registerResearchItemTools(server: Server): void {
         preds.keyword = (it) =>
           containsCI(it.title, k) ||
           anyContainsCI(it.alt_titles, k) ||
-          containsCI(it.description, k) ||
-          containsCI(it.abstract, k) ||
-          containsCI(it.toc, k) ||
-          anyContainsCI(it.identifiers, k) ||
-          equalsCI(it.dre_id, k);
+          (allowDescriptive() &&
+            (containsCI(it.description, k) ||
+              containsCI(it.abstract, k) ||
+              containsCI(it.toc, k) ||
+              anyContainsCI(it.identifiers, k) ||
+              equalsCI(it.dre_id, k)));
       }
       if (args.subject) preds.subject = (it) => it.subjects.some((s) => containsCI(s.label, args.subject!));
       if (args.location) preds.location = (it) => placeMatches(store, it, args.location!);
@@ -221,9 +227,9 @@ export function registerResearchItemTools(server: Server): void {
         });
       }
       const project = store.projectOf(it);
-      const description = it.description ? capText(it.description) : null;
-      const abstract = it.abstract ? capText(it.abstract) : null;
-      const toc = it.toc ? capText(it.toc) : null;
+      const description = allowDescriptive() && it.description ? capText(it.description) : null;
+      const abstract = allowDescriptive() && it.abstract ? capText(it.abstract) : null;
+      const toc = allowDescriptive() && it.toc ? capText(it.toc) : null;
 
       return textResult({
         id: String(it.o_id),
@@ -231,24 +237,37 @@ export function registerResearchItemTools(server: Server): void {
         title: it.title,
         alternative_titles: it.alt_titles,
         type: it.type,
-        university: UNIVERSITY_LABELS[it.university],
-        project: project ? { id: String(project.o_id), omeka_id: project.o_id, name: project.name, amira_url: itemUrl(project.o_id) } : null,
-        research_sections: store.sectionsOfItem(it),
         dates: it.dates,
         date: yearLabel(it),
-        contributors: it.contributors.map((c) => ({ name: c.name, role: c.role })),
-        subjects: it.subjects.map((s) => ({ label: s.label, amira_url: itemUrlOrNull(s.o_id) })),
-        places: it.places.map((p) => ({
-          name: p.label,
-          within: store.locationAncestors(p.o_id),
-          amira_url: itemUrlOrNull(p.o_id),
-        })),
-        languages: refLabels(it.languages),
-        formats: refLabels(it.formats),
-        physical_notes: it.format_notes,
-        audiences: it.audiences,
-        sponsors: it.sponsors,
-        provenance: it.provenance,
+        ...(allowStructured()
+          ? {
+              university: UNIVERSITY_LABELS[it.university],
+              project: project ? { id: String(project.o_id), omeka_id: project.o_id, name: project.name, amira_url: itemUrl(project.o_id) } : null,
+              research_sections: store.sectionsOfItem(it),
+              contributors: it.contributors.map((c) => ({ name: c.name, role: c.role })),
+              subjects: it.subjects.map((s) => ({ label: s.label, amira_url: itemUrlOrNull(s.o_id) })),
+              places: it.places.map((p) => ({
+                name: p.label,
+                within: store.locationAncestors(p.o_id),
+                amira_url: itemUrlOrNull(p.o_id),
+              })),
+              languages: refLabels(it.languages),
+              formats: refLabels(it.formats),
+              physical_notes: it.format_notes,
+              audiences: it.audiences,
+              sponsors: it.sponsors,
+              provenance: it.provenance,
+              related_items: it.related.map((r) => ({
+                relation: r.relation,
+                title: r.ref.label,
+                amira_url: itemUrlOrNull(r.ref.o_id),
+              })),
+              collections: it.item_sets.map((id) => ({
+                title: store.getItemSet(id)?.title ?? `Collection ${id}`,
+                amira_url: itemSetUrl(id),
+              })),
+            }
+          : {}),
         access_rights: it.access_rights,
         license: it.license,
         identifiers: it.identifiers,
@@ -256,16 +275,7 @@ export function registerResearchItemTools(server: Server): void {
         external_urls: it.urls,
         collection_url: it.collection_url,
         wisski_url: it.wisski_url,
-        related_items: it.related.map((r) => ({
-          relation: r.relation,
-          title: r.ref.label,
-          amira_url: itemUrlOrNull(r.ref.o_id),
-        })),
-        citation: it.citation,
-        collections: it.item_sets.map((id) => ({
-          title: store.getItemSet(id)?.title ?? `Collection ${id}`,
-          amira_url: itemSetUrl(id),
-        })),
+        ...(allowDescriptive() ? { citation: it.citation } : {}),
         description: description?.text ?? null,
         description_truncated: description?.truncated || undefined,
         abstract: abstract?.text ?? null,

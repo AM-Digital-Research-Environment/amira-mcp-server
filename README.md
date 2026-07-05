@@ -22,10 +22,11 @@ more discoverable and their work more visible to a wider community of peers.
 
 This server exposes AMIRA's **projects**, thematic **research sections**, ~4,000
 digitised **research items**, **people**, **institutions**, **groups**,
-**collections**, the cluster **bibliography**, **podcast episodes**, and the
-cluster's **YouTube videos with searchable transcripts** — as 25 core tools an LLM
-can query. From one MCP interface, clients can move across records and the places,
-languages, and subjects that connect them.
+**collections**, the cluster **bibliography with searchable full text** (extracted
+from the open-access PDFs) and its **journals**, **podcast episodes with
+transcripts**, and the cluster's **YouTube videos with searchable transcripts** —
+as 26 core tools an LLM can query. From one MCP interface, clients can move across
+records and the places, languages, and subjects that connect them.
 
 Every record carries an **`amira_url`** — its public page on the Omeka S site
 (`…/s/amira/item/<id>`) — so findings can be **cited as links** back to the source.
@@ -68,8 +69,9 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `list_collections` | Collections (item sets) ranked by research-item count — pair with the `collection` filter |
 | `list_categories` | Facet values: formats/genres, languages, resource types |
 | `list_years` | Date histogram of research items by year or decade — coverage over time, most-covered year/decade |
-| `search_publications` / `get_publication` | The cluster bibliography (incl. generated BibTeX) |
-| `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities |
+| `search_publications` / `get_publication` | The cluster bibliography (incl. generated BibTeX) — **full-text search over the extracted open-access PDFs** (match snippets; full text opt-in + paged on detail) |
+| `list_journals` | The journals the cluster publishes in, ranked by publication count, with ISSN and country — pair with the `venue` filter |
+| `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications) |
 | `search_podcasts` / `get_podcast` | Cluster podcast episodes with searchable transcripts; transcript text is opt-in on detail |
 | `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; transcript opt-in on detail) |
 
@@ -83,6 +85,8 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | "Which items come from **Nigeria**?" | `search_research_items location=Nigeria` (Lagos items count too — `location` walks the place hierarchy, covering both countries and cities) |
 | "What audio recordings are in the ILAM collection?" | `search_research_items project_id=37700 resource_type=Audio` |
 | "In which talks does anyone discuss **decoloniality**?" | `search_videos keyword=decolonial` (matches inside transcripts, flagged `matched_in`) |
+| "Which cluster publications discuss **migration control** — and what do they actually say?" | `search_publications keyword="migration control"` (matches inside the extracted full text, flagged `matched_in`) → `get_publication include_fulltext=true` |
+| "Which journals does the cluster publish in?" | `list_journals` (ranked by publication count) |
 | "What themes travel with **Architecture** across projects?" | `find_related entity_type=subject value=Architecture` |
 | "When was this photograph taken?" | `get_research_item` → typed `dates` (created/collected/issued/…) |
 | "Which **decade** does the collection cover most?" | `list_years bucket=decade sort=count` |
@@ -114,21 +118,24 @@ The `.mcpb` is the local, offline option for Claude Desktop. The same server can
 also run as a **remote Streamable HTTP endpoint** — one HTTPS URL that ChatGPT,
 Claude (web + desktop remote connectors), the OpenAI and Anthropic APIs, Cursor,
 VS Code and other clients connect to by pasting a URL (no download, always-fresh
-data). The remote surface serves the same 25 tools **plus** the
-OpenAI-compatible `search` / `fetch` tools that ChatGPT's connectors require (27
+data). The remote surface serves the same 26 tools **plus** the
+OpenAI-compatible `search` / `fetch` tools that ChatGPT's connectors require (28
 total). Access is unauthenticated — the data is public and read-only.
 
 `search` takes plain keywords (matched term-by-term, not as an exact phrase),
 with optional `limit` and `types` to keep the result set tight, and returns
-ranked hits across research items, the bibliography, podcasts, videos, projects
-and research sections. The `url` on `search` results and `fetch` documents is
+ranked hits across research items, the bibliography (reaching into publication
+full text), podcasts, videos, projects and research sections. The `url` on
+`search` results and `fetch` documents is
 always the AMIRA/Omeka public record page; DOI, YouTube/watch, and podcast/listen
 URLs are kept as secondary metadata/text links. `fetch` returns one record's full
 text by the id `search` hands back — for videos and podcasts the transcript is omitted by default
 (metadata + description only, since a full one can run to tens of thousands of
 characters), and `include_transcript=true` pulls it in — paged with
 `transcript_offset` / `transcript_max_chars` (the same names get_video /
-get_podcast use), with `max_chars` capping the whole text body.
+get_podcast use). Publication full text works the same way
+(`include_fulltext=true`, paged with `fulltext_offset` / `fulltext_max_chars`,
+matching get_publication), and `max_chars` caps the whole text body.
 
 ```bash
 npm run build && npm run start:http     # → http://localhost:8787/mcp
@@ -141,7 +148,7 @@ Endpoints: `POST /mcp` (the MCP endpoint) and `GET /healthz`. Bind with `PORT` /
 
 - **ChatGPT** → Settings → Connectors → Advanced → **Developer Mode** → add
   `https://<your-host>/mcp`. Deep Research calls `search` + `fetch`; Developer
-  Mode can call any of the 27 tools.
+  Mode can call any of the 28 tools.
 - **Claude** (web or desktop) → Settings → Connectors → **Add custom connector**
   → `https://<your-host>/mcp`.
 - **OpenAI API** (Responses) — point the `mcp` tool at the endpoint:
@@ -182,10 +189,11 @@ npm install
 npm run fetch-data    # crawl the public Omeka API -> ./data snapshot (~1 min)
 npm run typecheck     # tsc --noEmit
 npm run build         # esbuild -> server/{index,http,fetchCli,lib}.js
-npm test              # unit tests (transform fixtures — offline)
+npm test              # unit tests: transform fixtures + snapshot lifecycle + the full
+                      # tool layer against a fixture snapshot via InMemoryTransport (offline)
 npm run test:live     # integration tests against the live API (network)
-npm run smoke         # spawn the stdio server, exercise all 25 tools offline
-npm run smoke:http    # spawn the HTTP server, exercise search/fetch + parity (27 tools)
+npm run smoke         # spawn the stdio server, exercise all 26 tools offline
+npm run smoke:http    # spawn the HTTP server, exercise search/fetch + parity (28 tools)
 ```
 
 Pack the extension:
@@ -230,8 +238,26 @@ credentials):
 | `AMIRA_SITE_BASE` | Site base URL (advanced) | `https://data.africamultiple.uni-bayreuth.de` | Base for citations + refresh (`AMIRA_DASHBOARD_BASE` is honoured with a deprecation warning) |
 | `AMIRA_SITE_SLUG` | — | `amira` | Omeka site slug used in `amira_url` |
 | `AMIRA_DATA_DIR` | — | bundled `data/` | Override the bundled snapshot path (dev) |
+| `AMIRA_EXPOSURE` | — | `full` | **Benchmark experiments only**: restrict which metadata the tools expose (see below) |
 | `PORT` | — | `8787` | Port for the remote HTTP transport (`server/http.js`); ignored by the `.mcpb` |
 | `HOST` | — | `0.0.0.0` | Bind address for the remote HTTP transport |
+
+### Metadata-exposure levels (benchmark experiments)
+
+`AMIRA_EXPOSURE` lets an evaluation run the same tasks under graded metadata
+visibility — the "metadata mediation" condition of LLM-access studies. It is an
+experiment flag, not an end-user setting; the default (`full`) is the normal
+server. Existence flags (`has_transcript` / `has_fulltext`) stay visible at
+every level; only content and relations are gated, and refusals are structured
+errors (`exposure_restricted` / `text_access_disabled`) so a model can say *why*
+it cannot answer rather than hallucinating.
+
+| Level | The model sees |
+| --- | --- |
+| `minimal` | Titles, types, dates, URLs, media flags. Keyword search matches titles only; entity/facet/relation tools and structured filters are refused |
+| `descriptive` | + descriptions, abstracts, tables of contents (searchable too) |
+| `structured` | + subjects, places, people, projects, sections, collections, venues — all filters and entity tools |
+| `full` | + transcripts and publication full text (default) |
 
 ## Architecture
 

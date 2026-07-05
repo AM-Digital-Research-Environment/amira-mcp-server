@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   probeRemote,
+  transformJournal,
   transformPodcast,
   transformProject,
   transformPublication,
@@ -53,6 +54,26 @@ test("publication: live record has identifier + repository uris", async () => {
   assert.match(pub.pub_id, /^(eref|epub)-\d+/);
   assert.ok(pub.urls.length >= 1);
   assert.ok(pub.year == null || pub.year > 1990);
+});
+
+test("publication full text: open-access records carry bibo:content > 10k chars", async () => {
+  // property 91 = bibo:content; `ex` keeps only records where it exists.
+  const { body, headers } = await get(
+    `${API}/items?item_set_id=29918&property%5B0%5D%5Bproperty%5D=91&property%5B0%5D%5Btype%5D=ex&per_page=3`,
+  );
+  const total = Number(headers.get("omeka-s-total-results"));
+  assert.ok(total >= 1, `publications with full text on the instance: ${total}`);
+  const pubs = body.map((p) => transformPublication(p, ctx, null));
+  assert.ok(pubs.some((p) => p.fulltext && p.fulltext.length > 10000), "extracted full text > 10k chars");
+});
+
+test("journals: the venue authority (template 23) exists and transforms", async () => {
+  const { body, headers } = await get(`${API}/items?resource_template_id=23&per_page=5`);
+  const total = Number(headers.get("omeka-s-total-results"));
+  assert.ok(total >= 50, `journals on the instance: ${total}`);
+  const journals = body.map(transformJournal);
+  assert.ok(journals.every((j) => j.o_id > 0 && j.title.length > 0));
+  assert.ok(journals.some((j) => j.issn || j.country || j.url), "journals carry issn/country/url metadata");
 });
 
 test("video: at least one live video carries a transcript", async () => {

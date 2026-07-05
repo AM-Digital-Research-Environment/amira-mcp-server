@@ -10,6 +10,7 @@ import * as path from "node:path";
 import {
   maxModified,
   transformItemSet,
+  transformJournal,
   transformLanguage,
   transformLocation,
   transformOrganisation,
@@ -111,6 +112,7 @@ const CORPUS_QUERIES: Record<Exclude<CorpusName, "item_sets">, string> = {
   research_sections: "resource_template_id=7",
   research_items: "resource_template_id=10",
   publications: "item_set_id=29918",
+  journals: "resource_template_id=23",
   podcasts: "resource_template_id=21",
   videos: "resource_template_id=22",
   playlists: "item_set_id=39193",
@@ -177,6 +179,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     research_sections: raw.research_sections.map(transformSection),
     research_items: raw.research_items.map((it) => transformResearchItem(it, ctx, universityOfProject)),
     publications: raw.publications.map((it) => transformPublication(it, ctx, classId(it))),
+    journals: raw.journals.map(transformJournal),
     podcasts: raw.podcasts.map((it) => transformPodcast(it, ctx)),
     videos: raw.videos.map((it) => transformVideo(it, ctx)),
     playlists: raw.playlists.map(transformPlaylist),

@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { ensureStore } from "../data.js";
 import type { PublicationRec } from "../types.js";
+import { allowStructured } from "../exposure.js";
 import {
   annotate,
   anyContainsCI,
   capLimit,
   capOffset,
   containsCI,
+  exposureRestrictedResult,
   filtersEcho,
   itemRef,
   limitEcho,
@@ -52,6 +54,7 @@ export function registerPeopleTools(server: Server): void {
     },
     async (args) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "search_persons");
       const limit = capLimit(args.limit, 25, 100);
       const offset = capOffset(args.offset);
 
@@ -95,6 +98,7 @@ export function registerPeopleTools(server: Server): void {
     },
     async ({ name }) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "get_person");
 
       // Resolve to the canonical stored "Surname, Forename" form.
       const record =
@@ -141,7 +145,8 @@ export function registerPeopleTools(server: Server): void {
         contributed_items: contributed.slice(0, 50).map(({ ref, role }) => ({ role, ...ref })),
         contributed_items_truncated: contributed.length > 50 || undefined,
         publication_count: pubs.length,
-        publications: pubs.map(({ p, role }) => ({ role, ...publicationSummary(p) })),
+        publications: pubs.slice(0, 50).map(({ p, role }) => ({ role, ...publicationSummary(p) })),
+        publications_truncated: pubs.length > 50 || undefined,
         amira_url: itemUrlOrNull(oId),
       });
     },

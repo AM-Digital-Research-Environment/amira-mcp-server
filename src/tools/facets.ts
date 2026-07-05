@@ -2,12 +2,14 @@ import { z } from "zod";
 import { ensureStore } from "../data.js";
 import type { DataStore } from "../data.js";
 import type { LinkedRef, ResearchItemRec } from "../types.js";
+import { allowStructured } from "../exposure.js";
 import {
   annotate,
   capLimit,
   capOffset,
   containsCI,
   errorResult,
+  exposureRestrictedResult,
   filtersEcho,
   limitEcho,
   pageOf,
@@ -62,6 +64,7 @@ export function registerFacetTools(server: Server): void {
     },
     async (args) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "list_subjects");
       const limit = capLimit(args.limit, 50, 300);
       const offset = capOffset(args.offset);
       let ranked = countRefs(store.items, (it) => it.subjects);
@@ -102,6 +105,7 @@ export function registerFacetTools(server: Server): void {
     },
     async (args) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "list_locations");
       const limit = capLimit(args.limit, 50, 300);
       const offset = capOffset(args.offset);
 
@@ -181,6 +185,7 @@ export function registerFacetTools(server: Server): void {
     },
     async (args) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "list_collections");
       const limit = capLimit(args.limit, 50, 200);
       const offset = capOffset(args.offset);
 
@@ -230,9 +235,13 @@ export function registerFacetTools(server: Server): void {
     },
     async (args) => {
       const store = await ensureStore();
+      const category = args.category === "genres" ? "formats" : args.category;
+      // Resource type is minimal-level metadata; formats and languages are not.
+      if (category !== "resource_types" && !allowStructured()) {
+        return exposureRestrictedResult("structured", `list_categories category='${category}'`);
+      }
       const limit = capLimit(args.limit, 100, 500);
       const offset = capOffset(args.offset);
-      const category = args.category === "genres" ? "formats" : args.category;
 
       let ranked: RefCount[];
       if (category === "formats") {

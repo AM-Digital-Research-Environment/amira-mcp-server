@@ -34,6 +34,7 @@ const TARGETS = [
   { key: "research_section", rt: 7 },
   { key: "research_item", rt: 10 },
   { key: "publications_set", set: 29918 },
+  { key: "journal", rt: 23 },
   { key: "podcast", rt: 21 },
   { key: "video", rt: 22 },
   { key: "playlists_set", set: 39193 },

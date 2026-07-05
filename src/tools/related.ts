@@ -1,15 +1,18 @@
 import { z } from "zod";
 import { ensureStore } from "../data.js";
-import type { ResearchItemRec } from "../types.js";
+import type { PublicationRec, ResearchItemRec } from "../types.js";
+import { allowStructured } from "../exposure.js";
 import {
   annotate,
   containsCI,
   equalsCI,
+  exposureRestrictedResult,
   itemRef,
+  refLabels,
   textResult,
   type Server,
 } from "./_shared.js";
-import { itemUrlOrNull } from "../urls.js";
+import { itemUrl, itemUrlOrNull } from "../urls.js";
 import { nameMatchesQuery, samePerson } from "../names.js";
 
 type EntityType = "subject" | "location" | "person" | "project";
@@ -60,7 +63,10 @@ export function registerRelatedTools(server: Server): void {
         "Returns the matched-item count plus ranked related_projects, related_research_sections, " +
         "related_subjects, related_people, related_countries (rolled up to each place's top-level " +
         "country) and related_formats (with co-occurrence counts), up to 10 sample_items (slim refs), " +
-        "and the seed's `amira_url` when resolvable. Returns matched_items=0 if nothing matches.",
+        "and the seed's `amira_url` when resolvable. For subject and person seeds it also reports " +
+        "matched_publications and up to 10 related_publications from the cluster bibliography (a " +
+        "publication matches when its subjects or its authors/editors match the seed). Returns " +
+        "matched_items=0 if nothing matches.",
       annotations: annotate("Find related entities"),
       inputSchema: {
         entity_type: z.enum(["subject", "location", "person", "project"]),
@@ -70,6 +76,7 @@ export function registerRelatedTools(server: Server): void {
     },
     async (args) => {
       const store = await ensureStore();
+      if (!allowStructured()) return exposureRestrictedResult("structured", "find_related");
       const limit = Math.max(1, Math.min(args.limit ?? 20, 50));
       const type = args.entity_type as EntityType;
       const value = args.value;
@@ -104,11 +111,23 @@ export function registerRelatedTools(server: Server): void {
         for (const s of store.sectionsOfItem(it)) inc(sections, s);
         for (const s of it.subjects) if (!(type === "subject" && containsCI(s.label, value))) inc(subjects, s.label);
         for (const c of it.contributors) if (!(type === "person" && matchesPerson(c.name))) inc(people, c.name);
-        for (const p of it.places) {
-          const chain = store.placeChain(p);
-          inc(countries, chain[chain.length - 1]);
-        }
+        for (const p of it.places) inc(countries, store.countryOf(p));
         for (const f of it.formats) inc(formats, f.label);
+      }
+
+      // Publications join the pivot for subject/person seeds (they carry
+      // subjects and authors/editors; they have no place or project links).
+      const matchedPubs: PublicationRec[] =
+        type === "subject"
+          ? store.publications.filter((p) => p.subjects.some((s) => containsCI(s.label, value)))
+          : type === "person"
+            ? store.publications.filter((p) =>
+                [...p.authors, ...p.editors].some((r) => matchesPerson(r.label)),
+              )
+            : [];
+      for (const p of matchedPubs) {
+        for (const s of p.subjects) if (!(type === "subject" && containsCI(s.label, value))) inc(subjects, s.label);
+        for (const n of refLabels(p.authors)) if (!(type === "person" && matchesPerson(n))) inc(people, n);
       }
 
       // Best-effort amira_url for the seed entity itself.
@@ -146,6 +165,7 @@ export function registerRelatedTools(server: Server): void {
         matching: MATCHING[type],
         amira_url: itemUrlOrNull(seedOId),
         matched_items: seed.length,
+        ...(type === "subject" || type === "person" ? { matched_publications: matchedPubs.length } : {}),
         related_projects: topN(projects, limit),
         related_research_sections: topN(sections, limit),
         related_subjects: topN(subjects, limit),
@@ -153,6 +173,15 @@ export function registerRelatedTools(server: Server): void {
         related_countries: topN(countries, limit),
         related_formats: topN(formats, limit),
         sample_items: seed.slice(0, 10).map(itemRef),
+        ...(matchedPubs.length
+          ? {
+              related_publications: matchedPubs.slice(0, 10).map((p) => ({
+                title: p.title,
+                year: p.year,
+                amira_url: itemUrl(p.o_id),
+              })),
+            }
+          : {}),
       });
     },
   );

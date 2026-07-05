@@ -1,9 +1,11 @@
 // Cross-cutting helpers shared by every tool module: result formatting (compact
-// JSON — D10), input capping, paginate-then-map, text matching, and the
-// summary/ref mappers that attach a citable `amira_url` to every record.
+// JSON — D10), input capping, paginate-then-map, text matching, large-text
+// windowing (transcripts + publication full text), and the summary/ref mappers
+// that attach a citable `amira_url` to every record.
 import type { DataStore } from "../data.js";
 import { UNIVERSITY_LABELS } from "../data.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
+import { allowFullText, allowStructured, exposureMessage } from "../exposure.js";
 import type {
   LinkedRef,
   PersonRec,
@@ -89,6 +91,116 @@ export function capText(text: string, limit = CHARACTER_LIMIT): { text: string; 
   return { text: text.slice(0, limit), truncated: true };
 }
 
+// --- large-text windowing (transcripts, publication full text) ---------------
+//
+// One implementation behind get_podcast/get_video (`transcript`),
+// get_publication (`fulltext`) and the ChatGPT `fetch` adapter, so the opt-in +
+// offset/max paging contract can never drift between tools again (the v1.4.2
+// lesson). Content is exposure-gated: under AMIRA_EXPOSURE below `full`, the
+// existence flags stay but the text itself is reported as access-disabled.
+
+export type WindowField = "transcript" | "fulltext";
+
+export interface WindowOpts {
+  include?: boolean;
+  offset?: number;
+  maxChars?: number;
+}
+
+function windowSlice(text: string, opts: WindowOpts): { slice: string; offset: number } {
+  const offset = Math.max(0, Math.floor(opts.offset ?? 0));
+  const max = Math.max(1, Math.min(Math.floor(opts.maxChars ?? CHARACTER_LIMIT), CHARACTER_LIMIT));
+  return { slice: text.slice(offset, offset + max), offset };
+}
+
+/**
+ * Detail-tool shape: `has_<field>` + `<field>_length` always; the windowed text
+ * plus offset/returned/truncated when opted in; a paging hint (or an
+ * access-disabled marker under restricted exposure) when not.
+ */
+export function textWindowFields(field: WindowField, text: string | null, opts: WindowOpts): Record<string, unknown> {
+  const total = text?.length ?? 0;
+  const has = total > 0;
+  if (!allowFullText()) {
+    return { [`has_${field}`]: has, [`${field}_length`]: total, ...(has ? { [`${field}_access`]: "disabled" } : {}) };
+  }
+  if (!opts.include) {
+    return {
+      [`has_${field}`]: has,
+      [`${field}_length`]: total,
+      ...(has
+        ? { [`${field}_hint`]: `Set include_${field}=true for the text (page long ones with ${field}_offset / ${field}_max_chars).` }
+        : {}),
+    };
+  }
+  const { slice, offset } = windowSlice(text ?? "", opts);
+  return {
+    [`has_${field}`]: has,
+    [field]: has ? slice : null,
+    [`${field}_length`]: total,
+    [`${field}_offset`]: offset,
+    [`${field}_returned_chars`]: slice.length,
+    [`${field}_truncated`]: offset + slice.length < total || undefined,
+  };
+}
+
+/**
+ * Fetch-adapter shape: the text to APPEND to the document body (or an omission
+ * marker) plus the same paging metadata, mirroring textWindowFields.
+ */
+export function textWindowAppend(
+  field: WindowField,
+  label: string,
+  text: string | null,
+  opts: WindowOpts,
+): { append: string | null; meta: Record<string, unknown> } {
+  const total = text?.length ?? 0;
+  const has = total > 0;
+  if (!allowFullText()) {
+    return {
+      append: has ? `\n[${label} exists (${total} chars) but access is disabled by the server's exposure policy.]` : null,
+      meta: { [`has_${field}`]: has, [`${field}_included`]: false, [`${field}_length`]: total, ...(has ? { [`${field}_access`]: "disabled" } : {}) },
+    };
+  }
+  if (!opts.include || !has) {
+    return {
+      append: has
+        ? `\n[${label} omitted (${total} chars) — call fetch again with include_${field}=true to append it (page long ones with ${field}_offset / ${field}_max_chars).]`
+        : null,
+      meta: {
+        [`has_${field}`]: has,
+        [`${field}_included`]: false,
+        [`${field}_length`]: total,
+        ...(has
+          ? { [`${field}_hint`]: `Set include_${field}=true to append the ${label.toLowerCase()} (page long ones with ${field}_offset / ${field}_max_chars).` }
+          : {}),
+      },
+    };
+  }
+  const { slice, offset } = windowSlice(text ?? "", opts);
+  return {
+    append: `\n${label}:\n${slice}`,
+    meta: {
+      [`has_${field}`]: true,
+      [`${field}_included`]: true,
+      [`${field}_length`]: total,
+      [`${field}_offset`]: offset,
+      [`${field}_returned_chars`]: slice.length,
+      [`${field}_truncated`]: offset + slice.length < total || undefined,
+    },
+  };
+}
+
+/** Structured refusal when an opt-in text is hidden by the exposure level. */
+export function textAccessDisabledResult(field: WindowField): ReturnType<typeof textResult> {
+  return errorResult("text_access_disabled", `The ${field} is hidden at this exposure level. ${exposureMessage("full")}`);
+}
+
+/** Structured refusal for a whole tool/filter gated by the exposure level. */
+export function exposureRestrictedResult(needs: "descriptive" | "structured" | "full", what: string): ReturnType<typeof textResult> {
+  return errorResult("exposure_restricted", `${what} is not available: ${exposureMessage(needs)}`);
+}
+
 // --- pagination (slice first, map only the page) ------------------------------
 
 export interface Page<T> {
@@ -124,9 +236,12 @@ export function pageOf<T, S>(
   return env;
 }
 
-/** Echo only the filters the caller actually passed (no null noise — D10). */
+/** Echo only the filters the caller actually passed (no null noise — D10).
+ * Pagination knobs are not filters, so limit/offset never appear here. */
 export function filtersEcho(filters: Record<string, unknown>): Record<string, unknown> {
-  const set = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== null));
+  const set = Object.fromEntries(
+    Object.entries(filters).filter(([k, v]) => v !== undefined && v !== null && k !== "limit" && k !== "offset"),
+  );
   return Object.keys(set).length ? { filters: set } : {};
 }
 
@@ -201,12 +316,17 @@ export function itemSummary(it: ResearchItemRec, store: DataStore): Record<strin
     title: it.title,
     type: it.type,
     date: yearLabel(it),
-    project: it.project?.label ?? null,
-    project_omeka_id: project?.o_id ?? null,
-    university: UNIVERSITY_LABELS[it.university],
-    contributors: it.contributors.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
-    subjects: refLabels(it.subjects),
-    place: it.places[0]?.label ?? null,
+    // Relational metadata (project, people, subjects, places) is structured-level.
+    ...(allowStructured()
+      ? {
+          project: it.project?.label ?? null,
+          project_omeka_id: project?.o_id ?? null,
+          university: UNIVERSITY_LABELS[it.university],
+          contributors: it.contributors.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
+          subjects: refLabels(it.subjects),
+          place: it.places[0]?.label ?? null,
+        }
+      : {}),
     amira_url: itemUrl(it.o_id),
   };
 }
@@ -285,11 +405,12 @@ export function publicationSummary(p: PublicationRec): Record<string, unknown> {
     title: p.title,
     type: p.type,
     year: p.year,
-    authors: refLabels(p.authors),
-    venue: p.venue,
+    // Authors and venue are structured-level metadata.
+    ...(allowStructured() ? { authors: refLabels(p.authors), venue: p.venue } : {}),
     doi: p.doi,
     // The publication's own canonical link (DOI, else repository permalink).
     url: p.doi ?? p.urls[0] ?? null,
+    has_fulltext: !!p.fulltext,
     amira_url: itemUrl(p.o_id),
   };
 }
@@ -299,11 +420,12 @@ export function podcastSummary(p: PodcastRec): Record<string, unknown> {
     id: p.o_id,
     omeka_id: p.o_id,
     title: p.title,
-    series: p.series?.label ?? null,
     episode: p.episode,
     date: p.date,
     date_status: dateStatus(p.date),
-    people: p.people.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
+    ...(allowStructured()
+      ? { series: p.series?.label ?? null, people: p.people.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`) }
+      : {}),
     url: p.url,
     has_transcript: !!p.transcript,
     amira_url: itemUrl(p.o_id),
@@ -317,8 +439,7 @@ export function videoSummary(v: VideoRec): Record<string, unknown> {
     title: v.title,
     date: v.date,
     date_status: dateStatus(v.date),
-    playlists: refLabels(v.playlists),
-    speakers: v.speakers.map((c) => c.name),
+    ...(allowStructured() ? { playlists: refLabels(v.playlists), speakers: v.speakers.map((c) => c.name) } : {}),
     url: v.url,
     has_transcript: !!v.transcript,
     amira_url: itemUrl(v.o_id),

@@ -5,7 +5,7 @@ import { config } from "./config.js";
 import { ensureStore } from "./data.js";
 
 async function main(): Promise<void> {
-  const server = createAmiraServer(); // stdio surface: the 25 rich tools
+  const server = createAmiraServer(); // stdio surface: the 26 rich tools
 
   // Warm the in-memory snapshot (and kick off the background refresh) without
   // blocking startup. Tool calls await ensureStore() and surface any load error.
