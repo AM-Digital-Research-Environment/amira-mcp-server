@@ -173,6 +173,24 @@ test("transcript search + windowing (videos, podcasts)", async () => {
   assert.equal(sliced.transcript_truncated, true);
 });
 
+// get_research_item / get_project / get_publication have always taken either a
+// string or a number; get_video and get_podcast used to demand a number, so a
+// client that stringifies ids (several do) got a validation error on exactly
+// those two tools. They now follow the same convention as the rest.
+test("get_video / get_podcast accept a string id, like every other get_*", async () => {
+  for (const [tool, id] of [["get_video", 540], ["get_podcast", 530]]) {
+    const byNumber = await call(tool, { id });
+    const byString = await call(tool, { id: String(id) });
+    assert.deepEqual(byString, byNumber, `${tool}: string and number ids must agree`);
+    assert.equal(byString.id, id);
+  }
+
+  // A non-numeric id stays a clean not_found, never a crash.
+  const missing = await call("get_video", { id: "not-a-number" });
+  assert.equal(missing.error.code, "not_found");
+  assert.equal(missing.error.suggested_tool, "search_videos");
+});
+
 test("get_person: publications listed with role; caps documented", async () => {
   const person = await call("get_person", { name: "Ulli Beier" });
   assert.equal(person.name, "Beier, Ulli");

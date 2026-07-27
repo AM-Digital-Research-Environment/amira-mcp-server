@@ -145,6 +145,19 @@
   fixture-based suites now isolate both the data and cache dirs. Verified by deleting `~/.amira-mcp`
   and confirming the full unit run recreates nothing: **the unit suite is offline and writes nothing
   outside its temp dirs.**
+- **2026-07-27 — v1.9.2: `get_video` / `get_podcast` were the only detail tools that refused a string
+  id.** Found by a full verification pass over v1.7.0–v1.9.1 (typecheck, 47 unit, 10 live, both smoke
+  suites, plus adversarial harnesses for malformed args, pagination edges, `amira_url` integrity,
+  exposure gating and the MCP App templates — everything else came back clean). `get_research_item`,
+  `get_project` and `get_publication` have always taken `z.union([z.string(), z.number()])` and
+  coerced; these two alone declared `z.number().int().min(1)`, so a client that stringifies ids — the
+  ChatGPT connector is the one that matters here — got a validation error on exactly those two tools
+  and nowhere else. Fix: same union + `Number(id)` coercion as the rest. A non-numeric id now yields a
+  clean `not_found` (`Map.get(NaN)` is `undefined`) instead of a throw. Regression test asserts string
+  and number ids return identical records. Also: the companion skill now has ONE source of truth —
+  `.agents/skills/amira-mcp` was a stale, gitignored duplicate (it still said "All 24 tools") and is
+  now a directory junction onto `.claude/skills/amira-mcp`, which is what CI zips and the `.mcpb`
+  ships. Junction, not symlink: no admin rights needed on Windows.
 - **2026-07-27 — v1.9.0: funding-phase Gantt + the co-occurrence hub (4 MCP Apps total).**
   - **`list_research_sections` → `ui://amira/sections`**, a Gantt grouped by funding phase with a
     "now" marker. It exists to show one thing the JSON states but cannot show: the sections were

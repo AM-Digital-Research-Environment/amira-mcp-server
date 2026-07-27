@@ -91,9 +91,9 @@ read the numbers from the payload and cite as usual.
 | Task | Tool | Key params |
 | --- | --- | --- |
 | Find podcast episodes | `search_podcasts` | `keyword`, `series`, `person`, year range; results carry `date_status` |
-| One episode (transcript opt-in) | `get_podcast` | `id` (numeric, from search); `include_transcript=true` + `transcript_offset`/`transcript_max_chars` for the text |
+| One episode (transcript opt-in) | `get_podcast` | `id` (from search; string or number both work); `include_transcript=true` + `transcript_offset`/`transcript_max_chars` for the text |
 | Find videos — incl. INSIDE transcripts | `search_videos` | `keyword` (transcript hits flagged `matched_in` + a `transcript_snippet`), `playlist`, `speaker`, `language`, year range |
-| One video (transcript opt-in) | `get_video` | `id` (numeric, from search); `include_transcript=true` to include it, paged via `transcript_offset`/`transcript_max_chars` (cap 25k chars/call) |
+| One video (transcript opt-in) | `get_video` | `id` (from search; string or number both work); `include_transcript=true` to include it, paged via `transcript_offset`/`transcript_max_chars` (cap 25k chars/call) |
 
 **Paging large text.** On the `get_*` tools the window is exactly what you asked for. On the remote
 `fetch` tool it is sized to what `max_chars` leaves after the record's metadata header, so always

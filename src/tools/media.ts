@@ -112,11 +112,14 @@ export function registerMediaTools(server: Server): void {
         "`amira_url`. The transcript is OMITTED by default (only has_transcript + transcript_length are " +
         "shown) — pass include_transcript=true and page a long one. Returns { error } if the id is unknown.",
       annotations: annotate("Get podcast detail"),
-      inputSchema: { id: z.number().int().min(1).describe("Podcast id from search_podcasts"), ...transcriptParams },
+      inputSchema: {
+        id: z.union([z.string(), z.number()]).describe("Podcast id from search_podcasts, e.g. 39121"),
+        ...transcriptParams,
+      },
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars }) => {
       const store = await ensureStore();
-      const p = store.getPodcast(id);
+      const p = store.getPodcast(Number(id));
       if (!p) return errorResult("not_found", `No podcast with id ${id}.`, { suggested_tool: "search_podcasts" });
       if (include_transcript && !allowFullText()) return textAccessDisabledResult("transcript");
       return textResult({
@@ -219,11 +222,14 @@ export function registerMediaTools(server: Server): void {
         "(transcripts are large; only has_transcript + transcript_length are shown) — pass " +
         "include_transcript=true and page a long one. Returns { error } if the id is unknown.",
       annotations: annotate("Get video detail"),
-      inputSchema: { id: z.number().int().min(1).describe("Video id from search_videos"), ...transcriptParams },
+      inputSchema: {
+        id: z.union([z.string(), z.number()]).describe("Video id from search_videos, e.g. 39218"),
+        ...transcriptParams,
+      },
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars }) => {
       const store = await ensureStore();
-      const v = store.getVideo(id);
+      const v = store.getVideo(Number(id));
       if (!v) return errorResult("not_found", `No video with id ${id}.`, { suggested_tool: "search_videos" });
       if (include_transcript && !allowFullText()) return textAccessDisabledResult("transcript");
       return textResult({

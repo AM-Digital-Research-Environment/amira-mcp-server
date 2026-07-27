@@ -22,7 +22,12 @@ data/
 # Local-only Claude settings (keep the skill, drop local config)
 .claude/settings.local.json
 
-# Local Codex/agent skill copies are not release artifacts.
+# The companion skill has ONE source of truth: .claude/skills/amira-mcp/ — it is
+# what CI zips into amira-mcp-skill.zip and what the .mcpb ships. `.agents/` is a
+# local-only convenience so Codex finds the same skill at the path it looks in;
+# .agents/skills/amira-mcp is a directory junction (mklink /J) pointing at the
+# .claude/ copy, never a second set of files. Recreate it with:
+#   cmd /c mklink /J ".agents\skills\amira-mcp" ".claude\skills\amira-mcp"
 .agents/
 
 # Census raw-page cache (scripts/census.mjs)
