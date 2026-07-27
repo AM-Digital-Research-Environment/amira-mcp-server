@@ -129,6 +129,56 @@
   (with the MongoDB2OmekaS CLUSTER_PARTNER_GROUPS offline fallback); `codex/periodic-refresh` added the
   `AMIRA_REFRESH_INTERVAL_HOURS` periodic freshness probe. v1.5.0 was version-bumped but never tagged —
   superseded by v1.6.0 below.
+- **2026-07-27 — v1.7.0: accent folding, honest text paging, MCP 2026-07-28 posture, MCP Apps.**
+  A review pass over the v1.6.0 refactor, each item grounded by a measurement against the bundled
+  snapshot rather than by inspection.
+  - **Accent-insensitive matching everywhere (`src/text.ts`, the biggest recall win).** Measured
+    before: `keyword="Côte d'Ivoire"` → 0 items / 1 subject, `"Cote d'Ivoire"` → 1 item / 0 subjects.
+    The right spelling depended on which tool you asked, because the subject authority is accented
+    while item titles are not — and a model cannot know which. `fold()` (NFD → drop combining marks →
+    lowercase) now backs `containsCI`/`anyContainsCI`/`equalsCI`/`matchSnippet`, every by-name index in
+    `DataStore`, `LanguageIndex`, and `nameTokens` (one definition instead of the name-only copy).
+    `foldedIndexOf` guards the snippet offsets, falling back when folding changes length. Large folds
+    are memoised (`foldCached`, >2,000 chars) and cleared when a refresh swaps the snapshot.
+  - **`fetch` no longer lies about how much text it returned.** `capText` ran AFTER the window was
+    sliced, so the metadata header pushed the body over `max_chars` and the tail was trimmed while
+    `*_returned_chars` still reported the full quota — a client paging on `offset + returned_chars`
+    skipped exactly the header's worth of characters. The window is now sized against the REMAINING
+    budget (`WindowOpts.budget`, `docBody()`); when the header alone fills `max_chars` the tool says
+    so (`*_included: false` + hint) instead of appending a slice it will trim. Verified round-trip:
+    page 1 + page 2 reconstruct the text exactly.
+  - **Store/HTTP lifecycle.** `ensureStore()` cached its rejection, so one transient boot failure was
+    latched forever and pinned `/healthz` at 503 with no way back; it now clears and retries.
+    `/healthz` reads `currentStore()` instead of a boot-time reference, so it stops reporting a stale
+    snapshot after a background refresh.
+  - **Search: ~2.5× faster, and length no longer beats relevance.** Fields are folded once per QUERY
+    instead of once per term (`foldAll`); body hits are damped by how much text was searched
+    (`bodyWeight`) so a 95k-char full text matching five common terms no longer outranks a title hit;
+    the `types` filter now skips excluded corpora instead of scoring them and discarding. Measured:
+    6-term query 113 ms → 42 ms; `types=["project"]` 113 ms → 2 ms.
+  - **MCP 2026-07-28 readiness.** Already stateless, deterministic in tool order, stderr-only logging,
+    no Roots/Sampling/Elicitation. CORS now accepts the revision's required `Mcp-Method`/`Mcp-Name`
+    (+ `X-Mcp-Header`) alongside the pre-2026 headers, so browser clients on either revision pass
+    preflight. `ttlMs`/`cacheScope` and `server/discover` wait on an SDK past 1.29.0.
+  - **Rate limiting** on `/mcp` (`AMIRA_RATE_LIMIT`, default 120/min/client, `/healthz` exempt;
+    `AMIRA_TRUST_PROXY` for `X-Forwarded-For`) — the endpoint is public and every query scans the
+    whole snapshot.
+  - **Tool-surface weight: 40,853 → 35,346 chars (~10.2k → ~8.8k tokens per turn).** Filter
+    catalogues moved from prose into per-parameter `.describe()`; output-field enumerations dropped
+    (the response already shows them); integer params given honest bounds instead of
+    `minimum: -9007199254740991`. `limit` and the `*_max_chars` params keep their **lenient clamp**
+    (no schema `maximum`) — a hard bound would turn `limitEcho`'s graceful degradation into a
+    validation error.
+  - **MCP Apps (`io.modelcontextprotocol/ui`, SEP-1865).** `list_years` carries
+    `_meta.ui.resourceUri` → `ui://amira/timeline`, a `text/html;profile=mcp-app` resource
+    (`src/ui/timeline.ts`) that renders the histogram inline in Claude/Claude Desktop. Self-contained
+    (no external scripts, styles or origins → no CSP grants) and read-only (renders the tool result,
+    never calls back), so the trust surface is zero. Non-supporting hosts ignore the `_meta`.
+  - **Tests: 34 → 45 unit tests.** New `test/unit/text.test.mjs` (folding, memoisation, offset
+    guarantee) and `test/unit/store.test.mjs` (failed load is retried, not latched). Tool-layer tests
+    added for accent folding in both directions, the `fetch` paging round-trip, ranking, the `types`
+    filter and the MCP App resource; fixture item 503 now reproduces the real accent asymmetry. HTTP
+    smoke covers the CORS preflight for both revisions and the rate limiter.
 - **2026-07-05 — v1.6.0: publication FULL TEXT + journals + exposure levels + tool-layer test harness.**
   Grounded by a live-API probe (53/277 publications now carry `bibo:content` extracted from the EPub
   open-access PDFs, 72k–121k chars each; 87 Journal authority items on template 23 / set 41268; journal

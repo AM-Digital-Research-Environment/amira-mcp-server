@@ -20,11 +20,11 @@ export function registerOverviewTools(server: Server): void {
     {
       title: "Africa Multiple collection overview",
       description:
-        "High-level overview of the Africa Multiple research data (the AMIRA collection on the Omeka S " +
-        "site): counts of projects, research items, people, institutions, groups, publications, podcasts " +
-        "and YouTube videos; breakdowns of items by university, research section, resource type and " +
-        "language; the content date range; and the data snapshot's freshness. Start here to scope what " +
-        "the collection contains before drilling in with the search/list tools. Takes no arguments.",
+        "START HERE to scope the collection before drilling in with the search/list tools: counts across " +
+        "every corpus (projects, research items, people, institutions, groups, publications, podcasts, " +
+        "videos, and how many carry full text or transcripts), breakdowns of items by university, " +
+        "research section, resource type and language, the content date range, and the data snapshot's " +
+        "freshness. Takes no arguments.",
       annotations: annotate("Collection overview"),
       inputSchema: {},
     },

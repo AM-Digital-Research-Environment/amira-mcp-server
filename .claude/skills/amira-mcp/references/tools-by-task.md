@@ -62,7 +62,7 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Places ranked by item count | `list_locations` | Flat list of every place — countries and cities together (hierarchy rolled up, so an item from Lagos counts toward both Lagos and Nigeria); optional `country` narrows; returns coordinates |
 | Collections ranked by item count | `list_collections` | Per-project + external item sets; feed the title/id into the `collection` filter of search_research_items |
 | Formats / languages / resource types | `list_categories` | `category` ∈ formats (alias: genres) / languages / resource_types |
-| Coverage over time (date histogram) | `list_years` | `bucket` = year/decade; `from`/`to` window; `sort` = chronological/count; ranged items count in every year they span; rights/admin dates are not used |
+| Coverage over time (date histogram) | `list_years` | `bucket` = year/decade; `from`/`to` window; `sort` = chronological/count; ranged items count in every year they span; rights/admin dates are not used. Renders as an interactive chart in MCP Apps hosts (`ui://amira/timeline`); the JSON is identical everywhere else |
 
 ## Bibliography & journals
 
@@ -80,6 +80,16 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | One episode (transcript opt-in) | `get_podcast` | `id` (numeric, from search); `include_transcript=true` + `transcript_offset`/`transcript_max_chars` for the text |
 | Find videos — incl. INSIDE transcripts | `search_videos` | `keyword` (transcript hits flagged `matched_in` + a `transcript_snippet`), `playlist`, `speaker`, `language`, year range |
 | One video (transcript opt-in) | `get_video` | `id` (numeric, from search); `include_transcript=true` to include it, paged via `transcript_offset`/`transcript_max_chars` (cap 25k chars/call) |
+
+**Paging large text.** On the `get_*` tools the window is exactly what you asked for. On the remote
+`fetch` tool it is sized to what `max_chars` leaves after the record's metadata header, so always
+advance by the reported `*_returned_chars` rather than by your requested size. If `max_chars` is too
+small to fit any of the text, `fetch` says so (`*_included: false` + a hint) instead of returning a
+silently truncated slice.
+
+**Accents are folded everywhere.** All keyword/subject/place/venue/title matching is
+accent-insensitive: `Côte d'Ivoire` and `Cote d'Ivoire` are the same query in every tool. Do not
+re-run a search in a second spelling.
 
 ## Cross-entity discovery
 

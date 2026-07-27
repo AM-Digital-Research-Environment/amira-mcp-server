@@ -31,7 +31,9 @@ async function waitReady(url, timeoutMs = 15000) {
 }
 
 const child = spawn(process.execPath, ["server/http.js"], {
-  env: { ...process.env, PORT, HOST: "127.0.0.1", AMIRA_LIVE_REFRESH: "0" }, // offline: bundled snapshot
+  // offline (bundled snapshot); limiter off so the smoke run itself can never
+  // trip it — the limiter gets its own server below.
+  env: { ...process.env, PORT, HOST: "127.0.0.1", AMIRA_LIVE_REFRESH: "0", AMIRA_RATE_LIMIT: "0" },
   stdio: ["ignore", "inherit", "inherit"],
 });
 
@@ -44,6 +46,22 @@ try {
   check(health.transport === "streamable-http", "healthz: transport reported");
   check(health.mcp_endpoint === "/mcp", "healthz: mcp_endpoint reported");
   check(health.data_snapshot?.research_items >= 3975, "healthz: snapshot counts reported");
+  check(health.data_snapshot?.publications >= 270, "healthz: publication count reported");
+  check(typeof health.data_snapshot?.fetched_at === "string", "healthz: snapshot freshness reported");
+
+  // CORS preflight must satisfy BOTH protocol revisions: the 2026-07-28 headers
+  // (Mcp-Method / Mcp-Name, required on every Streamable HTTP POST) alongside
+  // the pre-2026 ones, or browser clients fail preflight.
+  const preflight = await fetch(`${BASE}/mcp`, {
+    method: "OPTIONS",
+    headers: { Origin: "https://example.test", "Access-Control-Request-Method": "POST" },
+  });
+  const allowed = (preflight.headers.get("access-control-allow-headers") ?? "").toLowerCase();
+  check(preflight.status === 204, "CORS: preflight answered");
+  check(preflight.headers.get("access-control-allow-origin") === "*", "CORS: origin allowed");
+  for (const h of ["mcp-method", "mcp-name", "x-mcp-header", "mcp-session-id", "mcp-protocol-version"]) {
+    check(allowed.includes(h), `CORS: ${h} allowed`);
+  }
 
   const transport = new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`));
   client = new Client({ name: "smoke-http", version: "0.0.0" });
@@ -156,6 +174,34 @@ try {
   check(overview.counts?.journals >= 50, "rich tool over HTTP: journals corpus present");
 
   await client.close();
+
+  // --- rate limiting (its own server, so the checks above stay unthrottled) ---
+  const RL_PORT = String(Number(PORT) + 1);
+  const rlChild = spawn(process.execPath, ["server/http.js"], {
+    env: { ...process.env, PORT: RL_PORT, HOST: "127.0.0.1", AMIRA_LIVE_REFRESH: "0", AMIRA_RATE_LIMIT: "3" },
+    stdio: ["ignore", "ignore", "inherit"],
+  });
+  try {
+    const rlBase = `http://127.0.0.1:${RL_PORT}`;
+    await waitReady(`${rlBase}/healthz`);
+    const post = () =>
+      fetch(`${rlBase}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+      });
+    const statuses = [];
+    for (let i = 0; i < 5; i++) statuses.push((await post()).status);
+    check(!statuses.slice(0, 3).includes(429), `rate limit: first 3 pass (${statuses.join(",")})`);
+    check(statuses.slice(3).every((s) => s === 429), `rate limit: 4th+ rejected (${statuses.join(",")})`);
+    const limited = await post();
+    check(!!limited.headers.get("retry-after"), "rate limit: Retry-After header set");
+    // Health probes must stay exempt, or the container's HEALTHCHECK kills it.
+    const health2 = await fetch(`${rlBase}/healthz`);
+    check(health2.status === 200, "rate limit: /healthz exempt");
+  } finally {
+    rlChild.kill();
+  }
 } catch (err) {
   failures++;
   console.error(`  FAIL: unexpected error — ${err?.stack || err}`);

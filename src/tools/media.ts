@@ -35,8 +35,8 @@ function matchPerson(name: string, query: string): boolean {
 /** Shared opt-in transcript params for the get_podcast / get_video schemas. */
 const transcriptParams = {
   include_transcript: z.boolean().optional().describe("Default false — set true to include the transcript text"),
-  transcript_offset: z.number().int().optional().describe("Start offset into the transcript (chars), with include_transcript"),
-  transcript_max_chars: z.number().int().optional().describe("Max transcript characters to return (default/max 25000)"),
+  transcript_offset: z.number().int().min(0).optional().describe("Start offset into the transcript (chars), with include_transcript"),
+  transcript_max_chars: z.number().int().min(1).optional().describe("Max transcript characters to return (default/max 25000)"),
 };
 
 export function registerMediaTools(server: Server): void {
@@ -47,25 +47,19 @@ export function registerMediaTools(server: Server): void {
       title: "Search podcasts",
       description:
         "Search the cluster's podcast episodes (e.g. the 'Cluster Conversations' series; ~43 episodes, " +
-        "all with full AI-generated transcripts). Filters (optional, AND-combined):\n" +
-        "  - keyword: match title, abstract — and the TRANSCRIPT. A transcript-only hit is flagged " +
-        "`matched_in: 'transcript'` and carries a `transcript_snippet` around the match\n" +
-        "  - series: series title (partial)\n" +
-        "  - person: a speaker/host name (either order)\n" +
-        "  - year_from / year_to\n" +
-        "  - limit (default 20, max 100), offset\n\n" +
-        "Each result: id, title, series, episode, date, `date_status` (published/scheduled/unknown), " +
-        "people (with roles), episode url, has_transcript, `amira_url`. Use get_podcast for full detail; " +
-        "pass include_transcript=true there for the transcript.",
+        "all with AI-generated transcripts). Keyword search reaches INTO the transcripts — a " +
+        "transcript-only hit is flagged `matched_in: 'transcript'` with a `transcript_snippet` around the " +
+        "match. Filters are optional and AND-combined. Use get_podcast for one episode's detail and the " +
+        "transcript itself.",
       annotations: annotate("Search podcasts"),
       inputSchema: {
-        keyword: z.string().optional(),
-        series: z.string().optional(),
-        person: z.string().optional(),
-        year_from: z.number().int().optional(),
-        year_to: z.number().int().optional(),
-        limit: z.number().int().optional().describe("Default 20, max 100"),
-        offset: z.number().int().optional(),
+        keyword: z.string().optional().describe("Matches title, abstract — and the transcript"),
+        series: z.string().optional().describe("Series title, partial (e.g. 'Cluster Conversations')"),
+        person: z.string().optional().describe("A speaker/host name; either name order works"),
+        year_from: z.number().int().min(0).max(2200).optional().describe("Earliest episode year"),
+        year_to: z.number().int().min(0).max(2200).optional().describe("Latest episode year"),
+        limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {
@@ -113,14 +107,12 @@ export function registerMediaTools(server: Server): void {
     {
       title: "Get podcast episode detail",
       description:
-        "Full detail for one podcast episode by `id` (the numeric id returned by search_podcasts). " +
-        "Returns title, series, episode number, date, `date_status` (published/scheduled/unknown), " +
-        "abstract, people with roles, the episode URL, and the citable `amira_url`. The transcript is " +
-        "OMITTED by default (only has_transcript + transcript_length are shown); pass " +
-        "include_transcript=true to include it, and transcript_offset / transcript_max_chars to page a " +
-        "long one (capped at 25,000 chars per call). Returns a structured { error } if the id is unknown.",
+        "Full detail for one podcast episode: series, episode number, date and `date_status` " +
+        "(published/scheduled/unknown), abstract, people with roles, the episode URL and the citable " +
+        "`amira_url`. The transcript is OMITTED by default (only has_transcript + transcript_length are " +
+        "shown) — pass include_transcript=true and page a long one. Returns { error } if the id is unknown.",
       annotations: annotate("Get podcast detail"),
-      inputSchema: { id: z.number().int().describe("Podcast id from search_podcasts"), ...transcriptParams },
+      inputSchema: { id: z.number().int().min(1).describe("Podcast id from search_podcasts"), ...transcriptParams },
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars }) => {
       const store = await ensureStore();
@@ -158,28 +150,21 @@ export function registerMediaTools(server: Server): void {
     {
       title: "Search YouTube videos",
       description:
-        "Search the Africa Multiple YouTube channel videos catalogued in the collection (~140 videos, " +
-        "lectures/interviews/events; most carry full transcripts). Filters (optional, AND-combined):\n" +
-        "  - keyword: match title, abstract — and the TRANSCRIPT. A transcript-only hit is flagged " +
-        "`matched_in: 'transcript'` and carries a `transcript_snippet` around the match (this is the main " +
-        "full-text search over cluster talks)\n" +
-        "  - playlist: playlist title (partial)\n" +
-        "  - speaker: a speaker name (either order)\n" +
-        "  - language: name or ISO code\n" +
-        "  - year_from / year_to (upload year)\n" +
-        "  - limit (default 20, max 100), offset\n\n" +
-        "Each result: id, title, date, `date_status`, playlists, speakers, watch url, has_transcript, " +
-        "`amira_url`. Use get_video for full detail; pass include_transcript=true there for the transcript.",
+        "Search the Africa Multiple YouTube channel videos catalogued in the collection (~140 lectures, " +
+        "interviews and events; most carry transcripts). Keyword search reaches INTO the transcripts — " +
+        "the main full-text search over cluster talks — and flags such a hit as " +
+        "`matched_in: 'transcript'` with a `transcript_snippet`. Filters are optional and AND-combined. " +
+        "Use get_video for one video's detail and the transcript itself.",
       annotations: annotate("Search YouTube videos"),
       inputSchema: {
-        keyword: z.string().optional(),
-        playlist: z.string().optional(),
-        speaker: z.string().optional(),
-        language: z.string().optional(),
-        year_from: z.number().int().optional(),
-        year_to: z.number().int().optional(),
-        limit: z.number().int().optional().describe("Default 20, max 100"),
-        offset: z.number().int().optional(),
+        keyword: z.string().optional().describe("Matches title, abstract — and the transcript"),
+        playlist: z.string().optional().describe("Playlist title, partial"),
+        speaker: z.string().optional().describe("A speaker name; either name order works"),
+        language: z.string().optional().describe("Name or ISO code — 'French', 'fr', 'fra' all match"),
+        year_from: z.number().int().min(0).max(2200).optional().describe("Earliest upload year"),
+        year_to: z.number().int().min(0).max(2200).optional().describe("Latest upload year"),
+        limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {
@@ -229,14 +214,12 @@ export function registerMediaTools(server: Server): void {
     {
       title: "Get YouTube video detail",
       description:
-        "Full detail for one YouTube video by `id` (the numeric id returned by search_videos). Returns " +
-        "title, upload date, `date_status`, abstract, playlists, speakers, languages, the watch URL, and " +
-        "the citable `amira_url`. The transcript is OMITTED by default (only has_transcript + " +
-        "transcript_length are shown, since transcripts are large); pass include_transcript=true to " +
-        "include it, and transcript_offset / transcript_max_chars to page a long one (capped at 25,000 " +
-        "chars per call). Returns a structured { error } if unknown.",
+        "Full detail for one YouTube video: upload date and `date_status`, abstract, playlists, speakers, " +
+        "languages, the watch URL and the citable `amira_url`. The transcript is OMITTED by default " +
+        "(transcripts are large; only has_transcript + transcript_length are shown) — pass " +
+        "include_transcript=true and page a long one. Returns { error } if the id is unknown.",
       annotations: annotate("Get video detail"),
-      inputSchema: { id: z.number().int().describe("Video id from search_videos"), ...transcriptParams },
+      inputSchema: { id: z.number().int().min(1).describe("Video id from search_videos"), ...transcriptParams },
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars }) => {
       const store = await ensureStore();

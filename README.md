@@ -135,7 +135,10 @@ characters), and `include_transcript=true` pulls it in — paged with
 `transcript_offset` / `transcript_max_chars` (the same names get_video /
 get_podcast use). Publication full text works the same way
 (`include_fulltext=true`, paged with `fulltext_offset` / `fulltext_max_chars`,
-matching get_publication), and `max_chars` caps the whole text body.
+matching get_publication), and `max_chars` caps the whole text body. The
+appended window is sized against what `max_chars` leaves after the metadata
+header, so `*_returned_chars` is exactly what landed in `text` and the next page
+starts at `offset + returned_chars` with no gap.
 
 ```bash
 npm run build && npm run start:http     # → http://localhost:8787/mcp
@@ -189,11 +192,13 @@ npm install
 npm run fetch-data    # crawl the public Omeka API -> ./data snapshot (~1 min)
 npm run typecheck     # tsc --noEmit
 npm run build         # esbuild -> server/{index,http,fetchCli,lib}.js
-npm test              # unit tests: transform fixtures + snapshot lifecycle + the full
-                      # tool layer against a fixture snapshot via InMemoryTransport (offline)
+npm test              # unit tests: transform fixtures, folding, snapshot + store lifecycle,
+                      # and the full tool layer against a fixture snapshot via
+                      # InMemoryTransport (offline)
 npm run test:live     # integration tests against the live API (network)
 npm run smoke         # spawn the stdio server, exercise all 26 tools offline
-npm run smoke:http    # spawn the HTTP server, exercise search/fetch + parity (28 tools)
+npm run smoke:http    # spawn the HTTP server: search/fetch + parity (28 tools), CORS
+                      # preflight for both protocol revisions, and the rate limiter
 ```
 
 Pack the extension:
@@ -241,6 +246,8 @@ credentials):
 | `AMIRA_EXPOSURE` | — | `full` | **Benchmark experiments only**: restrict which metadata the tools expose (see below) |
 | `PORT` | — | `8787` | Port for the remote HTTP transport (`server/http.js`); ignored by the `.mcpb` |
 | `HOST` | — | `0.0.0.0` | Bind address for the remote HTTP transport |
+| `AMIRA_RATE_LIMIT` | — | `120` | Requests/minute per client on `/mcp` (`0` disables). A courtesy cap — every query scans the whole in-memory snapshot — not a security control; `/healthz` is exempt |
+| `AMIRA_TRUST_PROXY` | — | `false` | Read the client IP from `X-Forwarded-For` for rate limiting. Enable **only** behind a proxy that sets it; a direct client can forge the header |
 
 ### Metadata-exposure levels (benchmark experiments)
 
@@ -270,6 +277,32 @@ it cannot answer rather than hallucinating.
   shadow a newer bundled snapshot).
 - **Citations** are uniform: every entity is an Omeka item, so every record
   carries `amira_url = <site>/s/amira/item/<o:id>`.
+- **Accent-insensitive matching everywhere** (`src/text.ts`). The collection is
+  francophone-Africa-heavy and its authority records are not consistently
+  accented against the free text — "Côte d'Ivoire" is the subject heading while
+  item titles carry "Cote d'Ivoire". Every keyword comparison folds both sides
+  (NFD, drop combining marks, lowercase), so the answer no longer depends on
+  which spelling the caller guessed. Folds of large texts are memoised and
+  dropped when a refresh replaces the snapshot.
+- **Interactive results (MCP Apps).** `list_years` carries
+  `_meta.ui.resourceUri` pointing at `ui://amira/timeline`, a self-contained
+  HTML histogram served as a `text/html;profile=mcp-app` resource
+  (`src/ui/timeline.ts`). Hosts that implement the
+  [`io.modelcontextprotocol/ui`](https://modelcontextprotocol.io/docs/extensions/apps)
+  extension (Claude, Claude Desktop) render the chart inline; every other client
+  ignores the `_meta` and gets the same JSON as before. The template loads
+  nothing from the network, so it needs no CSP grants.
+
+### Protocol posture
+
+The server is already shaped for MCP **2026-07-28**: the HTTP transport is
+stateless (`sessionIdGenerator: undefined`, a fresh server per request), tool
+order is deterministic, logging goes to stderr, and Roots/Sampling/Elicitation
+— all deprecated in that revision — are unused. CORS accepts both generations
+of headers (`Mcp-Session-Id`/`MCP-Protocol-Version` and the new
+`Mcp-Method`/`Mcp-Name`/`X-Mcp-Header`). The remaining work is a dependency
+bump: `@modelcontextprotocol/sdk@1.29.0` predates the revision, so `ttlMs` /
+`cacheScope` on `tools/list` and `server/discover` arrive with the SDK.
 
 ## License
 

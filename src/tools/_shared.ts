@@ -5,6 +5,7 @@
 import type { DataStore } from "../data.js";
 import { UNIVERSITY_LABELS } from "../data.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
+import { fold, foldCached, foldedIndexOf } from "../text.js";
 import { allowFullText, allowStructured, exposureMessage } from "../exposure.js";
 import type {
   LinkedRef,
@@ -105,11 +106,26 @@ export interface WindowOpts {
   include?: boolean;
   offset?: number;
   maxChars?: number;
+  /**
+   * Chars still available after the surrounding document body (the `fetch`
+   * adapter, which wraps the window in a metadata header and then caps the
+   * whole thing). Sizing the slice against what is LEFT keeps
+   * `<field>_returned_chars` honest; capping the concatenation afterwards
+   * trimmed the tail silently and made `offset + returned_chars` skip exactly
+   * the header's worth of characters on the next page.
+   */
+  budget?: number;
 }
+
+/** Below this many free chars an appended window is not worth emitting. */
+const MIN_WINDOW = 200;
 
 function windowSlice(text: string, opts: WindowOpts): { slice: string; offset: number } {
   const offset = Math.max(0, Math.floor(opts.offset ?? 0));
-  const max = Math.max(1, Math.min(Math.floor(opts.maxChars ?? CHARACTER_LIMIT), CHARACTER_LIMIT));
+  const max = Math.max(
+    1,
+    Math.min(Math.floor(opts.maxChars ?? CHARACTER_LIMIT), CHARACTER_LIMIT, opts.budget ?? CHARACTER_LIMIT),
+  );
   return { slice: text.slice(offset, offset + max), offset };
 }
 
@@ -174,6 +190,19 @@ export function textWindowAppend(
         ...(has
           ? { [`${field}_hint`]: `Set include_${field}=true to append the ${label.toLowerCase()} (page long ones with ${field}_offset / ${field}_max_chars).` }
           : {}),
+      },
+    };
+  }
+  // Asked for, but the document header already spent the caller's max_chars.
+  // Say so rather than appending a slice that capText would then trim.
+  if (opts.budget !== undefined && opts.budget < MIN_WINDOW) {
+    return {
+      append: `\n[${label} exists (${total} chars) but does not fit within max_chars — raise max_chars, or read it from the detail tool.]`,
+      meta: {
+        [`has_${field}`]: true,
+        [`${field}_included`]: false,
+        [`${field}_length`]: total,
+        [`${field}_hint`]: `Raise max_chars (the record's metadata alone filled it) to append the ${label.toLowerCase()}.`,
       },
     };
   }
@@ -247,19 +276,23 @@ export function filtersEcho(filters: Record<string, unknown>): Record<string, un
 
 // --- text matching ----------------------------------------------------------
 
+// Every comparison is accent- AND case-insensitive (src/text.ts): the same
+// concept is spelled "Côte d'Ivoire" in the subject authority and "Cote
+// d'Ivoire" in item titles, and a model cannot know which corpus stores which.
+
 export function containsCI(haystack: string | null | undefined, needle: string): boolean {
   if (!haystack) return false;
-  return haystack.toLowerCase().includes(needle.toLowerCase());
+  return foldCached(haystack).includes(fold(needle));
 }
 
 export function anyContainsCI(arr: (string | null | undefined)[] | undefined, needle: string): boolean {
   if (!arr) return false;
-  const n = needle.toLowerCase();
-  return arr.some((s) => !!s && s.toLowerCase().includes(n));
+  const n = fold(needle);
+  return arr.some((s) => !!s && foldCached(s).includes(n));
 }
 
 export function equalsCI(a: string | null | undefined, b: string): boolean {
-  return !!a && a.toLowerCase() === b.toLowerCase();
+  return !!a && fold(a) === fold(b);
 }
 
 export const refLabels = (refs: LinkedRef[] | undefined): string[] => (refs ?? []).map((r) => r.label);
@@ -277,7 +310,7 @@ export function brief(text: string | null | undefined, n = 280): string | null {
  */
 export function matchSnippet(text: string | null | undefined, query: string, radius = 140): string | null {
   if (!text || !query) return null;
-  const i = text.toLowerCase().indexOf(query.toLowerCase());
+  const i = foldedIndexOf(text, query);
   if (i === -1) return null;
   const start = Math.max(0, i - radius);
   const end = Math.min(text.length, i + query.length + radius);

@@ -8,6 +8,7 @@ import { registerFacetTools } from "./facets.js";
 import { registerPublicationTools } from "./publications.js";
 import { registerRelatedTools } from "./related.js";
 import { registerMediaTools } from "./media.js";
+import { registerAppResources } from "./apps.js";
 import type { Server } from "./_shared.js";
 
 /** Register every AMIRA tool on the server, grouped by domain (26 tools). */
@@ -22,4 +23,5 @@ export function registerTools(server: Server): void {
   registerPublicationTools(server); // search_publications, get_publication, list_journals
   registerRelatedTools(server); // find_related
   registerMediaTools(server); // search_podcasts, get_podcast, search_videos, get_video
+  registerAppResources(server); // ui://amira/timeline (MCP Apps)
 }

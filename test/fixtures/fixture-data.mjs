@@ -8,6 +8,10 @@
 // titles): zanzibar-fulltext-token (publication 510 full text),
 // kilimanjaro-token (podcast 530 transcript), planetary-token (video 540
 // transcript), unique-keyword-xyz (research item 502 description).
+//
+// Item 503 is the accent fixture: its title is UNACCENTED ("Cote d'Ivoire")
+// while its subject, place and description carry accents — the asymmetry the
+// real data has, so folding gets exercised in both directions.
 
 export function buildFixture(schemaVersion) {
   const data = {
@@ -32,6 +36,7 @@ export function buildFixture(schemaVersion) {
       { o_id: 901, name: "Lagos", latitude: 6.45, longitude: 3.39, parent: { label: "Nigeria", o_id: 900 }, wikidata: null },
       { o_id: 902, name: "Germany", latitude: 51.16, longitude: 10.45, parent: null, wikidata: null },
       { o_id: 903, name: "Bayreuth", latitude: 49.94, longitude: 11.57, parent: { label: "Germany", o_id: 902 }, wikidata: null },
+      { o_id: 904, name: "Côte d'Ivoire", latitude: 7.54, longitude: -5.55, parent: null, wikidata: null },
     ],
     projects: [
       {
@@ -186,15 +191,19 @@ export function buildFixture(schemaVersion) {
         item_sets: [],
         university: "external",
       },
+      // The accent asymmetry, reproduced deliberately: an UNACCENTED title over
+      // an ACCENTED subject/place authority and an ACCENTED description. This
+      // is how the real data sits, and it is what made the right spelling
+      // depend on which tool you asked before folding (src/text.ts).
       {
         o_id: 503,
         dre_id: "abg-fx-0503",
-        title: "Untitled Print",
+        title: "Cote d'Ivoire Field Notes",
         alt_titles: [],
         type: "Image",
         project: null,
-        subjects: [],
-        places: [],
+        subjects: [{ label: "Côte d'Ivoire", o_id: 602 }],
+        places: [{ label: "Côte d'Ivoire", o_id: 904 }],
         languages: [],
         formats: [],
         format_notes: [],
@@ -202,7 +211,7 @@ export function buildFixture(schemaVersion) {
         dates: {},
         year_min: null,
         year_max: null,
-        description: null,
+        description: "Notes sur le développement régional.",
         abstract: null,
         toc: null,
         audiences: [],

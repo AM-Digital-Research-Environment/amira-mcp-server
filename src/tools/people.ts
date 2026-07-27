@@ -37,19 +37,16 @@ export function registerPeopleTools(server: Server): void {
     {
       title: "Search people",
       description:
-        "Search the people authority list (researchers and contributors). Filters (optional, AND-combined):\n" +
-        "  - keyword: match against name or affiliation. Name matching is order-independent and " +
-        "accent-insensitive — 'Oliver Baumann', 'Baumann, Oliver' and 'Baumann' all find 'Baumann, Oliver'\n" +
-        "  - affiliation: match the person's affiliations only\n" +
-        "  - limit (default 25, max 100), offset\n\n" +
-        "Each result has name (stored 'Surname, Forename'), affiliations and a citable `amira_url`. Use " +
-        "get_person for a full profile.",
+        "Search the people authority list (researchers and contributors). Names are stored " +
+        "'Surname, Forename' and matching is order-independent and accent-insensitive, so 'Oliver " +
+        "Baumann', 'Baumann, Oliver' and 'Baumann' all find the same person. Use get_person for a full " +
+        "profile.",
       annotations: annotate("Search people"),
       inputSchema: {
-        keyword: z.string().optional(),
-        affiliation: z.string().optional(),
-        limit: z.number().int().optional().describe("Default 25, max 100"),
-        offset: z.number().int().optional(),
+        keyword: z.string().optional().describe("Matches the name or an affiliation"),
+        affiliation: z.string().optional().describe("Matches the person's affiliations only"),
+        limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {
@@ -84,16 +81,16 @@ export function registerPeopleTools(server: Server): void {
     {
       title: "Get person profile",
       description:
-        "Aggregate everything the collection knows about one person by `name`. Names are stored " +
-        "'Surname, Forename' (e.g. 'Baumann, Oliver'), but either order works, with or without accents — " +
-        "'Oliver Baumann' resolves to 'Baumann, Oliver'; the canonical `name` is echoed back. Returns " +
-        "affiliations, projects led (PI) and joined (member), research items contributed (slim refs with " +
-        "the person's role — use get_research_item for detail; capped at 50, total reported), " +
-        "publications authored/edited, and a citable `amira_url`. Works even for names absent from the " +
-        "authority list; empty lists mean the name appears nowhere.",
+        "Aggregate everything the collection knows about one person: affiliations, projects led (PI) and " +
+        "joined (member), research items contributed with the person's role (capped at 50, the total " +
+        "reported), publications authored or edited, and a citable `amira_url`. The canonical " +
+        "'Surname, Forename' spelling is echoed back as `name`. Works even for names absent from the " +
+        "authority list — empty lists mean the name appears nowhere.",
       annotations: annotate("Get person profile"),
       inputSchema: {
-        name: z.string().describe("Person name in either order, e.g. 'Beier, Ulli' or 'Ulli Beier'"),
+        name: z
+          .string()
+          .describe("Either name order, with or without accents: 'Beier, Ulli' and 'Ulli Beier' both resolve"),
       },
     },
     async ({ name }) => {

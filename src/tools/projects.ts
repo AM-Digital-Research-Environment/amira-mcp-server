@@ -28,30 +28,23 @@ export function registerProjectTools(server: Server): void {
     {
       title: "Search research projects",
       description:
-        "Search the cluster's research projects across AMIRA's current partner/source metadata labels plus " +
-        "external collections. Every registered project is searchable; `item_count` shows how many have " +
-        "digitised items (a subset do). All filters optional and AND-combined; omit all to list every " +
-        "project.\n\n" +
-        "Filters:\n" +
-        "  - keyword: match project name or description\n" +
-        "  - university: ubt | unilag | ujkz | ufba | external (code or name; a data facet, not a full AMRC list)\n" +
-        "  - research_section: e.g. 'Knowledges', 'Moralities'\n" +
-        "  - principal_investigator / member: a person name (either order — 'Oliver Baumann' finds " +
-        "'Baumann, Oliver')\n" +
-        "  - institution: funding/affiliated institution name (partial)\n" +
-        "  - limit (default 25, max 100), offset\n\n" +
-        "Each result has Omeka id, name, university, research_sections, principal_investigators, item_count and " +
-        "a citable `amira_url`. Use get_project for full detail.",
+        "Search the cluster's research projects across AMIRA's partner/source metadata labels plus " +
+        "external collections. Every registered project is searchable; `item_count` shows how many carry " +
+        "digitised items (a subset do). Filters are optional and AND-combined; omit all to list every " +
+        "project. Use get_project for full detail.",
       annotations: annotate("Search projects"),
       inputSchema: {
-        keyword: z.string().optional(),
-        university: z.string().optional(),
-        research_section: z.string().optional(),
-        principal_investigator: z.string().optional(),
-        member: z.string().optional(),
-        institution: z.string().optional(),
-        limit: z.number().int().optional().describe("Default 25, max 100"),
-        offset: z.number().int().optional(),
+        keyword: z.string().optional().describe("Matches the project name or description"),
+        university: z
+          .string()
+          .optional()
+          .describe("ubt | unilag | ujkz | ufba | external — code or name. A data facet, not a full AMRC list"),
+        research_section: z.string().optional().describe("e.g. 'Knowledges', 'Moralities'"),
+        principal_investigator: z.string().optional().describe("A PI name; either order works ('Oliver Baumann' finds 'Baumann, Oliver')"),
+        member: z.string().optional().describe("A project member's name; either order works"),
+        institution: z.string().optional().describe("Funding/affiliated institution name, partial"),
+        limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {

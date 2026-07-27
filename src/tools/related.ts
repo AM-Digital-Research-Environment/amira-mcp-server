@@ -46,32 +46,26 @@ export function registerRelatedTools(server: Server): void {
       title: "Find related entities",
       description:
         "Cross-entity discovery: given one entity, find what it connects to through the research items " +
-        "that mention it. Useful for 'what subjects/people/places co-occur with X?' and for tracing how a " +
-        "theme spans projects.\n\n" +
-        "Parameters:\n" +
-        "  - entity_type (required): 'subject' | 'location' | 'person' | 'project' (tags are merged into " +
-        "subjects)\n" +
-        "  - value (required): e.g. subject 'Islam', location 'Nigeria', person 'Beier, Ulli', project " +
-        "Omeka id '37700' or label 'International Library of African Music'\n" +
-        "  - limit: max entries per related list (default 20, max 50)\n\n" +
-        "Matching semantics (also echoed in the response `matching` field):\n" +
-        "  - subject: substring match on subject labels (incl. former tags) — `matched_items` counts " +
-        "ITEMS, so it can differ from list_subjects, which counts distinct headings\n" +
-        "  - location: matches any level of the city→country hierarchy ('Nigeria' includes Lagos items)\n" +
-        "  - person: name match in either order, accent-insensitive\n" +
-        "  - project: Omeka id or legacy key equality, or project-label substring\n\n" +
-        "Returns the matched-item count plus ranked related_projects, related_research_sections, " +
-        "related_subjects, related_people, related_countries (rolled up to each place's top-level " +
-        "country) and related_formats (with co-occurrence counts), up to 10 sample_items (slim refs), " +
-        "and the seed's `amira_url` when resolvable. For subject and person seeds it also reports " +
-        "matched_publications and up to 10 related_publications from the cluster bibliography (a " +
-        "publication matches when its subjects or its authors/editors match the seed). Returns " +
-        "matched_items=0 if nothing matches.",
+        "that mention it — for 'what subjects/people/places co-occur with X?' and for tracing how a theme " +
+        "spans projects. Returns the matched-item count plus ranked related projects, research sections, " +
+        "subjects, people, countries and formats, sample items, and the seed's own `amira_url`. Subject " +
+        "and person seeds also pivot into the cluster bibliography (related_publications). How the value " +
+        "was matched is echoed in the response `matching` field — note `matched_items` counts ITEMS, so " +
+        "it differs from list_subjects, which counts distinct headings.",
       annotations: annotate("Find related entities"),
       inputSchema: {
-        entity_type: z.enum(["subject", "location", "person", "project"]),
-        value: z.string().describe("The entity value to pivot on"),
-        limit: z.number().int().optional().describe("Per-list cap, default 20, max 50"),
+        entity_type: z
+          .enum(["subject", "location", "person", "project"])
+          .describe("What the value denotes. Tags are merged into subjects — there is no tag pivot"),
+        value: z
+          .string()
+          .describe(
+            "The entity to pivot on. subject: substring of a heading ('Islam'). location: any level of " +
+              "the city→country hierarchy ('Nigeria' includes Lagos items). person: a name in either " +
+              "order, accent-insensitive ('Beier, Ulli'). project: an Omeka id ('37700'), a legacy key, " +
+              "or a substring of the project label",
+          ),
+        limit: z.number().int().min(1).optional().describe("Per-list cap, default 20, max 50"),
       },
     },
     async (args) => {

@@ -15,21 +15,68 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createAmiraServer, VERSION } from "./mcpServer.js";
 import { config } from "./config.js";
-import { ensureStore, type DataStore } from "./data.js";
+import { currentStore, ensureStore } from "./data.js";
 
 const MCP_PATH = "/mcp";
-let readyStore: DataStore | null = null;
 let startupError: string | null = null;
 
-/** Public, read-only data → permissive CORS so browser-based clients can connect. */
+/** Public, read-only data → permissive CORS so browser-based clients can connect.
+ *
+ * The allow-list spans both protocol revisions: `Mcp-Session-Id`,
+ * `MCP-Protocol-Version` and `Last-Event-ID` for clients on 2025-11-25 and
+ * earlier, `Mcp-Method` / `Mcp-Name` / `X-Mcp-Header` for the stateless
+ * 2026-07-28 revision, which requires them on every Streamable HTTP POST
+ * (SEP-2243). Omitting the new pair fails preflight for browser clients. */
 function setCors(res: ServerResponse): void {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Accept, Authorization, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID",
+    "Content-Type, Accept, Authorization, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID, " +
+      "Mcp-Method, Mcp-Name, X-Mcp-Header",
   );
   res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
+
+// --- rate limiting ------------------------------------------------------------
+//
+// A fixed-window cap per client on /mcp (health probes are exempt). Every query
+// scans the whole in-memory snapshot, so an unauthenticated public endpoint
+// wants at least a courtesy limit; a proxy in front should still do the real
+// one, since the client key is only as trustworthy as the network path.
+
+interface Bucket {
+  count: number;
+  resetAt: number;
+}
+const buckets = new Map<string, Bucket>();
+
+function clientKey(req: IncomingMessage): string {
+  if (config.trustProxy) {
+    const xff = req.headers["x-forwarded-for"];
+    const first = (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return req.socket.remoteAddress ?? "unknown";
+}
+
+/** Seconds to wait, or 0 when the request is within budget. */
+function rateLimited(req: IncomingMessage): number {
+  if (config.rateLimitPerMinute <= 0) return 0;
+  const now = Date.now();
+  if (buckets.size > 10_000) {
+    for (const [k, b] of buckets) if (b.resetAt <= now) buckets.delete(k);
+  }
+  const key = clientKey(req);
+  const bucket = buckets.get(key);
+  if (!bucket || bucket.resetAt <= now) {
+    buckets.set(key, { count: 1, resetAt: now + 60_000 });
+    return 0;
+  }
+  bucket.count += 1;
+  if (bucket.count <= config.rateLimitPerMinute) return 0;
+  return Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -38,21 +85,26 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 function healthBody(): Record<string, unknown> {
+  // Read the store through currentStore() rather than caching a reference: the
+  // background refresh hot-swaps it, and a captured one made /healthz report
+  // the boot-time snapshot forever on a long-running container.
+  const store = currentStore();
   return {
     name: "amira-mcp-server",
     version: VERSION,
-    status: startupError ? "error" : readyStore ? "ok" : "loading",
+    status: startupError ? "error" : store ? "ok" : "loading",
     transport: "streamable-http",
     mcp_endpoint: MCP_PATH,
     site: config.siteBase,
-    ...(readyStore
+    ...(store
       ? {
           data_snapshot: {
-            source: readyStore.source,
-            fetched_at: readyStore.manifest.fetchedAt,
-            research_items: readyStore.items.length,
-            projects: readyStore.projects.length,
-            youtube_videos: readyStore.videos.length,
+            source: store.source,
+            fetched_at: store.manifest.fetchedAt,
+            research_items: store.items.length,
+            projects: store.projects.length,
+            publications: store.publications.length,
+            youtube_videos: store.videos.length,
           },
         }
       : {}),
@@ -82,11 +134,20 @@ const httpServer = createServer((req, res) => {
   }
 
   if (path === "/" || path === "/healthz") {
-    sendJson(res, readyStore && !startupError ? 200 : 503, healthBody());
+    sendJson(res, currentStore() && !startupError ? 200 : 503, healthBody());
     return;
   }
 
   if (path === MCP_PATH) {
+    const retryAfter = rateLimited(req);
+    if (retryAfter) {
+      res.setHeader("Retry-After", String(retryAfter));
+      sendJson(res, 429, {
+        error: "rate limited",
+        message: `More than ${config.rateLimitPerMinute} requests/minute from this client. Retry in ${retryAfter}s.`,
+      });
+      return;
+    }
     handleMcp(req, res).catch((err) => {
       console.error("[amira] http request error:", err);
       if (!res.headersSent) sendJson(res, 500, { error: "internal error" });
@@ -100,7 +161,6 @@ const httpServer = createServer((req, res) => {
 // Warm the snapshot (and kick off the background refresh) before traffic.
 void ensureStore()
   .then((store) => {
-    readyStore = store;
     console.error(
       `[amira] loaded ${store.items.length} research items / ${store.projects.length} projects / ` +
         `${store.videos.length} videos from ${store.source} snapshot (fetchedAt=${store.manifest.fetchedAt})`,

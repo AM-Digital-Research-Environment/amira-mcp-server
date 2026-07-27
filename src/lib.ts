@@ -6,6 +6,8 @@ export * from "./transform.js";
 export * from "./types.js";
 export { LanguageIndex } from "./languages.js";
 export { nameTokens, nameKey, samePerson, nameMatchesQuery } from "./names.js";
+export { fold, foldCached, foldedIndexOf, clearFoldCache } from "./text.js";
+export { ensureStore, currentStore, DataStore } from "./data.js";
 export { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshot, writeSnapshotAtomic } from "./snapshot.js";
 export { itemUrl, itemUrlOrNull } from "./urls.js";
 export { createAmiraServer } from "./mcpServer.js";

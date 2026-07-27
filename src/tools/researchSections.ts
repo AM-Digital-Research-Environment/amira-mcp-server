@@ -23,14 +23,13 @@ export function registerResearchSectionTools(server: Server): void {
     {
       title: "List research sections",
       description:
-        "List the cluster's research sections (its top-level thematic structure). They fall into two " +
-        "groups, one per funding phase: AM 1.0 / 2019–2025 (Affiliations, Arts & Aesthetics, Knowledges, " +
-        "Learning, Mobilities, Moralities) and AM 2.0 / 2026–2032 (Accumulation, Digitalities, Ecologies, " +
-        "In/securities, Re:membering, Translating), plus a synthetic 'External' grouping for outside " +
-        "collections. The AM 2.0 sections are newly seeded and currently have ~0 projects/items. Takes no " +
-        "arguments. For each section returns name, funding_phase, date, principal_investigators, " +
-        "member_count, project_count, item_count, a brief description, the section's website and a " +
-        "citable `amira_url`. Use get_research_section for the full description and project list.",
+        "List the cluster's research sections (its top-level thematic structure), with funding phase, " +
+        "PIs, member/project/item counts and a citable `amira_url`. Sections split by funding phase: " +
+        "AM 1.0 / 2019–2025 (Affiliations, Arts & Aesthetics, Knowledges, Learning, Mobilities, " +
+        "Moralities) and AM 2.0 / 2026–2032 (Accumulation, Digitalities, Ecologies, In/securities, " +
+        "Re:membering, Translating), plus a synthetic 'External' grouping. The AM 2.0 sections are newly " +
+        "seeded and currently hold ~0 projects/items. Takes no arguments; use get_research_section for " +
+        "one section's full description and project list.",
       annotations: annotate("List research sections"),
       inputSchema: {},
     },

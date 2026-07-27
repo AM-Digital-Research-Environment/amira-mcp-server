@@ -76,34 +76,27 @@ export function registerPublicationTools(server: Server): void {
     {
       title: "Search publications",
       description:
-        "Search the cluster bibliography (~280 academic publications harvested from ERef/EPub Bayreuth " +
-        "into the collection: journal articles, books, chapters, theses, conference papers, working " +
-        "papers, etc.). Open-access publications carry extracted FULL TEXT of their PDF, and keyword " +
-        "search reaches into it. Filters (optional, AND-combined):\n" +
-        "  - keyword: match title, abstract, venue, subjects — and the full text when one exists. A " +
-        "full-text-only hit is flagged `matched_in: 'fulltext'` and carries a `fulltext_snippet` around " +
-        "the match\n" +
-        "  - author: a contributor name (either order works)\n" +
-        "  - type: article | book | chapter | conference | doctoral_thesis | working_paper | " +
-        "journal_issue | book_review | online_post | research_data\n" +
-        "  - venue: journal / book / series title (partial; journal titles come from list_journals)\n" +
-        "  - has_fulltext: true keeps only publications with searchable full text\n" +
-        "  - year_from / year_to: publication-year range\n" +
-        "  - limit (default 25, max 100), offset\n\n" +
-        "Results are newest-first. Each has id, title, type, year, authors, venue, doi, has_fulltext, " +
-        "`url` (the publication's own DOI/permalink — the primary citation) and its `amira_url`. Use " +
-        "get_publication for full metadata, BibTeX, and the full text (opt-in there).",
+        "Search the cluster bibliography (~280 publications harvested from ERef/EPub Bayreuth: journal " +
+        "articles, books, chapters, theses, conference and working papers). Open-access ones carry the " +
+        "extracted FULL TEXT of their PDF and keyword search reaches into it — such a hit is flagged " +
+        "`matched_in: 'fulltext'` with a `fulltext_snippet` around the match. Filters are optional and " +
+        "AND-combined; results are newest-first. Cite each result's `url` (its DOI or repository " +
+        "permalink) alongside the `amira_url`. Use get_publication for full metadata, BibTeX and the full " +
+        "text (opt-in there).",
       annotations: annotate("Search publications"),
       inputSchema: {
-        keyword: z.string().optional(),
-        author: z.string().optional(),
-        type: z.string().optional(),
-        venue: z.string().optional().describe("Journal/book/series title, partial match"),
-        has_fulltext: z.boolean().optional().describe("true → only publications with extracted full text"),
-        year_from: z.number().int().optional(),
-        year_to: z.number().int().optional(),
-        limit: z.number().int().optional().describe("Default 25, max 100"),
-        offset: z.number().int().optional(),
+        keyword: z.string().optional().describe("Matches title, abstract, venue, subjects — and the full text where one exists"),
+        author: z.string().optional().describe("A contributor name; either name order works"),
+        type: z
+          .string()
+          .optional()
+          .describe("article | book | chapter | conference | doctoral_thesis | working_paper | journal_issue | book_review | online_post | research_data"),
+        venue: z.string().optional().describe("Journal/book/series title, partial. Journal titles come from list_journals"),
+        has_fulltext: z.boolean().optional().describe("true → only publications with extracted, searchable full text"),
+        year_from: z.number().int().min(0).max(2200).optional().describe("Earliest publication year"),
+        year_to: z.number().int().min(0).max(2200).optional().describe("Latest publication year"),
+        limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {
@@ -163,23 +156,19 @@ export function registerPublicationTools(server: Server): void {
     {
       title: "Get publication detail",
       description:
-        "Full metadata for one publication by Omeka `id` (preferred; the numeric o:id in `amira_url`) or " +
-        "legacy publication-key values. Returns title, type, authors, editors, year, venue " +
-        "(journal/book/series — with the journal's own `amira_url` when it is a Journal authority " +
-        "record), volume, issue, pages, publisher, DOI, ISBN/ISSN, peer-review status, funders, places " +
-        "of publication, abstract (truncated at 25,000 chars), subjects, language, repository links " +
-        "(ERef/EPub), whether the open-access PDF is attached, BibTeX generated from the structured " +
-        "fields, and the citable `amira_url`. The extracted FULL TEXT is OMITTED by default (only " +
-        "has_fulltext + fulltext_length are shown); pass include_fulltext=true to include it, and " +
-        "fulltext_offset / fulltext_max_chars to page a long one (capped at 25,000 chars per call). " +
-        "Cite the `url` (DOI or repository permalink) as the primary reference. Returns { error } if " +
-        "the id is unknown.",
+        "Full metadata for one publication: authors, editors, venue (with the journal's own `amira_url` " +
+        "and ISSN when it is a Journal authority record), volume/issue/pages, publisher, DOI, ISBN/ISSN, " +
+        "peer-review status, funders, places of publication, abstract, subjects, language, ERef/EPub " +
+        "links, and BibTeX generated from the structured fields. The extracted FULL TEXT is OMITTED by " +
+        "default (only has_fulltext + fulltext_length are shown) — pass include_fulltext=true and page a " +
+        "long one. Cite the `url` (DOI or repository permalink) as the primary reference. Returns " +
+        "{ error } if the id is unknown.",
       annotations: annotate("Get publication detail"),
       inputSchema: {
-        id: z.union([z.string(), z.number()]).describe("Publication Omeka o:id"),
+        id: z.union([z.string(), z.number()]).describe("Publication Omeka o:id (legacy publication keys also work)"),
         include_fulltext: z.boolean().optional().describe("Default false — set true to include the extracted full text"),
-        fulltext_offset: z.number().int().optional().describe("Start offset into the full text (chars), with include_fulltext"),
-        fulltext_max_chars: z.number().int().optional().describe("Max full-text characters to return (default/max 25000)"),
+        fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
+        fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
       },
     },
     async ({ id, include_fulltext, fulltext_offset, fulltext_max_chars }) => {
@@ -248,15 +237,13 @@ export function registerPublicationTools(server: Server): void {
       title: "List journals",
       description:
         "List the journals the cluster publishes in (the Journal venue authority), ranked by how many " +
-        "publications in the bibliography appeared in each. Optional `keyword` filters by journal title; " +
-        "`limit` (default 50, max 200) and `offset` paginate. Each result: journal, ISSN, country of " +
-        "publication, publication_count, the journal's website when known, and its citable `amira_url`. " +
-        "Feed the title into the `venue` filter of search_publications to retrieve the articles.",
+        "publications appeared in each, with ISSN, country of publication and website. Feed a title into " +
+        "the `venue` filter of search_publications to retrieve its articles.",
       annotations: annotate("List journals"),
       inputSchema: {
-        keyword: z.string().optional(),
-        limit: z.number().int().optional().describe("Default 50, max 200"),
-        offset: z.number().int().optional(),
+        keyword: z.string().optional().describe("Substring filter on the journal title"),
+        limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {

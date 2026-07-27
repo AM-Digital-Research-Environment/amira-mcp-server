@@ -7,6 +7,7 @@
 // snapshot's languages corpus plus a small static alias table.
 
 import type { LanguageRec, LinkedRef } from "./types.js";
+import { fold } from "./text.js";
 
 /** Extra query tokens per canonical language name (lowercase). */
 const EXTRA_ALIASES: Record<string, string[]> = {
@@ -41,7 +42,8 @@ const EXTRA_ALIASES: Record<string, string[]> = {
 };
 
 export class LanguageIndex {
-  /** lowercase token (name, code, alias) -> canonical name ("French"). */
+  /** Folded token (name, code, alias) -> canonical name ("French"). Folding
+   * (src/text.ts) makes the accented aliases below reachable unaccented too. */
   private readonly tokenToName = new Map<string, string>();
   readonly all: LanguageRec[];
 
@@ -49,25 +51,22 @@ export class LanguageIndex {
     this.all = languages;
     for (const lang of languages) {
       const canonical = lang.name;
-      const tokens = [lang.name.toLowerCase(), ...(lang.code ? [lang.code.toLowerCase()] : [])];
-      for (const extra of EXTRA_ALIASES[lang.name.toLowerCase()] ?? []) tokens.push(extra);
+      const tokens = [fold(lang.name), ...(lang.code ? [fold(lang.code)] : [])];
+      for (const extra of EXTRA_ALIASES[fold(lang.name)] ?? []) tokens.push(fold(extra));
       for (const t of tokens) if (t) this.tokenToName.set(t, canonical);
     }
   }
 
   /** Canonical language name for a query token, or null if unknown. */
   resolve(query: string): string | null {
-    return this.tokenToName.get(query.trim().toLowerCase()) ?? null;
+    return this.tokenToName.get(fold(query.trim())) ?? null;
   }
 
   /** True if any of the item's language refs denotes the queried language. */
   matches(refs: LinkedRef[] | undefined, query: string): boolean {
     if (!refs || refs.length === 0) return false;
     const canonical = this.resolve(query);
-    const q = query.trim().toLowerCase();
-    return refs.some((r) => {
-      const label = r.label.toLowerCase();
-      return (canonical != null && r.label === canonical) || label === q;
-    });
+    const q = fold(query.trim());
+    return refs.some((r) => (canonical != null && r.label === canonical) || fold(r.label) === q);
   }
 }

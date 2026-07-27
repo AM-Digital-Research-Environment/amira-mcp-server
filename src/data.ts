@@ -14,6 +14,7 @@
 import { config } from "./config.js";
 import { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshotAtomic, type CrawlOutput } from "./snapshot.js";
 import { LanguageIndex } from "./languages.js";
+import { clearFoldCache, fold } from "./text.js";
 import * as path from "node:path";
 import type {
   ItemSetRec,
@@ -98,8 +99,10 @@ export class DataStore {
     this.itemSets = data.item_sets;
     this.languageIndex = new LanguageIndex(data.languages);
 
+    // Every by-name map is keyed on the FOLDED name (src/text.ts), so a lookup
+    // for "Côte d'Ivoire" reaches a record stored as "Cote d'Ivoire".
     for (const it of this.items) {
-      this.itemByDreId.set(it.dre_id.toLowerCase(), it);
+      this.itemByDreId.set(fold(it.dre_id), it);
       this.itemByOId.set(it.o_id, it);
       const pid = it.project?.o_id;
       if (pid != null) {
@@ -109,27 +112,27 @@ export class DataStore {
       }
     }
     for (const p of this.projects) {
-      this.projectByDreId.set(p.dre_id.toLowerCase(), p);
+      this.projectByDreId.set(fold(p.dre_id), p);
       this.projectByOId.set(p.o_id, p);
     }
     for (const p of this.persons) {
-      this.personByName.set(p.name.toLowerCase(), p);
+      this.personByName.set(fold(p.name), p);
       this.personByOId.set(p.o_id, p);
     }
     for (const o of this.organisations) {
-      this.orgByName.set(o.name.toLowerCase(), o);
+      this.orgByName.set(fold(o.name), o);
       this.orgByOId.set(o.o_id, o);
     }
     for (const l of this.locations) {
       this.locationByOId.set(l.o_id, l);
-      this.locationByName.set(l.name.toLowerCase(), l);
+      this.locationByName.set(fold(l.name), l);
     }
     for (const s of this.sections) {
-      this.sectionByName.set(s.name.toLowerCase(), s);
+      this.sectionByName.set(fold(s.name), s);
       this.sectionByOId.set(s.o_id, s);
     }
     for (const p of this.publications) {
-      this.publicationByPubId.set(p.pub_id.toLowerCase(), p);
+      this.publicationByPubId.set(fold(p.pub_id), p);
       this.publicationByOId.set(p.o_id, p);
     }
     for (const j of this.journals) this.journalByOId.set(j.o_id, j);
@@ -140,36 +143,36 @@ export class DataStore {
   }
 
   getItem(key: string): ResearchItemRec | undefined {
-    const k = key.trim().toLowerCase();
+    const k = fold(key.trim());
     const byDre = this.itemByDreId.get(k);
     if (byDre) return byDre;
     const asOId = Number(k);
     return Number.isInteger(asOId) ? this.itemByOId.get(asOId) : undefined;
   }
   getProject(dreIdOrOId: string): ProjectRec | undefined {
-    const k = dreIdOrOId.trim().toLowerCase();
+    const k = fold(dreIdOrOId.trim());
     return this.projectByDreId.get(k) ?? (Number.isInteger(Number(k)) ? this.projectByOId.get(Number(k)) : undefined);
   }
   projectOf(item: ResearchItemRec): ProjectRec | undefined {
     return item.project?.o_id != null ? this.projectByOId.get(item.project.o_id) : undefined;
   }
   getPersonByName(name: string): PersonRec | undefined {
-    return this.personByName.get(name.trim().toLowerCase());
+    return this.personByName.get(fold(name.trim()));
   }
   getPersonByOId(oId: number): PersonRec | undefined {
     return this.personByOId.get(oId);
   }
   getOrganisation(name: string): OrganisationRec | undefined {
-    return this.orgByName.get(name.trim().toLowerCase());
+    return this.orgByName.get(fold(name.trim()));
   }
   getSection(name: string): SectionRec | undefined {
-    return this.sectionByName.get(name.trim().toLowerCase());
+    return this.sectionByName.get(fold(name.trim()));
   }
   getSectionByOId(oId: number): SectionRec | undefined {
     return this.sectionByOId.get(oId);
   }
   getPublication(pubIdOrOId: string): PublicationRec | undefined {
-    const k = pubIdOrOId.trim().toLowerCase();
+    const k = fold(pubIdOrOId.trim());
     const byPubId = this.publicationByPubId.get(k);
     if (byPubId) return byPubId;
     const asOId = Number(k);
@@ -222,7 +225,7 @@ export class DataStore {
     return this.locationByOId.get(oId);
   }
   getLocationByName(name: string): LocationRec | undefined {
-    return this.locationByName.get(name.trim().toLowerCase());
+    return this.locationByName.get(fold(name.trim()));
   }
   getItemSet(oId: number): ItemSetRec | undefined {
     return this.itemSetByOId.get(oId);
@@ -269,13 +272,28 @@ async function loadInitial(): Promise<DataStore> {
 export async function ensureStore(): Promise<DataStore> {
   if (current) return current;
   if (!loading) {
-    loading = loadInitial().then((store) => {
-      current = store;
-      if (config.liveRefresh) startBackgroundRefresh();
-      return store;
-    });
+    loading = loadInitial()
+      .then((store) => {
+        current = store;
+        if (config.liveRefresh) startBackgroundRefresh();
+        return store;
+      })
+      // Do NOT cache the rejection: a transient failure (a half-written cache
+      // dir, a momentary EBUSY) used to be latched forever, because every later
+      // caller awaited the same rejected promise and the HTTP surface pinned
+      // /healthz at 503 with no path back. Clear it so the next call retries.
+      .catch((err) => {
+        loading = null;
+        throw err;
+      });
   }
   return loading;
+}
+
+/** The store currently being served, or null before the first load resolves.
+ * Read this (not a captured reference) so callers see post-refresh swaps. */
+export function currentStore(): DataStore | null {
+  return current;
 }
 
 function startBackgroundRefresh(): void {
@@ -310,6 +328,7 @@ async function backgroundRefresh(): Promise<void> {
     const out: CrawlOutput = await crawlSnapshot(config.apiBase, (m) => console.error(`[amira] refresh: ${m}`));
     await writeSnapshotAtomic(cacheSnapshotDir(), out);
     current = new DataStore("cache", out.data, out.manifest);
+    clearFoldCache(); // the folded copies belong to the snapshot just replaced
     console.error(`[amira] refreshed snapshot (fetchedAt=${out.manifest.fetchedAt}, ${out.data.research_items.length} research items)`);
   } catch (err) {
     console.error(`[amira] live refresh skipped: ${(err as Error).message}`);

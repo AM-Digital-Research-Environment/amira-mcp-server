@@ -253,3 +253,130 @@ test("exposure structured: transcripts/fulltext unreachable and refused on opt-i
   const subjects = await call("list_subjects", {});
   assert.ok(subjects.total_matches >= 2);
 });
+
+// --- v1.7.0 regressions -------------------------------------------------------
+
+test("accent folding: the same concept matches whichever spelling is asked", async () => {
+  // Item 503 has an UNACCENTED title, an ACCENTED subject/place and an
+  // ACCENTED description — before folding, the right spelling depended on
+  // which tool you asked, and the model had no way to know which.
+  for (const spelling of ["Côte d'Ivoire", "Cote d'Ivoire", "COTE D'IVOIRE"]) {
+    assert.equal((await call("search_research_items", { keyword: spelling })).total_matches, 1, `keyword ${spelling}`);
+    assert.equal((await call("search_research_items", { subject: spelling })).total_matches, 1, `subject ${spelling}`);
+    assert.equal((await call("search_research_items", { location: spelling })).total_matches, 1, `location ${spelling}`);
+    assert.equal((await call("search_research_items", { country: spelling })).total_matches, 1, `country ${spelling}`);
+    assert.equal((await call("list_subjects", { keyword: spelling })).total_matches, 1, `list_subjects ${spelling}`);
+    assert.equal((await call("list_locations", { keyword: spelling })).total_matches, 1, `list_locations ${spelling}`);
+    assert.equal((await call("find_related", { entity_type: "subject", value: spelling })).matched_items, 1, `find_related ${spelling}`);
+  }
+  // Accented body text is reachable from an unaccented query and vice versa.
+  assert.equal((await call("search_research_items", { keyword: "developpement" })).total_matches, 1);
+  assert.equal((await call("search_research_items", { keyword: "développement" })).total_matches, 1);
+  // The openai search surface folds too, and its snippet offsets stay valid.
+  const s = await call("search", { query: "cote d'ivoire" });
+  assert.ok(s.results.some((r) => r.id === "item:503"), JSON.stringify(s.results));
+});
+
+test("fetch: the appended window is sized to what max_chars leaves, so paging has no gap", async () => {
+  const full = await call("get_publication", { id: 510, include_fulltext: true });
+  const total = full.fulltext_length;
+
+  // A max_chars the header does not fill on its own: the window shrinks to fit
+  // and *_returned_chars must describe exactly what landed in `text`.
+  const MAX = 900;
+  const marker = "Full text:\n";
+  const capped = await call("fetch", { id: "pub:510", include_fulltext: true, max_chars: MAX });
+  assert.ok(capped.text.includes(marker), "the full text was appended");
+  const appended = capped.text.slice(capped.text.indexOf(marker) + marker.length);
+  assert.equal(capped.metadata.fulltext_returned_chars, appended.length, "returned_chars describes the body");
+  assert.ok(capped.text.length <= MAX, "body still honours max_chars");
+  assert.ok(appended.length < total, "the full text was windowed, not whole");
+  assert.ok(full.fulltext.startsWith(appended), "page 1 is a true prefix of the full text");
+
+  // Paging on offset + returned_chars must continue exactly where page 1 ended.
+  // This is the regression: the window used to take its full quota, capText
+  // then trimmed the tail, and page 2 skipped the header's worth of characters.
+  const page2 = await call("fetch", {
+    id: "pub:510",
+    include_fulltext: true,
+    max_chars: MAX,
+    fulltext_offset: capped.metadata.fulltext_returned_chars,
+  });
+  const appended2 = page2.text.slice(page2.text.indexOf(marker) + marker.length);
+  assert.equal(
+    appended + appended2,
+    full.fulltext.slice(0, appended.length + appended2.length),
+    "page 1 + page 2 reconstruct the text with no dropped characters",
+  );
+
+  // A max_chars the metadata header alone fills: report that, rather than
+  // appending a slice capText would then trim into a lie.
+  const tiny = await call("fetch", { id: "pub:510", include_fulltext: true, max_chars: 200 });
+  assert.equal(tiny.metadata.fulltext_included, false);
+  assert.equal(tiny.metadata.has_fulltext, true);
+  assert.equal(tiny.metadata.fulltext_length, total);
+  assert.ok(tiny.metadata.fulltext_hint.includes("max_chars"));
+  assert.ok(!tiny.text.includes(marker), "no partial full text smuggled into the body");
+  assert.ok(!("fulltext_returned_chars" in tiny.metadata), "nothing to report as returned");
+
+  // Transcripts take the identical path (one helper, both fields).
+  const tMarker = "Transcript:\n";
+  const vid = await call("fetch", { id: "video:540", include_transcript: true, max_chars: 700 });
+  assert.ok(vid.text.includes(tMarker), "the transcript was appended");
+  const tAppended = vid.text.slice(vid.text.indexOf(tMarker) + tMarker.length);
+  assert.equal(vid.metadata.transcript_returned_chars, tAppended.length);
+  assert.ok(vid.text.length <= 700);
+  const wholeTranscript = await call("get_video", { id: 540, include_transcript: true });
+  assert.ok(wholeTranscript.transcript.startsWith(tAppended), "the window is a true prefix");
+});
+
+test("search ranking: a title hit outranks a long full-text hit", async () => {
+  // Publication 510's full text repeats its tokens ~30x; item 500 has the term
+  // in its title once. Length must not beat relevance.
+  const ranked = await call("search", { query: "architecture" });
+  const titleHit = ranked.results.findIndex((r) => r.id === "item:500");
+  const bodyHit = ranked.results.findIndex((r) => r.id === "pub:510");
+  assert.ok(titleHit >= 0, "the title match is returned");
+  assert.ok(bodyHit === -1 || titleHit < bodyHit, `title ${titleHit} should precede fulltext ${bodyHit}`);
+});
+
+test("search types filter restricts the result set to the named kinds", async () => {
+  const projects = await call("search", { query: "fixture", types: ["project"] });
+  assert.ok(projects.results.length > 0);
+  assert.ok(projects.results.every((r) => r.id.startsWith("project:")), JSON.stringify(projects.results));
+
+  const two = await call("search", { query: "fixture", types: ["project", "video"] });
+  assert.ok(two.results.every((r) => r.id.startsWith("project:") || r.id.startsWith("video:")));
+
+  // No types = every corpus, as before.
+  const all = await call("search", { query: "fixture" });
+  assert.ok(all.results.length >= two.results.length);
+});
+
+test("MCP Apps: list_years links to a self-contained ui:// timeline resource", async () => {
+  const { tools } = await client.listTools();
+  const years = tools.find((t) => t.name === "list_years");
+  // The extension contract: the tool points at a ui:// resource via _meta.ui.
+  assert.equal(years._meta?.ui?.resourceUri, "ui://amira/timeline");
+
+  const { resources } = await client.listResources();
+  const tpl = resources.find((r) => r.uri === "ui://amira/timeline");
+  assert.ok(tpl, "the referenced resource is actually served");
+  assert.equal(tpl.mimeType, "text/html;profile=mcp-app");
+
+  const read = await client.readResource({ uri: "ui://amira/timeline" });
+  const html = read.contents[0].text;
+  assert.equal(read.contents[0].mimeType, "text/html;profile=mcp-app");
+  assert.ok(html.startsWith("<!doctype html>"));
+  // It must speak the MCP Apps dialect...
+  assert.ok(html.includes("ui/initialize"));
+  assert.ok(html.includes("ui/notifications/tool-result"));
+  // ...and be self-contained, so no csp domains are needed to render it.
+  assert.ok(!/<script[^>]+src=/i.test(html), "no external scripts");
+  assert.ok(!/<link[^>]+href=/i.test(html), "no external stylesheets");
+  assert.ok(!/https?:\/\//.test(html.replace(/xmlns="[^"]*"/g, "")), "no remote origins");
+
+  // Hosts without the extension must still get the plain result.
+  const plain = await call("list_years", { bucket: "decade" });
+  assert.ok(Array.isArray(plain.results) && plain.results.length > 0);
+});

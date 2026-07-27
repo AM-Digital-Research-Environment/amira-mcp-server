@@ -85,6 +85,13 @@ export const config = {
    * entry point. PORT/HOST are the conventional names; AMIRA_HTTP_* also work. */
   httpPort: Number(process.env.PORT ?? process.env.AMIRA_HTTP_PORT ?? "8787"),
   httpHost: (process.env.HOST ?? process.env.AMIRA_HTTP_HOST ?? "0.0.0.0").trim(),
+  /** Per-client requests/minute allowed on /mcp; 0 disables the limiter. A
+   * courtesy cap against runaway clients — every query scans the whole
+   * in-memory snapshot — not a security control. Put a real one in the proxy. */
+  rateLimitPerMinute: parseNonNegativeNumber(process.env.AMIRA_RATE_LIMIT, 120),
+  /** Read the client IP from X-Forwarded-For. Only enable behind a proxy that
+   * sets it: a direct client can forge the header and dodge the rate limit. */
+  trustProxy: parseBool(process.env.AMIRA_TRUST_PROXY, false),
 };
 
 export type Config = typeof config;

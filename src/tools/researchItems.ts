@@ -64,52 +64,42 @@ export function registerResearchItemTools(server: Server): void {
     {
       title: "Search research items",
       description:
-        "Search the ~4,000 research items (digitised artefacts: images, texts, audio, video, etc.) across " +
-        "all Africa Multiple project collections. Every filter is optional and AND-combined; omit all to " +
-        "browse. This is the main discovery tool, including for 'items about subject X' or 'items from " +
-        "location Y'.\n\n" +
-        "Filters:\n" +
-        "  - keyword: case-insensitive match across titles, description, abstract, table of contents and " +
-        "identifiers\n" +
-        "  - subject: subject heading, partial match (e.g. 'Architecture', 'Islam'). Subjects include the " +
-        "former free-form tags — there is no separate tag filter\n" +
-        "  - location: a place at ANY level — country or city. Matched through the place hierarchy, so " +
-        "'Nigeria' finds Lagos items and 'Lagos' finds just Lagos\n" +
-        "  - country: restrict to one country specifically (matches the country level of the place " +
-        "hierarchy). Use `location` instead to match a city or any level\n" +
-        "  - contributor: a person/organisation name in the credits (either name order works)\n" +
-        "  - project_id: Omeka o:id preferred; legacy project-key values also work\n" +
-        "  - research_section: e.g. 'Arts & Aesthetics', 'Mobilities'\n" +
-        "  - university: ubt | unilag | ujkz | ufba | external (code or name)\n" +
-        "  - resource_type: e.g. 'Image', 'Text', 'Audio', 'Moving image'\n" +
-        "  - genre: format/genre descriptor, partial (e.g. 'interview', 'letter', 'photograph')\n" +
-        "  - collection: an item-set title (partial) or id from list_collections\n" +
-        "  - language: name or ISO code — 'French', 'fr', 'fra' and the legacy 'fre' all match\n" +
-        "  - year_from / year_to: keep items whose content dates overlap the range\n" +
-        "  - limit (default 20, max 100), offset (pagination)\n\n" +
-        "Returns a paginated envelope { count, total_matches, offset, has_more, next_offset?, results[] }; " +
-        "each result carries `id` / `omeka_id` plus a citable `amira_url`. Use get_research_item with the " +
-        "Omeka id for full detail. " +
-        "When a combined filter set matches nothing, the envelope adds `suggestions` naming which single " +
-        "filter to drop (and how many items that would surface).",
+        "The main discovery tool: search the ~4,000 research items (digitised artefacts — images, texts, " +
+        "audio, video) across all Africa Multiple project collections, including for 'items about subject " +
+        "X' and 'items from location Y'. Filters are optional and AND-combined; omit all to browse. Use " +
+        "get_research_item for one item's full detail. When a filter combination matches nothing, the " +
+        "response adds `suggestions` naming which single filter to drop and how many items that would " +
+        "surface.",
       annotations: annotate("Search research items"),
       inputSchema: {
-        keyword: z.string().optional(),
-        subject: z.string().optional(),
-        location: z.string().optional().describe("A place at any level — country or city (hierarchy-aware)"),
-        country: z.string().optional().describe("Restrict to a country specifically (the country level of the hierarchy)"),
-        contributor: z.string().optional(),
-        project_id: z.union([z.string(), z.number()]).optional(),
-        research_section: z.string().optional(),
-        university: z.string().optional(),
-        resource_type: z.string().optional(),
-        genre: z.string().optional(),
-        collection: z.string().optional(),
-        language: z.string().optional(),
-        year_from: z.number().int().optional(),
-        year_to: z.number().int().optional(),
-        limit: z.number().int().optional().describe("Default 20, max 100"),
-        offset: z.number().int().optional(),
+        keyword: z
+          .string()
+          .optional()
+          .describe("Matches titles, description, abstract, table of contents and identifiers. Accent- and case-insensitive"),
+        subject: z
+          .string()
+          .optional()
+          .describe("Subject heading, partial (e.g. 'Architecture'). Subjects absorb the former free-form tags — there is no tag filter"),
+        location: z
+          .string()
+          .optional()
+          .describe("A place at ANY level of the city→country hierarchy: 'Nigeria' finds Lagos items, 'Lagos' finds only Lagos"),
+        country: z
+          .string()
+          .optional()
+          .describe("Only the country level of the hierarchy. Use `location` to match a city or any level"),
+        contributor: z.string().optional().describe("A person/organisation credited on the item; either name order works"),
+        project_id: z.union([z.string(), z.number()]).optional().describe("Project Omeka o:id (legacy project keys also work)"),
+        research_section: z.string().optional().describe("e.g. 'Arts & Aesthetics', 'Mobilities'"),
+        university: z.string().optional().describe("ubt | unilag | ujkz | ufba | external — code or full name"),
+        resource_type: z.string().optional().describe("e.g. 'Image', 'Text', 'Audio', 'Moving image'"),
+        genre: z.string().optional().describe("Format/genre descriptor, partial (e.g. 'interview', 'letter', 'photograph')"),
+        collection: z.string().optional().describe("Item-set title (partial) or id from list_collections"),
+        language: z.string().optional().describe("Name or ISO code — 'French', 'fr', 'fra' and legacy 'fre' all match"),
+        year_from: z.number().int().min(0).max(2200).optional().describe("Keep items whose content dates overlap from this year"),
+        year_to: z.number().int().min(0).max(2200).optional().describe("Keep items whose content dates overlap up to this year"),
+        limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {
@@ -203,18 +193,16 @@ export function registerResearchItemTools(server: Server): void {
     {
       title: "Get research item detail",
       description:
-        "Full metadata for one research item by Omeka `id` / `omeka_id` (the numeric o:id in its " +
-        "`amira_url`; legacy DRE-key values also work when passed as `id`). Returns titles, typed content dates " +
-        "(created/collected/issued/…), contributors with " +
-        "roles, subjects, places (with their region/country chain), project + research sections + " +
-        "university, collections it belongs to, description, abstract, table of contents, formats and " +
-        "physical notes, sponsors, provenance (holding source), access rights, license, identifiers, DOI, " +
-        "external URLs, related items (with their own amira_url), languages, audiences, a media thumbnail " +
-        "when digitised media is attached, and the citable `amira_url`. Long text fields are truncated at " +
+        "Full metadata for one research item: typed content dates, contributors with roles, subjects, " +
+        "places with their region/country chain, project/section/university, collections, descriptive " +
+        "text, formats and physical notes, sponsors, provenance, rights, identifiers, related items, " +
+        "languages, a media thumbnail, and the citable `amira_url`. Long text fields are truncated at " +
         "25,000 characters. Returns { error } if the id is unknown.",
       annotations: annotate("Get research item detail"),
       inputSchema: {
-        id: z.union([z.string(), z.number()]).describe("The item's Omeka o:id, e.g. 7392"),
+        id: z
+          .union([z.string(), z.number()])
+          .describe("The item's Omeka o:id — the number ending its amira_url, e.g. 7392. Legacy DRE keys also work"),
       },
     },
     async ({ id }) => {

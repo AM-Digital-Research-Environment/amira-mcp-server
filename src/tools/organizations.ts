@@ -152,8 +152,8 @@ export function registerOrganizationTools(server: Server): void {
       annotations: annotate("List institutions"),
       inputSchema: {
         keyword: z.string().optional(),
-        limit: z.number().int().optional().describe("Default 50, max 200"),
-        offset: z.number().int().optional(),
+        limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {
@@ -315,8 +315,8 @@ export function registerOrganizationTools(server: Server): void {
       annotations: annotate("List groups"),
       inputSchema: {
         keyword: z.string().optional(),
-        limit: z.number().int().optional().describe("Default 50, max 200"),
-        offset: z.number().int().optional(),
+        limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {

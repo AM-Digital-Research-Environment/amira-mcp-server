@@ -140,8 +140,10 @@ place hierarchy. `get_project`, `get_research_section`, `get_person`, `get_insti
 by default (you still see `has_transcript` + `transcript_length`); pass `include_transcript=true` for
 the text, and `transcript_offset` / `transcript_max_chars` to page a long one. `get_publication`
 works identically with `include_fulltext=true` + `fulltext_offset` / `fulltext_max_chars` (full texts
-run to ~100k characters — always page). Profile views return slim item refs —
-follow up with `get_research_item`.
+run to ~100k characters — always page). When paging, take the next offset from the reported
+`*_returned_chars`, not from the size you asked for: on the `fetch` tool the window is sized to what
+`max_chars` leaves after the record's metadata header, so the two differ. Profile views return slim
+item refs — follow up with `get_research_item`.
 
 ### 4 — Connect
 `find_related` pivots from a subject / location / person / project to the entities that co-occur with
@@ -182,6 +184,11 @@ link.
    `item_count` to tell them apart.
 5. **Name format.** People are stored `Surname, Forename` — always display and cite that form. Every
    person filter accepts either order (and ignores accents); `get_person` echoes the canonical name.
+5b. **Accents never change the answer.** Every keyword, subject, place, venue and title comparison is
+   accent-insensitive, so `Côte d'Ivoire` and `Cote d'Ivoire` return the same results in every tool.
+   This matters because the data itself is inconsistent — the subject authority is accented while many
+   item titles are not — so before v1.7.0 the right spelling depended on which tool you asked. Do not
+   re-query a term in a second spelling to "check"; it is the same query.
 6. **Subjects absorb tags.** The former dashboard distinguished subjects from free-form tags; the
    collection now stores both as subjects. There is no tag filter — use `subject`.
 7. **Languages are canonical records.** One record per language ("French", code `fra`); the server

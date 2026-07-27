@@ -18,6 +18,7 @@ import {
   type Server,
 } from "./_shared.js";
 import { itemSetUrl, itemUrlOrNull } from "../urls.js";
+import { TIMELINE_UI_META } from "./apps.js";
 
 interface RefCount {
   label: string;
@@ -50,16 +51,15 @@ export function registerFacetTools(server: Server): void {
     {
       title: "List subjects",
       description:
-        "List the subject headings used across research items, ranked by how many items carry each. " +
-        "Subjects include the former free-form tags (merged — there is no separate tag facet). Optional " +
-        "`keyword` filters subjects by substring; `limit` (default 50, max 300) and `offset` paginate. " +
-        "Each result: subject, item_count, `amira_url` (the subject's own authority page). Feed the value " +
-        "into the `subject` filter of search_research_items to retrieve the items.",
+        "List the subject headings used across research items, ranked by how many items carry each, with " +
+        "each subject's own authority page. Subjects absorb the former free-form tags — there is no " +
+        "separate tag facet. Feed a value into the `subject` filter of search_research_items to retrieve " +
+        "the items.",
       annotations: annotate("List subjects"),
       inputSchema: {
-        keyword: z.string().optional(),
-        limit: z.number().int().optional().describe("Default 50, max 300"),
-        offset: z.number().int().optional(),
+        keyword: z.string().optional().describe("Substring filter on the subject heading"),
+        limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {
@@ -85,22 +85,16 @@ export function registerFacetTools(server: Server): void {
     {
       title: "List locations",
       description:
-        "List every place the research items come from, ranked by item count — countries and cities in " +
-        "one flat list (there is no city/region/country level to choose). The place hierarchy is rolled " +
-        "up, so an item from Lagos counts toward both Lagos and Nigeria, and both appear.\n" +
-        "Parameters:\n" +
-        "  - country: narrow to places within one country (the country itself plus its cities/regions)\n" +
-        "  - keyword: substring filter on the place name\n" +
-        "  - limit (default 50, max 300), offset\n\n" +
-        "Each result: name, country (the parent country, omitted when the place is itself a country), " +
-        "item_count, latitude/longitude when known, and the place's `amira_url`. Feed the name straight " +
-        "into the `location` filter of search_research_items.",
+        "List every place the research items come from, ranked by item count, with coordinates where " +
+        "known. Countries and cities sit in ONE flat list (there is no level to choose) and the hierarchy " +
+        "is rolled up, so an item from Lagos counts toward both Lagos and Nigeria and both appear. Feed a " +
+        "name straight into the `location` filter of search_research_items.",
       annotations: annotate("List locations"),
       inputSchema: {
-        country: z.string().optional(),
-        keyword: z.string().optional(),
-        limit: z.number().int().optional().describe("Default 50, max 300"),
-        offset: z.number().int().optional(),
+        country: z.string().optional().describe("Narrow to one country: the country itself plus its cities/regions"),
+        keyword: z.string().optional().describe("Substring filter on the place name"),
+        limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {
@@ -171,16 +165,14 @@ export function registerFacetTools(server: Server): void {
     {
       title: "List collections",
       description:
-        "List the collections (Omeka item sets) that research items belong to — per-project collections, " +
-        "external archives (e.g. the ILAM collection), and curated sets — ranked by how many research " +
-        "items each contains. Optional `keyword` filters by title; `limit` (default 50, max 200) and " +
-        "`offset` paginate. Each result: collection, item_count, `amira_url` (the browsable collection " +
-        "page). Feed the title or id into the `collection` filter of search_research_items.",
+        "List the collections (Omeka item sets) research items belong to — per-project collections, " +
+        "external archives (e.g. ILAM) and curated sets — ranked by item count, each with its browsable " +
+        "page. Feed a title or id into the `collection` filter of search_research_items.",
       annotations: annotate("List collections"),
       inputSchema: {
-        keyword: z.string().optional(),
-        limit: z.number().int().optional().describe("Default 50, max 200"),
-        offset: z.number().int().optional(),
+        keyword: z.string().optional().describe("Substring filter on the collection title"),
+        limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {
@@ -215,22 +207,17 @@ export function registerFacetTools(server: Server): void {
     {
       title: "List a category facet",
       description:
-        "List the distinct values of one categorical facet across research items, ranked by item count. " +
-        "Parameters:\n" +
-        "  - category (required): 'formats' (genre/format descriptors; 'genres' is accepted as an alias) " +
-        "| 'languages' | 'resource_types'. The former 'tags' facet is merged into subjects — use " +
-        "list_subjects.\n" +
-        "  - keyword: substring filter on the value\n" +
-        "  - limit (default 100, max 500), offset\n\n" +
-        "Each result: value, item_count, `amira_url` of the authority record when linked. Languages also " +
-        "include the ISO `code`. Feed values back into the matching search_research_items filter " +
-        "(`genre` for formats, `language`, `resource_type`).",
+        "List the distinct values of one categorical facet across research items, ranked by item count " +
+        "(languages also carry their ISO `code`). Feed values back into the matching " +
+        "search_research_items filter: `genre` for formats, `language`, `resource_type`.",
       annotations: annotate("List category facet"),
       inputSchema: {
-        category: z.enum(["formats", "genres", "languages", "resource_types"]),
-        keyword: z.string().optional(),
-        limit: z.number().int().optional().describe("Default 100, max 500"),
-        offset: z.number().int().optional(),
+        category: z
+          .enum(["formats", "genres", "languages", "resource_types"])
+          .describe("'genres' is an alias of 'formats'. The former 'tags' facet is merged into subjects — use list_subjects"),
+        keyword: z.string().optional().describe("Substring filter on the value"),
+        limit: z.number().int().min(1).optional().describe("Default 100, max 500"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {
@@ -286,27 +273,24 @@ export function registerFacetTools(server: Server): void {
     "list_years",
     {
       title: "List years",
+      // Renders through the MCP Apps timeline when the host supports the
+      // extension; ignored (plain JSON) everywhere else.
+      _meta: TIMELINE_UI_META,
       description:
-        "Date histogram of the research items: how many items fall in each year (or decade) of their " +
-        "content dates — for coverage-over-time and most-covered-year/decade questions.\n" +
-        "Parameters:\n" +
-        "  - bucket: 'year' (default) or 'decade'\n" +
-        "  - from / to: restrict to a year range (inclusive)\n" +
-        "  - sort: 'chronological' (default, oldest first) or 'count' (most items first)\n" +
-        "  - limit (default 200, max 500), offset\n\n" +
-        "Each result: year (or decade label + from/to span) and item_count. The envelope adds " +
-        "dated_items, undated_items, distinct_buckets and the observed year_range. An item whose content " +
-        "date is a RANGE counts toward every year it spans, so bucket counts can sum to more than " +
-        "dated_items — this mirrors the year_from/year_to filter of search_research_items, into which you " +
-        "can feed a year back. Years have no authority page, so results carry no amira_url.",
+        "Date histogram of the research items: how many fall in each year (or decade) of their content " +
+        "dates — for coverage-over-time and most-covered-year questions. The response also reports " +
+        "dated_items, undated_items and the observed year_range. An item whose content date is a RANGE " +
+        "counts toward every year it spans, so bucket counts can sum to more than dated_items — the same " +
+        "semantics as the year_from/year_to filter of search_research_items, into which a year can be fed " +
+        "back. Years have no authority page, so results carry no amira_url.",
       annotations: annotate("List years"),
       inputSchema: {
         bucket: z.enum(["year", "decade"]).optional().describe("Default 'year'"),
-        from: z.number().int().optional(),
-        to: z.number().int().optional(),
-        sort: z.enum(["chronological", "count"]).optional().describe("Default 'chronological'"),
-        limit: z.number().int().optional().describe("Default 200, max 500"),
-        offset: z.number().int().optional(),
+        from: z.number().int().min(0).max(2200).optional().describe("Earliest year to report (inclusive)"),
+        to: z.number().int().min(0).max(2200).optional().describe("Latest year to report (inclusive)"),
+        sort: z.enum(["chronological", "count"]).optional().describe("Default 'chronological' (oldest first); 'count' ranks by item count"),
+        limit: z.number().int().min(1).optional().describe("Default 200, max 500"),
+        offset: z.number().int().min(0).max(100_000).optional(),
       },
     },
     async (args) => {

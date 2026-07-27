@@ -5,12 +5,11 @@
 // helpers let a query in either order — and with or without accents/hyphens —
 // match the stored form, so person search/lookup/filtering "just works".
 
+import { fold } from "./text.js";
+
 /** Lowercase, accent-stripped, comma/dot/hyphen-split tokens of a name. */
 export function nameTokens(name: string): string[] {
-  return name
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "") // strip combining diacritics
-    .toLowerCase()
+  return fold(name) // shared with every other keyword comparison (src/text.ts)
     .replace(/[.,;'\-]/g, " ") // commas, dots, hyphens, apostrophes -> space
     .split(/\s+/)
     .map((t) => t.trim())
