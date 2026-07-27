@@ -12,4 +12,4 @@ export { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshot, write
 export { itemUrl, itemUrlOrNull } from "./urls.js";
 export { createAmiraServer } from "./mcpServer.js";
 export { exposureLevel } from "./exposure.js";
-export { isTemplatePlaceholder } from "./config.js";
+export { isTemplatePlaceholder, config } from "./config.js";

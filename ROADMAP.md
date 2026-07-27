@@ -129,6 +129,34 @@
   (with the MongoDB2OmekaS CLUSTER_PARTNER_GROUPS offline fallback); `codex/periodic-refresh` added the
   `AMIRA_REFRESH_INTERVAL_HOURS` periodic freshness probe. v1.5.0 was version-bumped but never tagged —
   superseded by v1.6.0 below.
+- **2026-07-27 — v1.8.0: the collection-overview dashboard + a shared app chassis.**
+  Second MCP App: `get_collection_overview` carries `_meta.ui.resourceUri` → `ui://amira/overview`,
+  rendering stat tiles plus four ranked breakdowns (university, research section, resource type,
+  language). Form follows the data's job — the headline counts are single values, so they are TILES,
+  not a chart; the breakdowns are magnitude-by-category, so they are ranked horizontal bars as small
+  multiples. Every chart is single-series with the category on the axis label, so one accent is
+  correct and no legend is needed; values are direct-labelled, which doubles as the text alternative.
+  - **`src/ui/shell.ts`** now holds the design tokens, the host bridge and the bar-chart primitive;
+    `timeline.ts` was refactored onto it. Two copies of a protocol handshake drift — the same
+    reasoning as `textWindowFields` in v1.6.0.
+  - **Colour is sourced, not invented.** The palette now comes from the DREVisualizations Omeka
+    module (`asset/css/dre-visualizations.css`, `dashboard-core.js`), so a chart in the chat and the
+    same chart on the AMIRA site read as one system — the v1.7.0 timeline used an invented terracotta
+    that matched nothing. Validated against the module's own surfaces rather than eyeballed: light
+    `#007a50` on `#fdfcfa` passes every check; the theme's dark `#3fb488` sits at L 0.693, just
+    outside the 0.48–0.67 dark band, so the app uses `#35a87d`, one step down, which passes.
+    (Noted in passing for the module itself: its categorical palette has `#00268a` outside the
+    lightness band and three hues under 3:1 contrast on the light surface.)
+  - **Rendered and inspected, not just typechecked**: both apps were run against the real snapshot in
+    a browser with a simulated host, and checked for label collisions, viewBox overflow, tooltip
+    coverage and the light/dark token flip. The overview draws 30 bars across 4 panels with zero
+    label overflow; the decade timeline draws 53 bars with zero x-label collisions.
+  - **Test isolation defect found and fixed** (pre-existing, not from this change): the fixture-based
+    unit tests only set `AMIRA_DATA_DIR`, but `loadInitial()` prefers whichever of {bundled, cache}
+    carries the newer manifest — so once `npm run test:live` had written a real snapshot to
+    `~/.amira-mcp/cache`, it outranked the fixture and 18 assertions silently ran against live data.
+    `tools.test.mjs` now isolates `AMIRA_CACHE_DIR` too, and `config.test.mjs` asserts on the resolved
+    config rather than on record counts. The suite is hermetic with a populated user cache present.
 - **2026-07-27 — v1.7.1 (hotfix): unsubstituted MCPB placeholders leaked into every citation.**
   Reported from a live v1.7.0 install: `get_collection_overview` returned
   `"site_url": "${user_config.site_base}"`. Reproduced, and worse than reported — **every

@@ -15,6 +15,11 @@ import { buildFixture } from "../fixtures/fixture-data.mjs";
 const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), "amira-fixture-"));
 process.env.AMIRA_DATA_DIR = fixtureDir;
 process.env.AMIRA_LIVE_REFRESH = "0";
+// The cache MUST be isolated too. loadInitial() prefers whichever of
+// {bundled, cache} carries the newer manifest, so a real snapshot left in
+// ~/.amira-mcp/cache by `npm run test:live` outranks the fixture and every
+// assertion here silently runs against live data instead.
+process.env.AMIRA_CACHE_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "amira-fixture-cache-"));
 delete process.env.AMIRA_EXPOSURE;
 
 const lib = await import("../../server/lib.js");
@@ -353,30 +358,44 @@ test("search types filter restricts the result set to the named kinds", async ()
   assert.ok(all.results.length >= two.results.length);
 });
 
-test("MCP Apps: list_years links to a self-contained ui:// timeline resource", async () => {
+const APPS = [
+  { tool: "list_years", uri: "ui://amira/timeline" },
+  { tool: "get_collection_overview", uri: "ui://amira/overview" },
+];
+
+test("MCP Apps: each opted-in tool links to a self-contained ui:// resource", async () => {
   const { tools } = await client.listTools();
-  const years = tools.find((t) => t.name === "list_years");
-  // The extension contract: the tool points at a ui:// resource via _meta.ui.
-  assert.equal(years._meta?.ui?.resourceUri, "ui://amira/timeline");
-
   const { resources } = await client.listResources();
-  const tpl = resources.find((r) => r.uri === "ui://amira/timeline");
-  assert.ok(tpl, "the referenced resource is actually served");
-  assert.equal(tpl.mimeType, "text/html;profile=mcp-app");
 
-  const read = await client.readResource({ uri: "ui://amira/timeline" });
-  const html = read.contents[0].text;
-  assert.equal(read.contents[0].mimeType, "text/html;profile=mcp-app");
-  assert.ok(html.startsWith("<!doctype html>"));
-  // It must speak the MCP Apps dialect...
-  assert.ok(html.includes("ui/initialize"));
-  assert.ok(html.includes("ui/notifications/tool-result"));
-  // ...and be self-contained, so no csp domains are needed to render it.
-  assert.ok(!/<script[^>]+src=/i.test(html), "no external scripts");
-  assert.ok(!/<link[^>]+href=/i.test(html), "no external stylesheets");
-  assert.ok(!/https?:\/\//.test(html.replace(/xmlns="[^"]*"/g, "")), "no remote origins");
+  for (const { tool, uri } of APPS) {
+    // The extension contract: the tool points at a ui:// resource via _meta.ui.
+    const t = tools.find((x) => x.name === tool);
+    assert.equal(t._meta?.ui?.resourceUri, uri, tool);
+    assert.deepEqual(t._meta.ui.visibility, ["model", "app"], tool);
 
-  // Hosts without the extension must still get the plain result.
-  const plain = await call("list_years", { bucket: "decade" });
-  assert.ok(Array.isArray(plain.results) && plain.results.length > 0);
+    const listed = resources.find((r) => r.uri === uri);
+    assert.ok(listed, `${uri} is actually served`);
+    assert.equal(listed.mimeType, "text/html;profile=mcp-app", uri);
+
+    const read = await client.readResource({ uri });
+    const html = read.contents[0].text;
+    assert.equal(read.contents[0].mimeType, "text/html;profile=mcp-app", uri);
+    assert.ok(html.startsWith("<!doctype html>"), uri);
+    // It must speak the MCP Apps dialect...
+    assert.ok(html.includes("ui/initialize"), uri);
+    assert.ok(html.includes("ui/notifications/tool-result"), uri);
+    assert.ok(html.includes("ui/notifications/initialized"), uri);
+    // ...and be self-contained, so no csp domains are needed to render it.
+    assert.ok(!/<script[^>]+src=/i.test(html), `${uri}: no external scripts`);
+    assert.ok(!/<link[^>]+href=/i.test(html), `${uri}: no external stylesheets`);
+    assert.ok(!/https?:\/\//.test(html.replace(/xmlns="[^"]*"/g, "")), `${uri}: no remote origins`);
+    // Colours come from the DRE theme and were validated against its surfaces.
+    assert.ok(html.includes("#007a50") && html.includes("#35a87d"), `${uri}: DRE accent in both modes`);
+  }
+
+  // Hosts without the extension must still get the plain result, unchanged.
+  const years = await call("list_years", { bucket: "decade" });
+  assert.ok(Array.isArray(years.results) && years.results.length > 0);
+  const overview = await call("get_collection_overview");
+  assert.equal(overview.counts.publications, 2);
 });

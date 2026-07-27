@@ -284,14 +284,32 @@ it cannot answer rather than hallucinating.
   (NFD, drop combining marks, lowercase), so the answer no longer depends on
   which spelling the caller guessed. Folds of large texts are memoised and
   dropped when a refresh replaces the snapshot.
-- **Interactive results (MCP Apps).** `list_years` carries
-  `_meta.ui.resourceUri` pointing at `ui://amira/timeline`, a self-contained
-  HTML histogram served as a `text/html;profile=mcp-app` resource
-  (`src/ui/timeline.ts`). Hosts that implement the
+- **Interactive results (MCP Apps).** Two tools carry `_meta.ui.resourceUri`
+  pointing at a `text/html;profile=mcp-app` resource, so hosts implementing the
   [`io.modelcontextprotocol/ui`](https://modelcontextprotocol.io/docs/extensions/apps)
-  extension (Claude, Claude Desktop) render the chart inline; every other client
-  ignores the `_meta` and gets the same JSON as before. The template loads
-  nothing from the network, so it needs no CSP grants.
+  extension (Claude, Claude Desktop) render the result inline. Every other
+  client ignores the `_meta` and gets exactly the same JSON.
+
+  | Tool | Resource | Renders |
+  | --- | --- | --- |
+  | `get_collection_overview` | `ui://amira/overview` | Stat tiles + ranked breakdowns by university, section, resource type and language |
+  | `list_years` | `ui://amira/timeline` | Histogram of items per year or decade |
+
+  All three modules live in `src/ui/`: `shell.ts` holds the design tokens, the
+  host bridge and the shared bar-chart primitive; each app supplies only its own
+  CSS and render function. The templates load **nothing** from the network — no
+  scripts, styles, fonts or tiles — so they need no `_meta.ui.csp` grants and
+  run in the strictest sandbox. They are also read-only: an app renders the tool
+  result it is handed and never calls back into the server.
+
+  Colours come from the [DREVisualizations](https://github.com/AM-Digital-Research-Environment)
+  Omeka module's theme (`--primary` / the Africa Multiple brand palette), so a
+  chart in the chat and the same chart on the AMIRA site read as one system, and
+  were validated against those surfaces rather than eyeballed — light `#007a50`
+  on `#fdfcfa`, dark `#35a87d` on `#1b211e` (the theme's own `#3fb488` sits just
+  outside the dark lightness band, so the app steps one down). Every chart is
+  single-series, with the category on the axis label, so one accent is correct
+  and no legend is needed.
 
 ### Protocol posture
 

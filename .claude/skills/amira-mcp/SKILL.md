@@ -101,7 +101,9 @@ See [references/data-model.md](references/data-model.md) for field-level detail,
 ### 1 — Scope
 Call `get_collection_overview` once. It returns counts (now incl. podcasts and videos), breakdowns,
 the content date range, and **snapshot freshness** (`data_snapshot`). Note the distinction it implies:
-many projects are registry entries; only a subset carry digitised items.
+many projects are registry entries; only a subset carry digitised items. In hosts that support MCP
+Apps it also renders as a dashboard — that is a display affordance only, so keep reading the numbers
+from the payload.
 
 ### 2 — Search
 Use the right entry point for the question:

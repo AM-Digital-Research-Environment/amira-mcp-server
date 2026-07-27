@@ -2,6 +2,7 @@ import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import { SITE_BASE } from "../config.js";
 import { allowStructured, exposureLevel } from "../exposure.js";
 import { annotate, textResult, type Server } from "./_shared.js";
+import { OVERVIEW_UI_META } from "./apps.js";
 import type { University } from "../types.js";
 
 function tally<T>(items: T[], key: (t: T) => string | string[] | null | undefined): Record<string, number> {
@@ -19,6 +20,9 @@ export function registerOverviewTools(server: Server): void {
     "get_collection_overview",
     {
       title: "Africa Multiple collection overview",
+      // Renders as stat tiles + ranked breakdowns in MCP Apps hosts; plain JSON
+      // everywhere else.
+      _meta: OVERVIEW_UI_META,
       description:
         "START HERE to scope the collection before drilling in with the search/list tools: counts across " +
         "every corpus (projects, research items, people, institutions, groups, publications, podcasts, " +

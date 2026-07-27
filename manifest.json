@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "amira-mcp-server",
   "display_name": "AMIRA — Africa Multiple Research Data",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "Read-only access to AMIRA, the Africa Multiple research-data platform on Omeka S.",
   "long_description": "The Africa Multiple Interactive Research Atlas (AMIRA) is the research-data platform of the Africa Multiple Cluster of Excellence at the University of Bayreuth. It is built and maintained by the Cluster's Digital Research Environment (DRE), its digital infrastructure unit, which connects researchers across the Africa Multiple Research Centres (AMRCs) and partner institutions worldwide.\n\nCuration and description are joint efforts with partners at the AMRCs in Université Joseph Ki-Zerbo, Rhodes University, the University of Lagos, and Moi University. Bayreuth hosts the coordinating DRE infrastructure and metadata layer. Federal University of Bahia is a privileged partner, not an AMRC. Storage stays distributed by default: research data remains in local repositories and becomes findable without being relocated.\n\nThis read-only MCP server exposes AMIRA's Omeka S metadata through well-described tools for research items, projects, research sections, people, institutions, groups, collections, publications (open-access ones with searchable extracted full text), journals, podcast episodes, YouTube videos and searchable transcripts, plus the places, languages and subjects that connect them. No API key, database, account or VPN is required. A complete data snapshot is bundled in the extension, so the server works fully offline; when enabled, it can refresh from the public Omeka S API.\n\nEvery record carries an `amira_url` — its public page on the Omeka S site — so results can be cited as links back to the source. AMIRA focuses on the Cluster's research data; for news, events and general information, visit https://www.africamultiple.uni-bayreuth.de/.",
   "author": {
@@ -43,7 +43,7 @@
     }
   },
   "tools": [
-    { "name": "get_collection_overview", "description": "Counts and breakdowns across the whole collection + snapshot freshness. Start here." },
+    { "name": "get_collection_overview", "description": "Counts and breakdowns across the whole collection + snapshot freshness. Start here. Renders as a dashboard in hosts that support MCP Apps." },
     { "name": "search_research_items", "description": "Search ~4,000 research items by keyword, subject, location, country, contributor, project, section, university, resource type, format/genre, language, and year." },
     { "name": "get_research_item", "description": "Full metadata for one research item by Omeka o:id: dates, contributors with roles, places with hierarchy, sponsors, formats, collections, related items, media thumbnail." },
     { "name": "search_projects", "description": "Search the cluster's research projects by keyword, university, section, PI, member, or funding institution." },

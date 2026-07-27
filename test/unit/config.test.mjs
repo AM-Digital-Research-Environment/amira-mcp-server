@@ -19,6 +19,10 @@ import { buildFixture } from "../fixtures/fixture-data.mjs";
 const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), "amira-config-"));
 
 // Exactly what an MCPB install with every optional setting left blank passes.
+// AMIRA_CACHE_DIR being a placeholder is part of the scenario AND does the
+// isolation job for free: it resolves to the default ~/.amira-mcp/cache, so the
+// counts assertion below points AMIRA_DATA_DIR at a fixture and asserts against
+// it only after checking that no newer real cache is in play.
 process.env.AMIRA_SITE_BASE = "${user_config.site_base}";
 process.env.AMIRA_CACHE_DIR = "${user_config.cache_dir}";
 process.env.AMIRA_LIVE_REFRESH = "${user_config.live_refresh}";
@@ -71,11 +75,18 @@ test("unsubstituted MCPB placeholders never leak into citations", async () => {
   }
 });
 
-test("a real value still overrides, and the placeholder guard is narrow", async () => {
-  // AMIRA_DATA_DIR was a genuine path and must have been honoured — the fixture
-  // has 4 items, the bundled snapshot has thousands.
-  const overview = await call("get_collection_overview");
-  assert.equal(overview.counts.research_items, 4);
+test("a real value still overrides, and the placeholder guard is narrow", () => {
+  // Assert on the RESOLVED config rather than on record counts: the counts would
+  // also depend on whether a real snapshot happens to sit in the default cache,
+  // which is not what this test is about.
+  assert.equal(lib.config.bundledDataDir, path.resolve(fixtureDir), "a genuine AMIRA_DATA_DIR wins");
+  assert.ok(
+    lib.config.cacheDir.includes(".amira-mcp"),
+    `a placeholder AMIRA_CACHE_DIR falls back to the default, got ${lib.config.cacheDir}`,
+  );
+  assert.ok(!lib.config.cacheDir.includes("${"), "no placeholder became a directory name");
+  assert.equal(lib.config.siteSlug, "amira", "a placeholder AMIRA_SITE_SLUG falls back");
+  assert.equal(lib.config.liveRefresh, true, "a placeholder AMIRA_LIVE_REFRESH falls back to the default");
 
   // Only a whole-string ${...} is ignored; a URL that merely contains braces is
   // still a real setting.

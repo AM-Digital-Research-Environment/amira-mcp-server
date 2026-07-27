@@ -64,6 +64,13 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Formats / languages / resource types | `list_categories` | `category` ∈ formats (alias: genres) / languages / resource_types |
 | Coverage over time (date histogram) | `list_years` | `bucket` = year/decade; `from`/`to` window; `sort` = chronological/count; ranged items count in every year they span; rights/admin dates are not used. Renders as an interactive chart in MCP Apps hosts (`ui://amira/timeline`); the JSON is identical everywhere else |
 
+**Charts (MCP Apps).** `get_collection_overview` (`ui://amira/overview` — stat tiles plus ranked
+breakdowns by university, section, resource type and language) and `list_years`
+(`ui://amira/timeline`) render inline in hosts that support the `io.modelcontextprotocol/ui`
+extension. This changes nothing about how you call them or what you read: the JSON payload is
+byte-identical, the rendering is a host-side affordance. Do not describe the chart in prose as if it
+were the answer — read the numbers from the payload and cite as usual.
+
 ## Bibliography & journals
 
 | Task | Tool | Key params |
