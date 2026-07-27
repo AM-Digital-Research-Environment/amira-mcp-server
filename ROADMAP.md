@@ -129,6 +129,20 @@
   (with the MongoDB2OmekaS CLUSTER_PARTNER_GROUPS offline fallback); `codex/periodic-refresh` added the
   `AMIRA_REFRESH_INTERVAL_HOURS` periodic freshness probe. v1.5.0 was version-bumped but never tagged —
   superseded by v1.6.0 below.
+- **2026-07-27 — v1.7.1 (hotfix): unsubstituted MCPB placeholders leaked into every citation.**
+  Reported from a live v1.7.0 install: `get_collection_overview` returned
+  `"site_url": "${user_config.site_base}"`. Reproduced, and worse than reported — **every
+  `amira_url` was broken** (`${user_config.site_base}/s/amira/item/7392`), i.e. the one thing the
+  server exists to produce. Cause: `manifest.json` wires optional settings through
+  `"AMIRA_SITE_BASE": "${user_config.site_base}"`, and when the setting has no value the MCPB runtime
+  passes the placeholder through **verbatim** rather than dropping the variable; `resolveSiteBase()`
+  accepted any non-empty string. Fix: a central `envValue()` in `config.ts` treats a whole-string
+  `${…}` as unset (a URL that merely contains braces is still honoured), applied to *every* env read —
+  `AMIRA_CACHE_DIR` had the same defect and would have created a literal `${user_config.cache_dir}`
+  directory. Belt-and-braces: `site_base` gains a `default` in the manifest so substitution has a real
+  value to insert. Regression test `test/unit/config.test.mjs` boots the server with the exact
+  placeholder environment an all-blank MCPB install produces and asserts no response anywhere contains
+  `${`. 47 unit tests.
 - **2026-07-27 — v1.7.0: accent folding, honest text paging, MCP 2026-07-28 posture, MCP Apps.**
   A review pass over the v1.6.0 refactor, each item grounded by a measurement against the bundled
   snapshot rather than by inspection.
