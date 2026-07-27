@@ -294,10 +294,12 @@ it cannot answer rather than hallucinating.
   | --- | --- | --- |
   | `get_collection_overview` | `ui://amira/overview` | Stat tiles + ranked breakdowns by university, section, resource type and language |
   | `list_years` | `ui://amira/timeline` | Histogram of items per year or decade |
+  | `list_research_sections` | `ui://amira/sections` | Gantt of the sections across the AM 1.0 / AM 2.0 funding phases, with a "now" marker |
+  | `find_related` | `ui://amira/related` | Radial co-occurrence hub: the seed at the centre, one labelled sector per relation type |
 
-  All three modules live in `src/ui/`: `shell.ts` holds the design tokens, the
-  host bridge and the shared bar-chart primitive; each app supplies only its own
-  CSS and render function. The templates load **nothing** from the network — no
+  The modules live in `src/ui/`: `shell.ts` holds the design tokens, the host
+  bridge and the shared bar-chart primitive; each app supplies only its own CSS
+  and render function. The templates load **nothing** from the network — no
   scripts, styles, fonts or tiles — so they need no `_meta.ui.csp` grants and
   run in the strictest sandbox. They are also read-only: an app renders the tool
   result it is handed and never calls back into the server.
@@ -309,7 +311,11 @@ it cannot answer rather than hallucinating.
   on `#fdfcfa`, dark `#35a87d` on `#1b211e` (the theme's own `#3fb488` sits just
   outside the dark lightness band, so the app steps one down). Every chart is
   single-series, with the category on the axis label, so one accent is correct
-  and no legend is needed.
+  and no legend is needed. The co-occurrence hub would nominally want six hues
+  for its six relation types, but no six-hue set from the brand palette survives
+  all-pairs CVD separation (the best candidates bottomed out at ΔE 2.4 under
+  deutan), so identity there is carried **spatially** — one labelled sector per
+  relation type — which also survives greyscale, print and forced-colors.
 
 ### Protocol posture
 

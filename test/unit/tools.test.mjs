@@ -361,6 +361,8 @@ test("search types filter restricts the result set to the named kinds", async ()
 const APPS = [
   { tool: "list_years", uri: "ui://amira/timeline" },
   { tool: "get_collection_overview", uri: "ui://amira/overview" },
+  { tool: "list_research_sections", uri: "ui://amira/sections" },
+  { tool: "find_related", uri: "ui://amira/related" },
 ];
 
 test("MCP Apps: each opted-in tool links to a self-contained ui:// resource", async () => {

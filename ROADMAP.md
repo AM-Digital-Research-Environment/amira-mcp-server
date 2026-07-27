@@ -129,6 +129,29 @@
   (with the MongoDB2OmekaS CLUSTER_PARTNER_GROUPS offline fallback); `codex/periodic-refresh` added the
   `AMIRA_REFRESH_INTERVAL_HOURS` periodic freshness probe. v1.5.0 was version-bumped but never tagged —
   superseded by v1.6.0 below.
+- **2026-07-27 — v1.9.0: funding-phase Gantt + the co-occurrence hub (4 MCP Apps total).**
+  - **`list_research_sections` → `ui://amira/sections`**, a Gantt grouped by funding phase with a
+    "now" marker. It exists to show one thing the JSON states but cannot show: the sections were
+    redefined between AM 1.0 (2019–2025) and AM 2.0 (2026–2032), so a reader who treats the list as
+    one flat set mis-reads it. Position on a shared time axis makes the two cohorts — and the fact
+    that the AM 2.0 sections are seeded with ~0 items — legible at a glance. Sections with no date
+    range (the synthetic "External" grouping) are listed in the caption rather than plotted.
+  - **`find_related` → `ui://amira/related`**, the radial co-occurrence hub: seed at the centre, one
+    labelled angular sector per relation type, spoke length = shared-item count. This is the chart
+    that shows the cluster's core analytic (relationality) instead of describing it.
+  - **Colour: the validator overruled the design.** Six relation types nominally want six hues, but
+    no six- (or even five-) hue set from the Africa Multiple brand palette survives all-pairs CVD
+    separation — the best candidates bottomed out at ΔE 2.4 (deutan) and failed the normal-vision
+    floor. Rather than invent hues, identity is carried **spatially**: one labelled sector each, one
+    validated accent throughout. The encoding survives greyscale, print and forced-colors, and needs
+    no legend.
+  - **The hub was rebuilt after looking at it.** First pass placed each label at its own spoke's end;
+    rendered against real data that produced 7 genuine label collisions and labels escaping the
+    viewBox (an SVG clips, so those were invisible, not merely untidy). Fixed by putting all labels
+    on a common ring with leader lines, capping spokes at 4 per sector, and sizing the canvas so
+    `W ≥ 2 × (R_LABEL + label width)`. Re-verified with a separating-axis test over the labels' true
+    rotated bounds — the naive axis-aligned check reports false positives for rotated text.
+    Result: 24 spokes, 30 labels, zero true overlaps, zero clipped.
 - **2026-07-27 — v1.8.0: the collection-overview dashboard + a shared app chassis.**
   Second MCP App: `get_collection_overview` carries `_meta.ui.resourceUri` → `ui://amira/overview`,
   rendering stat tiles plus four ranked breakdowns (university, research section, resource type,

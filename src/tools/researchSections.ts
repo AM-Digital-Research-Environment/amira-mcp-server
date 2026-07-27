@@ -15,6 +15,7 @@ import {
   type Server,
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
+import { SECTIONS_UI_META } from "./apps.js";
 
 export function registerResearchSectionTools(server: Server): void {
   // === list_research_sections ===============================================
@@ -22,6 +23,8 @@ export function registerResearchSectionTools(server: Server): void {
     "list_research_sections",
     {
       title: "List research sections",
+      // Renders as a funding-phase Gantt in MCP Apps hosts; plain JSON elsewhere.
+      _meta: SECTIONS_UI_META,
       description:
         "List the cluster's research sections (its top-level thematic structure), with funding phase, " +
         "PIs, member/project/item counts and a citable `amira_url`. Sections split by funding phase: " +

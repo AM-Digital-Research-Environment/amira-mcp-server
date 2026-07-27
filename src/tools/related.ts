@@ -14,6 +14,7 @@ import {
 } from "./_shared.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
 import { nameMatchesQuery, samePerson } from "../names.js";
+import { RELATED_UI_META } from "./apps.js";
 
 type EntityType = "subject" | "location" | "person" | "project";
 
@@ -44,6 +45,8 @@ export function registerRelatedTools(server: Server): void {
     "find_related",
     {
       title: "Find related entities",
+      // Renders as a radial co-occurrence hub in MCP Apps hosts; plain JSON elsewhere.
+      _meta: RELATED_UI_META,
       description:
         "Cross-entity discovery: given one entity, find what it connects to through the research items " +
         "that mention it — for 'what subjects/people/places co-occur with X?' and for tracing how a theme " +
