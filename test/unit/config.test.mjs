@@ -17,17 +17,21 @@ import * as path from "node:path";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
 
 const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), "amira-config-"));
+const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "amira-config-cache-"));
 
-// Exactly what an MCPB install with every optional setting left blank passes.
-// AMIRA_CACHE_DIR being a placeholder is part of the scenario AND does the
-// isolation job for free: it resolves to the default ~/.amira-mcp/cache, so the
-// counts assertion below points AMIRA_DATA_DIR at a fixture and asserts against
-// it only after checking that no newer real cache is in play.
+// The placeholders that actually caused the reported bug — the ones that feed
+// citations. AMIRA_CACHE_DIR and AMIRA_LIVE_REFRESH are deliberately REAL
+// values here: leaving them as placeholders resolves them to their defaults,
+// which is correct behaviour but means booting a server would crawl the live
+// API and write a real snapshot into ~/.amira-mcp/cache — where it outranks
+// every other test file's fixture (that is exactly how the v1.7.1 release run
+// failed). Unit tests stay offline and write nothing outside their temp dirs;
+// the fallback behaviour itself is asserted from the resolved config below.
 process.env.AMIRA_SITE_BASE = "${user_config.site_base}";
-process.env.AMIRA_CACHE_DIR = "${user_config.cache_dir}";
-process.env.AMIRA_LIVE_REFRESH = "${user_config.live_refresh}";
 process.env.AMIRA_SITE_SLUG = "${user_config.site_slug}";
 process.env.AMIRA_DATA_DIR = fixtureDir; // a REAL value must still win
+process.env.AMIRA_CACHE_DIR = cacheDir;
+process.env.AMIRA_LIVE_REFRESH = "0";
 
 const lib = await import("../../server/lib.js");
 const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
@@ -80,13 +84,11 @@ test("a real value still overrides, and the placeholder guard is narrow", () => 
   // also depend on whether a real snapshot happens to sit in the default cache,
   // which is not what this test is about.
   assert.equal(lib.config.bundledDataDir, path.resolve(fixtureDir), "a genuine AMIRA_DATA_DIR wins");
-  assert.ok(
-    lib.config.cacheDir.includes(".amira-mcp"),
-    `a placeholder AMIRA_CACHE_DIR falls back to the default, got ${lib.config.cacheDir}`,
-  );
+  assert.equal(lib.config.cacheDir, path.resolve(cacheDir), "a genuine AMIRA_CACHE_DIR wins");
+  assert.equal(lib.config.liveRefresh, false, "a genuine AMIRA_LIVE_REFRESH wins");
+  assert.equal(lib.config.siteSlug, "amira", "a placeholder AMIRA_SITE_SLUG falls back to the default");
   assert.ok(!lib.config.cacheDir.includes("${"), "no placeholder became a directory name");
-  assert.equal(lib.config.siteSlug, "amira", "a placeholder AMIRA_SITE_SLUG falls back");
-  assert.equal(lib.config.liveRefresh, true, "a placeholder AMIRA_LIVE_REFRESH falls back to the default");
+  assert.ok(!lib.config.siteBase.includes("${"), "no placeholder became the site base");
 
   // Only a whole-string ${...} is ignored; a URL that merely contains braces is
   // still a real setting.

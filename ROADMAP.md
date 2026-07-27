@@ -129,6 +129,22 @@
   (with the MongoDB2OmekaS CLUSTER_PARTNER_GROUPS offline fallback); `codex/periodic-refresh` added the
   `AMIRA_REFRESH_INTERVAL_HOURS` periodic freshness probe. v1.5.0 was version-bumped but never tagged —
   superseded by v1.6.0 below.
+- **2026-07-27 — v1.9.1 (hotfix): `npm test` was hitting the network and polluting `~/.amira-mcp`.**
+  Found by reading the **v1.7.1 release run, which failed** — every fixture-dependent test in it
+  asserted against live data. Cause: `config.test.mjs` (added in v1.7.1) left `AMIRA_LIVE_REFRESH` as
+  an MCPB placeholder to exercise the fallback. The v1.7.1 fix resolves that placeholder to its
+  default — `true` — so the test booted a server with live refresh ON, crawled the whole public
+  instance, and wrote a real snapshot into the DEFAULT `~/.amira-mcp/cache`. `loadInitial()` then
+  correctly preferred that newer snapshot over every other test file's fixture. v1.8.0's cache
+  isolation in `tools.test.mjs` masked the breakage but not the cause: CI has been doing a needless
+  full crawl on every run since (v1.7.0 release 1m27s → v1.8.0 2m15s).
+  Fix: `config.test.mjs` now uses REAL values for `AMIRA_CACHE_DIR` (a temp dir) and
+  `AMIRA_LIVE_REFRESH` (`0`), keeping placeholders only on the vars that caused the reported bug —
+  `AMIRA_SITE_BASE` and `AMIRA_SITE_SLUG`, the ones that feed citations — and asserts the fallback
+  behaviour from the resolved `config` instead of by booting a refreshing server. All three
+  fixture-based suites now isolate both the data and cache dirs. Verified by deleting `~/.amira-mcp`
+  and confirming the full unit run recreates nothing: **the unit suite is offline and writes nothing
+  outside its temp dirs.**
 - **2026-07-27 — v1.9.0: funding-phase Gantt + the co-occurrence hub (4 MCP Apps total).**
   - **`list_research_sections` → `ui://amira/sections`**, a Gantt grouped by funding phase with a
     "now" marker. It exists to show one thing the JSON states but cannot show: the sections were
