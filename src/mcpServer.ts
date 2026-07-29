@@ -3,11 +3,57 @@
 // .mcpb) and the remote Streamable HTTP entry (src/http.ts). Only the transport
 // and the tool surface differ: HTTP additionally registers the OpenAI-compatible
 // `search`/`fetch` tools for ChatGPT.
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/server";
 import { registerTools } from "./tools/register.js";
 import { registerOpenAITools } from "./tools/openai.js";
 
 export const VERSION = typeof __SERVER_VERSION__ !== "undefined" ? __SERVER_VERSION__ : "dev";
+
+/**
+ * The stateless MCP revision (SEP-2575). The SDK keeps this string internal on
+ * purpose — `SUPPORTED_PROTOCOL_VERSIONS` is the *legacy* `initialize` ladder
+ * and tops out at 2025-11-25 — so a server that wants the modern era has to name
+ * the revision itself.
+ */
+const MODERN_PROTOCOL_VERSION = "2026-07-28";
+
+/**
+ * Offered revisions, newest first. The SDK splits this list by era internally:
+ * `server/discover` advertises only the 2026-era entries, while the legacy
+ * `initialize` handshake sees only the 2025-era tail — so naming both here opts
+ * into 2026-07-28 without breaking any older client. Registering
+ * `server/discover` at all is conditional on a modern entry being present:
+ *
+ *   if (modernProtocolVersions(this._supportedProtocolVersions).length > 0)
+ *       this.setRequestHandler("server/discover", …)
+ *
+ * Without it the server answers `-32601 Method not found` and no 2026-era client
+ * can negotiate.
+ */
+const PROTOCOL_VERSIONS = [MODERN_PROTOCOL_VERSION, ...SUPPORTED_PROTOCOL_VERSIONS];
+
+/**
+ * `ttlMs` / `cacheScope` for the cacheable 2026-07-28 results (SEP-2549). The
+ * SDK's defaults are `{ ttlMs: 0, cacheScope: "private" }` — correct for a
+ * server whose surface is per-user, wrong for this one.
+ *
+ * Everything listed here is fixed when the process starts: the tool surface is
+ * decided by `createAmiraServer`'s options, and the `ui://` app templates are
+ * string constants compiled into the bundle. None of it varies by caller — the
+ * server is unauthenticated and read-only, and AMIRA_EXPOSURE is a process-wide
+ * experiment flag that gates the *content of tool results*, never which tools
+ * are listed — so a shared cache can serve every client the same bytes.
+ *
+ * An hour is a freshness hint, not a contract: the surface changes only on
+ * redeploy, and `listChanged: true` stays advertised for connected clients.
+ * `resources/read` gets longer because the app HTML is immutable per build.
+ */
+const CACHE_HINTS = {
+  "tools/list": { ttlMs: 3_600_000, cacheScope: "public" },
+  "resources/list": { ttlMs: 3_600_000, cacheScope: "public" },
+  "server/discover": { ttlMs: 3_600_000, cacheScope: "public" },
+  "resources/read": { ttlMs: 86_400_000, cacheScope: "public" },
+} as const;
 
 export const INSTRUCTIONS =
   "Read-only access to the Africa Multiple Interactive Research Atlas (AMIRA), the research-data platform " +
@@ -66,7 +112,11 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
         "Excellence at the University of Bayreuth (Omeka S).",
       websiteUrl: "https://data.africamultiple.uni-bayreuth.de",
     },
-    { instructions: INSTRUCTIONS },
+    {
+      instructions: INSTRUCTIONS,
+      supportedProtocolVersions: PROTOCOL_VERSIONS,
+      cacheHints: CACHE_HINTS,
+    },
   );
   registerTools(server);
   if (opts.openai) registerOpenAITools(server);

@@ -8,11 +8,14 @@
 //   POST /mcp      — JSON-RPC over Streamable HTTP (the MCP endpoint)
 //   GET  /healthz  — liveness probe (also served at /)
 //
-// Stateless: a fresh server + transport per request, so concurrent clients can
+// Stateless: a fresh server instance per request, so concurrent clients can
 // never collide on JSON-RPC ids. The data lives in a process-wide singleton, so
-// per-request setup is just cheap handler wiring, not a data reload.
+// per-request setup is just cheap handler wiring, not a data reload. Since
+// 2026-07-28 (SEP-2567) that is also what the protocol itself prescribes —
+// sessions are gone — so the shape this file always had is now the default.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createMcpHandler } from "@modelcontextprotocol/server";
+import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createAmiraServer, VERSION } from "./mcpServer.js";
 import { config } from "./config.js";
 import { currentStore, ensureStore } from "./data.js";
@@ -112,16 +115,24 @@ function healthBody(): Record<string, unknown> {
   };
 }
 
-async function handleMcp(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const server = createAmiraServer({ openai: true }); // 26 rich tools + search/fetch
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  res.on("close", () => {
-    void transport.close();
-    void server.close();
-  });
-  await server.connect(transport);
-  await transport.handleRequest(req, res);
-}
+/**
+ * The MCP entry, built once and reused for every request.
+ *
+ * `createMcpHandler` owns the era decision per request: modern (2026-07-28)
+ * exchanges are served from the envelope, and `legacy: 'stateless'` — the
+ * default — answers 2025-era traffic exactly the way this file used to by hand,
+ * a fresh instance per request over a transport with `sessionIdGenerator:
+ * undefined`. So old clients (ChatGPT's connector, anything pinned to
+ * 2025-11-25) keep working unchanged while new ones get `server/discover`.
+ *
+ * The factory runs per request, so the per-request statelessness that keeps
+ * concurrent clients from colliding on JSON-RPC ids is preserved; the data
+ * still lives in the process-wide snapshot singleton, so this stays cheap.
+ */
+const mcpHandler = toNodeHandler(
+  createMcpHandler(() => createAmiraServer({ openai: true })), // 26 rich tools + search/fetch
+  { onerror: (err) => console.error("[amira] mcp handler error:", err) },
+);
 
 const httpServer = createServer((req, res) => {
   const path = (req.url ?? "/").split("?")[0];
@@ -148,7 +159,7 @@ const httpServer = createServer((req, res) => {
       });
       return;
     }
-    handleMcp(req, res).catch((err) => {
+    void Promise.resolve(mcpHandler(req, res)).catch((err) => {
       console.error("[amira] http request error:", err);
       if (!res.headersSent) sendJson(res, 500, { error: "internal error" });
     });

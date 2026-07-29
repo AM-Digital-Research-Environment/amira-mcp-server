@@ -1,8 +1,7 @@
 // Remote-transport smoke test: spawn server/http.js, connect a real MCP client
 // over Streamable HTTP, and exercise the OpenAI-compatible search/fetch tools
 // plus a rich tool — proving the HTTP endpoint serves the full surface offline.
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { spawn } from "node:child_process";
 
 const PORT = process.env.SMOKE_HTTP_PORT || "8799";

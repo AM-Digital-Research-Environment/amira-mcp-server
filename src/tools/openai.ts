@@ -547,7 +547,7 @@ export function registerOpenAITools(server: Server): void {
         "`id` to the fetch tool for the full record. (The OpenAI/ChatGPT-compatible entry point; richer " +
         "filtered tools — search_research_items, find_related, list_* — are also available.)",
       annotations: annotate("Search the AMIRA collection"),
-      inputSchema: {
+      inputSchema: z.object({
         query: z
           .string()
           .describe(
@@ -556,8 +556,8 @@ export function registerOpenAITools(server: Server): void {
           ),
         limit: z.number().int().min(1).optional().describe("Default 10, max 50"),
         types: z.array(z.enum(SEARCH_TYPES)).optional().describe("Restrict to these record kinds"),
-      },
-      outputSchema: {
+      }),
+      outputSchema: z.object({
         results: z.array(
           z.object({
             id: z.string().describe("Typed record id, e.g. 'item:7392'"),
@@ -565,7 +565,7 @@ export function registerOpenAITools(server: Server): void {
             url: z.string().describe("The AMIRA/Omeka public record page"),
           }),
         ),
-      },
+      }),
     },
     async ({ query, limit, types }) => {
       const store = await ensureStore();
@@ -595,7 +595,7 @@ export function registerOpenAITools(server: Server): void {
         "to what `max_chars` leaves after the metadata header, and `*_returned_chars` is exactly what " +
         "landed in `text`, so the next page starts at offset + returned_chars with no gap.",
       annotations: annotate("Fetch one AMIRA record"),
-      inputSchema: {
+      inputSchema: z.object({
         id: z
           .string()
           .describe("A typed record id from search: item:7392 | pub:30001 | video:39218 | podcast:39121 | project:37700 | section:218"),
@@ -606,8 +606,8 @@ export function registerOpenAITools(server: Server): void {
         fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
         fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
         max_chars: z.number().int().optional().describe("Cap on the whole returned text body, default/max 25000"),
-      },
-      outputSchema: {
+      }),
+      outputSchema: z.object({
         id: z.string().optional(),
         title: z.string().optional(),
         text: z.string().optional(),
@@ -617,7 +617,7 @@ export function registerOpenAITools(server: Server): void {
           .object({ code: z.string(), message: z.string(), suggested_tool: z.string().optional() })
           .optional()
           .describe("Present instead of the record when the id is unknown"),
-      },
+      }),
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_fulltext, fulltext_offset, fulltext_max_chars, max_chars }) => {
       const store = await ensureStore();

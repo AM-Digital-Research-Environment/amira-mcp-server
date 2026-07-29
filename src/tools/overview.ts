@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import { SITE_BASE } from "../config.js";
 import { allowStructured, exposureLevel } from "../exposure.js";
@@ -30,7 +31,7 @@ export function registerOverviewTools(server: Server): void {
         "research section, resource type and language, the content date range, and the data snapshot's " +
         "freshness. Takes no arguments.",
       annotations: annotate("Collection overview"),
-      inputSchema: {},
+      inputSchema: z.object({}),
     },
     async () => {
       const store = await ensureStore();

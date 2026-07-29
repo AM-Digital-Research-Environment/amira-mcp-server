@@ -18,7 +18,7 @@ import type {
   VideoRec,
 } from "../types.js";
 
-export type Server = import("@modelcontextprotocol/sdk/server/mcp.js").McpServer;
+export type Server = import("@modelcontextprotocol/server").McpServer;
 
 /** Maximum length of any single free-text field returned to the model. */
 export const CHARACTER_LIMIT = 25000;

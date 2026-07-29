@@ -1,8 +1,8 @@
 // MCP round-trip smoke test: spawn the bundled server, list tools, exercise
 // every tool family (including the get_* detail tools and transcript search),
 // and assert the citation contract: amira_url everywhere, dashboard_url gone.
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { Client } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
 const transport = new StdioClientTransport({
   command: process.execPath,

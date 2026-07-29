@@ -1,12 +1,10 @@
 #!/usr/bin/env node
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { createAmiraServer, VERSION } from "./mcpServer.js";
 import { config } from "./config.js";
 import { ensureStore } from "./data.js";
 
 async function main(): Promise<void> {
-  const server = createAmiraServer(); // stdio surface: the 26 rich tools
-
   // Warm the in-memory snapshot (and kick off the background refresh) without
   // blocking startup. Tool calls await ensureStore() and surface any load error.
   void ensureStore()
@@ -18,8 +16,12 @@ async function main(): Promise<void> {
     )
     .catch((err) => console.error(`[amira] initial data load failed: ${(err as Error).message}`));
 
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  // `serveStdio` owns the era decision: the opening exchange picks 2026-07-28
+  // (`server/discover`) or the legacy `initialize` ladder, then pins ONE
+  // instance from the factory for the connection's lifetime. Connecting a bare
+  // StdioServerTransport by hand would serve the 2025 era only — the modern
+  // methods answer `-32601` because nothing marked the connection's era.
+  serveStdio(() => createAmiraServer()); // stdio surface: the 26 rich tools
   console.error(
     `[amira] AMIRA MCP server v${VERSION} running on stdio (site: ${config.siteBase}, live refresh: ${config.liveRefresh})`,
   );

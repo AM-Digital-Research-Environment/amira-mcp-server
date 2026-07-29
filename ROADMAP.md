@@ -129,6 +129,50 @@
   (with the MongoDB2OmekaS CLUSTER_PARTNER_GROUPS offline fallback); `codex/periodic-refresh` added the
   `AMIRA_REFRESH_INTERVAL_HOURS` periodic freshness probe. v1.5.0 was version-bumped but never tagged —
   superseded by v1.6.0 below.
+- **2026-07-29 — v1.10.0: MCP TypeScript SDK v2; the server actually speaks 2026-07-28.**
+  The spec was ratified 2026-07-28; the v2 SDK landed the night before. v1.7.0 had claimed
+  "2026-07-28 posture" and the README called the rest "a dependency bump" — both were optimistic.
+  The migration was mechanical; making the revision *work* was not.
+  - **The v1 package is not where support lives.** `@modelcontextprotocol/sdk` is frozen at 1.30.0
+    with `LATEST_PROTOCOL_VERSION = "2025-11-25"` and zero 2026 code. Support ships in the scoped v2
+    packages (`@modelcontextprotocol/{core,server,client,node}@2.0.0`). Checking the old package name
+    gives the false reading that no SDK supports the revision yet.
+  - **`npx @modelcontextprotocol/codemod v1-to-v2` did the imports** — 11 changes across 7 files, no
+    `@mcp-codemod-error` markers. It missed only the type-only `import("…/server/mcp.js").McpServer`
+    in `tools/_shared.ts`, and it hoists imports above file header comments.
+  - **Two non-obvious gates, both found by probing the wire rather than by reading the diff.** After
+    the codemod everything typechecked, all 48 unit tests and both smoke suites passed — and
+    `server/discover` still answered `-32601`, `resultType` was absent, and the connection negotiated
+    2025-11-25. A green suite proves the migration, not the revision.
+    1. **The modern era is opt-in.** `SUPPORTED_PROTOCOL_VERSIONS` is the legacy `initialize` ladder
+       and stops at 2025-11-25; the SDK deliberately keeps the 2026 string internal
+       (`MODERN_WIRE_REVISION`, "no public modern-version constant"). `createAmiraServer` now names
+       the revision in `supportedProtocolVersions` — the gate is literally
+       `if (modernProtocolVersions(this._supportedProtocolVersions).length > 0) setRequestHandler("server/discover", …)`.
+    2. **The era is owned by the entry, not the transport.** Passing the option registered the
+       handler but dispatch still 404'd: a bare `StdioServerTransport` / `NodeStreamableHTTPServerTransport`
+       serves the 2025 era only. `serveStdio(factory)` and `createMcpHandler(factory)` own the era
+       decision and pin an instance per connection/request. `toNodeHandler` adapts the latter to the
+       bare `node:http` server, so the routing, CORS and rate limiting are untouched.
+  - **Back-compat is free**: `createMcpHandler`'s `legacy: 'stateless'` default answers 2025-era
+    traffic with a fresh instance per request over `sessionIdGenerator: undefined` — exactly the
+    wiring `http.ts` used to hand-roll, so the ChatGPT connector needs no change.
+  - **Cache hints (SEP-2549), because the defaults were wrong for this server.** The SDK emits
+    `{ ttlMs: 0, cacheScope: "private" }`. This server is unauthenticated and read-only, its tool
+    surface is fixed at construction, and the `ui://` app HTML is a build-time constant — so
+    `tools/list` / `resources/list` / `server/discover` get 1 h `public` and `resources/read` 24 h.
+    Checked first that `AMIRA_EXPOSURE` gates *result content*, never which tools are listed, so
+    nothing varies per caller and `public` cannot leak.
+  - **28 raw `inputSchema` shapes (+2 `outputSchema`) wrapped in `z.object()`.** v2 accepts raw
+    shapes only through deprecated overloads, and the overloads are all-or-nothing — wrapping the
+    input alone breaks the two OpenAI tools that also declare an output schema.
+  - **Verified on the wire, both transports**, with a raw JSON-RPC probe rather than the SDK client:
+    `server/discover` → `supportedVersions: ["2026-07-28"]`; `tools/list` → `resultType: "complete"`,
+    `ttlMs: 3600000`, `cacheScope: "public"`, `_meta` carrying `io.modelcontextprotocol/serverInfo`;
+    `tools/call` → `resultType: "complete"`; legacy `initialize` → still negotiates 2025-11-25. The
+    probe also confirmed the server *enforces* SEP-2243: a `tools/call` without the `Mcp-Name` header
+    is rejected `-32020` (the renumbered `HeaderMismatch`). Node floor raised to 20 (v2's minimum) in
+    `package.json`, `manifest.json` and the esbuild target. 48 unit tests, both smoke suites green.
 - **2026-07-27 — v1.9.1 (hotfix): `npm test` was hitting the network and polluting `~/.amira-mcp`.**
   Found by reading the **v1.7.1 release run, which failed** — every fixture-dependent test in it
   asserted against live data. Cause: `config.test.mjs` (added in v1.7.1) left `AMIRA_LIVE_REFRESH` as

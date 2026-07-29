@@ -1,6 +1,6 @@
 {
   "name": "amira-mcp-server-bundle",
-  "version": "1.9.2",
+  "version": "1.10.0",
   "description": "Node MCP server for AMIRA, the Africa Multiple research-data platform on Omeka S, packaged as a Claude Desktop extension (.mcpb).",
   "private": true,
   "type": "module",
@@ -18,12 +18,17 @@
     "prepack-mcpb": "npm run clean && npm run typecheck && npm run test && npm run smoke && npm run smoke:http",
     "pack-mcpb": "mcpb pack . amira-mcp-server.mcpb"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
+    "@modelcontextprotocol/client": "^2.0.0",
     "@types/node": "^26.0.0",
     "esbuild": "^0.28.1",
     "rimraf": "^6.1.3",

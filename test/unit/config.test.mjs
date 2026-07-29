@@ -34,8 +34,8 @@ process.env.AMIRA_CACHE_DIR = cacheDir;
 process.env.AMIRA_LIVE_REFRESH = "0";
 
 const lib = await import("../../server/lib.js");
-const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
-const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+const { InMemoryTransport } = await import("@modelcontextprotocol/server");
+const { Client } = await import("@modelcontextprotocol/client");
 
 await lib.writeSnapshot(fixtureDir, buildFixture(lib.SNAPSHOT_SCHEMA_VERSION));
 

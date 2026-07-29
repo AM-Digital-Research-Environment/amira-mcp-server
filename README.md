@@ -319,14 +319,36 @@ it cannot answer rather than hallucinating.
 
 ### Protocol posture
 
-The server is already shaped for MCP **2026-07-28**: the HTTP transport is
-stateless (`sessionIdGenerator: undefined`, a fresh server per request), tool
-order is deterministic, logging goes to stderr, and Roots/Sampling/Elicitation
-— all deprecated in that revision — are unused. CORS accepts both generations
-of headers (`Mcp-Session-Id`/`MCP-Protocol-Version` and the new
-`Mcp-Method`/`Mcp-Name`/`X-Mcp-Header`). The remaining work is a dependency
-bump: `@modelcontextprotocol/sdk@1.29.0` predates the revision, so `ttlMs` /
-`cacheScope` on `tools/list` and `server/discover` arrive with the SDK.
+The server speaks MCP **2026-07-28** on both transports, and still answers
+2025-era clients unchanged.
+
+It runs on the v2 TypeScript SDK — the scoped packages
+(`@modelcontextprotocol/server`, `/node`, `/client`), not the frozen
+`@modelcontextprotocol/sdk` v1 monolith. Two things are worth knowing if you
+work on the entry points:
+
+- **The modern era is opt-in.** `SUPPORTED_PROTOCOL_VERSIONS` is the *legacy*
+  `initialize` ladder and stops at 2025-11-25; the SDK keeps the 2026 string
+  internal on purpose. `createAmiraServer` names the revision itself in
+  `supportedProtocolVersions`, which is what registers `server/discover` —
+  without it that method answers `-32601`.
+- **The era is owned by the entry, not the transport.** `serveStdio(factory)`
+  and `createMcpHandler(factory)` decide the era per connection/request and pin
+  an instance from the factory. Connecting a bare `StdioServerTransport` or
+  `NodeStreamableHTTPServerTransport` by hand serves the 2025 era only.
+
+Concretely on the wire: `server/discover` advertises `["2026-07-28"]`, results
+carry `resultType`, and the cacheable results carry real `ttlMs` / `cacheScope`
+(1 h `public` on `tools/list`, `resources/list` and `server/discover`; 24 h on
+`resources/read`, whose `ui://` app HTML is immutable per build) rather than the
+SDK's conservative `{ ttlMs: 0, cacheScope: "private" }` default. Back-compat is
+the handler's `legacy: 'stateless'` default, which answers 2025-era traffic with
+a fresh instance per request — the same shape this server always had.
+
+The deprecations of that revision cost nothing here: Roots, Sampling, Logging
+and Elicitation are all unused, logging goes to stderr, and tool order is
+deterministic (registration order). CORS accepts both generations of headers
+(`Mcp-Session-Id`/`MCP-Protocol-Version` and `Mcp-Method`/`Mcp-Name`/`X-Mcp-Header`).
 
 ## License
 

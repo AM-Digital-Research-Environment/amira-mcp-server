@@ -84,7 +84,7 @@ export function registerPublicationTools(server: Server): void {
         "permalink) alongside the `amira_url`. Use get_publication for full metadata, BibTeX and the full " +
         "text (opt-in there).",
       annotations: annotate("Search publications"),
-      inputSchema: {
+      inputSchema: z.object({
         keyword: z.string().optional().describe("Matches title, abstract, venue, subjects — and the full text where one exists"),
         author: z.string().optional().describe("A contributor name; either name order works"),
         type: z
@@ -97,7 +97,7 @@ export function registerPublicationTools(server: Server): void {
         year_to: z.number().int().min(0).max(2200).optional().describe("Latest publication year"),
         limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      },
+      }),
     },
     async (args) => {
       const store = await ensureStore();
@@ -164,12 +164,12 @@ export function registerPublicationTools(server: Server): void {
         "long one. Cite the `url` (DOI or repository permalink) as the primary reference. Returns " +
         "{ error } if the id is unknown.",
       annotations: annotate("Get publication detail"),
-      inputSchema: {
+      inputSchema: z.object({
         id: z.union([z.string(), z.number()]).describe("Publication Omeka o:id (legacy publication keys also work)"),
         include_fulltext: z.boolean().optional().describe("Default false — set true to include the extracted full text"),
         fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
         fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
-      },
+      }),
     },
     async ({ id, include_fulltext, fulltext_offset, fulltext_max_chars }) => {
       const store = await ensureStore();
@@ -240,11 +240,11 @@ export function registerPublicationTools(server: Server): void {
         "publications appeared in each, with ISSN, country of publication and website. Feed a title into " +
         "the `venue` filter of search_publications to retrieve its articles.",
       annotations: annotate("List journals"),
-      inputSchema: {
+      inputSchema: z.object({
         keyword: z.string().optional().describe("Substring filter on the journal title"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      },
+      }),
     },
     async (args) => {
       const store = await ensureStore();

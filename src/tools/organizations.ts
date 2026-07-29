@@ -150,11 +150,11 @@ export function registerOrganizationTools(server: Server): void {
         "coordinates when reconciled, and a citable `amira_url`. Use get_institution for the affiliated " +
         "projects and contributed items. Research groups are a separate list — see list_groups.",
       annotations: annotate("List institutions"),
-      inputSchema: {
+      inputSchema: z.object({
         keyword: z.string().optional(),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      },
+      }),
     },
     async (args) => {
       const store = await ensureStore();
@@ -195,7 +195,7 @@ export function registerOrganizationTools(server: Server): void {
         "affiliated with it, coordinates when known, and a citable `amira_url`. Returns { error } if the " +
         "name is not in the organisation authority list.",
       annotations: annotate("Get institution detail"),
-      inputSchema: { name: z.string().describe("Institution name") },
+      inputSchema: z.object({ name: z.string().describe("Institution name") }),
     },
     async ({ name }) => {
       const store = await ensureStore();
@@ -256,12 +256,12 @@ export function registerOrganizationTools(server: Server): void {
         "category label. Results include institution coordinates, Wikidata URI, category authority " +
         "Omeka ids, and citable `amira_url` links.",
       annotations: annotate("List cluster partners"),
-      inputSchema: {
+      inputSchema: z.object({
         category: z
           .string()
           .optional()
           .describe("Optional: amrc | privileged | cooperation | global, or a category label"),
-      },
+      }),
     },
     async ({ category }) => {
       const store = await ensureStore();
@@ -313,11 +313,11 @@ export function registerOrganizationTools(server: Server): void {
         "contributed_item_count (items crediting the group) and a citable `amira_url`. Use " +
         "get_institution with the group's name for its items.",
       annotations: annotate("List groups"),
-      inputSchema: {
+      inputSchema: z.object({
         keyword: z.string().optional(),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      },
+      }),
     },
     async (args) => {
       const store = await ensureStore();

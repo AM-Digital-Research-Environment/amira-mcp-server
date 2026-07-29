@@ -23,8 +23,8 @@ process.env.AMIRA_CACHE_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "amira-fix
 delete process.env.AMIRA_EXPOSURE;
 
 const lib = await import("../../server/lib.js");
-const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
-const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+const { InMemoryTransport } = await import("@modelcontextprotocol/server");
+const { Client } = await import("@modelcontextprotocol/client");
 
 await lib.writeSnapshot(fixtureDir, buildFixture(lib.SNAPSHOT_SCHEMA_VERSION));
 

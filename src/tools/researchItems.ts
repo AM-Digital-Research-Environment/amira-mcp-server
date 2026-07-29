@@ -71,7 +71,7 @@ export function registerResearchItemTools(server: Server): void {
         "response adds `suggestions` naming which single filter to drop and how many items that would " +
         "surface.",
       annotations: annotate("Search research items"),
-      inputSchema: {
+      inputSchema: z.object({
         keyword: z
           .string()
           .optional()
@@ -100,7 +100,7 @@ export function registerResearchItemTools(server: Server): void {
         year_to: z.number().int().min(0).max(2200).optional().describe("Keep items whose content dates overlap up to this year"),
         limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      },
+      }),
     },
     async (args) => {
       const store = await ensureStore();
@@ -199,11 +199,11 @@ export function registerResearchItemTools(server: Server): void {
         "languages, a media thumbnail, and the citable `amira_url`. Long text fields are truncated at " +
         "25,000 characters. Returns { error } if the id is unknown.",
       annotations: annotate("Get research item detail"),
-      inputSchema: {
+      inputSchema: z.object({
         id: z
           .union([z.string(), z.number()])
           .describe("The item's Omeka o:id — the number ending its amira_url, e.g. 7392. Legacy DRE keys also work"),
-      },
+      }),
     },
     async ({ id }) => {
       const store = await ensureStore();

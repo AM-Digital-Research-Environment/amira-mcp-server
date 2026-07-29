@@ -42,12 +42,12 @@ export function registerPeopleTools(server: Server): void {
         "Baumann', 'Baumann, Oliver' and 'Baumann' all find the same person. Use get_person for a full " +
         "profile.",
       annotations: annotate("Search people"),
-      inputSchema: {
+      inputSchema: z.object({
         keyword: z.string().optional().describe("Matches the name or an affiliation"),
         affiliation: z.string().optional().describe("Matches the person's affiliations only"),
         limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      },
+      }),
     },
     async (args) => {
       const store = await ensureStore();
@@ -87,11 +87,11 @@ export function registerPeopleTools(server: Server): void {
         "'Surname, Forename' spelling is echoed back as `name`. Works even for names absent from the " +
         "authority list — empty lists mean the name appears nowhere.",
       annotations: annotate("Get person profile"),
-      inputSchema: {
+      inputSchema: z.object({
         name: z
           .string()
           .describe("Either name order, with or without accents: 'Beier, Ulli' and 'Ulli Beier' both resolve"),
-      },
+      }),
     },
     async ({ name }) => {
       const store = await ensureStore();

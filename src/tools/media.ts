@@ -52,7 +52,7 @@ export function registerMediaTools(server: Server): void {
         "match. Filters are optional and AND-combined. Use get_podcast for one episode's detail and the " +
         "transcript itself.",
       annotations: annotate("Search podcasts"),
-      inputSchema: {
+      inputSchema: z.object({
         keyword: z.string().optional().describe("Matches title, abstract — and the transcript"),
         series: z.string().optional().describe("Series title, partial (e.g. 'Cluster Conversations')"),
         person: z.string().optional().describe("A speaker/host name; either name order works"),
@@ -60,7 +60,7 @@ export function registerMediaTools(server: Server): void {
         year_to: z.number().int().min(0).max(2200).optional().describe("Latest episode year"),
         limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      },
+      }),
     },
     async (args) => {
       const store = await ensureStore();
@@ -112,10 +112,10 @@ export function registerMediaTools(server: Server): void {
         "`amira_url`. The transcript is OMITTED by default (only has_transcript + transcript_length are " +
         "shown) — pass include_transcript=true and page a long one. Returns { error } if the id is unknown.",
       annotations: annotate("Get podcast detail"),
-      inputSchema: {
+      inputSchema: z.object({
         id: z.union([z.string(), z.number()]).describe("Podcast id from search_podcasts, e.g. 39121"),
         ...transcriptParams,
-      },
+      }),
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars }) => {
       const store = await ensureStore();
@@ -159,7 +159,7 @@ export function registerMediaTools(server: Server): void {
         "`matched_in: 'transcript'` with a `transcript_snippet`. Filters are optional and AND-combined. " +
         "Use get_video for one video's detail and the transcript itself.",
       annotations: annotate("Search YouTube videos"),
-      inputSchema: {
+      inputSchema: z.object({
         keyword: z.string().optional().describe("Matches title, abstract — and the transcript"),
         playlist: z.string().optional().describe("Playlist title, partial"),
         speaker: z.string().optional().describe("A speaker name; either name order works"),
@@ -168,7 +168,7 @@ export function registerMediaTools(server: Server): void {
         year_to: z.number().int().min(0).max(2200).optional().describe("Latest upload year"),
         limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      },
+      }),
     },
     async (args) => {
       const store = await ensureStore();
@@ -222,10 +222,10 @@ export function registerMediaTools(server: Server): void {
         "(transcripts are large; only has_transcript + transcript_length are shown) — pass " +
         "include_transcript=true and page a long one. Returns { error } if the id is unknown.",
       annotations: annotate("Get video detail"),
-      inputSchema: {
+      inputSchema: z.object({
         id: z.union([z.string(), z.number()]).describe("Video id from search_videos, e.g. 39218"),
         ...transcriptParams,
-      },
+      }),
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars }) => {
       const store = await ensureStore();

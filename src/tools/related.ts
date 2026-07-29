@@ -56,7 +56,7 @@ export function registerRelatedTools(server: Server): void {
         "was matched is echoed in the response `matching` field — note `matched_items` counts ITEMS, so " +
         "it differs from list_subjects, which counts distinct headings.",
       annotations: annotate("Find related entities"),
-      inputSchema: {
+      inputSchema: z.object({
         entity_type: z
           .enum(["subject", "location", "person", "project"])
           .describe("What the value denotes. Tags are merged into subjects — there is no tag pivot"),
@@ -69,7 +69,7 @@ export function registerRelatedTools(server: Server): void {
               "or a substring of the project label",
           ),
         limit: z.number().int().min(1).optional().describe("Per-list cap, default 20, max 50"),
-      },
+      }),
     },
     async (args) => {
       const store = await ensureStore();
