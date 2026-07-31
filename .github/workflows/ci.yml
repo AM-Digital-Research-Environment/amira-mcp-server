@@ -45,7 +45,7 @@ jobs:
           node-version: "26"
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - run: npm run fetch-data
       - run: npm run smoke
       - run: npm run smoke:http
       - run: npm run validate:manifest
