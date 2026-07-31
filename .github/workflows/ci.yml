@@ -29,7 +29,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run build
+      # Bash expands the file glob before Node sees it. Node 20 does not expand
+      # quoted test globs itself, while newer Node releases do.
+      - run: node --test test/unit/*.test.mjs
 
   smoke:
     name: Protocol and package smoke tests
