@@ -71,7 +71,7 @@ export function registerResearchItemTools(server: Server): void {
         "response adds `suggestions` naming which single filter to drop and how many items that would " +
         "surface.",
       annotations: annotate("Search research items"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         keyword: z
           .string()
           .optional()
@@ -199,7 +199,7 @@ export function registerResearchItemTools(server: Server): void {
         "languages, a media thumbnail, and the citable `amira_url`. Long text fields are truncated at " +
         "25,000 characters. Returns { error } if the id is unknown.",
       annotations: annotate("Get research item detail"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         id: z
           .union([z.string(), z.number()])
           .describe("The item's Omeka o:id — the number ending its amira_url, e.g. 7392. Legacy DRE keys also work"),

@@ -31,7 +31,7 @@ export function registerOverviewTools(server: Server): void {
         "research section, resource type and language, the content date range, and the data snapshot's " +
         "freshness. Takes no arguments.",
       annotations: annotate("Collection overview"),
-      inputSchema: z.object({}),
+      inputSchema: z.strictObject({}),
     },
     async () => {
       const store = await ensureStore();

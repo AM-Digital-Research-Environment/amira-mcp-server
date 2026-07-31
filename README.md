@@ -215,8 +215,14 @@ change. See `ROADMAP.md` for the migration plan and progress log.
 
 ## Continuous delivery
 
-Two GitHub Actions automate distribution (both crawl the **public** API — no
-credentials):
+Three GitHub Actions cover pull requests and distribution (the two distribution
+workflows crawl the **public** API — no credentials):
+
+- **CI** (`.github/workflows/ci.yml`) — on pull requests and pushes to `main`:
+  type-checks and runs the offline unit suite on the oldest supported Node.js
+  release and the current release, then exercises both MCP transports and
+  validates the MCPB manifest. The production audit gate fails on high or
+  critical advisories.
 
 - **Release** (`.github/workflows/release.yml`) — on a pushed `v*` tag: fresh
   snapshot, unit + live tests, smoke, pack the `.mcpb` and zip the companion
@@ -246,6 +252,7 @@ credentials):
 | `AMIRA_EXPOSURE` | — | `full` | **Benchmark experiments only**: restrict which metadata the tools expose (see below) |
 | `PORT` | — | `8787` | Port for the remote HTTP transport (`server/http.js`); ignored by the `.mcpb` |
 | `HOST` | — | `0.0.0.0` | Bind address for the remote HTTP transport |
+| `AMIRA_ALLOWED_ORIGINS` | — | `localhost, 127.0.0.1, [::1]` | Comma-separated browser Origin hostnames or URLs allowed to call the HTTP endpoint. Server-to-server clients, which omit `Origin`, are unaffected. Add trusted web-client origins explicitly; wildcards are rejected. |
 | `AMIRA_RATE_LIMIT` | — | `120` | Requests/minute per client on `/mcp` (`0` disables). A courtesy cap — every query scans the whole in-memory snapshot — not a security control; `/healthz` is exempt |
 | `AMIRA_TRUST_PROXY` | — | `false` | Read the client IP from `X-Forwarded-For` for rate limiting. Enable **only** behind a proxy that sets it; a direct client can forge the header |
 

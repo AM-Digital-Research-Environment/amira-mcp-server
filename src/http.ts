@@ -15,13 +15,23 @@
 // sessions are gone — so the shape this file always had is now the default.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createMcpHandler } from "@modelcontextprotocol/server";
-import { toNodeHandler } from "@modelcontextprotocol/node";
+import { localhostHostValidation, originValidation, toNodeHandler } from "@modelcontextprotocol/node";
 import { createAmiraServer, VERSION } from "./mcpServer.js";
 import { config } from "./config.js";
 import { currentStore, ensureStore } from "./data.js";
 
 const MCP_PATH = "/mcp";
 let startupError: string | null = null;
+
+// The MCP Streamable HTTP specification requires Origin validation on every
+// incoming connection. Requests without Origin (normal for server-to-server MCP
+// clients) pass; browser clients must use localhost or a hostname explicitly
+// configured through AMIRA_ALLOWED_ORIGINS. When bound to loopback, also apply
+// the SDK's Host-header guard recommended for hand-wired node:http servers.
+const validateOrigin = originValidation(config.allowedOriginHostnames);
+const validateHost = ["127.0.0.1", "localhost", "::1", "[::1]"].includes(config.httpHost)
+  ? localhostHostValidation()
+  : null;
 
 /** Public, read-only data → permissive CORS so browser-based clients can connect.
  *
@@ -129,12 +139,15 @@ function healthBody(): Record<string, unknown> {
  * concurrent clients from colliding on JSON-RPC ids is preserved; the data
  * still lives in the process-wide snapshot singleton, so this stays cheap.
  */
+const mcpEntry = createMcpHandler(() => createAmiraServer({ openai: true })); // 26 rich tools + search/fetch
 const mcpHandler = toNodeHandler(
-  createMcpHandler(() => createAmiraServer({ openai: true })), // 26 rich tools + search/fetch
+  mcpEntry,
   { onerror: (err) => console.error("[amira] mcp handler error:", err) },
 );
 
 const httpServer = createServer((req, res) => {
+  if ((validateHost && !validateHost(req, res)) || !validateOrigin(req, res)) return;
+
   const path = (req.url ?? "/").split("?")[0];
   setCors(res);
 
@@ -193,3 +206,21 @@ httpServer.on("error", (err) => {
   console.error("[amira] http server error:", err);
   process.exit(1);
 });
+
+let shuttingDown = false;
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.error(`[amira] ${signal} received; closing HTTP server and MCP exchanges`);
+  const httpClosed = new Promise<void>((resolve, reject) => {
+    httpServer.close((err) => (err ? reject(err) : resolve()));
+  });
+  try {
+    await Promise.all([mcpEntry.close(), httpClosed]);
+  } catch (err) {
+    console.error("[amira] HTTP shutdown failed:", err);
+    process.exitCode = 1;
+  }
+}
+process.once("SIGINT", () => void shutdown("SIGINT"));
+process.once("SIGTERM", () => void shutdown("SIGTERM"));

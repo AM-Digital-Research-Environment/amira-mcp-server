@@ -34,7 +34,7 @@ export function registerResearchSectionTools(server: Server): void {
         "seeded and currently hold ~0 projects/items. Takes no arguments; use get_research_section for " +
         "one section's full description and project list.",
       annotations: annotate("List research sections"),
-      inputSchema: z.object({}),
+      inputSchema: z.strictObject({}),
     },
     async () => {
       const store = await ensureStore();
@@ -69,7 +69,7 @@ export function registerResearchSectionTools(server: Server): void {
         "`amira_url`. Returns a structured { error } (with the valid names in `available_values`) if the " +
         "name is unknown.",
       annotations: annotate("Get research section detail"),
-      inputSchema: z.object({ name: z.string().describe("Section name, e.g. 'Arts & Aesthetics'") }),
+      inputSchema: z.strictObject({ name: z.string().describe("Section name, e.g. 'Arts & Aesthetics'") }),
     },
     async ({ name }) => {
       const store = await ensureStore();

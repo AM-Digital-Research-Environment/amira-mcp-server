@@ -56,7 +56,7 @@ export function registerRelatedTools(server: Server): void {
         "was matched is echoed in the response `matching` field — note `matched_items` counts ITEMS, so " +
         "it differs from list_subjects, which counts distinct headings.",
       annotations: annotate("Find related entities"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         entity_type: z
           .enum(["subject", "location", "person", "project"])
           .describe("What the value denotes. Tags are merged into subjects — there is no tag pivot"),

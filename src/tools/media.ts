@@ -52,7 +52,7 @@ export function registerMediaTools(server: Server): void {
         "match. Filters are optional and AND-combined. Use get_podcast for one episode's detail and the " +
         "transcript itself.",
       annotations: annotate("Search podcasts"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         keyword: z.string().optional().describe("Matches title, abstract — and the transcript"),
         series: z.string().optional().describe("Series title, partial (e.g. 'Cluster Conversations')"),
         person: z.string().optional().describe("A speaker/host name; either name order works"),
@@ -112,7 +112,7 @@ export function registerMediaTools(server: Server): void {
         "`amira_url`. The transcript is OMITTED by default (only has_transcript + transcript_length are " +
         "shown) — pass include_transcript=true and page a long one. Returns { error } if the id is unknown.",
       annotations: annotate("Get podcast detail"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         id: z.union([z.string(), z.number()]).describe("Podcast id from search_podcasts, e.g. 39121"),
         ...transcriptParams,
       }),
@@ -159,7 +159,7 @@ export function registerMediaTools(server: Server): void {
         "`matched_in: 'transcript'` with a `transcript_snippet`. Filters are optional and AND-combined. " +
         "Use get_video for one video's detail and the transcript itself.",
       annotations: annotate("Search YouTube videos"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         keyword: z.string().optional().describe("Matches title, abstract — and the transcript"),
         playlist: z.string().optional().describe("Playlist title, partial"),
         speaker: z.string().optional().describe("A speaker name; either name order works"),
@@ -222,7 +222,7 @@ export function registerMediaTools(server: Server): void {
         "(transcripts are large; only has_transcript + transcript_length are shown) — pass " +
         "include_transcript=true and page a long one. Returns { error } if the id is unknown.",
       annotations: annotate("Get video detail"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         id: z.union([z.string(), z.number()]).describe("Video id from search_videos, e.g. 39218"),
         ...transcriptParams,
       }),

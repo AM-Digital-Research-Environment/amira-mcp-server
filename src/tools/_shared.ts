@@ -56,11 +56,11 @@ export function errorResult(
   code: string,
   message: string,
   extra: { suggested_tool?: string; available_values?: unknown[] } = {},
-): ReturnType<typeof textResult> {
+): ReturnType<typeof textResult> & { isError: true } {
   const error: Record<string, unknown> = { code, message };
   if (extra.suggested_tool) error.suggested_tool = extra.suggested_tool;
   if (extra.available_values && extra.available_values.length) error.available_values = extra.available_values;
-  return textResult({ error });
+  return { ...textResult({ error }), isError: true };
 }
 
 // --- input capping (lenient clamp, not rejection) ---------------------------

@@ -129,6 +129,12 @@
   (with the MongoDB2OmekaS CLUSTER_PARTNER_GROUPS offline fallback); `codex/periodic-refresh` added the
   `AMIRA_REFRESH_INTERVAL_HOURS` periodic freshness probe. v1.5.0 was version-bumped but never tagged —
   superseded by v1.6.0 below.
+- **2026-07-31 — v1.11.0: MCP hardening and continuous verification.**
+  - Added pull-request CI across supported Node.js versions, release manifest validation, production dependency auditing, and stdio/HTTP smoke tests.
+  - Hardened HTTP transport with configurable Origin validation, loopback Host validation, and graceful shutdown handling.
+  - Made every tool input schema strict and marked structured tool failures with the MCP-native `isError` flag.
+  - Expanded deterministic unit coverage for tool contracts, read-only annotations, strict input rejection, and structured errors.
+
 - **2026-07-29 — v1.10.0: MCP TypeScript SDK v2; the server actually speaks 2026-07-28.**
   The spec was ratified 2026-07-28; the v2 SDK landed the night before. v1.7.0 had claimed
   "2026-07-28 posture" and the README called the rest "a dependency bump" — both were optimistic.

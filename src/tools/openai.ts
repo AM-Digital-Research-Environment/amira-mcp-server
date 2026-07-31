@@ -547,7 +547,7 @@ export function registerOpenAITools(server: Server): void {
         "`id` to the fetch tool for the full record. (The OpenAI/ChatGPT-compatible entry point; richer " +
         "filtered tools — search_research_items, find_related, list_* — are also available.)",
       annotations: annotate("Search the AMIRA collection"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         query: z
           .string()
           .describe(
@@ -595,7 +595,7 @@ export function registerOpenAITools(server: Server): void {
         "to what `max_chars` leaves after the metadata header, and `*_returned_chars` is exactly what " +
         "landed in `text`, so the next page starts at offset + returned_chars with no gap.",
       annotations: annotate("Fetch one AMIRA record"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         id: z
           .string()
           .describe("A typed record id from search: item:7392 | pub:30001 | video:39218 | podcast:39121 | project:37700 | section:218"),

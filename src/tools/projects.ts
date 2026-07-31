@@ -33,7 +33,7 @@ export function registerProjectTools(server: Server): void {
         "digitised items (a subset do). Filters are optional and AND-combined; omit all to list every " +
         "project. Use get_project for full detail.",
       annotations: annotate("Search projects"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         keyword: z.string().optional().describe("Matches the project name or description"),
         university: z
           .string()
@@ -101,7 +101,7 @@ export function registerProjectTools(server: Server): void {
         "start/end dates, funding institutions, project website, item_count, a breakdown of its items by " +
         "resource type, its top subjects, and a citable `amira_url`. Returns { error } if the id is unknown.",
       annotations: annotate("Get project detail"),
-      inputSchema: z.object({ id: z.union([z.string(), z.number()]).describe("Project Omeka o:id, e.g. 37700") }),
+      inputSchema: z.strictObject({ id: z.union([z.string(), z.number()]).describe("Project Omeka o:id, e.g. 37700") }),
     },
     async ({ id }) => {
       const store = await ensureStore();

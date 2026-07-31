@@ -32,7 +32,14 @@ async function waitReady(url, timeoutMs = 15000) {
 const child = spawn(process.execPath, ["server/http.js"], {
   // offline (bundled snapshot); limiter off so the smoke run itself can never
   // trip it — the limiter gets its own server below.
-  env: { ...process.env, PORT, HOST: "127.0.0.1", AMIRA_LIVE_REFRESH: "0", AMIRA_RATE_LIMIT: "0" },
+  env: {
+    ...process.env,
+    PORT,
+    HOST: "127.0.0.1",
+    AMIRA_LIVE_REFRESH: "0",
+    AMIRA_RATE_LIMIT: "0",
+    AMIRA_ALLOWED_ORIGINS: "https://example.test",
+  },
   stdio: ["ignore", "inherit", "inherit"],
 });
 
@@ -61,6 +68,14 @@ try {
   for (const h of ["mcp-method", "mcp-name", "x-mcp-header", "mcp-session-id", "mcp-protocol-version"]) {
     check(allowed.includes(h), `CORS: ${h} allowed`);
   }
+
+  // MCP 2026-07-28 requires every present Origin to be validated. An explicit
+  // allow-list permits the browser client above; unrelated origins fail closed.
+  const rejectedOrigin = await fetch(`${BASE}/mcp`, {
+    method: "OPTIONS",
+    headers: { Origin: "https://attacker.example", "Access-Control-Request-Method": "POST" },
+  });
+  check(rejectedOrigin.status === 403, "Origin validation: unconfigured browser origin rejected");
 
   const transport = new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`));
   client = new Client({ name: "smoke-http", version: "0.0.0" });

@@ -32,6 +32,7 @@ process.env.AMIRA_SITE_SLUG = "${user_config.site_slug}";
 process.env.AMIRA_DATA_DIR = fixtureDir; // a REAL value must still win
 process.env.AMIRA_CACHE_DIR = cacheDir;
 process.env.AMIRA_LIVE_REFRESH = "0";
+process.env.AMIRA_ALLOWED_ORIGINS = "https://chatgpt.com, claude.ai:443, *, not a url";
 
 const lib = await import("../../server/lib.js");
 const { InMemoryTransport } = await import("@modelcontextprotocol/server");
@@ -86,6 +87,11 @@ test("a real value still overrides, and the placeholder guard is narrow", () => 
   assert.equal(lib.config.bundledDataDir, path.resolve(fixtureDir), "a genuine AMIRA_DATA_DIR wins");
   assert.equal(lib.config.cacheDir, path.resolve(cacheDir), "a genuine AMIRA_CACHE_DIR wins");
   assert.equal(lib.config.liveRefresh, false, "a genuine AMIRA_LIVE_REFRESH wins");
+  assert.deepEqual(
+    lib.config.allowedOriginHostnames,
+    ["localhost", "127.0.0.1", "[::1]", "chatgpt.com", "claude.ai"],
+    "origin URLs and hostnames normalize while unsafe entries fail closed",
+  );
   assert.equal(lib.config.siteSlug, "amira", "a placeholder AMIRA_SITE_SLUG falls back to the default");
   assert.ok(!lib.config.cacheDir.includes("${"), "no placeholder became a directory name");
   assert.ok(!lib.config.siteBase.includes("${"), "no placeholder became the site base");
@@ -98,4 +104,6 @@ test("a real value still overrides, and the placeholder guard is narrow", () => 
   assert.equal(lib.isTemplatePlaceholder("https://data.africamultiple.uni-bayreuth.de"), false);
   assert.equal(lib.isTemplatePlaceholder(""), true);
   assert.equal(lib.isTemplatePlaceholder(undefined), true);
+
+  assert.deepEqual(lib.parseAllowedOriginHostnames(undefined), ["localhost", "127.0.0.1", "[::1]"]);
 });

@@ -94,6 +94,37 @@ function parseNonNegativeNumber(v: string | undefined, fallback: number): number
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
+const LOCAL_ORIGIN_HOSTNAMES = ["localhost", "127.0.0.1", "[::1]"];
+
+/**
+ * Hostnames allowed in browser-supplied Origin headers. The MCP Streamable
+ * HTTP specification requires servers to validate every present Origin header
+ * to prevent DNS rebinding. Non-browser clients normally omit Origin and are
+ * unaffected.
+ *
+ * Accept URLs as well as bare hostnames so deployment configuration can use
+ * either `https://chatgpt.com` or `chatgpt.com`. Local origins stay enabled for
+ * development. Invalid entries fail closed (they are ignored with a warning),
+ * and a wildcard is deliberately not supported.
+ */
+export function parseAllowedOriginHostnames(raw: string | undefined): string[] {
+  const allowed = new Set(LOCAL_ORIGIN_HOSTNAMES);
+  for (const entry of raw?.split(",") ?? []) {
+    const value = entry.trim();
+    if (!value) continue;
+    try {
+      const url = new URL(value.includes("://") ? value : `http://${value}`);
+      if (!url.hostname || value === "*") throw new Error("wildcards are not valid origins");
+      allowed.add(url.hostname.toLowerCase());
+    } catch {
+      console.error(
+        `[amira] ignoring invalid AMIRA_ALLOWED_ORIGINS entry ${JSON.stringify(value)}; use a hostname or URL`,
+      );
+    }
+  }
+  return [...allowed];
+}
+
 export const config = {
   siteBase: SITE_BASE,
   siteSlug: SITE_SLUG,
@@ -108,6 +139,9 @@ export const config = {
    * entry point. PORT/HOST are the conventional names; AMIRA_HTTP_* also work. */
   httpPort: Number(envValue("PORT") ?? envValue("AMIRA_HTTP_PORT") ?? "8787"),
   httpHost: envValue("HOST") ?? envValue("AMIRA_HTTP_HOST") ?? "0.0.0.0",
+  /** Browser Origin hostnames accepted by the Streamable HTTP endpoint. MCP
+   * clients without an Origin header are unaffected. */
+  allowedOriginHostnames: parseAllowedOriginHostnames(envValue("AMIRA_ALLOWED_ORIGINS")),
   /** Per-client requests/minute allowed on /mcp; 0 disables the limiter. A
    * courtesy cap against runaway clients — every query scans the whole
    * in-memory snapshot — not a security control. Put a real one in the proxy. */

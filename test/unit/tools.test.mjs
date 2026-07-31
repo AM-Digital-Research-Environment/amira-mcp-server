@@ -54,6 +54,34 @@ test("tool surface: 26 rich tools + search/fetch = 28", async () => {
   }
 });
 
+test("tool contracts are deterministic, documented, and read-only", async () => {
+  const first = await client.listTools();
+  const second = await client.listTools();
+  assert.deepEqual(
+    second.tools.map((tool) => tool.name),
+    first.tools.map((tool) => tool.name),
+    "tool ordering must stay stable for client/prompt caches",
+  );
+  for (const tool of first.tools) {
+    assert.ok(tool.title, `${tool.name}: title`);
+    assert.ok(tool.description, `${tool.name}: description`);
+    assert.equal(tool.inputSchema?.type, "object", `${tool.name}: object input schema`);
+    assert.equal(tool.inputSchema?.additionalProperties, false, `${tool.name}: rejects unknown arguments`);
+    assert.equal(tool.annotations?.readOnlyHint, true, `${tool.name}: readOnlyHint`);
+    assert.equal(tool.annotations?.destructiveHint, false, `${tool.name}: destructiveHint`);
+    assert.equal(tool.annotations?.idempotentHint, true, `${tool.name}: idempotentHint`);
+    assert.equal(tool.annotations?.openWorldHint, false, `${tool.name}: openWorldHint`);
+  }
+});
+
+test("tool-level failures set isError and preserve their structured payload", async () => {
+  const result = await client.callTool({ name: "get_research_item", arguments: { id: 999999999 } });
+  const payload = JSON.parse(result.content?.[0]?.text ?? "{}");
+  assert.equal(result.isError, true);
+  assert.equal(payload.error?.code, "not_found");
+  assert.deepEqual(result.structuredContent, payload);
+});
+
 test("overview: journal + fulltext/transcript coverage counts", async () => {
   const o = await call("get_collection_overview");
   assert.equal(o.counts.publications, 2);

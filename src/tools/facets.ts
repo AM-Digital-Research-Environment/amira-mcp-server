@@ -56,7 +56,7 @@ export function registerFacetTools(server: Server): void {
         "separate tag facet. Feed a value into the `subject` filter of search_research_items to retrieve " +
         "the items.",
       annotations: annotate("List subjects"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         keyword: z.string().optional().describe("Substring filter on the subject heading"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
         offset: z.number().int().min(0).max(100_000).optional(),
@@ -90,7 +90,7 @@ export function registerFacetTools(server: Server): void {
         "is rolled up, so an item from Lagos counts toward both Lagos and Nigeria and both appear. Feed a " +
         "name straight into the `location` filter of search_research_items.",
       annotations: annotate("List locations"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         country: z.string().optional().describe("Narrow to one country: the country itself plus its cities/regions"),
         keyword: z.string().optional().describe("Substring filter on the place name"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
@@ -169,7 +169,7 @@ export function registerFacetTools(server: Server): void {
         "external archives (e.g. ILAM) and curated sets — ranked by item count, each with its browsable " +
         "page. Feed a title or id into the `collection` filter of search_research_items.",
       annotations: annotate("List collections"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         keyword: z.string().optional().describe("Substring filter on the collection title"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
@@ -211,7 +211,7 @@ export function registerFacetTools(server: Server): void {
         "(languages also carry their ISO `code`). Feed values back into the matching " +
         "search_research_items filter: `genre` for formats, `language`, `resource_type`.",
       annotations: annotate("List category facet"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         category: z
           .enum(["formats", "genres", "languages", "resource_types"])
           .describe("'genres' is an alias of 'formats'. The former 'tags' facet is merged into subjects — use list_subjects"),
@@ -284,7 +284,7 @@ export function registerFacetTools(server: Server): void {
         "semantics as the year_from/year_to filter of search_research_items, into which a year can be fed " +
         "back. Years have no authority page, so results carry no amira_url.",
       annotations: annotate("List years"),
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         bucket: z.enum(["year", "decade"]).optional().describe("Default 'year'"),
         from: z.number().int().min(0).max(2200).optional().describe("Earliest year to report (inclusive)"),
         to: z.number().int().min(0).max(2200).optional().describe("Latest year to report (inclusive)"),
