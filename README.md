@@ -199,7 +199,43 @@ npm run test:live     # integration tests against the live API (network)
 npm run smoke         # spawn the stdio server, exercise all 26 tools offline
 npm run smoke:http    # spawn the HTTP server: search/fetch + parity (28 tools), CORS
                       # preflight for both protocol revisions, and the rate limiter
+npm run weigh         # token budget report (needs ./data — run fetch-data first)
 ```
+
+### Token budgets
+
+Context is the scarcest resource a client has, so both halves of what this server
+spends are measured and gated (`scripts/weigh.mjs`, estimating tokens as
+bytes/4 — comparable to itself, not to a billing statement):
+
+| | what | budget | drift |
+|---|---|---|---|
+| **Surface** | the `tools/list` payload, re-sent every turn | 10,000 tok per transport | **fails** over 3 % |
+| **Responses** | each tool called at its *maximum* limit | 20,000 tok per call | warns over 10 % |
+
+No tool description is derived from the snapshot, so the surface is a pure
+function of the code: `test/unit/budget.test.mjs` gates it offline against no
+data at all, and asserts that the empty-store measurement still matches the
+baseline recorded against the full snapshot. Response weight needs real data, so
+`npm run weigh -- --check` runs in the smoke job instead. Drift there is only a
+warning — a routine `npm run fetch-data` must not red the build — while the
+absolute cap (Claude Code truncates tool results at 25,000 tokens) is fatal, as
+is any probe whose call *failed*, since a structured refusal is ~60 tokens and
+would otherwise sail under every ceiling.
+
+Current: **7,667 tok** stdio / **8,881 tok** http surface; heaviest response is
+`search_research_items` at `limit=100`, ~15,000 tok. Defaults are far cheaper —
+a keyword search is ~165 tok.
+
+When a change legitimately grows either number:
+
+```bash
+npm run weigh -- --update    # rewrites test/token-baseline.json
+```
+
+Commit the diff. That is the point of the file: the cost of a new tool or a
+richer result summary lands in code review as a number instead of arriving
+unnoticed.
 
 Pack the extension:
 
@@ -219,10 +255,11 @@ Three GitHub Actions cover pull requests and distribution (the two distribution
 workflows crawl the **public** API — no credentials):
 
 - **CI** (`.github/workflows/ci.yml`) — on pull requests and pushes to `main`:
-  type-checks and runs the offline unit suite on the oldest supported Node.js
-  release and the current release, then exercises both MCP transports and
-  validates the MCPB manifest. The production audit gate fails on high or
-  critical advisories.
+  type-checks and runs the offline unit suite (including the tool-surface token
+  budget) on the oldest supported Node.js release and the current release, then
+  exercises both MCP transports, weighs every tool's response at its maximum
+  limit, and validates the MCPB manifest. The production audit gate fails on high
+  or critical advisories.
 
 - **Release** (`.github/workflows/release.yml`) — on a pushed `v*` tag: fresh
   snapshot, unit + live tests, smoke, pack the `.mcpb` and zip the companion

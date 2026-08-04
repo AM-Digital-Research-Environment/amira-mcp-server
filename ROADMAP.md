@@ -129,6 +129,34 @@
   (with the MongoDB2OmekaS CLUSTER_PARTNER_GROUPS offline fallback); `codex/periodic-refresh` added the
   `AMIRA_REFRESH_INTERVAL_HOURS` periodic freshness probe. v1.5.0 was version-bumped but never tagged —
   superseded by v1.6.0 below.
+- **2026-08-04 — v1.12.0: token budgets are measured and gated, not audited by hand.** D10 said token
+  discipline belongs *in* the tool layer; until now the evidence for it was a one-off manual count in
+  this log (v1.7.0's "40,853 → 35,346 chars"). That number had already drifted to 35,398 unnoticed —
+  which is the whole argument for a gate. `scripts/weigh.mjs` now measures both halves of what the
+  server spends, estimating tokens as bytes/4 (deterministic, dependency-free, the same scale GitHub
+  uses for its own CI schema-budget guardrail — comparable to itself, never to a bill).
+  - **Surface** (`tools/list`, re-sent every turn): **7,667 tok** stdio / **8,881 tok** http, budget
+    10,000 each. No tool description derives from the snapshot, so this is a pure function of the
+    code — `test/unit/budget.test.mjs` gates it offline against *no data at all*, and asserts the
+    empty-store measurement still matches the baseline recorded with the full snapshot. If that ever
+    breaks, a description went data-dependent and the test stopped being a valid gate.
+  - **Responses** (every tool at its *maximum* limit, 30 probes, full 28-tool coverage): heaviest is
+    `search_research_items` at `limit=100`, **~14,974 tok**; defaults are ~165. Cap 20,000, under
+    Claude Code's 25,000-token truncation. Needs real data, so `npm run weigh -- --check` runs in the
+    smoke job and in `prepack-mcpb`.
+  - **Drift policy, deliberately asymmetric**: surface drift >3 % is **fatal** (deterministic — any
+    change is intentional); response drift >10 % only **warns** (a routine `npm run fetch-data` must
+    not red the build). Absolute caps stay fatal on both.
+  - **A probe whose call fails is a hard failure.** A structured refusal is ~60 tokens, so a probe
+    with stale arguments would sail under every ceiling and report a tool as cheap when it was never
+    invoked. Hit exactly that in development: `find_related` scored 60 tokens on a wrong arg shape.
+  - Probes are mostly *derived*, not listed: any tool exposing `limit` is called with `limit: 100000`
+    and left for `capLimit` to clamp, so a new search/list tool enters the budget the day it is
+    registered; detail tools discover their id/name from the loaded snapshot rather than hard-coding
+    ids that rot. `test/token-baseline.json` is committed — `npm run weigh -- --update` rewrites it,
+    and the diff puts the price of a new tool or a richer summary into code review.
+  - Verified: typecheck, 59 unit tests (9 new), `weigh --check` green; both gates confirmed to *fail*
+    on a doctored baseline, and all six check branches exercised with synthetic input.
 - **2026-07-31 — v1.11.0: MCP hardening and continuous verification.**
   - Added pull-request CI across supported Node.js versions, release manifest validation, production dependency auditing, and stdio/HTTP smoke tests.
   - Hardened HTTP transport with configurable Origin validation, loopback Host validation, and graceful shutdown handling.

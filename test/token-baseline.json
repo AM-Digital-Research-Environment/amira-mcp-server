@@ -1,0 +1,195 @@
+{
+  "_comment": "Token baseline for the AMIRA tool layer, in bytes/4 estimated tokens. Regenerate with `npm run weigh -- --update` and commit the diff: the cost of a schema or summary change belongs in code review. See scripts/weigh.mjs for the two budgets and why drift is fatal for the surface but only a warning for responses.",
+  "surface": {
+    "stdio": {
+      "tool_count": 26,
+      "total_chars": 30560,
+      "total_tokens": 7667,
+      "tools": {
+        "search_research_items": 678,
+        "search_publications": 474,
+        "find_related": 434,
+        "list_years": 383,
+        "get_publication": 377,
+        "search_videos": 363,
+        "search_projects": 360,
+        "search_podcasts": 336,
+        "get_podcast": 318,
+        "get_video": 312,
+        "list_categories": 264,
+        "list_research_sections": 260,
+        "list_locations": 258,
+        "get_research_item": 241,
+        "get_research_section": 238,
+        "search_persons": 232,
+        "get_person": 227,
+        "list_institutions": 226,
+        "get_project": 223,
+        "list_cluster_partners": 221,
+        "list_subjects": 216,
+        "get_collection_overview": 213,
+        "list_collections": 212,
+        "list_groups": 206,
+        "list_journals": 206,
+        "get_institution": 189
+      }
+    },
+    "http": {
+      "tool_count": 28,
+      "total_chars": 35398,
+      "total_tokens": 8881,
+      "tools": {
+        "fetch": 732,
+        "search_research_items": 678,
+        "search": 482,
+        "search_publications": 474,
+        "find_related": 434,
+        "list_years": 383,
+        "get_publication": 377,
+        "search_videos": 363,
+        "search_projects": 360,
+        "search_podcasts": 336,
+        "get_podcast": 318,
+        "get_video": 312,
+        "list_categories": 264,
+        "list_research_sections": 260,
+        "list_locations": 258,
+        "get_research_item": 241,
+        "get_research_section": 238,
+        "search_persons": 232,
+        "get_person": 227,
+        "list_institutions": 226,
+        "get_project": 223,
+        "list_cluster_partners": 221,
+        "list_subjects": 216,
+        "get_collection_overview": 213,
+        "list_collections": 212,
+        "list_groups": 206,
+        "list_journals": 206,
+        "get_institution": 189
+      }
+    }
+  },
+  "responses": {
+    "get_collection_overview": {
+      "tokens": 512,
+      "chars": 2044
+    },
+    "search_research_items@max": {
+      "tokens": 14974,
+      "chars": 59798
+    },
+    "search_projects@max": {
+      "tokens": 8019,
+      "chars": 32024
+    },
+    "list_research_sections": {
+      "tokens": 2308,
+      "chars": 9168
+    },
+    "search_persons@max": {
+      "tokens": 4427,
+      "chars": 17680
+    },
+    "list_institutions@max": {
+      "tokens": 6936,
+      "chars": 27728
+    },
+    "list_cluster_partners": {
+      "tokens": 1866,
+      "chars": 7456
+    },
+    "list_groups@max": {
+      "tokens": 2880,
+      "chars": 11520
+    },
+    "list_subjects@max": {
+      "tokens": 11194,
+      "chars": 44772
+    },
+    "list_locations@max": {
+      "tokens": 7036,
+      "chars": 28132
+    },
+    "list_collections@max": {
+      "tokens": 2125,
+      "chars": 8483
+    },
+    "list_categories@formats": {
+      "tokens": 9733,
+      "chars": 38919
+    },
+    "list_categories@languages": {
+      "tokens": 908,
+      "chars": 3632
+    },
+    "list_categories@resource_types": {
+      "tokens": 193,
+      "chars": 771
+    },
+    "list_years@max": {
+      "tokens": 3821,
+      "chars": 15282
+    },
+    "search_publications@max": {
+      "tokens": 11270,
+      "chars": 44992
+    },
+    "list_journals@max": {
+      "tokens": 7062,
+      "chars": 28231
+    },
+    "search_podcasts@max": {
+      "tokens": 5835,
+      "chars": 23320
+    },
+    "search_videos@max": {
+      "tokens": 8983,
+      "chars": 35888
+    },
+    "search@max": {
+      "tokens": 2183,
+      "chars": 8714
+    },
+    "get_research_item": {
+      "tokens": 588,
+      "chars": 2352
+    },
+    "get_person": {
+      "tokens": 398,
+      "chars": 1586
+    },
+    "get_project": {
+      "tokens": 233,
+      "chars": 930
+    },
+    "get_research_section": {
+      "tokens": 2461,
+      "chars": 9835
+    },
+    "get_institution": {
+      "tokens": 2169,
+      "chars": 8574
+    },
+    "get_publication@fulltext": {
+      "tokens": 7233,
+      "chars": 28734
+    },
+    "get_podcast@transcript": {
+      "tokens": 6384,
+      "chars": 25518
+    },
+    "get_video@transcript": {
+      "tokens": 6727,
+      "chars": 26494
+    },
+    "fetch@fulltext": {
+      "tokens": 6655,
+      "chars": 26424
+    },
+    "find_related@max": {
+      "tokens": 1631,
+      "chars": 6521
+    }
+  }
+}

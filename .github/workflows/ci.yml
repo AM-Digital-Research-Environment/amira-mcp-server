@@ -48,5 +48,8 @@ jobs:
       - run: npm run fetch-data
       - run: npm run smoke
       - run: npm run smoke:http
+      # Response weight at every tool's maximum limit. Needs the real snapshot,
+      # hence this job and not the unit tests, which gate the tool surface.
+      - run: npm run weigh -- --check
       - run: npm run validate:manifest
       - run: npm run audit:prod
