@@ -25,12 +25,10 @@ records themselves, and findings that require an already-compromised host.
 
 ## Reporting
 
-Please **do not open a public issue** for a suspected vulnerability. Use
-either:
-
-- GitHub's private reporting:
-  [Report a vulnerability](https://github.com/AM-Digital-Research-Environment/amira-mcp-server/security/advisories/new)
-- Email: frederick.madore@uni-bayreuth.de
+Please **do not open a public issue** for a suspected vulnerability. Email
+**frederick.madore@uni-bayreuth.de** instead. (GitHub's private reporting is
+deliberately switched off for this repository, so the "Report a vulnerability"
+button is not the route here.)
 
 Include the version (`manifest.json` → `version`, or the release tag), the
 transport (stdio or HTTP), and the smallest reproduction you have. Expect an
