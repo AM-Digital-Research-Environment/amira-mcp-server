@@ -1,0 +1,28 @@
+# Keep the three things CI actually builds from up to date: the npm tree that
+# gets bundled into the .mcpb, the actions that build it, and the Dockerfile
+# base image used by the self-hosted HTTP deployment.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for the routine noise; majors still come through alone so the
+      # SDK/TypeScript/esbuild jumps get read rather than rubber-stamped.
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: monthly

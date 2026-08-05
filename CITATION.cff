@@ -1,0 +1,78 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software in your research, please cite it using the
+  metadata below.
+title: "AMIRA MCP Server"
+abstract: >-
+  A read-only Model Context Protocol (MCP) server for the Africa Multiple
+  Interactive Research Atlas (AMIRA), the research-data platform of the
+  Africa Multiple Cluster of Excellence at the University of Bayreuth.
+  Built and maintained by the Cluster's Digital Research Environment (DRE),
+  its digital infrastructure unit. The server exposes AMIRA's Omeka S
+  metadata — research items, projects, research sections, people,
+  institutions, groups, collections, the cluster bibliography with extracted
+  full text, journals, podcast episodes and YouTube videos with searchable
+  transcripts, plus the places, languages and subjects that connect them —
+  as 26 typed tools that any MCP client can query. A complete data snapshot
+  is bundled, so the server runs fully offline with no API key, account or
+  VPN; when enabled it refreshes from the public Omeka S API. Every record
+  carries an `amira_url`, so results can be cited as links back to the
+  source. Funded by the Deutsche Forschungsgemeinschaft (DFG, German
+  Research Foundation) under Germany's Excellence Strategy — EXC 2052/1 —
+  390713894.
+type: software
+authors:
+  - family-names: Madore
+    given-names: Frédérick
+    orcid: "https://orcid.org/0000-0003-0959-2092"
+    email: frederick.madore@uni-bayreuth.de
+    affiliation: >-
+      Africa Multiple Cluster of Excellence, Digital Research Environment,
+      University of Bayreuth
+contact:
+  - family-names: Madore
+    given-names: Frédérick
+    orcid: "https://orcid.org/0000-0003-0959-2092"
+    email: frederick.madore@uni-bayreuth.de
+    affiliation: >-
+      Africa Multiple Cluster of Excellence, Digital Research Environment,
+      University of Bayreuth
+version: 1.12.0
+date-released: "2026-08-04"
+license: MIT
+repository-code: "https://github.com/AM-Digital-Research-Environment/amira-mcp-server"
+url: "https://data.africamultiple.uni-bayreuth.de"
+repository-artifact: "https://github.com/AM-Digital-Research-Environment/amira-mcp-server/releases"
+keywords:
+  - Model Context Protocol
+  - MCP server
+  - AMIRA
+  - Africa Multiple Cluster of Excellence
+  - Digital Research Environment
+  - African studies
+  - digital humanities
+  - research data
+  - research infrastructure
+  - Omeka S
+  - metadata
+  - large language models
+  - University of Bayreuth
+references:
+  - type: database
+    title: >-
+      AMIRA — Africa Multiple Interactive Research Atlas
+    abstract: >-
+      The research-data platform of the Africa Multiple Cluster of
+      Excellence, published on Omeka S and curated jointly with partners at
+      the Africa Multiple Research Centres. This is the data source the
+      software provides access to.
+    authors:
+      - name: >-
+          Africa Multiple Cluster of Excellence, Digital Research
+          Environment, University of Bayreuth
+    url: "https://data.africamultiple.uni-bayreuth.de"
+  - type: standard
+    title: "Model Context Protocol"
+    authors:
+      - name: Anthropic
+    url: "https://modelcontextprotocol.io"

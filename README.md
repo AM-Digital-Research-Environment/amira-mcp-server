@@ -394,6 +394,43 @@ and Elicitation are all unused, logging goes to stderr, and tool order is
 deterministic (registration order). CORS accepts both generations of headers
 (`Mcp-Session-Id`/`MCP-Protocol-Version` and `Mcp-Method`/`Mcp-Name`/`X-Mcp-Header`).
 
+## Citing this software
+
+If this server is part of how you found or analysed AMIRA material, please cite
+it. The repository carries a [`CITATION.cff`](CITATION.cff), so GitHub's **Cite
+this repository** button will render BibTeX and APA for you.
+
+```bibtex
+@software{madore_amira_mcp_server,
+  author    = {Madore, Frédérick},
+  title     = {{AMIRA MCP Server}},
+  year      = {2026},
+  publisher = {Africa Multiple Cluster of Excellence, University of Bayreuth},
+  url       = {https://github.com/AM-Digital-Research-Environment/amira-mcp-server},
+  version   = {1.12.0},
+  license   = {MIT}
+}
+```
+
+Cite the **data** separately from the software: individual records are citable
+by their `amira_url` (`https://data.africamultiple.uni-bayreuth.de/s/amira/item/<id>`),
+which is what every tool result returns for exactly this reason.
+
+## Credits and funding
+
+Built and maintained by the **Digital Research Environment (DRE)** of the
+[Africa Multiple Cluster of Excellence](https://www.africamultiple.uni-bayreuth.de/),
+University of Bayreuth — the Cluster's digital infrastructure unit, which
+designs and runs the data systems behind AMIRA. Curation and description of the
+underlying records are joint efforts with partners at the Africa Multiple
+Research Centres (Université Joseph Ki-Zerbo, Rhodes University, University of
+Lagos, Moi University) and Federal University of Bahia.
+
+Funded by the Deutsche Forschungsgemeinschaft (DFG, German Research Foundation)
+under Germany's Excellence Strategy — **EXC 2052/1 — 390713894**
+([Africa Multiple: Reconfiguring African Studies](https://gepris.dfg.de/gepris/projekt/390713894?language=en)).
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE). See also [CONTRIBUTING.md](CONTRIBUTING.md) and
+[SECURITY.md](SECURITY.md).

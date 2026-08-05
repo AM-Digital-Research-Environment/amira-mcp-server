@@ -1,0 +1,44 @@
+name: Tool or field request
+description: A question about AMIRA you cannot answer with the current 26 tools.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: The research question
+      description: >-
+        Write it the way you would ask a colleague. What you want to find out
+        matters more than the API shape you think it needs.
+      placeholder: >-
+        "Which projects in Research Section D worked on the same places as
+        project X, and what did they publish?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: >-
+        Which existing tools got you closest, and where they stopped short.
+        `find_related` and `get_collection_overview` cover a lot of pivots.
+
+  - type: dropdown
+    id: shape
+    attributes:
+      label: What would fix it
+      options:
+        - A new field on an existing tool's result
+        - A new filter/argument on an existing tool
+        - A new tool
+        - Not sure
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: >-
+        Note that every list result is weighed against a token budget, so a new
+        field on a `search_*` result has to earn its place across a whole page
+        of hits. A field that only some callers need usually belongs on the
+        matching `get_*` detail tool.

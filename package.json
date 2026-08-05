@@ -5,6 +5,38 @@
   "private": true,
   "type": "module",
   "main": "server/index.js",
+  "license": "MIT",
+  "author": {
+    "name": "Frédérick Madore",
+    "email": "frederick.madore@uni-bayreuth.de",
+    "url": "https://orcid.org/0000-0003-0959-2092"
+  },
+  "contributors": [
+    {
+      "name": "Digital Research Environment, Africa Multiple Cluster of Excellence, University of Bayreuth",
+      "url": "https://www.africamultiple.uni-bayreuth.de/"
+    }
+  ],
+  "homepage": "https://data.africamultiple.uni-bayreuth.de",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AM-Digital-Research-Environment/amira-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server/issues"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "amira",
+    "africa-multiple",
+    "african-studies",
+    "digital-humanities",
+    "research-data",
+    "omeka-s",
+    "bayreuth"
+  ],
   "scripts": {
     "fetch-data": "npm run build && node server/fetchCli.js",
     "typecheck": "tsc --noEmit",

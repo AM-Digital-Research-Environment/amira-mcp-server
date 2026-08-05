@@ -29,4 +29,10 @@ smoke-http-test.mjs
 .env
 .env.*
 
-# Keep in the bundle: manifest.json, package.json, icon.png, server/, data/, README.md, ROADMAP.md, .claude/ (companion skill)
+# Repo-process docs — they describe contributing to the repo, not using the
+# extension. CITATION.cff stays: citation metadata belongs with the artifact.
+CONTRIBUTING.md
+SECURITY.md
+.zenodo.json
+
+# Keep in the bundle: manifest.json, package.json, icon.png, CITATION.cff, server/, data/, README.md, ROADMAP.md, .claude/ (companion skill)

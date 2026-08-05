@@ -1,0 +1,44 @@
+{
+  "upload_type": "software",
+  "title": "AMIRA MCP Server",
+  "description": "<p>A read-only <a href=\"https://modelcontextprotocol.io\">Model Context Protocol</a> (MCP) server for the <strong>Africa Multiple Interactive Research Atlas (AMIRA)</strong>, the research-data platform of the <strong>Africa Multiple Cluster of Excellence</strong> at the University of Bayreuth. AMIRA is built and maintained by the Cluster's <strong>Digital Research Environment (DRE)</strong>, its digital infrastructure unit, which connects researchers across the Africa Multiple Research Centres (AMRCs) and partner institutions worldwide.</p><p>The server exposes AMIRA's Omeka S metadata &mdash; research items, projects, research sections, people, institutions, groups, collections, the cluster bibliography with extracted full text, journals, podcast episodes and YouTube videos with searchable transcripts, plus the places, languages and subjects that connect them &mdash; as 26 typed tools that any MCP client can query. A complete data snapshot is bundled, so the server runs fully offline with no API key, account or VPN; when enabled it refreshes from the public Omeka S API. Every record carries an <code>amira_url</code>, its public page on the Omeka S site, so results can be cited as links back to the source.</p>",
+  "notes": "Funded by the Deutsche Forschungsgemeinschaft (DFG, German Research Foundation) under Germany's Excellence Strategy — EXC 2052/1 — 390713894 (Africa Multiple: Reconfiguring African Studies).",
+  "creators": [
+    {
+      "name": "Madore, Frédérick",
+      "affiliation": "Africa Multiple Cluster of Excellence, Digital Research Environment, University of Bayreuth",
+      "orcid": "0000-0003-0959-2092"
+    }
+  ],
+  "access_right": "open",
+  "license": "MIT",
+  "language": "eng",
+  "keywords": [
+    "Model Context Protocol",
+    "MCP server",
+    "AMIRA",
+    "Africa Multiple Cluster of Excellence",
+    "Digital Research Environment",
+    "African studies",
+    "digital humanities",
+    "research data",
+    "research infrastructure",
+    "Omeka S",
+    "metadata",
+    "large language models",
+    "University of Bayreuth"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://data.africamultiple.uni-bayreuth.de",
+      "relation": "isDerivedFrom",
+      "resource_type": "dataset",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://www.africamultiple.uni-bayreuth.de/",
+      "relation": "isPartOf",
+      "scheme": "url"
+    }
+  ]
+}

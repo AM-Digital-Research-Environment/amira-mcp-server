@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A record in AMIRA is wrong or missing
+    url: https://data.africamultiple.uni-bayreuth.de
+    about: >-
+      This server serves what the public AMIRA site publishes. Check the record
+      on the site first — if the site is wrong too, it is a curation matter for
+      the Digital Research Environment, not a bug in this server.
+  - name: About the Africa Multiple Cluster of Excellence
+    url: https://www.africamultiple.uni-bayreuth.de/
+    about: News, events and general information about the Cluster.
+  - name: Report a security vulnerability
+    url: https://github.com/AM-Digital-Research-Environment/amira-mcp-server/security/advisories/new
+    about: Please report privately rather than in a public issue.
