@@ -47,6 +47,7 @@
     "smoke": "node smoke-test.mjs",
     "smoke:http": "node smoke-http-test.mjs",
     "weigh": "node scripts/weigh.mjs",
+    "stamp-citation": "node scripts/stamp-citation.mjs",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "validate:manifest": "mcpb validate manifest.json",
     "start:http": "node server/http.js",

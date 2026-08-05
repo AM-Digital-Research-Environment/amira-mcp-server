@@ -60,8 +60,20 @@ That chains clean → typecheck → unit tests → stdio smoke → HTTP smoke �
 
 Version lives in both `package.json` and `manifest.json` — bump both. Releases
 are tag-driven: pushing `v*` builds a fresh snapshot, packs the `.mcpb` and the
-companion skill, and publishes the GitHub Release. Keep `CITATION.cff`'s
-`version` and `date-released` in step with the tag.
+companion skill, and publishes the GitHub Release.
+
+`CITATION.cff` is **not** a third file to bump. The release workflow stamps its
+`version` and `date-released` from the tag — into the packed `.mcpb`, then back
+onto `main` as a follow-up commit. To set it by hand (from `package.json` and
+today's date):
+
+```bash
+npm run stamp-citation
+```
+
+`node scripts/stamp-citation.mjs --check` reports version drift without
+writing; it deliberately ignores `date-released`, which records when a release
+happened and cannot be derived from the working tree.
 
 ## Commit style
 

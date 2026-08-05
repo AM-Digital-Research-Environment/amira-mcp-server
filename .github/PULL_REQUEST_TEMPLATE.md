@@ -6,4 +6,4 @@
 - [ ] Tool surface changes are reflected in `manifest.json` and the README table
 - [ ] Every entity in new/changed results still carries its `amira_url`
 - [ ] `npm run weigh -- --check` passes (no list result grew past its budget)
-- [ ] Version bumped in `package.json`, `manifest.json` and `CITATION.cff` if releasing
+- [ ] Version bumped in `package.json` and `manifest.json` if releasing (`CITATION.cff` is stamped from the tag by CI)

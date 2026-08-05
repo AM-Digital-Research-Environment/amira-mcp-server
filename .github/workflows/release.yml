@@ -23,6 +23,21 @@ jobs:
           node-version: "26"
           cache: npm
       - run: npm ci
+      # CITATION.cff ships inside the .mcpb, so stamp it before anything is
+      # packed. On a tag this takes the version from the tag; on a manual run
+      # there is no tag, so it falls back to package.json and the file is
+      # unchanged. Not committed here — that happens after the release is
+      # published, so a failed build never leaves a bump behind.
+      - name: Stamp CITATION.cff from the tag
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            node scripts/stamp-citation.mjs \
+              --version "${GITHUB_REF_NAME#v}" \
+              --date "$(date -u +%Y-%m-%d)"
+          else
+            node scripts/stamp-citation.mjs --check || \
+              echo "::warning::CITATION.cff is out of step with package.json; a tagged release would fix it."
+          fi
       - name: Build data snapshot from the public Omeka S API
         run: npm run fetch-data
       - name: Unit tests
@@ -59,3 +74,37 @@ jobs:
               --title "${{ github.ref_name }} — AMIRA MCP server" \
               --generate-notes
           fi
+
+      # The stamp above only reached the packed artifact; the checkout is
+      # detached at the tag. GitHub's "Cite this repository" button reads the
+      # file on the default branch, so main needs the same edit. Separate
+      # checkout, because main may have moved on since the tag.
+      - name: Carry the stamped CITATION.cff back to main
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: main-checkout
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+      - name: Commit CITATION.cff to main
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: main-checkout
+        run: |
+          node scripts/stamp-citation.mjs \
+            --version "${GITHUB_REF_NAME#v}" \
+            --date "$(date -u +%Y-%m-%d)"
+          if git diff --quiet -- CITATION.cff; then
+            echo "main already cites ${GITHUB_REF_NAME}; nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CITATION.cff
+          git commit -m "cite ${GITHUB_REF_NAME} [skip ci]"
+          # A bookkeeping commit must never red a release that already shipped —
+          # branch protection or a race with another push is a warning, not a
+          # build failure.
+          git push origin main || {
+            echo "::warning::Could not push the CITATION.cff bump to main. Run 'npm run stamp-citation' locally and commit it."
+            exit 0
+          }
