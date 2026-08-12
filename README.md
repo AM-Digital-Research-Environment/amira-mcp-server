@@ -59,7 +59,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | --- | --- |
 | `get_collection_overview` | Counts and breakdowns across the whole collection + snapshot freshness |
 | `search_research_items` | Find items by keyword, **subject**, **location** (hierarchy-aware), contributor, project, section, university, resource type, format/genre, language, year |
-| `get_research_item` | Full metadata for one item (by Omeka `id` / `omeka_id`): typed dates, roles, places with their region/country chain, sponsors, collections, related items, media thumbnail |
+| `get_research_item` | Full metadata for one item (by Omeka `id` / `omeka_id`): typed dates, roles, places with their region/country chain, sponsors, collections, related items, media thumbnail — plus a **generated citation** and a BibTeX/RIS/CSL-JSON export (`citation_format`) |
 | `search_projects` / `get_project` | Projects by keyword, university, section, PI, member, funder — detail with item breakdown + top subjects |
 | `list_research_sections` / `get_research_section` | Thematic sections with funding phases (AM 1.0 / AM 2.0), PIs, counts, projects |
 | `search_persons` / `get_person` | People (either name order works) — profile across projects, items, publications |
@@ -89,6 +89,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | "Which journals does the cluster publish in?" | `list_journals` (ranked by publication count) |
 | "What themes travel with **Architecture** across projects?" | `find_related entity_type=subject value=Architecture` |
 | "When was this photograph taken?" | `get_research_item` → typed `dates` (created/collected/issued/…) |
+| "Give me a citation for this item — and the BibTeX" | `get_research_item` → `generated_citation` + `bibtex` (`citation_format=ris`/`csl-json` for a reference manager) |
 | "Which **decade** does the collection cover most?" | `list_years bucket=decade sort=count` |
 
 ## Companion skill

@@ -95,6 +95,19 @@ check("dates" in item, "item: dates exposed");
 check(Array.isArray(item.collections), "item: collections exposed");
 check("thumbnail" in item, "item: thumbnail exposed");
 
+// Generated citation (issue #4): items almost never carry a
+// dcterms:bibliographicCitation, so the server builds one — and it must always
+// end on the citable amira_url (D3), whichever export format was asked for.
+check(
+  item.generated_citation?.includes("Beier, Ulli") && item.generated_citation.endsWith(`${AMIRA}7392.`),
+  "item: generated citation names the creator and cites the amira_url",
+);
+check(item.bibtex?.startsWith("@misc{amira-7392,") && item.bibtex.includes("title = {Volume 8"), "item: BibTeX export");
+const itemRis = await call("get_research_item", { id: 7392, citation_format: "ris" });
+check(itemRis.ris?.startsWith("TY  - FIGURE") && itemRis.ris.endsWith("ER  - "), "item: RIS export");
+const itemCsl = await call("get_research_item", { id: 7392, citation_format: "csl-json" });
+check(itemCsl.csl_json?.type === "graphic" && itemCsl.csl_json?.URL === `${AMIRA}7392`, "item: CSL-JSON export");
+
 await call("search_projects", { research_section: "Arts & Aesthetics", limit: 3 }, { expect: [AMIRA] });
 const proj = await call("get_project", { id: 37700 }, { expect: ["External"] });
 check(proj.item_count >= 1000, "ILAM project has its ~1k items");

@@ -129,6 +129,33 @@
   (with the MongoDB2OmekaS CLUSTER_PARTNER_GROUPS offline fallback); `codex/periodic-refresh` added the
   `AMIRA_REFRESH_INTERVAL_HOURS` periodic freshness probe. v1.5.0 was version-bumped but never tagged —
   superseded by v1.6.0 below.
+- **2026-08-12 (later) — v1.14.0: research items cite themselves (issue #4).** `dcterms:bibliographicCitation`
+  is filled on **31 of 3,975 research items**, so "how do I cite this?" had no answer for 99 % of the
+  collection: `get_publication` has generated BibTeX since v1.0.0, `get_research_item` returned the raw
+  `citation` array and nothing else. It now also returns `generated_citation` — a note-style reference
+  (creator + role, medium, date or date range, collection, holding repository, then the publisher line,
+  ending on the **`amira_url`**, per D3) — plus one machine-readable export, `bibtex` by default and
+  `ris` / `csl_json` under `citation_format`. That closes the §4 bullet's open "format decision": all
+  three, one per call, keyed by format, rather than a `citation_style` enum of prose styles no one asked
+  for. Archival vocabulary, not journal vocabulary — `series`/`organization`/`howpublished`, `TY - FIGURE`,
+  CSL `graphic`/`manuscript`/`dataset` — because these are artefacts, not articles.
+  - **Who counts as the creator.** Roles are tiered: creator roles (Author, Photographer, Artist,
+    Film director, Musician, …) win; failing those, record-making roles (Collector, Interviewer,
+    Researcher, Research team member, …); custody and funding credits (Sponsor, **Repository**,
+    Publisher, Owner) are never creators — the Repository credit becomes the archive instead. A person
+    credited twice on one item (Beier is Collector *and* Photographer on 7398) appears once, under the
+    most specific credit; 4+ creators collapse to "et al." in prose while every export keeps them all.
+  - **Two traps the tests pin.** Corporate names are brace-protected in BibTeX (`{{Institute of African
+    and Diaspora Studies}}`) or BibTeX splits them on their internal " and "; CSL keeps them `literal`
+    so citeproc cannot invert them into a surname. And "n.d." must not become "n.d..".
+  - **Exposure-aware.** Below `structured`, creators/collection/project/repository/provenance drop out
+    and the citation falls back to title + medium + date + `amira_url` — still citable, nothing leaked.
+  - Cost: `get_research_item` 241 → 342 surface tokens (+1.3 % on the whole stdio surface, inside the
+    3 % gate) and 588 → 804 response tokens. It is a detail tool, which is where CONTRIBUTING says such
+    a field belongs; nothing was added to the search summaries.
+  - Verified: typecheck + 84 unit (17 new — `test/unit/citation.test.mjs` covers the builder, one
+    tools test covers the wiring) + stdio smoke (citation/BibTeX/RIS/CSL asserts on item 7392) +
+    HTTP smoke + `weigh --check` green; the token baseline is updated in the same commit.
 - **2026-08-12 — v1.13.0: Skills over MCP (draft SEP-2640), shipped as a prototype.** The companion skill reached
   users only as a zip they unzipped into `~/.claude/skills/`, which has two costs the extension
   removes: the **remote HTTP surface gets nothing** (ChatGPT, Claude.ai connectors and the APIs have
@@ -688,10 +715,10 @@ covers the long tail):
 - **Done (v1.2.0):** `list_years` / date-histogram facet — year/decade buckets, `from`/`to` window,
   `chronological|count` sort; ranged items count toward every year they span (mirrors the year filter).
 - `find_related` upgrades: multi-seed AND, year-windowed co-occurrence.
-- **Citation export for research items** (report §8, deferred from v1.4.0): a generated citation string
-  and multi-format export (BibTeX/RIS/CSL-JSON) on `get_research_item`, mirroring `get_publication`'s
-  BibTeX. Needs a format decision + a `citation_style` param design; items already expose the raw
-  `citation` (dcterms:bibliographicCitation).
+- **Done (v1.14.0):** **Citation export for research items** (report §8, [issue #4](https://github.com/AM-Digital-Research-Environment/amira-mcp-server/issues/4)):
+  `get_research_item` returns `generated_citation` + `bibtex`, with `citation_format=ris|csl-json`
+  for reference managers. The raw `citation` (`dcterms:bibliographicCitation`) stays beside it —
+  it exists on 31 items, which is why generating one was worth the tokens.
 - **Authority reconciliation metadata** (report §9, deferred from v1.4.0): return aliases + the matched
   form for people/institutions/places so name-order/accent matching is auditable. Blocked on data —
   aliases aren't in the current snapshot; needs a transform-pipeline change to carry them.

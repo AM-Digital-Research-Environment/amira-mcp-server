@@ -10,6 +10,7 @@ export { fold, foldCached, foldedIndexOf, clearFoldCache } from "./text.js";
 export { ensureStore, currentStore, DataStore } from "./data.js";
 export { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshot, writeSnapshotAtomic } from "./snapshot.js";
 export { itemUrl, itemUrlOrNull } from "./urls.js";
+export { generateItemCitation } from "./citation.js";
 export { createAmiraServer } from "./mcpServer.js";
 export { exposureLevel } from "./exposure.js";
 export { isTemplatePlaceholder, parseAllowedOriginHostnames, config } from "./config.js";

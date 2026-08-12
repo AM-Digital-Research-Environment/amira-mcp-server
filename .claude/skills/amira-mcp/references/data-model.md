@@ -25,6 +25,8 @@ The central artefact (image, text, audio, moving image, …). Returned in full b
 | `sponsors[]`, `provenance[]`, `access_rights[]`, `license` | Funding, holding source, rights. |
 | `identifiers[]`, `doi`, `external_urls[]`, `collection_url`, `wisski_url` | Provenance / external links. |
 | `related_items[]` | `{ relation (replaces/replaced by/has version/…), title, amira_url }` — resolvable links. |
+| `citation[]` | The record's own `dcterms:bibliographicCitation`, when curators supplied one — **31 items of ~4,000 do**. |
+| `generated_citation` + `bibtex` | Built by the server from the fields above (creator + role, medium, date, collection, holding repository, `amira_url`) because `citation[]` is almost always empty. `citation_format=ris` / `csl-json` returns `ris` / `csl_json` instead of `bibtex`. |
 | `has_media` / `thumbnail` | Whether digitised media is attached; large-thumbnail URL when it is (open `amira_url` to view the full media). |
 | `collections[]` | The item sets the item belongs to `{ title, amira_url }` — browsable collection pages. |
 

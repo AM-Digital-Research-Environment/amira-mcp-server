@@ -25,6 +25,7 @@ available_values? } }`. Every record carries a citable `amira_url`.
 | By date | `search_research_items` | `year_from`, `year_to` (overlaps the item's derived content-date range; rights/admin dates are not used; inverted ranges return `invalid_range`) |
 | Free text | `search_research_items` | `keyword` (titles, description, abstract, ToC, identifiers) |
 | Full record of one item | `get_research_item` | `id` / `omeka_id` (e.g. `7392`) — includes typed `dates`, place hierarchy, sponsors, related items |
+| Cite one item | `get_research_item` | Same call: `generated_citation` (ready to paste) + `bibtex`; `citation_format=ris` / `csl-json` swaps the export for `ris` / `csl_json`. The curated `citation[]` exists on only 31 items — prefer it verbatim when present |
 
 Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 

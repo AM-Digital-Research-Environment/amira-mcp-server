@@ -3,8 +3,8 @@
   "surface": {
     "stdio": {
       "tool_count": 26,
-      "total_chars": 30560,
-      "total_tokens": 7667,
+      "total_chars": 30956,
+      "total_tokens": 7768,
       "tools": {
         "search_research_items": 678,
         "search_publications": 474,
@@ -13,13 +13,13 @@
         "get_publication": 377,
         "search_videos": 363,
         "search_projects": 360,
+        "get_research_item": 342,
         "search_podcasts": 336,
         "get_podcast": 318,
         "get_video": 312,
         "list_categories": 264,
         "list_research_sections": 260,
         "list_locations": 258,
-        "get_research_item": 241,
         "get_research_section": 238,
         "search_persons": 232,
         "get_person": 227,
@@ -36,8 +36,8 @@
     },
     "http": {
       "tool_count": 28,
-      "total_chars": 35398,
-      "total_tokens": 8881,
+      "total_chars": 35794,
+      "total_tokens": 8982,
       "tools": {
         "fetch": 732,
         "search_research_items": 678,
@@ -48,13 +48,13 @@
         "get_publication": 377,
         "search_videos": 363,
         "search_projects": 360,
+        "get_research_item": 342,
         "search_podcasts": 336,
         "get_podcast": 318,
         "get_video": 312,
         "list_categories": 264,
         "list_research_sections": 260,
         "list_locations": 258,
-        "get_research_item": 241,
         "get_research_section": 238,
         "search_persons": 232,
         "get_person": 227,
@@ -152,8 +152,8 @@
       "chars": 8714
     },
     "get_research_item": {
-      "tokens": 588,
-      "chars": 2352
+      "tokens": 804,
+      "chars": 3210
     },
     "get_person": {
       "tokens": 398,

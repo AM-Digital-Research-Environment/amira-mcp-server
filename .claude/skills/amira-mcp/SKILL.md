@@ -134,8 +134,8 @@ a tool's max and it caps silently but tells you — the envelope echoes `request
 `effective_limit`.
 
 ### 3 — Drill
-`get_research_item` (by Omeka `id` / `omeka_id`) returns the full record — including the **typed dates** and the
-place hierarchy. `get_project`, `get_research_section`, `get_person`, `get_institution`,
+`get_research_item` (by Omeka `id` / `omeka_id`) returns the full record — including the **typed dates**, the
+place hierarchy and a ready-to-paste `generated_citation` + `bibtex`. `get_project`, `get_research_section`, `get_person`, `get_institution`,
 `get_publication` (with generated BibTeX, peer-review status, funders, and the venue's own
 `amira_url` when it is a Journal record), `get_podcast`, `get_video` complete the detail layer.
 **Transcripts and publication full text are opt-in:** `get_podcast` / `get_video` omit the transcript
@@ -174,6 +174,11 @@ link.
 - For a publication, video, or podcast, include the AMIRA `amira_url` as the main source link; add DOI,
   repository, watch, or listen URLs only as secondary links where they help.
 - Do not invent links or ids — only use the URLs the tools return.
+- **When a formal reference is wanted, don't assemble one by hand.** `get_research_item` returns
+  `generated_citation` (creator + role, medium, date, collection, holding repository, `amira_url`)
+  and a `bibtex` entry; `citation_format=ris` / `csl-json` returns `ris` / `csl_json` instead, for a
+  reference manager. `get_publication` does the same with `bibtex`. If the item carries a curated
+  `citation[]` (only 31 of ~4,000 do), quote that verbatim and treat the generated one as a fallback.
 
 ## Caveats
 

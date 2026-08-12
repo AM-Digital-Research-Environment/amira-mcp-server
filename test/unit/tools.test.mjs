@@ -113,6 +113,39 @@ test("location matches any level; country matches only the chain root", async ()
   assert.equal(lagosCountry.total_matches, 0); // Lagos is not a country root
 });
 
+// The generator itself is tested in test/unit/citation.test.mjs; this is the
+// wiring — that the tool builds it from the record it is returning, and that
+// `citation_format` moves the export to the right key.
+test("get_research_item: generated citation defaults to BibTeX, switches on citation_format", async () => {
+  const item = await call("get_research_item", { id: 500 });
+  assert.deepEqual(item.citation, [], "the raw dcterms:bibliographicCitation is absent on this item");
+  assert.equal(
+    item.generated_citation,
+    "Beier, Ulli. “Yoruba Architecture Study.” Image, 2013. Fixture Collection. " +
+      "AMIRA, Africa Multiple Cluster of Excellence, University of Bayreuth. " +
+      "https://data.africamultiple.uni-bayreuth.de/s/amira/item/500.",
+  );
+  assert.ok(item.bibtex.startsWith("@misc{amira-500,"), item.bibtex);
+  assert.ok(item.bibtex.includes("series = {Fixture Collection}"), "the collection title, not `Collection 800`");
+  assert.ok(item.bibtex.includes("note = {Project: Fixture Art Worlds. Provenance: Iwalewahaus. AMIRA item 500}"));
+
+  // An item with no collection falls back to the project name.
+  const noSet = await call("get_research_item", { id: 502 });
+  assert.ok(noSet.generated_citation.includes("Audio, n.d. Fixture Music Library."), noSet.generated_citation);
+
+  const ris = await call("get_research_item", { id: 500, citation_format: "ris" });
+  assert.ok(!("bibtex" in ris), "one export per call");
+  assert.ok(ris.ris.startsWith("TY  - FIGURE"), ris.ris);
+  assert.equal(ris.generated_citation, item.generated_citation);
+
+  const csl = await call("get_research_item", { id: 500, citation_format: "csl-json" });
+  assert.equal(csl.csl_json.type, "graphic");
+  assert.deepEqual(csl.csl_json.author, [{ family: "Beier", given: "Ulli" }]);
+
+  const bad = await client.callTool({ name: "get_research_item", arguments: { id: 500, citation_format: "mla" } });
+  assert.equal(bad.isError, true, "an unknown format is rejected by the schema");
+});
+
 test("list_years: ranged items count into every bucket; from/to windows", async () => {
   const years = await call("list_years", { from: 1960, to: 1965 });
   assert.equal(years.dated_items, 2);

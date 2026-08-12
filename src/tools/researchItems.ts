@@ -24,6 +24,7 @@ import {
 import { itemSetUrl, itemUrl, itemUrlOrNull } from "../urls.js";
 import { nameMatchesQuery } from "../names.js";
 import { allowDescriptive, allowStructured } from "../exposure.js";
+import { generateItemCitation } from "../citation.js";
 
 function matchUniversity(item: ResearchItemRec, val: string): boolean {
   return item.university === val.trim().toLowerCase() || containsCI(UNIVERSITY_LABELS[item.university], val);
@@ -196,16 +197,22 @@ export function registerResearchItemTools(server: Server): void {
         "Full metadata for one research item: typed content dates, contributors with roles, subjects, " +
         "places with their region/country chain, project/section/university, collections, descriptive " +
         "text, formats and physical notes, sponsors, provenance, rights, identifiers, related items, " +
-        "languages, a media thumbnail, and the citable `amira_url`. Long text fields are truncated at " +
-        "25,000 characters. Returns { error } if the id is unknown.",
+        "languages, a media thumbnail, and the citable `amira_url`. Also returns a ready-to-use " +
+        "`generated_citation` string plus a `bibtex` entry built from those fields (items rarely carry a " +
+        "`citation` of their own) — `citation_format` swaps BibTeX for RIS or CSL-JSON. Long text fields " +
+        "are truncated at 25,000 characters. Returns { error } if the id is unknown.",
       annotations: annotate("Get research item detail"),
       inputSchema: z.strictObject({
         id: z
           .union([z.string(), z.number()])
           .describe("The item's Omeka o:id — the number ending its amira_url, e.g. 7392. Legacy DRE keys also work"),
+        citation_format: z
+          .enum(["bibtex", "ris", "csl-json"])
+          .optional()
+          .describe("Export format for the generated citation: bibtex (default) → `bibtex`, ris → `ris`, csl-json → `csl_json`"),
       }),
     },
-    async ({ id }) => {
+    async ({ id, citation_format }) => {
       const store = await ensureStore();
       const key = String(id);
       const it = store.getItem(key);
@@ -215,6 +222,16 @@ export function registerResearchItemTools(server: Server): void {
         });
       }
       const project = store.projectOf(it);
+      // The citation names the collection the item is filed under — the real
+      // item-set title only, never the `Collection <id>` placeholder below.
+      const cite = generateItemCitation(
+        it,
+        {
+          collection: it.item_sets.map((setId) => store.getItemSet(setId)?.title).find(Boolean) ?? null,
+          project: project?.name ?? null,
+        },
+        citation_format ?? "bibtex",
+      );
       const description = allowDescriptive() && it.description ? capText(it.description) : null;
       const abstract = allowDescriptive() && it.abstract ? capText(it.abstract) : null;
       const toc = allowDescriptive() && it.toc ? capText(it.toc) : null;
@@ -264,6 +281,8 @@ export function registerResearchItemTools(server: Server): void {
         collection_url: it.collection_url,
         wisski_url: it.wisski_url,
         ...(allowDescriptive() ? { citation: it.citation } : {}),
+        generated_citation: cite.citation,
+        [cite.field]: cite.export,
         description: description?.text ?? null,
         description_truncated: description?.truncated || undefined,
         abstract: abstract?.text ?? null,
