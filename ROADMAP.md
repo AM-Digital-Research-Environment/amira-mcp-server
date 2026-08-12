@@ -129,6 +129,43 @@
   (with the MongoDB2OmekaS CLUSTER_PARTNER_GROUPS offline fallback); `codex/periodic-refresh` added the
   `AMIRA_REFRESH_INTERVAL_HOURS` periodic freshness probe. v1.5.0 was version-bumped but never tagged —
   superseded by v1.6.0 below.
+- **2026-08-12 — v1.13.0: Skills over MCP (draft SEP-2640), shipped as a prototype.** The companion skill reached
+  users only as a zip they unzipped into `~/.claude/skills/`, which has two costs the extension
+  removes: the **remote HTTP surface gets nothing** (ChatGPT, Claude.ai connectors and the APIs have
+  no local skills directory — the whole remote audience), and a downloaded copy **drifts from the tool
+  surface it documents** (this log alone records the accent-folding caveat, the transcript coverage
+  numbers and three tool-count changes since the zip format was fixed). Served over the connection,
+  the skill is pinned to the build answering the tool calls.
+  - **Build-time catalog** (`scripts/skills.mjs`): walks `.claude/skills/`, validates frontmatter
+    against the Agent Skills rules, SHA-256s every file, and emits an immutable snapshot that
+    `scripts/build.mjs` inlines as `__SKILLS_SNAPSHOT__`. Same split as the data snapshot — the
+    runtime needs no filesystem and no YAML parser, so the Docker image serves skills without
+    shipping `.claude/`. Nested skills are published independently *and* as parent supporting
+    content, per the SEP.
+  - **Runtime** (`src/skills.ts`, ~150 lines): every skill file registered as an ordinary resource
+    (so `resources/read` just works, with a 24h public `cacheHint` — the files are immutable per
+    build), plus `skills/list`, `skills/get` and `resources/directory/read` on
+    `server.server.setRequestHandler` with zod params. The v2 SDK models
+    `capabilities.extensions` natively, so `io.modelcontextprotocol/skills` is declared type-safely
+    and **merges** with the tools/resources capabilities rather than replacing them (verified on the
+    wire). `skills/list` carries its `ttlMs`/`cacheScope` in-band because the SDK's `cacheHints`
+    option is keyed by the closed set of spec methods.
+  - **Dev-lenient / build-strict** (mcp-use's split, adopted wholesale): a plain `npm run build`
+    drops an invalid skill with a warning and ships the rest — a broken frontmatter should not block
+    unrelated local work — while `npm run skills:check`, `npm run build:strict` (CI) and
+    `prepack-mcpb` fail outright. Serving an empty catalog beats serving a skill whose frontmatter
+    contradicts its `SKILL.md`: hosts treat that mismatch as a verification failure, not a warning.
+  - **Cost when unused: zero.** Skill text is never injected into `instructions` or tool
+    descriptions; `npm run weigh -- --check` reports *no change vs baseline*, so the per-turn
+    `tools/list` payload is byte-identical. `AMIRA_SKILLS=0` withdraws the capability and the three
+    methods (verified: `-32601`, and `resources/list` falls back to the four `ui://` apps).
+  - Verified: typecheck + **67 unit** (8 new, incl. the digest contract re-hashed from disk and from
+    the returned payload) + stdio smoke + **HTTP smoke** (the remote surface is the point) all green.
+  - **Open, deliberately:** SEP-2640 is unmerged (PR #2640) and the wire contract may change; host
+    support is thin (fast-agent implements it, Claude Desktop/Code and ChatGPT unverified). Skill
+    files now appear in `resources/list` alongside the `ui://` apps — per spec, but a visible surface
+    change to weigh before this ships in a Release. Retiring `amira-mcp-skill.zip` waits on real host
+    support.
 - **2026-08-04 — v1.12.0: token budgets are measured and gated, not audited by hand.** D10 said token
   discipline belongs *in* the tool layer; until now the evidence for it was a one-off manual count in
   this log (v1.7.0's "40,853 → 35,346 chars"). That number had already drifted to 35,398 unnoticed —

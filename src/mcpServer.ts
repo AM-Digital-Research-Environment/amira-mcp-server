@@ -6,6 +6,7 @@
 import { McpServer, SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/server";
 import { registerTools } from "./tools/register.js";
 import { registerOpenAITools } from "./tools/openai.js";
+import { SKILLS_CAPABILITY, registerSkills, skillsEnabled } from "./skills.js";
 
 export const VERSION = typeof __SERVER_VERSION__ !== "undefined" ? __SERVER_VERSION__ : "dev";
 
@@ -116,9 +117,13 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
       instructions: INSTRUCTIONS,
       supportedProtocolVersions: PROTOCOL_VERSIONS,
       cacheHints: CACHE_HINTS,
+      // Draft SEP-2640. Declared only when a valid skill catalog was built, so
+      // a host never sees the capability without `skills/list` behind it.
+      ...(skillsEnabled() ? { capabilities: { extensions: SKILLS_CAPABILITY } } : {}),
     },
   );
   registerTools(server);
   if (opts.openai) registerOpenAITools(server);
+  registerSkills(server);
   return server;
 }

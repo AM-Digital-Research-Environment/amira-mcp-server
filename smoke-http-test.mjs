@@ -3,6 +3,8 @@
 // plus a rich tool — proving the HTTP endpoint serves the full surface offline.
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { z } from "zod";
 
 const PORT = process.env.SMOKE_HTTP_PORT || "8799";
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -186,6 +188,25 @@ try {
   const overview = await call("get_collection_overview", {});
   check(overview.counts?.research_items >= 3975, "rich tool over HTTP: overview parity");
   check(overview.counts?.journals >= 50, "rich tool over HTTP: journals corpus present");
+
+  // Skills over MCP on the REMOTE surface — the reason the extension is worth
+  // having. ChatGPT, Claude.ai connectors and the APIs cannot install a local
+  // skill folder, so this transport is the only way the companion skill reaches
+  // them. The snapshot is embedded in the bundle, so it survives a container
+  // that ships no .claude/ directory at all.
+  const caps = client.getServerCapabilities();
+  check(caps?.extensions?.["io.modelcontextprotocol/skills"]?.directoryRead === true, "HTTP: skills extension declared");
+  const skillList = await client.request({ method: "skills/list", params: {} }, z.looseObject({}));
+  check(skillList.skills?.[0]?.uri === "skill://amira-mcp/SKILL.md", "HTTP: skills/list serves the companion skill");
+  check(skillList.skills?.[0]?.resources?.length === 4, "HTTP: complete resource manifest");
+  const skillDoc = await client.readResource({ uri: "skill://amira-mcp/SKILL.md" });
+  const skillText = skillDoc.contents?.[0]?.text ?? "";
+  check(skillText.includes("amira_url"), "HTTP: SKILL.md body readable over resources/read");
+  check(
+    `sha256:${createHash("sha256").update(Buffer.from(skillText, "utf8")).digest("hex")}` ===
+      skillList.skills[0].resources.find((r) => r.uri === "skill://amira-mcp/SKILL.md")?.digest,
+    "HTTP: digest verifies against the manifest",
+  );
 
   await client.close();
 

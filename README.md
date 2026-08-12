@@ -103,6 +103,36 @@ Install it either way:
   `~/.claude/skills/amira-mcp/`.
 - **Or copy** the [`.claude/skills/amira-mcp/`](.claude/skills/amira-mcp/) folder from this repo there.
 
+### …or let the server hand it over (Skills over MCP) — prototype
+
+> **Prototype.** `skill://` resources and the `skills/*` methods implement an extension that is still
+> a **draft** (SEP-2640 is unmerged), against **thin host support**. Treat this surface as
+> experimental: it may change shape or be withdrawn, and the zip above remains the supported way to
+> install the skill. The tools, resources and citation contract are unaffected either way.
+
+The server also **serves that same skill over the connection**, following the draft
+[SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640) extension
+(`io.modelcontextprotocol/skills`). Nothing to download and nothing to keep in sync: a host that
+implements the extension discovers the skill on connect, and the copy it gets is the one built into
+the running server rather than a zip that may predate the tool surface it describes. It is the only
+route that reaches the **remote HTTP surface** — ChatGPT, Claude.ai connectors and the APIs have no
+local skills directory.
+
+| Method | What it returns |
+| --- | --- |
+| `skills/list` | The catalog: `skill://amira-mcp/SKILL.md`, its frontmatter, and a SHA-256 digest for every file |
+| `skills/get` | One skill by URI, to refresh digests without re-listing |
+| `resources/read` | Any single file — `SKILL.md` or a reference — read on demand |
+| `resources/directory/read` | One directory level at a time (`skill://amira-mcp`, `skill://amira-mcp/references`) |
+
+**Cost when unused: zero.** Skill text is never injected into the server `instructions` or into any
+tool description, so the `tools/list` payload — the part re-sent every turn — is byte-identical
+whether or not a host supports the extension. Disclosure timing stays a host decision; the four
+reference files load only when something actually reads them.
+
+Set `AMIRA_SKILLS=0` to drop the capability and the three methods entirely. The extension is a draft:
+the wire contract may change before it is finalised.
+
 ## Install (end users)
 
 Download `amira-mcp-server.mcpb` from the
@@ -287,6 +317,7 @@ workflows crawl the **public** API — no credentials):
 | `AMIRA_SITE_SLUG` | — | `amira` | Omeka site slug used in `amira_url` |
 | `AMIRA_DATA_DIR` | — | bundled `data/` | Override the bundled snapshot path (dev) |
 | `AMIRA_EXPOSURE` | — | `full` | **Benchmark experiments only**: restrict which metadata the tools expose (see below) |
+| `AMIRA_SKILLS` | — | on | **Prototype**: serve the companion skill over the draft SEP-2640 extension. `0`/`false`/`off` withdraws the capability and the `skills/*` methods |
 | `PORT` | — | `8787` | Port for the remote HTTP transport (`server/http.js`); ignored by the `.mcpb` |
 | `HOST` | — | `0.0.0.0` | Bind address for the remote HTTP transport |
 | `AMIRA_ALLOWED_ORIGINS` | — | `localhost, 127.0.0.1, [::1]` | Comma-separated browser Origin hostnames or URLs allowed to call the HTTP endpoint. Server-to-server clients, which omit `Origin`, are unaffected. Add trusted web-client origins explicitly; wildcards are rejected. |
