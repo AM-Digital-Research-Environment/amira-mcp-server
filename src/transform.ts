@@ -266,6 +266,13 @@ export function transformSection(item: OmekaItem): SectionRec {
 
 // --- publications --------------------------------------------------------------
 
+// Every publication resource class the sync writes → the normalized type the
+// tools filter and cite on. Keep exhaustive: the fallback below de-namespaces
+// and lowercases the class term, which happens to be right for `fabio:Preprint`
+// and wrong for everything else (`fabio:MastersThesis` → "mastersthesis",
+// `bibo:Document` → "bibo:document" — the regex only strips a `fabio:` prefix).
+// Templates 24-32 were added upstream in 2026-09; see the africa-multiple-data
+// skill's publications reference for the EP3 type → template mapping.
 const PUB_CLASS_TO_TYPE: Record<string, string> = {
   "fabio:JournalArticle": "article",
   "fabio:Book": "book",
@@ -277,6 +284,20 @@ const PUB_CLASS_TO_TYPE: Record<string, string> = {
   "fabio:BookReview": "book_review",
   "fabio:BlogPost": "online_post",
   "fabio:Dataset": "research_data",
+  "fabio:Preprint": "preprint",
+  "fabio:NewspaperArticle": "newspaper_article",
+  // A contribution in a German juristischer Kommentar — an entry in a
+  // reference work, which is what fabio:Entry denotes.
+  "fabio:Entry": "legal_commentary",
+  "fabio:ReferenceEntry": "encyclopedia_entry",
+  // Deliberately the neutral class upstream: an ERef "Übersetzung" may be a
+  // translated book or a translated article.
+  "bibo:Document": "translation",
+  // Editorship of a book series *or* a journal, hence fabio:Series.
+  "fabio:Series": "series_editorship",
+  "fabio:Thesis": "habilitation",
+  "fabio:MastersThesis": "masters_thesis",
+  "fabio:BachelorsThesis": "bachelors_thesis",
 };
 
 export function transformPublication(item: OmekaItem, ctx: TransformContext, classOId: number | null): PublicationRec {

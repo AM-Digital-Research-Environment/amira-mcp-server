@@ -41,7 +41,29 @@ const BIBTEX_ENTRY: Record<string, string> = {
   book_review: "article",
   online_post: "misc",
   research_data: "misc",
+  // Templates 24-32, added upstream 2026-09. BibTeX has no entry for a
+  // habilitation, a series editorship or a translation, so they take the
+  // nearest honest one rather than a wrong-but-specific one.
+  preprint: "misc",
+  newspaper_article: "article",
+  legal_commentary: "incollection",
+  encyclopedia_entry: "incollection",
+  translation: "book",
+  series_editorship: "misc",
+  habilitation: "phdthesis",
+  masters_thesis: "mastersthesis",
+  bachelors_thesis: "mastersthesis",
 };
+
+/** Types whose venue is a periodical (BibTeX `journal`) rather than a book. */
+const VENUE_IS_JOURNAL = new Set(["article", "book_review", "newspaper_article"]);
+/** Types whose venue is the containing volume (BibTeX `booktitle`). */
+const VENUE_IS_BOOKTITLE = new Set([
+  "chapter",
+  "conference",
+  "legal_commentary",
+  "encyclopedia_entry",
+]);
 
 /** Minimal BibTeX from the structured fields (Omeka carries no raw BibTeX). */
 function toBibtex(p: PublicationRec): string {
@@ -54,8 +76,8 @@ function toBibtex(p: PublicationRec): string {
   add("author", refLabels(p.authors).join(" and "));
   add("editor", refLabels(p.editors).join(" and "));
   add("title", p.title);
-  if (p.type === "article" || p.type === "book_review") add("journal", p.venue);
-  else if (p.type === "chapter" || p.type === "conference") add("booktitle", p.venue);
+  if (VENUE_IS_JOURNAL.has(p.type)) add("journal", p.venue);
+  else if (VENUE_IS_BOOKTITLE.has(p.type)) add("booktitle", p.venue);
   else add("series", p.venue);
   add("year", p.year != null ? String(p.year) : null);
   add("volume", p.volume);
@@ -76,8 +98,10 @@ export function registerPublicationTools(server: Server): void {
     {
       title: "Search publications",
       description:
-        "Search the cluster bibliography (~280 publications harvested from ERef/EPub Bayreuth: journal " +
-        "articles, books, chapters, theses, conference and working papers). Open-access ones carry the " +
+        "Search the cluster bibliography (~560 publications harvested from ERef/EPub Bayreuth: journal " +
+        "articles, books, chapters, theses, conference and working papers, plus preprints, newspaper " +
+        "articles, encyclopedia and legal-commentary entries, translations and series editorships). " +
+        "Open-access ones carry the " +
         "extracted FULL TEXT of their PDF and keyword search reaches into it — such a hit is flagged " +
         "`matched_in: 'fulltext'` with a `fulltext_snippet` around the match. Filters are optional and " +
         "AND-combined; results are newest-first. Cite each result's `url` (its DOI or repository " +
@@ -90,7 +114,11 @@ export function registerPublicationTools(server: Server): void {
         type: z
           .string()
           .optional()
-          .describe("article | book | chapter | conference | doctoral_thesis | working_paper | journal_issue | book_review | online_post | research_data"),
+          .describe(
+            "article | book | chapter | conference | doctoral_thesis | working_paper | journal_issue | " +
+              "book_review | online_post | research_data | preprint | newspaper_article | legal_commentary | " +
+              "encyclopedia_entry | translation | series_editorship | habilitation | masters_thesis | bachelors_thesis",
+          ),
         venue: z.string().optional().describe("Journal/book/series title, partial. Journal titles come from list_journals"),
         has_fulltext: z.boolean().optional().describe("true → only publications with extracted, searchable full text"),
         year_from: z.number().int().min(0).max(2200).optional().describe("Earliest publication year"),

@@ -61,7 +61,7 @@ hardcode the list (read it from the tool), but expect:
 Each section carries a `funding_phase` label and `date` range, so you can group or filter the two sets
 directly. Filter with the exact strings the tool returns (note "In/securities", "Re:membering").
 
-Beyond the research items, the collection carries the cluster **bibliography** (~280 publications;
+Beyond the research items, the collection carries the cluster **bibliography** (~560 publications;
 open-access ones carry the **extracted full text of their PDFs**, searchable via
 `search_publications keyword=…`), the **journals** they appear in (`list_journals`), **podcast
 episodes** (e.g. *Cluster Conversations*) with transcripts, and the cluster's **YouTube videos** —
@@ -201,8 +201,10 @@ link.
 7. **Languages are canonical records.** One record per language ("French", code `fra`); the server
    accepts names, ISO 639-1/2 codes and the legacy bibliographic codes (`fre`, `ger`) alike.
 8. **Transcripts and full text are opt-in on detail calls.** Podcast transcripts cover all episodes;
-   video transcripts cover most videos; publication full text covers the open-access subset (~53 of
-   ~280 — `has_fulltext` on each result tells you, and `get_collection_overview` reports the counts).
+   video transcripts cover most videos; publication full text covers the open-access subset (~60 of
+   ~560 — `has_fulltext` on each result tells you, and `get_collection_overview` reports the counts).
+   The open-access share is small because ERef, which supplies most of the bibliography, is
+   metadata-only; only EPub deposits carry a PDF.
    Absence of a transcript or full text is not an error. The detail tools omit the text unless you
    pass `include_transcript=true` / `include_fulltext=true` (see Drill).
 9. **Places: flat facet, hierarchy-aware filters.** `list_locations` is a flat, item-count-ranked list

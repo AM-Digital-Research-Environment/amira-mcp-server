@@ -37,8 +37,8 @@ contact:
     affiliation: >-
       Africa Multiple Cluster of Excellence, Digital Research Environment,
       University of Bayreuth
-version: 1.14.0
-date-released: "2026-08-12"
+version: 1.15.0
+date-released: "2026-09-04"
 license: MIT
 repository-code: "https://github.com/AM-Digital-Research-Environment/amira-mcp-server"
 url: "https://data.africamultiple.uni-bayreuth.de"

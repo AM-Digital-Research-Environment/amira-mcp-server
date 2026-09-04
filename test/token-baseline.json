@@ -3,11 +3,11 @@
   "surface": {
     "stdio": {
       "tool_count": 26,
-      "total_chars": 30956,
-      "total_tokens": 7768,
+      "total_chars": 31228,
+      "total_tokens": 7836,
       "tools": {
         "search_research_items": 678,
-        "search_publications": 474,
+        "search_publications": 542,
         "find_related": 434,
         "list_years": 383,
         "get_publication": 377,
@@ -36,13 +36,13 @@
     },
     "http": {
       "tool_count": 28,
-      "total_chars": 35794,
-      "total_tokens": 8982,
+      "total_chars": 36066,
+      "total_tokens": 9050,
       "tools": {
         "fetch": 732,
         "search_research_items": 678,
+        "search_publications": 542,
         "search": 482,
-        "search_publications": 474,
         "find_related": 434,
         "list_years": 383,
         "get_publication": 377,
@@ -132,8 +132,8 @@
       "chars": 15282
     },
     "search_publications@max": {
-      "tokens": 11270,
-      "chars": 44992
+      "tokens": 11107,
+      "chars": 44371
     },
     "list_journals@max": {
       "tokens": 7062,
@@ -156,8 +156,8 @@
       "chars": 3210
     },
     "get_person": {
-      "tokens": 398,
-      "chars": 1586
+      "tokens": 1082,
+      "chars": 4316
     },
     "get_project": {
       "tokens": 233,
@@ -172,8 +172,8 @@
       "chars": 8574
     },
     "get_publication@fulltext": {
-      "tokens": 7233,
-      "chars": 28734
+      "tokens": 7141,
+      "chars": 28359
     },
     "get_podcast@transcript": {
       "tokens": 6384,
@@ -184,8 +184,8 @@
       "chars": 26494
     },
     "fetch@fulltext": {
-      "tokens": 6655,
-      "chars": 26424
+      "tokens": 6668,
+      "chars": 26484
     },
     "find_related@max": {
       "tokens": 1631,

@@ -66,7 +66,11 @@ persons, and contributed items (slim refs); coordinates and Wikidata link when r
 
 ## Publication
 
-`id` / `omeka_id` (Omeka o:id), `type` (article/book/chapter/conference/doctoral_thesis/working_paper/…),
+`id` / `omeka_id` (Omeka o:id), `type` — one of nineteen: `article`, `book`, `chapter`,
+`conference`, `doctoral_thesis`, `working_paper`, `journal_issue`, `book_review`, `online_post`,
+`research_data`, and (added 2026-09) `preprint`, `newspaper_article`, `legal_commentary`,
+`encyclopedia_entry`, `translation`, `series_editorship`, `habilitation`, `masters_thesis`,
+`bachelors_thesis` — plus
 `title`, `year`, `authors[]`, `editors[]`, `venue` (journal/book/series title — for journal articles
 also `venue_omeka_id` / `venue_amira_url` / `venue_issn`, linking the Journal authority record),
 `volume`, `issue`, `pages`, `publisher`, `doi`, `isbn`/`issn`, `status` (peer-review flag),
