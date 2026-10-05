@@ -47,14 +47,16 @@ explicitly when exposing the service; the Docker image already does so.
 Origin validation remains enabled. Configure `AMIRA_ALLOWED_ORIGINS` for
 trusted browser clients and put a public endpoint behind an HTTPS proxy.
 
-`npm run audit:prod` checks runtime dependencies; `npm run audit` includes the
-development-only MCPB packaging CLI. CI and both publishing workflows gate on
-the full audit. On 9 September 2026 both audits reported zero vulnerabilities.
+`npm run audit:prod` checks runtime dependencies; `npm run audit` includes all
+development dependencies. CI and both publishing workflows gate on the full
+audit. On 5 October 2026 both audits reported zero vulnerabilities for v1.18.1.
 
-MCPB 2.1.2 still resolves an old `tmp` through its interactive editor dependencies.
-A scoped override selects `tmp` 0.2.7 or a compatible patch, resolving
-[the path-traversal advisory](https://github.com/advisories/GHSA-ph9p-34f9-6g65)
-and the older temporary-directory advisory. Regression tests exercise the editor's
-file lifecycle and rejection of unsafe path options. This chain is excluded
-from runtime bundles. Remove the override when MCPB fixes it upstream; audit
-results change over time, so rerun before release.
+Version 1.18.1 removes the MCPB CLI and its unused signing/editor dependencies,
+including the unpatched `node-forge` dependency responsible for
+[GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv).
+The repository packer validates the vendored official manifest schema and
+produces unsigned ZIP bundles. It rejects symlinks and unsafe paths, verifies
+required files are included, and excludes development dependencies and local
+credentials even if `.mcpbignore` tries to re-include them. No dependency audit
+exceptions or overrides are needed. Audit results change over time; rerun before
+release.

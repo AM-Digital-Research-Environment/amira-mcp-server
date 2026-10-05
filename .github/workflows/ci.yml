@@ -42,7 +42,7 @@ jobs:
         run: |
           node scripts/fixture-snapshot.mjs
           npm run validate:manifest
-          npm exec -- mcpb pack . windows-fixture.mcpb
+          node scripts/mcpb.mjs pack . windows-fixture.mcpb
 
   smoke:
     name: Protocol and package smoke tests

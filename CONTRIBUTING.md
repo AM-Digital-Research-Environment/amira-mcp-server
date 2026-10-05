@@ -43,11 +43,13 @@ That chains clean → typecheck → skill validation → unit tests → stdio sm
 including development dependencies; `npm run audit:prod` checks only runtime dependencies.
 The test launcher enumerates files so `npm test` works on Node 20 and Windows.
 
-MCPB's editor currently needs a scoped `tmp` override to resolve its packaging
-advisory. The packaging unit tests exercise the actual editor dependency's file
-lifecycle and rejection of unsafe path options. Remove the override when an
-upstream MCPB update supplies a patched dependency; rerun the tests and pack a
-real `.mcpb` after changing this chain.
+`scripts/mcpb.mjs` validates the official MCPB 0.3 JSON schema and creates unsigned
+ZIP bundles with `fflate`. Schema provenance and its MIT license live in
+`scripts/vendor/mcpb/`. This keeps unused signing and editor dependencies out of
+the build. Packaging tests check archive contents, ignore rules, snapshot layout,
+required files, version agreement and unsafe paths. Run `npm run pack-mcpb` after
+changing packaging; it runs the prepack checks automatically. CI also packs a
+generation-based fixture on Windows.
 
 ## Things that will be asked in review
 

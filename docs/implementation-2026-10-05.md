@@ -2,7 +2,12 @@
 
 Version **1.18.0** implements the approved [technical review](review-2026-10-05.md).
 The existing read-only tool names, citation exports, exposure levels and older
-MCP clients remain supported. Work is local; no release or deployment was made.
+MCP clients remain supported. The validation below records the original local
+implementation. The subsequent v1.18.0 CI and release runs failed on the known
+MCPB/node-forge audit finding. Version **1.18.1** resolves it by removing the
+unused signing/editor dependency chain and packaging unsigned MCPBs directly
+against the official manifest schema. The full audit gate remains enabled;
+both audits now report zero vulnerabilities.
 
 ## Delivered changes
 

@@ -1,40 +1,115 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { unzipSync } from "fflate";
+import { packBundle, validateManifest } from "../../scripts/mcpb.mjs";
 
-// Resolve through MCPB's actual dependency chain so this checks the scoped
-// override, even when npm installs other copies elsewhere in node_modules.
-const require = createRequire(import.meta.url);
-const mcpbRequire = createRequire(require.resolve("@anthropic-ai/mcpb"));
-const promptsRequire = createRequire(mcpbRequire.resolve("@inquirer/prompts"));
-const editorRequire = createRequire(promptsRequire.resolve("@inquirer/editor"));
-const externalEditorPath = editorRequire.resolve("external-editor");
-const externalRequire = createRequire(externalEditorPath);
-const { ExternalEditor } = externalRequire(externalEditorPath);
-const tmp = externalRequire("tmp");
+function fixture(t) {
+  const root = mkdtempSync(path.join(tmpdir(), "amira-packaging-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const write = (name, value) => {
+    const filename = path.join(root, name);
+    mkdirSync(path.dirname(filename), { recursive: true });
+    writeFileSync(filename, typeof value === "object" && !Buffer.isBuffer(value) ? JSON.stringify(value) : value);
+  };
+  const manifest = {
+    manifest_version: "0.3", name: "fixture", version: "1.0.0",
+    description: "Packaging fixture", author: { name: "AMIRA" }, icon: "icon.png",
+    server: { type: "node", entry_point: "server/index.js", mcp_config: { command: "node", args: ["${__dirname}/server/index.js"] } },
+  };
+  write("manifest.json", manifest);
+  write("package.json", { version: "1.0.0", type: "module" });
+  write("server/index.js", 'console.log("packaged server");\n');
+  write("icon.png", readFileSync(new URL("../../icon.png", import.meta.url)));
+  return { root, write, manifest, manifestFile: path.join(root, "manifest.json"), output: path.join(root, "fixture.mcpb") };
+}
 
-test("MCPB's editor can create, read and clean up a file with the patched tmp", () => {
-  const editor = new ExternalEditor("initial text", {
-    prefix: "amira-packaging-", postfix: ".txt", mode: 0o600,
-  });
-  try {
-    assert.ok(path.basename(editor.tempFile).startsWith("amira-packaging-"));
-    assert.ok(editor.tempFile.endsWith(".txt"));
-    assert.equal(readFileSync(editor.tempFile, "utf8"), "initial text");
-    writeFileSync(editor.tempFile, "edited text — é", "utf8");
-    editor.readTemporaryFile();
-    assert.equal(editor.text, "edited text — é");
-  } finally {
-    editor.cleanup();
-  }
-  assert.equal(existsSync(editor.tempFile), false);
+test("vendored MCPB schema retains the upstream bytes", () => {
+  const schema = readFileSync(new URL("../../scripts/vendor/mcpb/manifest-v0.3.schema.json", import.meta.url));
+  assert.equal(createHash("sha256").update(schema).digest("hex"), "3a0ac9d845711a1b9b17dfa5a52f8b60628239d6a86a9db417206a9efc78592d");
 });
 
-test("MCPB's tmp rejects traversal and non-string path options", () => {
-  for (const option of ["prefix", "postfix", "template"]) {
-    assert.throws(() => tmp.tmpNameSync({ [option]: `..${path.sep}escape-XXXXXX` }), Error);
-    assert.throws(() => tmp.tmpNameSync({ [option]: ["..", "escape-XXXXXX"] }), Error);
+test("manifest validation enforces the official schema and explicit version", (t) => {
+  const { write, manifest, manifestFile } = fixture(t);
+  assert.deepEqual(validateManifest(manifestFile), manifest);
+  for (const invalid of [
+    { ...manifest, unknown_field: true },
+    { ...manifest, author: {} },
+    { ...manifest, homepage: "not a URL" },
+    { ...manifest, manifest_version: undefined },
+    { ...manifest, manifest_version: "0.4" },
+    { ...manifest, tools: [{ name: 123 }] },
+  ]) {
+    write("manifest.json", invalid);
+    assert.throws(() => validateManifest(manifestFile), /Invalid MCPB manifest|Expected manifest_version/);
   }
+});
+
+test("packer preserves bundle layout, binary assets and snapshot generations with gitignore semantics", (t) => {
+  const { root, write, output } = fixture(t);
+  const pointer = { generation: "fixture-generation" };
+  write("data/active.json", pointer);
+  write("data/generations/fixture-generation/metadata.json", { title: "Études africaines" });
+  write(".claude/skills/amira-mcp/SKILL.md", "Companion skill");
+  write("docs/kept.md", "kept");
+  write("docs/omitted.md", "omitted");
+  write("scripts/dev.mjs", "omitted");
+  write(".mcpbignore", "scripts/\ndocs/*\n!docs/kept.md\n!.env\n!node_modules/\n");
+  for (const name of ["node_modules/secret.js", ".git/config", ".env", "docs/.env.local", ".npmrc", "package-lock.json", "previous.mcpb"]) {
+    write(name, "never ship");
+  }
+  const result = packBundle(root, output);
+  const contents = unzipSync(readFileSync(output));
+  assert.deepEqual(Object.keys(contents).sort(), [
+    ".claude/skills/amira-mcp/SKILL.md", "data/active.json",
+    "data/generations/fixture-generation/metadata.json", "docs/kept.md", "icon.png",
+    "manifest.json", "package.json", "server/index.js",
+  ]);
+  assert.equal(result.files.length, 8);
+  assert.deepEqual(Buffer.from(contents["icon.png"]), readFileSync(path.join(root, "icon.png")));
+  assert.deepEqual(JSON.parse(Buffer.from(contents["data/active.json"]).toString()), pointer);
+  assert.equal(JSON.parse(Buffer.from(contents["data/generations/fixture-generation/metadata.json"]).toString()).title, "Études africaines");
+  // Existing archives are excluded; repeated builds of identical input match.
+  const first = readFileSync(output);
+  packBundle(root, output);
+  assert.deepEqual(readFileSync(output), first);
+});
+
+test("validation rejects absent, unsafe and mismatched bundle files", (t) => {
+  const { root, write, manifest, manifestFile } = fixture(t);
+  for (const entry_point of ["../outside.js", "/absolute.js", "C:/outside.js", "server\\index.js", "server/../index.js"]) {
+    write("manifest.json", { ...manifest, server: { ...manifest.server, entry_point } });
+    assert.throws(() => validateManifest(manifestFile), /Unsafe bundle path/);
+  }
+  write("manifest.json", manifest);
+  write("package.json", { version: "2.0.0" });
+  assert.throws(() => validateManifest(manifestFile), /versions differ/);
+  write("package.json", { version: "1.0.0" });
+  write("icon.png", "not a PNG");
+  assert.throws(() => validateManifest(manifestFile), /local PNG/);
+  rmSync(path.join(root, "server/index.js"));
+  assert.throws(() => validateManifest(manifestFile), /ENOENT/);
+});
+
+test("packing fails before replacing the previous artifact if a required file is excluded", (t) => {
+  const { root, write, output } = fixture(t);
+  for (const required of ["manifest.json", "package.json", "server/", "icon.png"]) {
+    write(".mcpbignore", required);
+    write("fixture.mcpb", "previous artifact");
+    assert.throws(() => packBundle(root, output), /Required file excluded/);
+    assert.equal(readFileSync(output, "utf8"), "previous artifact");
+  }
+  assert.throws(() => packBundle(root, path.join(root, "manifest.json")), /Output must end in .mcpb/);
+});
+
+test("packing rejects linked directories including a linked required entry point", (t) => {
+  const { root, write, manifest, manifestFile, output } = fixture(t);
+  // Junctions work without Windows developer mode; Unix uses a directory symlink.
+  symlinkSync(path.join(root, "server"), path.join(root, "linked"), process.platform === "win32" ? "junction" : "dir");
+  assert.throws(() => packBundle(root, output), /Symlinks are not supported/);
+  write("manifest.json", { ...manifest, server: { ...manifest.server, entry_point: "linked/index.js" } });
+  assert.throws(() => validateManifest(manifestFile), /Symlinks are not supported/);
 });

@@ -48,7 +48,7 @@ jobs:
       - name: Type-check, bundle, smoke-test
         run: npm run prepack-mcpb
       - name: Pack .mcpb
-        run: npm exec -- mcpb pack . amira-mcp-server.mcpb
+        run: node scripts/mcpb.mjs pack . amira-mcp-server.mcpb
       - name: Pack companion skill
         # Zip the skill with `amira-mcp/` at the archive root, so end users can
         # unzip it straight into their Claude skills dir (~/.claude/skills/).

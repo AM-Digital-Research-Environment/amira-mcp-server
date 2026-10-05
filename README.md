@@ -337,7 +337,7 @@ Pack the extension:
 
 ```bash
 npm run prepack-mcpb                       # clean + typecheck + build + test + smoke
-npx @anthropic-ai/mcpb validate manifest.json
+npm run validate:manifest
 npm run pack-mcpb                          # -> amira-mcp-server.mcpb
 ```
 

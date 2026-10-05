@@ -8,9 +8,11 @@ exact identity handling, seven SDK-backed apps, bounded tool profiles, and expan
 protocol, snapshot, Unicode, exposure and graph regression coverage. See the
 [implementation and validation report](docs/implementation-2026-10-05.md).
 
-All direct dependencies were checked against npm and updated. Production audit
-passes; the complete audit remains blocked by the upstream MCPB/node-forge advisory
-with no published fix. The gate is retained.
+All direct dependencies were checked against npm and updated. **Version 1.18.1**
+replaces the MCPB CLI's unused signing/editor stack with a focused unsigned ZIP
+packer and the official manifest schema. This removes the unpatched node-forge
+dependency that blocked v1.18.0 CI and release; the full audit gate is retained
+and both dependency audits are clean.
 
 ## Current work — September 2026
 
@@ -49,9 +51,7 @@ below. The historical progress log records earlier releases and their datasets.
 2. **Operational validation.** Exercise the new Linux/Windows/Node matrix and
    container health job in CI, then validate supported production MCP Apps hosts.
    Local browser previews emulate host RPC; they do not certify every host.
-3. **Upstream packaging advisory.** Update MCPB/node-forge as soon as a patched
-   release exists; keep the full dependency audit failing until then.
-4. **Scale when evidence warrants it.** Profile larger corpora and long-running
+3. **Scale when evidence warrants it.** Profile larger corpora and long-running
    export workloads before adding databases, search services, background task
    protocols or authenticated features to this public read-only server.
 

@@ -4,7 +4,7 @@
 // The version lives in three files (package.json, manifest.json, CITATION.cff)
 // and a human bumping three files by hand will eventually bump two. The first
 // two are load-bearing — the build injects package.json's version into the
-// bundle and `mcpb validate` reads manifest.json — so they fail loudly when
+// bundle and `validate:manifest` reads manifest.json — so they fail loudly when
 // wrong. CITATION.cff fails silently: nothing validates it, and GitHub's "Cite
 // this repository" button will happily render a stale version forever. So this
 // is stamped from the tag at release time instead of being maintained by hand.

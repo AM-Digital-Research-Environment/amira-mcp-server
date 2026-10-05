@@ -80,7 +80,7 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         run: |
           npm run prepack-mcpb
-          npm exec -- mcpb pack . amira-mcp-server.mcpb
+          node scripts/mcpb.mjs pack . amira-mcp-server.mcpb
 
       - name: Publish / update rolling pre-release
         if: steps.check.outputs.changed == 'true'
