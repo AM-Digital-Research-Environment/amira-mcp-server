@@ -1,0 +1,56 @@
+import type { WindowField } from "./textWindows.js";
+import { exposureMessage } from "../exposure.js";
+export type Server = import("@modelcontextprotocol/server").McpServer;
+
+/** Maximum length of any single free-text field returned to the model. */
+export const CHARACTER_LIMIT = 25000;
+
+// --- result / annotation helpers --------------------------------------------
+
+export function annotate(title: string) {
+  return {
+    title,
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  };
+}
+
+/** Standard tool result: COMPACT JSON text (pretty-printing cost ~24% of every
+ * response pre-1.0) plus structuredContent for structured-data clients. */
+export function textResult(payload: Record<string, unknown>): {
+  content: { type: "text"; text: string }[];
+  structuredContent: Record<string, unknown>;
+} {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(payload) }],
+    structuredContent: payload,
+  };
+}
+
+/**
+ * Uniform structured error (report §error-handling): `{ error: { code, message,
+ * suggested_tool?, available_values? } }`. `code` is a stable machine token
+ * (`not_found`, `invalid_id`, …); `message` stays human-readable.
+ */
+export function errorResult(
+  code: string,
+  message: string,
+  extra: { suggested_tool?: string; available_values?: unknown[] } = {},
+): ReturnType<typeof textResult> & { isError: true } {
+  const error: Record<string, unknown> = { code, message };
+  if (extra.suggested_tool) error.suggested_tool = extra.suggested_tool;
+  if (extra.available_values && extra.available_values.length) error.available_values = extra.available_values;
+  return { ...textResult({ error }), isError: true };
+}
+
+/** Structured refusal when an opt-in text is hidden by the exposure level. */
+export function textAccessDisabledResult(field: WindowField): ReturnType<typeof textResult> {
+  return errorResult("text_access_disabled", `The ${field} is hidden at this exposure level. ${exposureMessage("full")}`);
+}
+
+/** Structured refusal for a whole tool/filter gated by the exposure level. */
+export function exposureRestrictedResult(needs: "descriptive" | "structured" | "full", what: string): ReturnType<typeof textResult> {
+  return errorResult("exposure_restricted", `${what} is not available: ${exposureMessage(needs)}`);
+}

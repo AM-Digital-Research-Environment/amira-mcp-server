@@ -2,7 +2,7 @@
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { createAmiraServer, VERSION } from "./mcpServer.js";
 import { config } from "./config.js";
-import { ensureStore } from "./data.js";
+import { ensureStore, stopBackgroundRefresh } from "./data.js";
 
 async function main(): Promise<void> {
   // Warm the in-memory snapshot (and kick off the background refresh) without
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     console.error(`[amira] ${signal} received; closing stdio transport`);
     try {
-      await stdio.close();
+      await Promise.all([stopBackgroundRefresh(), stdio.close()]);
     } catch (err) {
       console.error("[amira] stdio shutdown failed:", err);
       process.exitCode = 1;
@@ -40,6 +40,7 @@ async function main(): Promise<void> {
   };
   process.once("SIGINT", () => void shutdown("SIGINT"));
   process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  process.stdin.once("end", () => void stopBackgroundRefresh());
 }
 
 main().catch((err) => {

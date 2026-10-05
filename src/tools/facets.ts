@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { ensureStore } from "../data.js";
-import type { DataStore } from "../data.js";
 import type { LinkedRef, ResearchItemRec } from "../types.js";
 import { allowStructured } from "../exposure.js";
 import {
@@ -19,6 +18,8 @@ import {
 } from "./_shared.js";
 import { itemSetUrl, itemUrlOrNull } from "../urls.js";
 import { TIMELINE_UI_META } from "./apps.js";
+import { researchFilters, selectResearchItems, invalidYearRange } from "../researchItemQuery.js";
+import { timelineSchema } from "./outputSchemas.js";
 
 interface RefCount {
   label: string;
@@ -26,13 +27,13 @@ interface RefCount {
   count: number;
 }
 
-/** Count linked refs across items, deduping per item by label. */
+/** Count linked refs across items, deduping per item by ID or literal label. */
 function countRefs(items: ResearchItemRec[], pick: (it: ResearchItemRec) => LinkedRef[]): RefCount[] {
   const counts = new Map<string, RefCount>();
   for (const it of items) {
     const seen = new Set<string>();
     for (const ref of pick(it)) {
-      const key = ref.label.toLowerCase();
+      const key = ref.o_id != null ? `id:${ref.o_id}` : `label:${ref.label.toLowerCase()}`;
       if (!key || seen.has(key)) continue;
       seen.add(key);
       const rec = counts.get(key) ?? { label: ref.label, o_id: ref.o_id, count: 0 };
@@ -50,14 +51,10 @@ export function registerFacetTools(server: Server): void {
     "list_subjects",
     {
       title: "List subjects",
-      description:
-        "List the subject headings used across research items, ranked by how many items carry each, with " +
-        "each subject's own authority page. Subjects absorb the former free-form tags — there is no " +
-        "separate tag facet. Feed a value into the `subject` filter of search_research_items to retrieve " +
-        "the items.",
+      description: "Subject headings ranked by distinct research-item count. Includes former tags. Feed a heading into search_research_items.subject.",
       annotations: annotate("List subjects"),
       inputSchema: z.strictObject({
-        keyword: z.string().optional().describe("Substring filter on the subject heading"),
+        keyword: z.string().max(1000).optional().describe("Substring filter on the subject heading"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -67,7 +64,7 @@ export function registerFacetTools(server: Server): void {
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_subjects");
       const limit = capLimit(args.limit, 50, 300);
       const offset = capOffset(args.offset);
-      let ranked = countRefs(store.items, (it) => it.subjects);
+      let ranked = store.cached("facets:subjects", () => countRefs(store.items, (it) => it.subjects));
       if (args.keyword) ranked = ranked.filter((r) => containsCI(r.label, args.keyword!));
       return textResult(
         pageOf(ranked, offset, limit, (r) => subjectEntry(r.label, r.o_id, r.count), {
@@ -84,15 +81,13 @@ export function registerFacetTools(server: Server): void {
     "list_locations",
     {
       title: "List locations",
-      description:
-        "List every place the research items come from, ranked by item count, with coordinates where " +
-        "known. Countries and cities sit in ONE flat list (there is no level to choose) and the hierarchy " +
-        "is rolled up, so an item from Lagos counts toward both Lagos and Nigeria and both appear. Feed a " +
-        "name straight into the `location` filter of search_research_items.",
+      description: "Research places with coordinates and ancestor rollups. One item can count under both city and country. Feed a name into search_research_items.location.",
       annotations: annotate("List locations"),
+      _meta: { ui: { resourceUri: "ui://amira/map", visibility: ["model", "app"] } },
       inputSchema: z.strictObject({
-        country: z.string().optional().describe("Narrow to one country: the country itself plus its cities/regions"),
-        keyword: z.string().optional().describe("Substring filter on the place name"),
+        filters: researchFilters.optional().describe("Research-item filters applied before place counts"),
+        country: z.string().max(1000).optional().describe("Narrow to one country: the country itself plus its cities/regions"),
+        keyword: z.string().max(1000).optional().describe("Substring filter on the place name"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -100,29 +95,30 @@ export function registerFacetTools(server: Server): void {
     async (args) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_locations");
+      if (invalidYearRange(args.filters?.year_from, args.filters?.year_to)) return errorResult("invalid_range", "year_from must be less than or equal to year_to.");
       const limit = capLimit(args.limit, 50, 300);
       const offset = capOffset(args.offset);
 
       interface PlaceCount extends RefCount {
         country: string | null;
       }
+      const selected = selectResearchItems(store, args.filters ?? {}).filtered;
+      const aggregate = () => {
       const counts = new Map<string, PlaceCount>();
-      for (const it of store.items) {
+      for (const it of selected) {
         const seen = new Set<string>();
         for (const ref of it.places) {
-          // The place plus its ancestors — each distinct name counts once per item.
-          const chain = store.placeChain(ref); // [self, parent, ..., root]
+          // Keep homonymous places separate and deduplicate each authority per item.
+          const chain = store.placeChainRefs(ref); // [self, parent, ..., root]
           const root = chain[chain.length - 1]!;
           for (let i = 0; i < chain.length; i++) {
-            const label = chain[i]!;
+            const { label, o_id: oId } = chain[i]!;
             const isCountry = i === chain.length - 1;
-            const key = label.toLowerCase();
+            const key = oId == null ? `label:${label.toLowerCase()}` : `id:${oId}`;
             if (seen.has(key)) continue;
             seen.add(key);
             // country filter keeps the country itself and any place under it.
-            if (args.country && !(containsCI(label, args.country) || containsCI(root, args.country))) continue;
-            const oId = i === 0 ? ref.o_id : (store.getLocationByName(label)?.o_id ?? null);
-            const rec = counts.get(key) ?? { label, o_id: oId, count: 0, country: isCountry ? null : root };
+            const rec = counts.get(key) ?? { label, o_id: oId, count: 0, country: isCountry ? null : root.label };
             rec.count += 1;
             if (rec.o_id == null && oId != null) rec.o_id = oId;
             counts.set(key, rec);
@@ -130,7 +126,10 @@ export function registerFacetTools(server: Server): void {
         }
       }
 
-      let ranked = [...counts.values()].sort((a, b) => b.count - a.count);
+      return [...counts.values()].sort((a, b) => b.count - a.count);
+      };
+      let ranked = Object.keys(args.filters ?? {}).length ? aggregate() : store.cached("facets:locations", aggregate);
+      if (args.country) ranked = ranked.filter((r) => containsCI(r.label, args.country!) || containsCI(r.country, args.country!));
       if (args.keyword) ranked = ranked.filter((r) => containsCI(r.label, args.keyword!));
 
       return textResult(
@@ -142,6 +141,8 @@ export function registerFacetTools(server: Server): void {
             const loc = r.o_id != null ? store.getLocation(r.o_id) : undefined;
             return {
               name: r.label,
+              omeka_id: r.o_id,
+              coordinate_scope: r.country ? "place" : "hierarchy_root",
               ...(r.country ? { country: r.country } : {}),
               item_count: r.count,
               latitude: loc?.latitude ?? null,
@@ -151,8 +152,10 @@ export function registerFacetTools(server: Server): void {
           },
           {
             distinct_places: ranked.length,
+            matched_items: selected.length,
+            items_without_place: selected.filter((it) => !it.places.length).length,
             ...limitEcho(args.limit, 300, limit),
-            ...filtersEcho({ country: args.country, keyword: args.keyword }),
+            ...filtersEcho({ country: args.country, keyword: args.keyword, filters: args.filters }),
           },
         ),
       );
@@ -164,13 +167,10 @@ export function registerFacetTools(server: Server): void {
     "list_collections",
     {
       title: "List collections",
-      description:
-        "List the collections (Omeka item sets) research items belong to — per-project collections, " +
-        "external archives (e.g. ILAM) and curated sets — ranked by item count, each with its browsable " +
-        "page. Feed a title or id into the `collection` filter of search_research_items.",
+      description: "Omeka item sets ranked by research-item count, with catalogue links. Feed an ID into search_research_items.collection.",
       annotations: annotate("List collections"),
       inputSchema: z.strictObject({
-        keyword: z.string().optional().describe("Substring filter on the collection title"),
+        keyword: z.string().max(1000).optional().describe("Substring filter on the collection title"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -206,16 +206,13 @@ export function registerFacetTools(server: Server): void {
     "list_categories",
     {
       title: "List a category facet",
-      description:
-        "List the distinct values of one categorical facet across research items, ranked by item count " +
-        "(languages also carry their ISO `code`). Feed values back into the matching " +
-        "search_research_items filter: `genre` for formats, `language`, `resource_type`.",
+      description: "Ranked formats, languages or resource types used by research items. Feed values into the corresponding search filters.",
       annotations: annotate("List category facet"),
       inputSchema: z.strictObject({
         category: z
           .enum(["formats", "genres", "languages", "resource_types"])
           .describe("'genres' is an alias of 'formats'. The former 'tags' facet is merged into subjects — use list_subjects"),
-        keyword: z.string().optional().describe("Substring filter on the value"),
+        keyword: z.string().max(1000).optional().describe("Substring filter on the value"),
         limit: z.number().int().min(1).optional().describe("Default 100, max 500"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -230,6 +227,7 @@ export function registerFacetTools(server: Server): void {
       const limit = capLimit(args.limit, 100, 500);
       const offset = capOffset(args.offset);
 
+      let ranked = store.cached(`facets:category:${category}`, () => {
       let ranked: RefCount[];
       if (category === "formats") {
         ranked = countRefs(store.items, (it) => [
@@ -241,6 +239,8 @@ export function registerFacetTools(server: Server): void {
       } else {
         ranked = countRefs(store.items, (it) => (it.type ? [{ label: it.type, o_id: null }] : []));
       }
+      return ranked;
+      });
       if (args.keyword) ranked = ranked.filter((r) => containsCI(r.label, args.keyword!));
 
       const codeOf = (label: string): string | null =>
@@ -276,15 +276,11 @@ export function registerFacetTools(server: Server): void {
       // Renders through the MCP Apps timeline when the host supports the
       // extension; ignored (plain JSON) everywhere else.
       _meta: TIMELINE_UI_META,
-      description:
-        "Date histogram of the research items: how many fall in each year (or decade) of their content " +
-        "dates — for coverage-over-time and most-covered-year questions. The response also reports " +
-        "dated_items, undated_items and the observed year_range. An item whose content date is a RANGE " +
-        "counts toward every year it spans, so bucket counts can sum to more than dated_items — the same " +
-        "semantics as the year_from/year_to filter of search_research_items, into which a year can be fed " +
-        "back. Years have no authority page, so results carry no amira_url.",
+      description: "Research-item year/decade histogram with dated and undated counts. A date range counts in each spanned bucket. Supports shared item filters and pagination.",
       annotations: annotate("List years"),
+      outputSchema: timelineSchema,
       inputSchema: z.strictObject({
+        filters: researchFilters.optional().describe("Research-item filters applied before bucketing"),
         bucket: z.enum(["year", "decade"]).optional().describe("Default 'year'"),
         from: z.number().int().min(0).max(2200).optional().describe("Earliest year to report (inclusive)"),
         to: z.number().int().min(0).max(2200).optional().describe("Latest year to report (inclusive)"),
@@ -300,6 +296,8 @@ export function registerFacetTools(server: Server): void {
       const limit = capLimit(args.limit, 200, 500);
       const offset = capOffset(args.offset);
       const { from, to } = args;
+      if (args.filters && !allowStructured()) return exposureRestrictedResult("structured", "Timeline filters");
+      if (invalidYearRange(args.filters?.year_from, args.filters?.year_to)) return errorResult("invalid_range", "year_from must be less than or equal to year_to.");
       if (from !== undefined && to !== undefined && from > to) {
         return errorResult("invalid_range", "`from` must be less than or equal to `to`.");
       }
@@ -309,7 +307,7 @@ export function registerFacetTools(server: Server): void {
       let undatedItems = 0;
       let yearRange: { min: number; max: number } | null = null;
 
-      for (const it of store.items) {
+      for (const it of selectResearchItems(store, args.filters ?? {}).filtered) {
         if (it.year_min == null) {
           undatedItems++;
           continue;
@@ -352,7 +350,7 @@ export function registerFacetTools(server: Server): void {
             undated_items: undatedItems,
             ...(yearRange ? { year_range: yearRange } : {}),
             ...limitEcho(args.limit, 500, limit),
-            ...filtersEcho({ from, to }),
+            ...filtersEcho({ from, to, filters: args.filters }),
           },
         ),
       );

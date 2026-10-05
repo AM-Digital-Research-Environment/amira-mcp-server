@@ -15,12 +15,16 @@ concurrency:
 
 jobs:
   test:
-    name: Unit tests (Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
+    name: Unit tests (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 26]
+        node: [20, 24, 26]
+        os: [ubuntu-latest]
+        include:
+          - node: 24
+            os: windows-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -33,6 +37,12 @@ jobs:
       # catalog with a warning, which is what a plain local build does.
       - run: npm run build:strict
       - run: node scripts/test.mjs unit
+      - name: Windows fixture packaging check
+        if: runner.os == 'Windows'
+        run: |
+          node scripts/fixture-snapshot.mjs
+          npm run validate:manifest
+          npm exec -- mcpb pack . windows-fixture.mcpb
 
   smoke:
     name: Protocol and package smoke tests
@@ -53,3 +63,27 @@ jobs:
       - run: npm run weigh -- --check
       - run: npm run validate:manifest
       - run: npm run audit
+
+  container:
+    name: Container build and health (offline fixture)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run build:strict
+      - run: node scripts/fixture-snapshot.mjs
+      - run: docker build --build-arg SNAPSHOT_STAGE=bundled -t amira-test .
+      - run: |
+          docker run -d --name amira-test -p 8787:8787 -e AMIRA_LIVE_REFRESH=0 amira-test
+          for attempt in $(seq 1 20); do
+            if curl --fail http://127.0.0.1:8787/healthz; then exit 0; fi
+            sleep 1
+          done
+          docker logs amira-test
+          exit 1
+      - if: always()
+        run: docker rm -f amira-test || true

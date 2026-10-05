@@ -29,7 +29,7 @@ the site and this MCP server are built and maintained by the cluster's **Digital
 The **Africa Multiple Cluster of Excellence** (University of Bayreuth, est. 2019) studies Africa and
 its diasporas under the banner **"Reconfiguring African Studies"**. Its three core concepts —
 **multiplicity, relationality, reflexivity** — treat phenomena as products of ever-changing
-relationships rather than fixed entities; `find_related` is the tool that puts this relational view
+relationships rather than fixed entities; `find_related` and `get_entity_graph` put this relational view
 into practice. See [references/cluster-context.md](references/cluster-context.md) for the fuller
 picture — mission, funding phases, research centres, the DRE.
 
@@ -160,6 +160,27 @@ either order (person), any level of the place hierarchy (location) or id/label (
 echoes the rule in `matching`. `matched_items` counts *items*, so it can legitimately differ from a
 `list_subjects` heading count.
 
+Prefer `resolve_entity` when a name could be ambiguous. It returns typed IDs,
+separate homonym candidates and unresolved literal nodes; do not silently pick
+one person. Pass the selected `id` to `get_entity_graph`. It distinguishes explicit
+catalogue links from co-occurrence and counts distinct evidence records separately
+per corpus. Use `edge_id` and its `snapshot_id` to page citations; a refresh can
+require resolving the graph again. Check `truncated` before describing coverage.
+`get_person id=…` selects an exact person; name lookup refuses homonyms.
+
+For close reading, `get_text_passages` finds bounded passages in selected
+`publication:ID`, `video:ID` or `podcast:ID` records, with exact original UTF-16
+offsets and citations. These are extracted-text offsets, not page numbers or
+timestamps. Follow `next_offset`; disclose `scanned_matches_capped`. Full exposure
+is required. The older remote `search`/`fetch` pair uses `pub:ID` and `item:ID`
+aliases: do not interchange those prefixes with graph/passage IDs.
+
+Use `compare_collections` for 2–4 project/collection cohorts with identical research
+filters. Report denominators and missingness; overlapping cohorts and date ranges
+must not be summed as disjoint observations. `get_data_quality` summarizes source
+coverage and unresolved references. `get_snapshot_changes` compares only retained
+local generations from the same source, not arbitrary dates or the live site.
+
 ### 5 — Synthesise with citations
 Every record carries an **`amira_url`**. Cite each entity you mention as a **markdown link** to that
 URL whenever possible. For publications, videos, and podcasts, you may also include DOI, repository,
@@ -229,3 +250,9 @@ link.
     such as `created`, `collected`, `issued`, and `date`.
 12. **Errors are structured.** A miss or invalid input returns `{ error: { code, message, suggested_tool?,
     available_values? } }` — read `suggested_tool`/`available_values` to recover rather than guessing.
+
+13. **Exact place identity.** `location` is a label search and may match homonyms.
+    Use `location_id` from `list_locations` for one authority and its descendants.
+14. **Profiles.** Full mode has 33 core tools (35 over HTTP). Some deployments expose
+    `research`, `discovery` or `visualization` subsets. Use the advertised catalogue;
+    do not assume an omitted tool exists.

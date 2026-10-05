@@ -36,7 +36,9 @@ export const BASELINE_PATH = path.join(HERE, "..", "test", "token-baseline.json"
 // --- budgets -----------------------------------------------------------------
 
 /** Hard ceiling for a single transport's `tools/list`, per turn. */
-export const SURFACE_TOKEN_BUDGET = 10_000;
+// Full profile now includes six research tools and their output schemas.
+// Smaller profiles retain separate ceilings in budget.test.mjs.
+export const SURFACE_TOKEN_BUDGET = 14_000;
 
 /**
  * Surface growth that trips the gate. One new tool averages ~317 tokens (~3.6%),
@@ -96,6 +98,7 @@ const DISCOVERED = new Set([
   "get_video",
   "find_related",
   "fetch",
+  "resolve_entity", "get_entity_graph", "get_text_passages", "compare_collections",
 ]);
 
 // --- measurement -------------------------------------------------------------
@@ -168,7 +171,7 @@ export async function buildProbes(client) {
       probes.push({
         id: variant.suffix ? `${tool.name}@${variant.suffix}` : tool.name,
         tool: tool.name,
-        args: { ...variant.args, ...(paginated ? { limit: OVER_LIMIT } : {}) },
+        args: { ...variant.args, ...(paginated ? { limit: props.limit.maximum ?? OVER_LIMIT } : {}) },
       });
     }
   }
@@ -238,6 +241,18 @@ export async function buildProbes(client) {
     } else miss("find_related");
   }
 
+  if (names.has("resolve_entity")) {
+    add("resolve_entity@max", "resolve_entity", { query: "Afri", limit: 50 });
+    const person = await first("resolve_entity", { query: "Ulli Beier", type: "person" });
+    if (person) add("get_entity_graph@max", "get_entity_graph", { seed: person.id, max_nodes: 100, max_edges: 200 });
+    else miss("get_entity_graph");
+    if (pub) add("get_text_passages@max", "get_text_passages", { ids: [`publication:${pub.omeka_id ?? pub.id}`], keyword: "the", radius: 500, limit: 20 });
+    else miss("get_text_passages");
+    const projects = await results("search_projects", { limit: 4 });
+    if (projects.length >= 2) add("compare_collections@max", "compare_collections", { cohorts: projects.map((p) => ({ type: "project", id: String(p.omeka_id ?? p.id) })) });
+    else miss("compare_collections");
+  }
+
   return { probes, skipped };
 }
 
@@ -252,9 +267,11 @@ export async function measureResponses(client, probes) {
   const out = {};
   for (const probe of probes) {
     let text;
+    let result;
     let failure = null;
     try {
-      text = await callText(client, probe.tool, probe.args);
+      result = await client.callTool({ name: probe.tool, arguments: probe.args });
+      text = (result.content ?? []).map((c) => c.text ?? "").join("");
       if (parseJson(text).error) failure = parseJson(text).error.message ?? "tool returned an error";
     } catch (e) {
       text = "";
@@ -263,6 +280,8 @@ export async function measureResponses(client, probes) {
     out[probe.id] = {
       tokens: estimateTokens(text),
       chars: text.length,
+      text_bytes: Buffer.byteLength(text),
+      wire_bytes: result ? Buffer.byteLength(JSON.stringify(result)) : 0,
       args: probe.args,
       ...(failure ? { error: failure } : {}),
     };
@@ -456,7 +475,7 @@ async function main() {
         "for the surface but only a warning for responses.",
       surface: current.surface,
       responses: Object.fromEntries(
-        Object.entries(current.responses).map(([id, r]) => [id, { tokens: r.tokens, chars: r.chars }]),
+        Object.entries(current.responses).map(([id, r]) => [id, { tokens: r.tokens, chars: r.chars, text_bytes: r.text_bytes, wire_bytes: r.wire_bytes }]),
       ),
     };
     await fs.writeFile(BASELINE_PATH, `${JSON.stringify(payload, null, 2)}\n`, "utf8");

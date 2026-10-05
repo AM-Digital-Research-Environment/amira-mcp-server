@@ -11,6 +11,9 @@ import { readFile } from "node:fs/promises";
 import { buildSkillsSnapshot } from "./skills.mjs";
 
 const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+const bridge = await esbuild.build({ entryPoints: ["./src/ui/bridge.ts"], bundle: true,
+  platform: "browser", format: "iife", target: "es2022", minify: true, write: false, legalComments: "none",
+  define: { __SERVER_VERSION__: JSON.stringify(pkg.version) } });
 
 // SEP-2640 skill catalog, validated and hashed here so the runtime needs no
 // filesystem and no YAML parser. `--strict` (prepack-mcpb, CI) fails the build
@@ -37,6 +40,7 @@ await esbuild.build({
   legalComments: "none",
   define: {
     __SERVER_VERSION__: JSON.stringify(pkg.version),
+    __APP_BRIDGE__: JSON.stringify(bridge.outputFiles[0].text.replace(/<\/script/gi, "<\\/script")),
     // Double-encoded on purpose: `define` substitutes SOURCE TEXT, so the outer
     // stringify emits a string literal whose contents the runtime JSON.parses.
     __SKILLS_SNAPSHOT__: JSON.stringify(JSON.stringify(skills.snapshot)),

@@ -15,6 +15,7 @@ const CSS = String.raw`
 
 const SCRIPT = String.raw`
 var esc = window.amiraApp.esc;
+var api = window.amiraApp;
 var W = 720, H = 240, PAD_L = 40, PAD_R = 8, PAD_T = 10, PAD_B = 26;
 
 function render(payload) {
@@ -25,7 +26,8 @@ function render(payload) {
 
   if (!rows.length) {
     root.innerHTML = "<h1>AMIRA — research items per " + unit + "</h1>" +
-      '<p class="empty">No dated items in this range.</p>';
+      '<p class="empty">No dated items in this range.</p><button id="reset-range">Clear filters</button>';
+    document.getElementById('reset-range').onclick=reset;
     return;
   }
 
@@ -56,7 +58,7 @@ function render(payload) {
     var x = PAD_L + i * step;
     var y = PAD_T + innerH - h;
     parts.push('<rect class="bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW.toFixed(1) +
-      '" height="' + Math.max(h, 0.6).toFixed(1) + '" rx="' + (barW > 8 ? 3 : 0) + '"><title>' +
+      '" height="' + Math.max(h, 0.6).toFixed(1) + '" rx="' + (barW > 8 ? 3 : 0) + '" role="button" tabindex="0" data-year="' + d.key + '" aria-label="Browse ' + esc(d.label) + '"><title>' +
       esc(d.label) + ": " + d.n + (d.n === 1 ? " item" : " items") + "</title></rect>");
   });
 
@@ -76,8 +78,35 @@ function render(payload) {
     (payload.undated_items ? " · " + payload.undated_items + " undated" : "") + "</p>" +
     '<div class="chart">' + parts.join("") + "</div>" +
     '<p class="note">An item whose content date is a range counts toward every ' + unit +
-    " it spans, so the bars can sum to more than the item total.</p>";
+    " it spans, so the bars can sum to more than the item total. Showing " + rows.length + " of " + payload.total_matches + " buckets.</p>" +
+    '<form id="timeline-filter"><div class="controls"><label>Subject<input name="subject" maxlength="1000" value="' + esc(((payload.filters || {}).filters || {}).subject || '') + '"></label><label>Project ID<input name="project_id" maxlength="256" value="' + esc(((payload.filters || {}).filters || {}).project_id || '') + '"></label></div><div class="controls"><label for="brush-from">From year <output id="from-label"></output><input type="range" id="brush-from" name="from" min="' + data[0].key + '" max="' + (data[data.length-1].key+(isDecade?9:0)) + '" value="' + data[0].key + '"></label><label for="brush-to">To year <output id="to-label"></output><input type="range" id="brush-to" name="to" min="' + data[0].key + '" max="' + (data[data.length-1].key+(isDecade?9:0)) + '" value="' + (data[data.length-1].key+(isDecade?9:0)) + '"></label><button>Apply range</button></div></form>' +
+    '<button id="reset-range">Clear filters</button><details><summary>Counts by ' + unit + '</summary><table><thead><tr><th>Period</th><th>Items</th></tr></thead><tbody>' + data.map(function(r){return '<tr><td><button data-year="' + r.key + '">' + esc(r.label) + '</button></td><td>' + r.n + '</td></tr>';}).join('') + '</tbody></table></details>' +
+    (payload.has_more ? '<button id="next-buckets">Next buckets</button>' : '') + '<section id="timeline-evidence" class="evidence" aria-live="polite"></section>';
+  var from=document.getElementById('brush-from'),to=document.getElementById('brush-to');
+  document.getElementById('reset-range').onclick=reset;
+  function rangeLabels(){document.getElementById('from-label').textContent=from.value;document.getElementById('to-label').textContent=to.value;}
+  from.oninput=to.oninput=rangeLabels;rangeLabels();
+  var baseFilters=Object.assign({},(payload.filters||{}).filters||{});
+  async function evidence(lo,hi,offset){
+    try{
+      var args=Object.assign({},baseFilters,{year_from:Math.max(lo,baseFilters.year_from||0),year_to:Math.min(hi,baseFilters.year_to||2200),offset:offset||0,limit:20});
+      var d=await api.callTool('search_research_items',args);
+      document.getElementById('timeline-evidence').innerHTML='<h2 tabindex="-1">' + lo + '–' + hi + ' · ' + d.total_matches + ' matching records</h2><ol start="' + (d.offset+1) + '">' + d.results.map(function(r){return '<li><a data-citation href="' + esc(r.amira_url) + '">' + esc(r.title) + '</a></li>';}).join('') + '</ol>' + (d.has_more?'<button id="next-evidence">Next records</button>':'');
+      document.querySelector('#timeline-evidence h2').focus();
+      var next=document.getElementById('next-evidence');if(next)next.onclick=function(){evidence(lo,hi,d.next_offset);};
+    }catch(_) {}
+  }
+  root.onclick=function(event){var el=event.target.closest('[data-year]');if(el)evidence(Number(el.dataset.year),Number(el.dataset.year)+(isDecade?9:0));};
+  root.onkeydown=function(event){if((event.key==='Enter'||event.key===' ')&&event.target.matches('rect[data-year]')){event.preventDefault();event.target.dispatchEvent(new MouseEvent('click',{bubbles:true}));}};
+  document.getElementById('timeline-filter').onsubmit=async function(event){
+    event.preventDefault();if(Number(from.value)>Number(to.value)){api.status('From year must precede to year.');return;}
+    var form=new FormData(event.target);baseFilters.subject=form.get('subject')||undefined;baseFilters.project_id=form.get('project_id')||undefined;
+    try{render(await api.callTool('list_years',{bucket:payload.bucket,from:Number(from.value),to:Number(to.value),filters:baseFilters,limit:200}));}catch(_) {}
+  };
+  var nextBuckets=document.getElementById('next-buckets');if(nextBuckets)nextBuckets.onclick=async function(){try{render(await api.callTool('list_years',Object.assign({},payload.filters||{},{bucket:payload.bucket,offset:payload.next_offset,limit:200})));}catch(_) {}};
 }
+
+async function reset(){try{render(await api.callTool('list_years',{bucket:'decade',limit:200}));}catch(_) {}}
 
 window.amiraApp.onResult(render);
 `;

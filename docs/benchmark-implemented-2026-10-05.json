@@ -1,0 +1,165 @@
+{
+  "node": "v24.19.0",
+  "snapshot": {
+    "schemaVersion": 4,
+    "fetchedAt": "2026-09-09T08:12:42.277Z",
+    "apiBase": "https://data.africamultiple.uni-bayreuth.de/api",
+    "maxModified": "2026-09-04T11:16:06+00:00",
+    "totalItemsOnInstance": 10746,
+    "counts": {
+      "persons": 1643,
+      "organisations": 627,
+      "locations": 162,
+      "projects": 93,
+      "research_sections": 13,
+      "research_items": 3975,
+      "publications": 562,
+      "journals": 87,
+      "podcasts": 43,
+      "videos": 140,
+      "playlists": 24,
+      "languages": 28,
+      "item_sets": 61
+    }
+  },
+  "iterations": 30,
+  "transport": "in-memory",
+  "exposure": "full",
+  "snapshot_load_ms": 197.81,
+  "server_factory_mean_ms": 4.88,
+  "tool_count": 35,
+  "tools_with_output_schema": 11,
+  "heap_used_mib": 195.96,
+  "results": [
+    {
+      "label": "overview",
+      "tool": "get_collection_overview",
+      "args": {},
+      "first_ms": 18.87,
+      "median_ms": 0.42,
+      "p95_ms": 3.49,
+      "text_bytes": 2153,
+      "result_bytes": 4602
+    },
+    {
+      "label": "subjects",
+      "tool": "list_subjects",
+      "args": {
+        "limit": 25
+      },
+      "first_ms": 11.42,
+      "median_ms": 0.12,
+      "p95_ms": 0.47,
+      "text_bytes": 3776,
+      "result_bytes": 8026
+    },
+    {
+      "label": "locations",
+      "tool": "list_locations",
+      "args": {
+        "limit": 25
+      },
+      "first_ms": 8.68,
+      "median_ms": 0.56,
+      "p95_ms": 1.06,
+      "text_bytes": 5390,
+      "result_bytes": 11398
+    },
+    {
+      "label": "timeline",
+      "tool": "list_years",
+      "args": {
+        "bucket": "decade"
+      },
+      "first_ms": 6.62,
+      "median_ms": 2.13,
+      "p95_ms": 4.77,
+      "text_bytes": 3237,
+      "result_bytes": 7094
+    },
+    {
+      "label": "item_keyword",
+      "tool": "search_research_items",
+      "args": {
+        "keyword": "architecture",
+        "limit": 20
+      },
+      "first_ms": 21.07,
+      "median_ms": 6.6,
+      "p95_ms": 8.22,
+      "text_bytes": 660,
+      "result_bytes": 1448
+    },
+    {
+      "label": "empty_combination",
+      "tool": "search_research_items",
+      "args": {
+        "subject": "architecture",
+        "location": "Nigeria",
+        "language": "French",
+        "resource_type": "Audio"
+      },
+      "first_ms": 18.15,
+      "median_ms": 12.34,
+      "p95_ms": 19.11,
+      "text_bytes": 172,
+      "result_bytes": 432
+    },
+    {
+      "label": "related",
+      "tool": "find_related",
+      "args": {
+        "entity_type": "subject",
+        "value": "Architecture",
+        "limit": 20
+      },
+      "first_ms": 93.04,
+      "median_ms": 9.89,
+      "p95_ms": 24.8,
+      "text_bytes": 7898,
+      "result_bytes": 16570
+    },
+    {
+      "label": "publications",
+      "tool": "search_publications",
+      "args": {
+        "keyword": "migration",
+        "limit": 20
+      },
+      "first_ms": 88.23,
+      "median_ms": 8.13,
+      "p95_ms": 13.92,
+      "text_bytes": 14176,
+      "result_bytes": 29364
+    },
+    {
+      "label": "search_all",
+      "tool": "search",
+      "args": {
+        "query": "African migration and identity",
+        "limit": 10
+      },
+      "first_ms": 76.57,
+      "median_ms": 37.87,
+      "p95_ms": 52.63,
+      "text_bytes": 2044,
+      "result_bytes": 4274
+    },
+    {
+      "label": "search_projects",
+      "tool": "search",
+      "args": {
+        "query": "African migration and identity",
+        "types": [
+          "project"
+        ],
+        "limit": 10
+      },
+      "first_ms": 0.92,
+      "median_ms": 0.86,
+      "p95_ms": 1.38,
+      "text_bytes": 1901,
+      "result_bytes": 3988
+    }
+  ]
+}

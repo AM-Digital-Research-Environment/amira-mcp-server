@@ -350,7 +350,7 @@ export function buildFixture(schemaVersion) {
   const manifest = {
     schemaVersion,
     fetchedAt: "2026-07-05T00:00:00.000Z",
-    apiBase: "https://fixture.invalid/api",
+    apiBase: "https://data.africamultiple.uni-bayreuth.de/api",
     maxModified: "2026-07-01T00:00:00+00:00",
     totalItemsOnInstance: 25,
     counts,

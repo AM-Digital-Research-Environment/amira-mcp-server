@@ -25,14 +25,7 @@ export function registerResearchSectionTools(server: Server): void {
       title: "List research sections",
       // Renders as a funding-phase Gantt in MCP Apps hosts; plain JSON elsewhere.
       _meta: SECTIONS_UI_META,
-      description:
-        "List the cluster's research sections (its top-level thematic structure), with funding phase, " +
-        "PIs, member/project/item counts and a citable `amira_url`. Sections split by funding phase: " +
-        "AM 1.0 / 2019–2025 (Affiliations, Arts & Aesthetics, Knowledges, Learning, Mobilities, " +
-        "Moralities) and AM 2.0 / 2026–2032 (Accumulation, Digitalities, Ecologies, In/securities, " +
-        "Re:membering, Translating), plus a synthetic 'External' grouping. The AM 2.0 sections are newly " +
-        "seeded and currently hold ~0 projects/items. Takes no arguments; use get_research_section for " +
-        "one section's full description and project list.",
+      description: "Cluster research sections, funding phases, project/item counts and citation links. Includes the external-collection grouping.",
       annotations: annotate("List research sections"),
       inputSchema: z.strictObject({}),
     },
@@ -61,13 +54,7 @@ export function registerResearchSectionTools(server: Server): void {
     "get_research_section",
     {
       title: "Get research section detail",
-      description:
-        "Full detail for one research section by `name` (case-insensitive, e.g. 'Mobilities'). Returns the " +
-        "funding_phase (AM 1.0 / 2019–2025 or AM 2.0 / 2026–2032) and its date range, the full " +
-        "description, principal investigators, members, spokesperson, the section's page on the cluster " +
-        "website, the projects belonging to it (with item counts), the total item count, and a citable " +
-        "`amira_url`. Returns a structured { error } (with the valid names in `available_values`) if the " +
-        "name is unknown.",
+      description: "One research section's description, team and associated projects and research items.",
       annotations: annotate("Get research section detail"),
       inputSchema: z.strictObject({ name: z.string().describe("Section name, e.g. 'Arts & Aesthetics'") }),
     },

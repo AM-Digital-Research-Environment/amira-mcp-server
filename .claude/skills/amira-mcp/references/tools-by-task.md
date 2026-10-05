@@ -1,9 +1,9 @@
 # Tools by task
 
-All 27 tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
+All 33 core tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
 `{ count, total_matches, offset, has_more, next_offset?, results[] }` (plus a `filters` echo of the
-filters you actually passed). Ask for more than a tool's max and it also echoes `requested_limit` /
-`effective_limit`. `search_research_items` adds `suggestions` (which filter to drop) when a strict
+filters you actually passed). Older search/list tools clamp excess limits and echo `requested_limit` /
+`effective_limit`; the six new research tools validate their advertised maxima. `search_research_items` adds `suggestions` (which filter to drop) when a strict
 combination matches nothing. Lookups that miss return `{ error: { code, message, suggested_tool?,
 available_values? } }`. Every record carries a citable `amira_url`.
 
@@ -50,7 +50,7 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Task | Tool | Key params |
 | --- | --- | --- |
 | Search people | `search_persons` | `keyword` (either name order), `affiliation` |
-| Full person profile (PI/member/contributor/author) | `get_person` | `name` — either order resolves to 'Surname, Forename' |
+| Full person profile (PI/member/contributor/author) | `get_person` | `id` for exact identity, or `name` (homonyms return candidates) — either order resolves to 'Surname, Forename' |
 | List / detail institutions | `list_institutions` / `get_institution` | `keyword` / `name` (get_institution also resolves groups) |
 | Africa Multiple partner institutions by category | `list_cluster_partners` | Optional `category` (`amrc`, `privileged`, `cooperation`, `global`) |
 | List research groups | `list_groups` | `keyword` |
@@ -65,7 +65,7 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Formats / languages / resource types | `list_categories` | `category` ∈ formats (alias: genres) / languages / resource_types |
 | Coverage over time (date histogram) | `list_years` | `bucket` = year/decade; `from`/`to` window; `sort` = chronological/count; ranged items count in every year they span; rights/admin dates are not used. Renders as an interactive chart in MCP Apps hosts (`ui://amira/timeline`); the JSON is identical everywhere else |
 
-**Charts (MCP Apps).** Four tools render inline in hosts that support the `io.modelcontextprotocol/ui`
+**Charts (MCP Apps).** Seven tools render inline in hosts that support the `io.modelcontextprotocol/ui`
 extension:
 
 | Tool | Chart |
@@ -73,7 +73,10 @@ extension:
 | `get_collection_overview` | stat tiles + ranked breakdowns (`ui://amira/overview`) |
 | `list_years` | year/decade histogram (`ui://amira/timeline`) |
 | `list_research_sections` | funding-phase Gantt with a "now" marker (`ui://amira/sections`) |
-| `find_related` | radial co-occurrence hub, one sector per relation type (`ui://amira/related`) |
+| `find_related` | radial co-occurrence hub, including publication-only seeds (`ui://amira/related`) |
+| `get_entity_graph` | bounded typed graph, node navigation and paginated evidence (`ui://amira/graph`) |
+| `list_locations` | offline map, country filtering, missing coordinates and item evidence (`ui://amira/map`) |
+| `search_publications` | filters, persistent selection (25 max) and host-mediated BibTeX/RIS/CSL-JSON downloads (`ui://amira/bibliography`) |
 
 This changes nothing about how you call them or what you read: the JSON payload is byte-identical and
 the rendering is a host-side affordance. Do not describe the chart in prose as if it were the answer —
@@ -136,3 +139,25 @@ name in either order; location = any hierarchy level; project = id/label. The ru
   `search_publications keyword="migration control"` (watch for `matched_in: "fulltext"`) →
   `get_publication include_fulltext=true fulltext_max_chars=25000` and page onward → cite the
   `amira_url`, with the DOI as a secondary link.
+
+## Identity, evidence and comparisons
+
+| Task | Tool | Key params and bounds |
+| --- | --- | --- |
+| Disambiguate a label or resolve a typed ID | `resolve_entity` | `query`, optional `type`, `limit` ≤50, `offset`. Read `ambiguous`, `resolved`, `omeka_id`, `amira_url`; literals have no fabricated authority URL |
+| Follow one entity's relationships | `get_entity_graph` | `seed` from resolver; ≤100 nodes, ≤200 edges, 60,000 JSON bytes. Edges distinguish explicit links from per-corpus co-occurrence; one source sample each, `truncated` marks omitted edges |
+| Read all evidence for an edge | `get_entity_graph` | Same `seed`, `edge_id`, returned `snapshot_id`, `offset`, `limit` ≤100. `snapshot_changed` means restart from a new graph |
+| Find cited passages in chosen documents | `get_text_passages` | `ids` (1–10 typed publication/video/podcast IDs), `keyword`, context `radius` ≤500, `limit` ≤20. Original UTF-16 offsets, ≤1,000 matches scanned per document; requires full exposure |
+| Compare projects or item sets | `compare_collections` | `cohorts` (2–4 `{type: project/collection, id}` objects), common `filters`. Each cohort has total/matched items, missingness, date range and top type/language counts |
+| Check metadata coverage | `get_data_quality` | No args; snapshot provenance, missingness, text availability, unresolved references and refresh state |
+| Inspect local snapshot changes | `get_snapshot_changes` | Optional `from_id`, `to_id`, `corpus`, `offset`, `limit` ≤100; pin IDs for paging. `history_unavailable` is expected with fewer than two retained same-source snapshots |
+
+`list_locations` and `list_years` accept nested `filters` with the shared research-item
+selector. `location_id` selects an exact place authority and its descendants; `location`
+remains a label search. Map counts are per distinct item/place and include ancestors,
+so they overlap. Countries without finer metadata are not city observations.
+
+`find_related` remains a broad label pivot. Each related row now has `omeka_id`,
+`amira_url`, `research_item_count`, `publication_count`, and their sum `count`.
+Contributor roles and repeated city/country references count once per source record.
+`seed_candidates` exposes ambiguous seeds; use the exact graph tool for identity-sensitive work.

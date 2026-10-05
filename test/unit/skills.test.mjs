@@ -63,6 +63,8 @@ test("digests are sha256 over the raw file bytes, not the decoded text", async (
     const rel = resource.uri.replace("skill://amira-mcp/", "");
     const bytes = await fs.readFile(path.join(REPO, ".claude", "skills", "amira-mcp", rel));
     assert.equal(resource.digest, `sha256:${createHash("sha256").update(bytes).digest("hex")}`);
+    assert.equal(resource.size, bytes.length);
+    assert.equal(snapshot.skills[0].resources.find((entry) => entry.uri === resource.uri).size, bytes.length);
 
     // What the host actually re-hashes is the payload we return.
     const payload = resource.text !== undefined ? Buffer.from(resource.text, "utf8") : Buffer.from(resource.blob, "base64");
@@ -143,6 +145,7 @@ test("binary files travel as base64 blobs, text as utf-8", async () => {
   assert.equal(image.mimeType, "image/png");
   assert.equal(image.text, undefined);
   assert.equal(image.blob, png.toString("base64"));
+  assert.equal(image.size, png.length);
   assert.equal(image.digest, `sha256:${createHash("sha256").update(png).digest("hex")}`);
 
   const json = byUri["skill://assets/data.json"];

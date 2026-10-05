@@ -11,6 +11,9 @@ import { RELATED_HTML, RELATED_URI } from "../ui/related.js";
 import { SECTIONS_HTML, SECTIONS_URI } from "../ui/sections.js";
 import { TIMELINE_HTML, TIMELINE_URI } from "../ui/timeline.js";
 import type { Server } from "./_shared.js";
+import { GRAPH_HTML, GRAPH_URI } from "../ui/graph.js";
+import { MAP_HTML, MAP_URI } from "../ui/map.js";
+import { BIBLIOGRAPHY_HTML, BIBLIOGRAPHY_URI } from "../ui/bibliography.js";
 
 /** MIME type the extension requires for a UI resource. */
 const APP_MIME = "text/html;profile=mcp-app";
@@ -24,6 +27,9 @@ interface AppResource {
 }
 
 const APPS: AppResource[] = [
+  { name: "amira-graph", uri: GRAPH_URI, title: "Entity graph", description: "Explore explicit links, co-occurrences and cited evidence.", html: GRAPH_HTML },
+  { name: "amira-map", uri: MAP_URI, title: "Research places", description: "Offline map and table of research locations and their evidence.", html: MAP_HTML },
+  { name: "amira-bibliography", uri: BIBLIOGRAPHY_URI, title: "Cluster bibliography", description: "Filter publications and export selected citations.", html: BIBLIOGRAPHY_HTML },
   {
     name: "amira-overview",
     uri: OVERVIEW_URI,
@@ -70,7 +76,7 @@ export function registerAppResources(server: Server): void {
         // loads nothing from the network, so it runs in the strictest sandbox.
         _meta: { ui: { prefersBorder: false } },
       },
-      () => ({ contents: [{ uri: app.uri, mimeType: APP_MIME, text: app.html }] }),
+      () => ({ contents: [{ uri: app.uri, mimeType: APP_MIME, text: app.html, _meta: { ui: { prefersBorder: false } } }] }),
     );
   }
 }

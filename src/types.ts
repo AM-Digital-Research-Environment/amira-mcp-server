@@ -324,6 +324,8 @@ export interface SnapshotManifest {
   maxModified: string | null;
   /** Unfiltered /api/items total at crawl time (freshness probe pair, D11). */
   totalItemsOnInstance: number | null;
+  /** Optional v4 freshness signal for collections, absent in older bundles. */
+  itemSetsSignature?: string;
   /** Per-corpus record counts — integrity check at load and promote time. */
   counts: Record<CorpusName, number>;
 }

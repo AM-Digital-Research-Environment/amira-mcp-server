@@ -1,5 +1,17 @@
 # Roadmap — amira-mcp-server
 
+## Implemented — October 2026
+
+Version **1.18.0** implements the [October review](docs/review-2026-10-05.md):
+shared query/index refactors, durable source-specific snapshots, six research tools,
+exact identity handling, seven SDK-backed apps, bounded tool profiles, and expanded
+protocol, snapshot, Unicode, exposure and graph regression coverage. See the
+[implementation and validation report](docs/implementation-2026-10-05.md).
+
+All direct dependencies were checked against npm and updated. Production audit
+passes; the complete audit remains blocked by the upstream MCPB/node-forge advisory
+with no published fix. The gate is retained.
+
 ## Current work — September 2026
 
 **Version 1.17.0:** publication RIS and CSL-JSON alongside
@@ -30,37 +42,18 @@ below. The historical progress log records earlier releases and their datasets.
 
 ## Next priorities
 
-1. **Cache promotion and freshness.** Promotion currently validates staging,
-   removes the old cache, then renames staging. A rename failure or simultaneous
-   writers can lose the last refreshed cache, though bundled and in-memory data
-   remain available. Consider immutable generation directories, a pointer and a
-   writer lock. Add a signature or periodic forced refresh for item-set-only and
-   vocabulary-definition-only edits. Before/after item probes cannot establish a
-   transactional snapshot or detect every change with coarse timestamps. Validate
-   manifest API provenance against configuration when changing `AMIRA_SITE_BASE`,
-   so unrelated cached records cannot acquire the new site's citation URLs.
-2. **Selective output schemas.** Add useful contracts to rich tools, including
-   exposure variants and errors. HTTP discovery has about 500 estimated tokens of
-   headroom; broad schema expansion needs a tool-profile or discovery design.
-3. **Retrieval and disambiguation evaluations.** Compare substring/term ranking
-   with phrase/BM25 approaches on dated questions before adding a search service.
-   Label facets can merge homonyms: future co-author networks should use authority
-   IDs and preserve literal contributors separately. The
-   [publication cases](test/evaluations/publications.xml) are functional checks,
-   not a blind model evaluation.
-4. **Input consistency.** Extend inverted-date-range validation to media searches
-   and bound free-text query lengths. Publication and research-item filters reject
-   inverted ranges; podcast/video searches currently return no hits.
-5. **Refresh operations.** Expose last success/failure and in-flight status in
-   health/overview without filesystem paths. Retry only transient HTTP failures,
-   honor `Retry-After`, and keep the last usable data serving during failures.
-6. **Container validation.** The Docker build now copies and validates the embedded
-   skill source. A full image build/run remains to be checked before container
-   deployment; Docker's daemon was unavailable during the September local review.
-
-Retire the scoped `tmp` override once MCPB supplies a patched dependency upstream.
-Durable MCP tasks, OAuth, vector search and live API aggregation remain contingent
-on concrete needs for long-running jobs, restricted records or larger corpora.
+1. **Retrieval effectiveness.** Build a blind multilingual evaluation with judged
+   answers and citations before replacing the measured substring/term ranker with
+   BM25 or semantic search. The current fixture tests cover deterministic retrieval
+   and identity contracts, not real-world recall or researcher judgments.
+2. **Operational validation.** Exercise the new Linux/Windows/Node matrix and
+   container health job in CI, then validate supported production MCP Apps hosts.
+   Local browser previews emulate host RPC; they do not certify every host.
+3. **Upstream packaging advisory.** Update MCPB/node-forge as soon as a patched
+   release exists; keep the full dependency audit failing until then.
+4. **Scale when evidence warrants it.** Profile larger corpora and long-running
+   export workloads before adding databases, search services, background task
+   protocols or authenticated features to this public read-only server.
 
 ## Historical migration plan
 

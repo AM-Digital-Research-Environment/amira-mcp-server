@@ -17,3 +17,8 @@ export { isTemplatePlaceholder, parseAllowedOriginHostnames, config } from "./co
 
 export { publicationBibtex, publicationCitation } from "./publicationCitation.js";
 export { BRIDGE_JS } from "./ui/shell.js";
+export * from "./snapshotIdentity.js";
+export { fetchJSON, readSnapshotPointer } from "./snapshot.js";
+export { foldedRanges } from "./text.js";
+export * from "./entityGraph.js";
+export { selectResearchItems } from "./researchItemQuery.js";

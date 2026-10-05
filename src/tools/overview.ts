@@ -1,10 +1,11 @@
 import { z } from "zod";
-import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
+import { ensureStore, refreshStatus, UNIVERSITY_LABELS } from "../data.js";
 import { SITE_BASE } from "../config.js";
 import { allowStructured, exposureLevel } from "../exposure.js";
 import { annotate, textResult, type Server } from "./_shared.js";
 import { OVERVIEW_UI_META } from "./apps.js";
 import type { University } from "../types.js";
+import { overviewSchema } from "./outputSchemas.js";
 
 function tally<T>(items: T[], key: (t: T) => string | string[] | null | undefined): Record<string, number> {
   const out: Record<string, number> = {};
@@ -24,18 +25,15 @@ export function registerOverviewTools(server: Server): void {
       // Renders as stat tiles + ranked breakdowns in MCP Apps hosts; plain JSON
       // everywhere else.
       _meta: OVERVIEW_UI_META,
-      description:
-        "START HERE to scope the collection before drilling in with the search/list tools: counts across " +
-        "every corpus (projects, research items, people, institutions, groups, publications, podcasts, " +
-        "videos, and how many carry full text or transcripts), breakdowns of items by university, " +
-        "research section, resource type and language, the content date range, and the data snapshot's " +
-        "freshness. Takes no arguments.",
+      description: "Start here: corpus counts, text coverage, breakdowns, dates, snapshot freshness and refresh status.",
       annotations: annotate("Collection overview"),
       inputSchema: z.strictObject({}),
+      outputSchema: overviewSchema,
     },
     async () => {
       const store = await ensureStore();
 
+      const payload = store.cached(`overview:${exposureLevel()}`, () => {
       let yearMin: number | null = null;
       let yearMax: number | null = null;
       for (const it of store.items) {
@@ -47,7 +45,7 @@ export function registerOverviewTools(server: Server): void {
       const videosWithTranscript = store.videos.filter((v) => v.transcript).length;
       const podcastsWithTranscript = store.podcasts.filter((p) => p.transcript).length;
 
-      return textResult({
+      return {
         collection_name: "Africa Multiple Cluster of Excellence — research data (AMIRA)",
         site_url: SITE_BASE,
         counts: {
@@ -89,7 +87,9 @@ export function registerOverviewTools(server: Server): void {
             "Data is a snapshot of the public Omeka S API (site 'amira'); the server contacts no database. " +
             (store.source === "cache" ? "Loaded from a refreshed local cache." : "Loaded from the bundled snapshot."),
         },
+      };
       });
+      return textResult({ ...payload, refresh: refreshStatus() });
     },
   );
 }

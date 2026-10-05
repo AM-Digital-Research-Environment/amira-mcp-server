@@ -102,3 +102,10 @@ test.after(async () => {
   await fs.rm(process.env.AMIRA_DATA_DIR, { recursive: true, force: true });
   await fs.rm(process.env.AMIRA_CACHE_DIR, { recursive: true, force: true });
 });
+
+for (const [profile, budget] of [["research", 10_000], ["discovery", 6_500], ["visualization", 9_500]]) {
+  test(`${profile} profile stays within its deliberate discovery budget`, async () => {
+    const surface = await surfaceOf({ openai: true, profile });
+    assert.ok(surface.total_tokens <= budget, `${profile}: ${surface.total_tokens} > ${budget}`);
+  });
+}

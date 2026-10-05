@@ -16,6 +16,7 @@ import { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshotAtomic,
 import { LanguageIndex } from "./languages.js";
 import { clearFoldCache, fold } from "./text.js";
 import * as path from "node:path";
+import { assertSnapshotSource, snapshotCacheDir } from "./snapshotIdentity.js";
 import type {
   ItemSetRec,
   JournalRec,
@@ -81,6 +82,12 @@ export class DataStore {
   private readonly playlistByOId = new Map<number, PlaylistRec>();
   private readonly itemSetByOId = new Map<number, ItemSetRec>();
   private readonly itemsByProjectOId = new Map<number, ResearchItemRec[]>();
+  private readonly memo = new Map<string, unknown>();
+  /** Snapshot-owned, lazy derived data. Cache keys must include exposure when relevant. */
+  cached<T>(key: string, build: () => T): T {
+    if (!this.memo.has(key)) this.memo.set(key, build());
+    return this.memo.get(key) as T;
+  }
 
   constructor(source: "bundled" | "cache", data: SnapshotData, manifest: SnapshotManifest) {
     this.source = source;
@@ -164,7 +171,7 @@ export class DataStore {
     return this.personByOId.get(oId);
   }
   getOrganisation(name: string): OrganisationRec | undefined {
-    return this.orgByName.get(fold(name.trim()));
+    return this.orgByOId.get(Number(name)) ?? this.orgByName.get(fold(name.trim()));
   }
   getSection(name: string): SectionRec | undefined {
     return this.sectionByName.get(fold(name.trim()));
@@ -199,18 +206,26 @@ export class DataStore {
     return this.projectOf(item)?.sections.map((s) => s.label) ?? [];
   }
 
-  /** Ancestor labels of a place (region, country, …), nearest first. */
+  /** Ancestor authority references (region, country, …), nearest first. */
+  locationAncestorRefs(oId: number | null): LinkedRef[] {
+    return this.cached(`ancestors:${oId}`, () => {
+      const out: LinkedRef[] = [];
+      const seen = new Set<number>(oId == null ? [] : [oId]);
+      let cur = oId != null ? this.locationByOId.get(oId) : undefined;
+      while (cur?.parent?.o_id != null && !seen.has(cur.parent.o_id) && out.length < 6) {
+        seen.add(cur.parent.o_id);
+        const parent = this.locationByOId.get(cur.parent.o_id);
+        out.push({ label: parent?.name ?? cur.parent.label, o_id: cur.parent.o_id });
+        cur = parent;
+      }
+      return out;
+    });
+  }
   locationAncestors(oId: number | null): string[] {
-    const out: string[] = [];
-    const seen = new Set<number>();
-    let cur = oId != null ? this.locationByOId.get(oId) : undefined;
-    while (cur?.parent?.o_id != null && !seen.has(cur.parent.o_id) && out.length < 6) {
-      seen.add(cur.parent.o_id);
-      const parent = this.locationByOId.get(cur.parent.o_id);
-      out.push(parent?.name ?? cur.parent.label);
-      cur = parent;
-    }
-    return out;
+    return this.locationAncestorRefs(oId).map((ref) => ref.label);
+  }
+  placeChainRefs(ref: LinkedRef): LinkedRef[] {
+    return [ref, ...this.locationAncestorRefs(ref.o_id)];
   }
   /** A place ref + all its ancestors (self first) — for location matching. */
   placeChain(ref: LinkedRef): string[] {
@@ -241,14 +256,27 @@ let current: DataStore | null = null;
 let loading: Promise<DataStore> | null = null;
 let refreshInFlight: Promise<void> | null = null;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
+let refreshController: AbortController | null = null;
+let stopped = false;
+const refreshState = { last_attempt: null as string | null, last_success: null as string | null,
+  error_class: null as string | null, in_flight: false };
+export function refreshStatus() { return { ...refreshState, enabled: config.liveRefresh }; }
+export async function stopBackgroundRefresh(): Promise<void> {
+  stopped = true;
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = null;
+  refreshController?.abort();
+  await refreshInFlight;
+}
 
-function cacheSnapshotDir(): string {
-  return path.join(config.cacheDir, "current");
+export function cacheSnapshotDir(): string {
+  return snapshotCacheDir(config.cacheDir, config.apiBase);
 }
 
 async function tryLoad(dir: string, source: "bundled" | "cache"): Promise<DataStore | null> {
   try {
     const { data, manifest } = await loadSnapshot(dir);
+    assertSnapshotSource(manifest, config.apiBase);
     return new DataStore(source, data, manifest);
   } catch (err) {
     if (source === "bundled") {
@@ -259,10 +287,12 @@ async function tryLoad(dir: string, source: "bundled" | "cache"): Promise<DataSt
 }
 
 async function loadInitial(): Promise<DataStore> {
-  const [cache, bundled] = await Promise.all([
+  const [partitioned, bundled, legacy] = await Promise.all([
     tryLoad(cacheSnapshotDir(), "cache"),
     tryLoad(config.bundledDataDir, "bundled"),
+    tryLoad(path.join(config.cacheDir, "current"), "cache"),
   ]);
+  const cache = partitioned ?? legacy;
   // Newest manifest wins; ties go to the cache (it descends from a refresh).
   if (cache && bundled) return cache.manifest.fetchedAt >= bundled.manifest.fetchedAt ? cache : bundled;
   const store = cache ?? bundled;
@@ -298,6 +328,7 @@ export function currentStore(): DataStore | null {
 }
 
 function startBackgroundRefresh(): void {
+  if (stopped) return;
   triggerBackgroundRefresh();
 
   if (refreshTimer || config.refreshIntervalHours <= 0) return;
@@ -307,9 +338,13 @@ function startBackgroundRefresh(): void {
 }
 
 function triggerBackgroundRefresh(): void {
-  if (refreshInFlight) return;
+  if (refreshInFlight || stopped) return;
+  refreshController = new AbortController();
+  refreshState.in_flight = true;
   refreshInFlight = backgroundRefresh().finally(() => {
     refreshInFlight = null;
+    refreshController = null;
+    refreshState.in_flight = false;
   });
 }
 
@@ -322,16 +357,28 @@ async function backgroundRefresh(): Promise<void> {
   try {
     const local = current?.manifest;
     if (!local) return;
-    const probe = await probeRemote(config.apiBase);
-    if (!isStale(local, probe)) return;
+    refreshState.last_attempt = new Date().toISOString();
+    const signal = AbortSignal.any([refreshController!.signal, AbortSignal.timeout(15 * 60_000)]);
+    const probe = await probeRemote(config.apiBase, signal);
+    const forced = Date.now() - Date.parse(local.fetchedAt) >= config.fullRefreshHours * 3_600_000;
+    if (!isStale(local, probe) && !forced) {
+      refreshState.last_success = new Date().toISOString(); refreshState.error_class = null; return;
+    }
 
     console.error(`[amira] snapshot stale (local ${local.maxModified ?? "?"} < remote ${probe.maxModified ?? "?"}); refreshing…`);
-    const out: CrawlOutput = await crawlSnapshot(config.apiBase, (m) => console.error(`[amira] refresh: ${m}`));
-    await writeSnapshotAtomic(cacheSnapshotDir(), out);
-    current = new DataStore("cache", out.data, out.manifest);
+    const out: CrawlOutput = await crawlSnapshot(config.apiBase, (m) => console.error(`[amira] refresh: ${m}`), signal);
+    signal.throwIfAborted();
+    await writeSnapshotAtomic(cacheSnapshotDir(), out, signal);
+    const published = await loadSnapshot(cacheSnapshotDir());
+    assertSnapshotSource(published.manifest, config.apiBase);
+    current = new DataStore("cache", published.data, published.manifest);
     clearFoldCache(); // the folded copies belong to the snapshot just replaced
+    refreshState.last_success = new Date().toISOString();
+    refreshState.error_class = null;
     console.error(`[amira] refreshed snapshot (fetchedAt=${out.manifest.fetchedAt}, ${out.data.research_items.length} research items)`);
   } catch (err) {
+    refreshState.error_class = (err as Error).name === "AbortError" ? "cancelled"
+      : (err as Error).name === "TimeoutError" ? "timeout" : "refresh_failed";
     console.error(`[amira] live refresh skipped: ${(err as Error).message}`);
   }
 }

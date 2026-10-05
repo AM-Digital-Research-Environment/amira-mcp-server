@@ -64,7 +64,7 @@ function render(d) {
     return { key: s[0], label: s[1], rows: (d[s[0]] || []).slice(0, PER_SECTOR) };
   }).filter(function (s) { return s.rows.length > 0; });
 
-  if (!d.matched_items || !live.length) {
+  if (!(d.matched_items || d.matched_publications)) {
     root.innerHTML = "<h1>" + esc(d.value || "") + "</h1>" +
       '<p class="empty">Nothing co-occurs with this seed in the collection.</p>';
     return;
@@ -101,7 +101,7 @@ function render(d) {
       var p0 = polar(a, R0), p1 = polar(a, R0 + len);
       out.push('<line class="spoke" x1="' + p0[0].toFixed(1) + '" y1="' + p0[1].toFixed(1) + '" x2="' +
         p1[0].toFixed(1) + '" y2="' + p1[1].toFixed(1) + '"><title>' + esc(r.name) + ": " + r.count +
-        " shared item" + (r.count === 1 ? "" : "s") + "</title></line>");
+        " shared record" + (r.count === 1 ? "" : "s") + "</title></line>");
 
       // Leader from the spoke's end to the label ring, so a short spoke still
       // reads as belonging to its label.
@@ -140,9 +140,12 @@ function render(d) {
     "<h1>What co-occurs with " + esc(d.value) + "</h1>" +
     '<p class="sub">' + esc(d.entity_type) + " seed · " + d.matched_items + " matching research items" +
     (d.matched_publications ? " · " + d.matched_publications + " publications" : "") +
-    ". Spoke length is the number of shared items; each sector is one relation type.</p>" +
+    ". Spoke length counts distinct source records; each sector is one relation type.</p>" +
     '<div class="hub">' + out.join("") + "</div>" +
-    '<p class="note">' + esc(d.matching || "") + "</p>";
+    '<p class="note">' + esc(d.matching || "") + "</p>" +
+    '<details><summary>All returned relationships and counts</summary><table><thead><tr><th>Entity</th><th>Research items</th><th>Publications</th></tr></thead><tbody>' +
+    SECTORS.map(function (s) { return (d[s[0]] || []).map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td>' + (r.research_item_count || 0) + '</td><td>' + (r.publication_count || 0) + '</td></tr>'; }).join(''); }).join('') + '</tbody></table></details>' +
+    ((d.related_publications || []).length ? '<h2>Publication evidence</h2><ul>' + d.related_publications.map(function (p) { return '<li><a data-citation href="' + esc(p.amira_url) + '">' + esc(p.title) + '</a></li>'; }).join('') + '</ul>' : '');
 }
 
 window.amiraApp.onResult(render);

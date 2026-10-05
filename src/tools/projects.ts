@@ -27,22 +27,18 @@ export function registerProjectTools(server: Server): void {
     "search_projects",
     {
       title: "Search research projects",
-      description:
-        "Search the cluster's research projects across AMIRA's partner/source metadata labels plus " +
-        "external collections. Every registered project is searchable; `item_count` shows how many carry " +
-        "digitised items (a subset do). Filters are optional and AND-combined; omit all to list every " +
-        "project. Use get_project for full detail.",
+      description: "Search project names, descriptions and membership. Returns cited summaries and item counts; use get_project for detail.",
       annotations: annotate("Search projects"),
       inputSchema: z.strictObject({
-        keyword: z.string().optional().describe("Matches the project name or description"),
+        keyword: z.string().max(1000).optional().describe("Matches the project name or description"),
         university: z
-          .string()
+          .string().max(1000)
           .optional()
           .describe("ubt | unilag | ujkz | ufba | external — code or name. A data facet, not a full AMRC list"),
-        research_section: z.string().optional().describe("e.g. 'Knowledges', 'Moralities'"),
-        principal_investigator: z.string().optional().describe("A PI name; either order works ('Oliver Baumann' finds 'Baumann, Oliver')"),
-        member: z.string().optional().describe("A project member's name; either order works"),
-        institution: z.string().optional().describe("Funding/affiliated institution name, partial"),
+        research_section: z.string().max(1000).optional().describe("e.g. 'Knowledges', 'Moralities'"),
+        principal_investigator: z.string().max(1000).optional().describe("A PI name; either order works ('Oliver Baumann' finds 'Baumann, Oliver')"),
+        member: z.string().max(1000).optional().describe("A project member's name; either order works"),
+        institution: z.string().max(1000).optional().describe("Funding/affiliated institution name, partial"),
         limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -94,12 +90,7 @@ export function registerProjectTools(server: Server): void {
     "get_project",
     {
       title: "Get project detail",
-      description:
-        "Full detail for one project by Omeka `id` (preferred; the numeric o:id in `amira_url`). " +
-        "Legacy project-key values are still accepted for compatibility. " +
-        "Returns name, university, research sections, principal investigators, members, description, " +
-        "start/end dates, funding institutions, project website, item_count, a breakdown of its items by " +
-        "resource type, its top subjects, and a citable `amira_url`. Returns { error } if the id is unknown.",
+      description: "Project description, team, sections, funders and sample research items, with counts and citation links.",
       annotations: annotate("Get project detail"),
       inputSchema: z.strictObject({ id: z.union([z.string(), z.number()]).describe("Project Omeka o:id, e.g. 37700") }),
     },

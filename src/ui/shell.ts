@@ -20,8 +20,8 @@
 /** DRE theme tokens + base typography, shared by every app. */
 export const SHELL_CSS = String.raw`
 :root {
-  color-scheme: light dark;
-  --surface: transparent;
+  color-scheme: light;
+  --surface: #fdfcfa;
   --ink-strong: #33291f;
   --ink: #473e33;
   --ink-muted: #6c6357;
@@ -31,6 +31,8 @@ export const SHELL_CSS = String.raw`
   --grid: rgba(0, 0, 0, 0.08);
 }
 :root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1b211e;
   --ink-strong: #f3f1ec;
   --ink: #e3e0d9;
   --ink-muted: #aaa498;
@@ -58,6 +60,26 @@ svg { display: block; width: 100%; height: auto; }
 .axis { fill: var(--ink-muted); font-size: 10px; }
 .val { fill: var(--ink); font-size: 10px; font-variant-numeric: tabular-nums; }
 .grid { stroke: var(--grid); stroke-width: 1; }
+::selection { background: var(--bar); color: #fff; }
+:focus-visible { outline: 2px solid var(--bar); outline-offset: 3px; }
+a { color: var(--bar); text-underline-offset: 3px; overflow-wrap: anywhere; }
+button, input, select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: 7px 10px; min-height: 36px; }
+button { overflow-wrap: normal; }
+button { cursor: pointer; }
+button:hover { border-color: var(--bar); }
+button:disabled { opacity: .55; cursor: default; }
+input { caret-color: var(--bar); min-width: 0; }
+.controls { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; margin: 14px 0; }
+.controls label { display: grid; gap: 4px; flex: 1; min-width: 110px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+td, th { border-bottom: 1px solid var(--border); padding: 8px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+th { font-weight: 600; }
+.scroll { overflow-x: auto; }
+details { margin-top: 16px; }
+summary { cursor: pointer; padding: 8px 0; }
+#app-status { padding: 0 14px; color: var(--ink-muted); }
+.evidence { margin-top: 20px; }
+@media (max-width: 420px) { .wrap { padding: 12px 10px; } td, th { padding: 7px 3px; } .controls { align-items: stretch; } }
 `;
 
 /**
@@ -65,64 +87,8 @@ svg { display: block; width: 100%; height: auto; }
  * app here needs — "call me with the tool result". Handles ui/initialize, the
  * theme from hostContext, and hosts that forward only the content array.
  */
-export const BRIDGE_JS = String.raw`
-(function () {
-  "use strict";
-  var nextId = 1;
-  function request(method, params) {
-    var id = nextId++;
-    window.parent.postMessage({ jsonrpc: "2.0", id: id, method: method, params: params }, "*");
-    return new Promise(function (resolve, reject) {
-      function handler(event) {
-        if (event.source !== window.parent) return;
-        var d = event.data;
-        if (!d || d.id !== id) return;
-        window.removeEventListener("message", handler);
-        if (d.error) reject(new Error(d.error.message || "host error"));
-        else resolve(d.result);
-      }
-      window.addEventListener("message", handler);
-    });
-  }
-  function notify(method, params) {
-    window.parent.postMessage({ jsonrpc: "2.0", method: method, params: params || {} }, "*");
-  }
-  window.amiraApp = {
-    esc: function (s) {
-      return String(s).replace(/[&<>"]/g, function (c) {
-        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
-      });
-    },
-    onResult: function (render) {
-      window.addEventListener("message", function (event) {
-        if (event.source !== window.parent) return;
-        if (!event.data || event.data.method !== "ui/notifications/tool-result") return;
-        var p = event.data.params || {};
-        var payload = p.structuredContent;
-        if (!payload && p.content && p.content[0] && p.content[0].text) {
-          try { payload = JSON.parse(p.content[0].text); } catch (e) { payload = null; }
-        }
-        if (payload) render(payload);
-      });
-      request("ui/initialize", {
-        protocolVersion: "2026-01-26",
-        capabilities: { appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] } },
-        clientInfo: { name: "amira-mcp-app", version: "1.0.0" },
-      })
-        .then(function (result) {
-          var ctx = result && result.hostContext;
-          if (ctx && ctx.theme) document.documentElement.setAttribute("data-theme", ctx.theme);
-          notify("ui/notifications/initialized", {});
-        })
-        .catch(function () {
-          // No host bridge (opened directly, or a client without the extension):
-          // stay quiet and render if a result arrives anyway.
-          notify("ui/notifications/initialized", {});
-        });
-    },
-  };
-})();
-`;
+declare const __APP_BRIDGE__: string;
+export const BRIDGE_JS = __APP_BRIDGE__;
 
 /** Assemble a complete, self-contained app page. */
 export function page(title: string, css: string, script: string): string {
@@ -130,11 +96,13 @@ export function page(title: string, css: string, script: string): string {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${title}</title>
 <style>${SHELL_CSS}${css}</style>
 </head>
 <body>
-<div class="wrap" id="root"></div>
+<div class="wrap" id="root"><p class="empty">Waiting for research data…</p></div>
+<p id="app-status" role="status" aria-live="polite"></p>
 <script>${BRIDGE_JS}</script>
 <script>${script}</script>
 </body>

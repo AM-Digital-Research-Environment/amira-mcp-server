@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "amira-mcp-server",
   "display_name": "AMIRA — Africa Multiple Research Data",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "description": "Read-only access to AMIRA, the Africa Multiple research-data platform on Omeka S.",
   "long_description": "The Africa Multiple Interactive Research Atlas (AMIRA) is the research-data platform of the Africa Multiple Cluster of Excellence at the University of Bayreuth. It is built and maintained by the Cluster's Digital Research Environment (DRE), its digital infrastructure unit, which connects researchers across the Africa Multiple Research Centres (AMRCs) and partner institutions worldwide.\n\nCuration and description are joint efforts with partners at the AMRCs in Université Joseph Ki-Zerbo, Rhodes University, the University of Lagos, and Moi University. Bayreuth hosts the coordinating DRE infrastructure and metadata layer. Federal University of Bahia is a privileged partner, not an AMRC. Storage stays distributed by default: research data remains in local repositories and becomes findable without being relocated.\n\nThis read-only MCP server exposes AMIRA's Omeka S metadata through well-described tools for research items, projects, research sections, people, institutions, groups, collections, publications (open-access ones with searchable extracted full text), journals, podcast episodes, YouTube videos and searchable transcripts, plus the places, languages and subjects that connect them. No API key, database, account or VPN is required. A complete data snapshot is bundled in the extension, so the server works fully offline; when enabled, it can refresh from the public Omeka S API.\n\nEvery record carries an `amira_url` — its public page on the Omeka S site — so results can be cited as links back to the source. AMIRA focuses on the Cluster's research data; for news, events and general information, visit https://www.africamultiple.uni-bayreuth.de/.",
   "author": {
@@ -28,13 +28,17 @@
     "omeka-s",
     "bayreuth"
   ],
-  "privacy_policies": ["https://www.africamultiple.uni-bayreuth.de/en/index.html"],
+  "privacy_policies": [
+    "https://www.africamultiple.uni-bayreuth.de/en/index.html"
+  ],
   "server": {
     "type": "node",
     "entry_point": "server/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/server/index.js"],
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
       "env": {
         "AMIRA_LIVE_REFRESH": "${user_config.live_refresh}",
         "AMIRA_CACHE_DIR": "${user_config.cache_dir}",
@@ -43,37 +47,146 @@
     }
   },
   "tools": [
-    { "name": "get_collection_overview", "description": "Counts and breakdowns across the whole collection + snapshot freshness. Start here. Renders as a dashboard in hosts that support MCP Apps." },
-    { "name": "search_research_items", "description": "Search ~4,000 research items by keyword, subject, location, country, contributor, project, section, university, resource type, format/genre, language, and year." },
-    { "name": "get_research_item", "description": "Full metadata for one research item by Omeka o:id: dates, contributors with roles, places with hierarchy, sponsors, formats, collections, related items, media thumbnail, plus a generated citation and BibTeX/RIS/CSL-JSON export." },
-    { "name": "search_projects", "description": "Search the cluster's research projects by keyword, university, section, PI, member, or funding institution." },
-    { "name": "get_project", "description": "Full detail for one project, with item breakdown and top subjects." },
-    { "name": "list_research_sections", "description": "The cluster's thematic sections with funding phases, PIs and counts. Renders as a funding-phase Gantt in hosts that support MCP Apps." },
-    { "name": "get_research_section", "description": "Full detail for one research section, including its projects." },
-    { "name": "search_persons", "description": "Search the people authority list by name (either order) or affiliation." },
-    { "name": "get_person", "description": "Profile aggregating a person's projects led/joined, items contributed, and publications." },
-    { "name": "list_institutions", "description": "List institutions with project counts, partner categories, and coordinates." },
-    { "name": "get_institution", "description": "One institution's or group's projects, affiliated people, and contributed items." },
-    { "name": "list_cluster_partners", "description": "List Africa Multiple partner institutions by category: AMRC, privileged partner, cooperation partners, and global partner centres." },
-    { "name": "list_groups", "description": "List research groups." },
-    { "name": "list_subjects", "description": "Subject headings (tags merged in) ranked by item frequency, each with its authority page." },
-    { "name": "list_locations", "description": "Every place — countries and cities in one flat list (hierarchy rolled up) — ranked by item count, with coordinates." },
-    { "name": "list_collections", "description": "Collections (item sets) ranked by research-item count, each with its browsable page." },
-    { "name": "list_categories", "description": "Facet values: formats/genres, languages, resource types." },
-    { "name": "list_years", "description": "Date histogram of research items by year or decade — coverage over time and the most-covered year/decade. Renders as an interactive chart in hosts that support MCP Apps." },
-    { "name": "search_publications", "description": "Search the bibliography and full text; optionally export matching publications as bounded BibTeX, RIS or CSL-JSON batches." },
-    { "name": "get_publication", "description": "Rich publication metadata, linked authorities and BibTeX/RIS/CSL-JSON; extracted PDF full text opt-in and paged." },
-    { "name": "list_publication_facets", "description": "Counts by type, year, language, subject, author/editor or venue across the filtered bibliography, with pagination." },
-    { "name": "list_journals", "description": "The journals the cluster publishes in, ranked by publication count, with ISSN and country." },
-    { "name": "find_related", "description": "Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities. Renders as a radial hub in hosts that support MCP Apps." },
-    { "name": "search_podcasts", "description": "Search cluster podcast episodes by keyword, series, person, or year — including full-text search over transcripts." },
-    { "name": "get_podcast", "description": "Full detail for one podcast episode; transcript opt-in via include_transcript, with offset/length paging." },
-    { "name": "search_videos", "description": "Search the cluster's YouTube videos — including full-text search over transcripts, with a match snippet." },
-    { "name": "get_video", "description": "Full detail for one video; transcript opt-in via include_transcript, with offset/length paging." }
+    {
+      "name": "get_collection_overview",
+      "description": "Counts and breakdowns across the whole collection + snapshot freshness. Start here. Renders as a dashboard in hosts that support MCP Apps."
+    },
+    {
+      "name": "search_research_items",
+      "description": "Search ~4,000 research items by keyword, subject, location, country, contributor, project, section, university, resource type, format/genre, language, and year."
+    },
+    {
+      "name": "get_research_item",
+      "description": "Full metadata for one research item by Omeka o:id: dates, contributors with roles, places with hierarchy, sponsors, formats, collections, related items, media thumbnail, plus a generated citation and BibTeX/RIS/CSL-JSON export."
+    },
+    {
+      "name": "search_projects",
+      "description": "Search the cluster's research projects by keyword, university, section, PI, member, or funding institution."
+    },
+    {
+      "name": "get_project",
+      "description": "Full detail for one project, with item breakdown and top subjects."
+    },
+    {
+      "name": "list_research_sections",
+      "description": "The cluster's thematic sections with funding phases, PIs and counts. Renders as a funding-phase Gantt in hosts that support MCP Apps."
+    },
+    {
+      "name": "get_research_section",
+      "description": "Full detail for one research section, including its projects."
+    },
+    {
+      "name": "search_persons",
+      "description": "Search the people authority list by name (either order) or affiliation."
+    },
+    {
+      "name": "get_person",
+      "description": "Profile aggregating a person's projects led/joined, items contributed, and publications."
+    },
+    {
+      "name": "list_institutions",
+      "description": "List institutions with project counts, partner categories, and coordinates."
+    },
+    {
+      "name": "get_institution",
+      "description": "One institution's or group's projects, affiliated people, and contributed items."
+    },
+    {
+      "name": "list_cluster_partners",
+      "description": "List Africa Multiple partner institutions by category: AMRC, privileged partner, cooperation partners, and global partner centres."
+    },
+    {
+      "name": "list_groups",
+      "description": "List research groups."
+    },
+    {
+      "name": "list_subjects",
+      "description": "Subject headings (tags merged in) ranked by item frequency, each with its authority page."
+    },
+    {
+      "name": "list_locations",
+      "description": "Every place — countries and cities in one flat list (hierarchy rolled up) — ranked by item count, with coordinates."
+    },
+    {
+      "name": "list_collections",
+      "description": "Collections (item sets) ranked by research-item count, each with its browsable page."
+    },
+    {
+      "name": "list_categories",
+      "description": "Facet values: formats/genres, languages, resource types."
+    },
+    {
+      "name": "list_years",
+      "description": "Date histogram of research items by year or decade — coverage over time and the most-covered year/decade. Renders as an interactive chart in hosts that support MCP Apps."
+    },
+    {
+      "name": "search_publications",
+      "description": "Search the bibliography and full text; optionally export matching publications as bounded BibTeX, RIS or CSL-JSON batches."
+    },
+    {
+      "name": "get_publication",
+      "description": "Rich publication metadata, linked authorities and BibTeX/RIS/CSL-JSON; extracted PDF full text opt-in and paged."
+    },
+    {
+      "name": "list_publication_facets",
+      "description": "Counts by type, year, language, subject, author/editor or venue across the filtered bibliography, with pagination."
+    },
+    {
+      "name": "list_journals",
+      "description": "The journals the cluster publishes in, ranked by publication count, with ISSN and country."
+    },
+    {
+      "name": "find_related",
+      "description": "Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities. Renders as a radial hub in hosts that support MCP Apps."
+    },
+    {
+      "name": "search_podcasts",
+      "description": "Search cluster podcast episodes by keyword, series, person, or year — including full-text search over transcripts."
+    },
+    {
+      "name": "get_podcast",
+      "description": "Full detail for one podcast episode; transcript opt-in via include_transcript, with offset/length paging."
+    },
+    {
+      "name": "search_videos",
+      "description": "Search the cluster's YouTube videos — including full-text search over transcripts, with a match snippet."
+    },
+    {
+      "name": "get_video",
+      "description": "Full detail for one video; transcript opt-in via include_transcript, with offset/length paging."
+    },
+    {
+      "name": "resolve_entity",
+      "description": "Resolve labels or typed IDs to cited, unambiguous entity candidates."
+    },
+    {
+      "name": "get_entity_graph",
+      "description": "Explore explicit links and co-occurrences with cited evidence in an interactive graph."
+    },
+    {
+      "name": "get_text_passages",
+      "description": "Bounded keyword passages with original offsets from selected publications or media."
+    },
+    {
+      "name": "compare_collections",
+      "description": "Compare projects or item sets with identical filters and missingness counts."
+    },
+    {
+      "name": "get_data_quality",
+      "description": "Inspect snapshot coverage and refresh status."
+    },
+    {
+      "name": "get_snapshot_changes",
+      "description": "Page additions, updates and deletions between retained snapshots."
+    }
   ],
   "compatibility": {
     "claude_desktop": ">=0.10.0",
-    "platforms": ["darwin", "win32", "linux"],
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
     "runtimes": {
       "node": ">=20.0.0"
     }

@@ -8,6 +8,7 @@ import {
   capLimit,
   capOffset,
   containsCI,
+  errorResult,
   exposureRestrictedResult,
   filtersEcho,
   itemRef,
@@ -24,7 +25,7 @@ import { nameMatchesQuery, samePerson } from "../names.js";
 
 function pubRole(p: PublicationRec, personOId: number | null, name: string): "author" | "editor" | null {
   const match = (refs: PublicationRec["authors"]) =>
-    refs.some((r) => (personOId != null && r.o_id === personOId) || samePerson(r.label, name) || nameMatchesQuery(r.label, name));
+    refs.some((r) => (personOId != null && r.o_id != null) ? r.o_id === personOId : samePerson(r.label, name) || nameMatchesQuery(r.label, name));
   if (match(p.authors)) return "author";
   if (match(p.editors)) return "editor";
   return null;
@@ -36,15 +37,11 @@ export function registerPeopleTools(server: Server): void {
     "search_persons",
     {
       title: "Search people",
-      description:
-        "Search the people authority list (researchers and contributors). Names are stored " +
-        "'Surname, Forename' and matching is order-independent and accent-insensitive, so 'Oliver " +
-        "Baumann', 'Baumann, Oliver' and 'Baumann' all find the same person. Use get_person for a full " +
-        "profile.",
+      description: "Find canonical person authority records. Names accept either order and ignore accents. Use resolve_entity to disambiguate homonyms.",
       annotations: annotate("Search people"),
       inputSchema: z.strictObject({
-        keyword: z.string().optional().describe("Matches the name or an affiliation"),
-        affiliation: z.string().optional().describe("Matches the person's affiliations only"),
+        keyword: z.string().max(1000).optional().describe("Matches the name or an affiliation"),
+        affiliation: z.string().max(1000).optional().describe("Matches the person's affiliations only"),
         limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -80,26 +77,28 @@ export function registerPeopleTools(server: Server): void {
     "get_person",
     {
       title: "Get person profile",
-      description:
-        "Aggregate everything the collection knows about one person: affiliations, projects led (PI) and " +
-        "joined (member), research items contributed with the person's role (capped at 50, the total " +
-        "reported), publications authored or edited, and a citable `amira_url`. The canonical " +
-        "'Surname, Forename' spelling is echoed back as `name`. Works even for names absent from the " +
-        "authority list — empty lists mean the name appears nowhere.",
+      description: "Person affiliations, PI/member projects, contributed items and publications. Profile lists cap at 50 with total counts. Use id to disambiguate names.",
       annotations: annotate("Get person profile"),
       inputSchema: z.strictObject({
         name: z
-          .string()
+          .string().max(1000)
+          .optional()
           .describe("Either name order, with or without accents: 'Beier, Ulli' and 'Ulli Beier' both resolve"),
+        id: z.number().int().positive().optional().describe("Exact person Omeka ID; required to disambiguate homonyms"),
       }),
     },
-    async ({ name }) => {
+    async ({ name, id }) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_person");
+      if (!id && !name) return errorResult("missing_entity", "Provide name or id.");
+      const candidates = id ? store.persons.filter((p) => p.o_id === id) : store.persons.filter((p) => samePerson(p.name, name!));
+      if (id && !candidates.length) return errorResult("not_found", "Unknown person id.");
+      if (candidates.length > 1) return errorResult("ambiguous_entity", "Multiple people share this name; use an exact id from resolve_entity.", { suggested_tool: "resolve_entity", available_values: candidates.map((p) => String(p.o_id)) });
+      name = name ?? candidates[0]!.name;
 
       // Resolve to the canonical stored "Surname, Forename" form.
       const record =
-        store.getPersonByName(name) ?? store.persons.find((p) => samePerson(p.name, name));
+        candidates[0];
       let canonical = record?.name ?? null;
       if (!canonical) {
         outer: for (const it of store.items) {
@@ -114,7 +113,7 @@ export function registerPeopleTools(server: Server): void {
       canonical = canonical ?? name;
       const oId = record?.o_id ?? null;
       const isPerson = (label: string, refOId: number | null): boolean =>
-        (oId != null && refOId === oId) || samePerson(label, canonical!);
+        oId != null && refOId != null ? refOId === oId : samePerson(label, canonical!);
 
       const asPI = store.projects.filter((p) => p.pis.some((x) => isPerson(x.label, x.o_id)));
       const asMember = store.projects.filter((p) => p.members.some((x) => isPerson(x.label, x.o_id)));

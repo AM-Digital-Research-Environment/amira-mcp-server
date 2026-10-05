@@ -120,7 +120,8 @@ function render(payload) {
     '<p class="sub">' + plotted + " sections plotted; the number after each bar is its digitised item count." + tail + "</p>" +
     '<div class="chart">' + out.join("") + "</div>" +
     '<p class="note">The cluster redefined its sections between AM 1.0 and AM 2.0. The AM 2.0 sections are ' +
-    "newly seeded, so a near-zero item count there is expected, not missing data.</p>";
+    "newly seeded, so a near-zero item count there is expected, not missing data.</p>" +
+    '<details><summary>All returned section values</summary><table><thead><tr><th>Section</th><th>Dates</th><th>Projects</th><th>Items</th></tr></thead><tbody>' + (payload.results || []).map(function(r){return '<tr><td>' + esc(r.name) + '</td><td>' + esc((r.date || {}).start || 'Unknown') + ' – ' + esc((r.date || {}).end || 'Unknown') + '</td><td>' + (r.project_count || 0) + '</td><td>' + (r.item_count || 0) + '</td></tr>';}).join('') + '</tbody></table></details>';
 }
 
 window.amiraApp.onResult(render);

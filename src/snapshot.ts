@@ -5,8 +5,10 @@
 // Shared by the build-time fetch CLI (src/fetchCli.ts) and the runtime live
 // refresh (src/data.ts), so fetch behaviour can never drift between the two.
 
-import * as fs from "node:fs/promises";
+import fs from "node:fs/promises";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   transformItemSet,
   transformJournal,
@@ -38,35 +40,44 @@ const PER_PAGE = 100;
 const PAGE_CONCURRENCY = 4;
 const USER_AGENT = "amira-mcp-server (https://github.com/AM-Digital-Research-Environment/amira-mcp-server)";
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number, signal?: AbortSignal) => delay(ms, undefined, { signal });
 
 interface FetchResult<T> {
   body: T;
   total: number;
 }
 
-async function fetchJSON<T>(url: string, timeoutMs = 30000): Promise<FetchResult<T>> {
+export async function fetchJSON<T>(url: string, signal?: AbortSignal, timeoutMs = 30000): Promise<FetchResult<T>> {
   for (let attempt = 1; ; attempt++) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    signal?.throwIfAborted();
+    let retryAfter = 0;
     try {
-      const res = await fetch(url, { signal: ctrl.signal, headers: { "User-Agent": USER_AGENT } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const timeout = AbortSignal.timeout(timeoutMs);
+      const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+        headers: { "User-Agent": USER_AGENT } });
+      if (!res.ok) {
+        const header = res.headers.get("retry-after");
+        retryAfter = header ? (Number.isFinite(Number(header)) ? Number(header) * 1000 : Date.parse(header) - Date.now()) : 0;
+        await res.body?.cancel();
+        throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+      }
       const body = (await res.json()) as T;
       return { body, total: Number(res.headers.get("omeka-s-total-results") ?? NaN) };
     } catch (err) {
-      if (attempt >= 4) throw new Error(`${url}: ${(err as Error).message}`);
-      await sleep(600 * attempt * attempt);
-    } finally {
-      clearTimeout(timer);
+      signal?.throwIfAborted();
+      const status = (err as { status?: number }).status;
+      const transient = status ? [408, 429, 500, 502, 503, 504].includes(status)
+        : err instanceof TypeError || (err as Error).name === "TimeoutError";
+      if (!transient || attempt >= 4) throw err;
+      await sleep(Math.min(30_000, Math.max(retryAfter || 0, 600 * 2 ** (attempt - 1) + Math.random() * 300)), signal);
     }
   }
 }
 
 /** All pages of one items query, with bounded page concurrency. */
-async function crawlItems(apiBase: string, query: string): Promise<{ items: OmekaItem[]; total: number }> {
+async function crawlItems(apiBase: string, query: string, signal?: AbortSignal): Promise<{ items: OmekaItem[]; total: number }> {
   query += "&sort_by=id&sort_order=asc";
-  const first = await fetchJSON<OmekaItem[]>(`${apiBase}/items?${query}&per_page=${PER_PAGE}&page=1`);
+  const first = await fetchJSON<OmekaItem[]>(`${apiBase}/items?${query}&per_page=${PER_PAGE}&page=1`, signal);
   const total = first.total;
   if (!Number.isSafeInteger(total) || total < 0) throw new Error(`crawl ${query}: missing or invalid total-results header`);
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
@@ -78,8 +89,8 @@ async function crawlItems(apiBase: string, query: string): Promise<{ items: Omek
     Array.from({ length: Math.min(PAGE_CONCURRENCY, queue.length || 1) }, async () => {
       while (qi < queue.length) {
         const p = queue[qi++]!;
-        await sleep(100);
-        const res = await fetchJSON<OmekaItem[]>(`${apiBase}/items?${query}&per_page=${PER_PAGE}&page=${p}`);
+        await sleep(100, signal);
+        const res = await fetchJSON<OmekaItem[]>(`${apiBase}/items?${query}&per_page=${PER_PAGE}&page=${p}`, signal);
         byPage[p - 1] = res.body;
       }
     }),
@@ -95,13 +106,13 @@ async function crawlItems(apiBase: string, query: string): Promise<{ items: Omek
 }
 
 /** Property term -> label map (for marcrel role names). */
-async function fetchPropertyLabels(apiBase: string): Promise<Record<string, string>> {
+async function fetchPropertyLabels(apiBase: string, signal?: AbortSignal): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   for (let p = 1; ; p++) {
-    const { body } = await fetchJSON<Record<string, unknown>[]>(`${apiBase}/properties?per_page=${PER_PAGE}&page=${p}`);
+    const { body } = await fetchJSON<Record<string, unknown>[]>(`${apiBase}/properties?per_page=${PER_PAGE}&page=${p}`, signal);
     for (const prop of body) out[String(prop["o:term"])] = String(prop["o:label"] ?? "");
     if (body.length < PER_PAGE) break;
-    await sleep(100);
+    await sleep(100, signal);
   }
   return out;
 }
@@ -129,9 +140,9 @@ export interface CrawlOutput {
 }
 
 /** Crawl everything and transform to snapshot records. Throws on ANY shortfall. */
-export async function crawlSnapshot(apiBase: string, log: (msg: string) => void = () => {}): Promise<CrawlOutput> {
-  const before = await probeRemote(apiBase);
-  const labels = await fetchPropertyLabels(apiBase);
+export async function crawlSnapshot(apiBase: string, log: (msg: string) => void = () => {}, signal?: AbortSignal): Promise<CrawlOutput> {
+  const before = await probeRemote(apiBase, signal);
+  const labels = await fetchPropertyLabels(apiBase, signal);
   const classTerms = new Map<number, string>();
   const ctx: TransformContext = {
     roleLabel: (term) => labels[term] ?? null,
@@ -141,7 +152,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   const raw = {} as Record<CorpusName, OmekaItem[]>;
   for (const corpus of CORPORA) {
     if (corpus === "item_sets") continue;
-    const { items } = await crawlItems(apiBase, CORPUS_QUERIES[corpus]);
+    const { items } = await crawlItems(apiBase, CORPUS_QUERIES[corpus], signal);
     raw[corpus] = items;
     log(`crawled ${corpus}: ${items.length}`);
   }
@@ -149,12 +160,14 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   // Item sets (collections) live on their own endpoint.
   const itemSetsRaw: OmekaItem[] = [];
   for (let p = 1; ; p++) {
-    const { body } = await fetchJSON<OmekaItem[]>(`${apiBase}/item_sets?per_page=${PER_PAGE}&page=${p}`);
+    const { body } = await fetchJSON<OmekaItem[]>(`${apiBase}/item_sets?sort_by=id&sort_order=asc&per_page=${PER_PAGE}&page=${p}`, signal);
     itemSetsRaw.push(...body);
     if (body.length < PER_PAGE) break;
-    await sleep(100);
+    await sleep(100, signal);
   }
   raw.item_sets = itemSetsRaw;
+  if (new Set(itemSetsRaw.map((item) => item["o:id"])).size !== itemSetsRaw.length ||
+      itemSetsRaw.length !== before.totalItemSets) throw new Error("Item sets changed during the crawl");
   log(`crawled item_sets: ${itemSetsRaw.length}`);
 
   // Resolve the publication fabio classes (a handful of ids).
@@ -164,7 +177,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     if (c != null) pubClassIds.add(c);
   }
   for (const id of pubClassIds) {
-    const { body } = await fetchJSON<Record<string, unknown>>(`${apiBase}/resource_classes/${id}`);
+    const { body } = await fetchJSON<Record<string, unknown>>(`${apiBase}/resource_classes/${id}`, signal);
     classTerms.set(id, String(body["o:term"]));
   }
 
@@ -190,8 +203,8 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     item_sets: raw.item_sets.map(transformItemSet),
   };
 
-  const probe = await probeRemote(apiBase);
-  if (before.maxModified !== probe.maxModified || before.totalItems !== probe.totalItems) {
+  const probe = await probeRemote(apiBase, signal);
+  if (before.maxModified !== probe.maxModified || before.totalItems !== probe.totalItems || before.itemSetsSignature !== probe.itemSetsSignature) {
     throw new Error("Omeka items changed during the crawl; keeping the previous snapshot. Retry after the upstream sync finishes.");
   }
   const manifest: SnapshotManifest = {
@@ -203,24 +216,32 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     // repeated full crawls whenever such an authority was modified last.
     maxModified: probe.maxModified,
     totalItemsOnInstance: probe.totalItems,
+    itemSetsSignature: probe.itemSetsSignature,
     counts: Object.fromEntries(CORPORA.map((c) => [c, data[c].length])) as Record<CorpusName, number>,
   };
   return { data, manifest };
 }
 
 /** One-request freshness probe: max o:modified + unfiltered item total (D11). */
-export async function probeRemote(apiBase: string): Promise<{ maxModified: string | null; totalItems: number }> {
+export interface RemoteProbe { maxModified: string | null; totalItems: number; itemSetsSignature?: string; totalItemSets?: number }
+export async function probeRemote(apiBase: string, signal?: AbortSignal): Promise<RemoteProbe> {
   const { body, total } = await fetchJSON<OmekaItem[]>(
-    `${apiBase}/items?sort_by=modified&sort_order=desc&per_page=1`,
+    `${apiBase}/items?sort_by=modified&sort_order=desc&per_page=1`, signal,
   );
   if (!Array.isArray(body) || !Number.isSafeInteger(total) || total < 0 || (total > 0 && !body[0])) {
     throw new Error("Omeka freshness probe returned an invalid item list or total-results header");
   }
-  return { maxModified: body[0] ? systemDate(body[0], "o:modified") : null, totalItems: total };
+  const sets = await fetchJSON<OmekaItem[]>(`${apiBase}/item_sets?sort_by=modified&sort_order=desc&per_page=1`, signal);
+  if (!Array.isArray(sets.body) || !Number.isSafeInteger(sets.total) || sets.total < 0 || (sets.total > 0 && !sets.body[0])) {
+    throw new Error("Omeka item-set freshness probe returned an invalid item list or total-results header");
+  }
+  return { maxModified: body[0] ? systemDate(body[0], "o:modified") : null, totalItems: total,
+    totalItemSets: sets.total, itemSetsSignature: JSON.stringify([sets.total, sets.body[0] ? systemDate(sets.body[0], "o:modified") : null]) };
 }
 
 /** True when the local manifest is older than what the probe reports. */
-export function isStale(local: SnapshotManifest, probe: { maxModified: string | null; totalItems: number }): boolean {
+export function isStale(local: SnapshotManifest, probe: RemoteProbe): boolean {
+  if (probe.itemSetsSignature !== undefined && local.itemSetsSignature !== probe.itemSetsSignature) return true;
   if (probe.maxModified && (!local.maxModified || probe.maxModified > local.maxModified)) return true;
   if (local.totalItemsOnInstance != null && probe.totalItems !== local.totalItemsOnInstance) return true;
   return false;
@@ -239,6 +260,8 @@ export async function writeSnapshot(dir: string, out: CrawlOutput): Promise<void
 
 /** Load + validate a snapshot dir. Throws on schema/count mismatch. */
 export async function loadSnapshot(dir: string): Promise<CrawlOutput> {
+  const active = await readSnapshotPointer(dir);
+  if (active) return loadSnapshot(path.join(dir, "generations", active.current));
   const manifest = JSON.parse(await fs.readFile(path.join(dir, "manifest.json"), "utf8")) as SnapshotManifest;
   if (manifest.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
     throw new Error(`snapshot schema v${manifest.schemaVersion}, expected v${SNAPSHOT_SCHEMA_VERSION}`);
@@ -265,16 +288,82 @@ export async function loadSnapshot(dir: string): Promise<CrawlOutput> {
  * sibling staging dir, then swap. A crash mid-swap leaves either the old
  * snapshot or none (callers fall back to the bundled one) — never a torn mix.
  */
-export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput): Promise<void> {
-  const parent = path.dirname(destDir);
-  const staging = path.join(parent, `.staging-${process.pid}-${Date.now()}`);
-  await fs.mkdir(parent, { recursive: true });
+interface SnapshotPointer { current: string; previous: string[] }
+const GENERATION = /^[a-zA-Z0-9-]+$/;
+export async function readSnapshotPointer(dir: string): Promise<SnapshotPointer | null> {
+  let text: string;
+  try { text = await fs.readFile(path.join(dir, "active.json"), "utf8"); }
+  catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; throw err; }
+  const value = JSON.parse(text) as SnapshotPointer;
+  if (!GENERATION.test(value.current) || !Array.isArray(value.previous) || value.previous.some((s) => !GENERATION.test(s))) {
+    throw new Error("Invalid snapshot generation pointer");
+  }
+  return value;
+}
+
+/** Immutable generations and an atomic pointer replacement preserve the old
+ * snapshot on failure. Exclusive file creation serializes writers across processes. */
+export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  await fs.mkdir(path.join(destDir, "generations"), { recursive: true });
+  const lockPath = path.join(destDir, "writer.lock");
+  let lock;
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    signal?.throwIfAborted();
+    try { lock = await fs.open(lockPath, "wx"); break; }
+    catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST" || Date.now() >= deadline) throw err;
+      // Do not guess whether another process owns an old lock: PID reuse and
+      // concurrent stale-lock reclamation can otherwise admit two writers.
+      // A crashed writer's lock is removed by an operator while the server is stopped.
+      await sleep(50, signal);
+    }
+  }
+  const generation = randomUUID();
+  const dir = path.join(destDir, "generations", generation);
+  const pointerTmp = path.join(destDir, `active-${generation}.tmp`);
   try {
-    await writeSnapshot(staging, out);
-    await loadSnapshot(staging); // self-check before promoting
-    await fs.rm(destDir, { recursive: true, force: true });
-    await fs.rename(staging, destDir);
+    await lock.writeFile(String(process.pid));
+    const existing = await loadSnapshot(destDir).catch(() => null);
+    // Crawls run outside this lock. An older crawl finishing last must not
+    // replace a newer successfully published generation.
+    if (existing && Date.parse(existing.manifest.fetchedAt) > Date.parse(out.manifest.fetchedAt)) return;
+    await writeSnapshot(dir, out);
+    await loadSnapshot(dir);
+    let previous = await readSnapshotPointer(destDir);
+    if (!previous) {
+      // Preserve a pre-generation cache on the first successful publication.
+      const legacy = await loadSnapshot(destDir).catch(() => null);
+      if (legacy) {
+        const legacyId = randomUUID();
+        await writeSnapshot(path.join(destDir, "generations", legacyId), legacy);
+        previous = { current: legacyId, previous: [] };
+      }
+    }
+    // Flush data before publishing the only mutable reference.
+    for (const name of [...CORPORA.map((c) => `${c}.json`), "manifest.json"]) {
+      const file = await fs.open(path.join(dir, name), "r+");
+      try { await file.sync(); } finally { await file.close(); }
+    }
+    const pointer = await fs.open(pointerTmp, "wx");
+    const history = previous ? [previous.current, ...previous.previous].slice(0, 2) : [];
+    try { await pointer.writeFile(JSON.stringify({ current: generation, previous: history })); await pointer.sync(); }
+    finally { await pointer.close(); }
+    signal?.throwIfAborted();
+    await fs.rename(pointerTmp, path.join(destDir, "active.json"));
+    // Retain three generations and a 24h grace period for concurrent readers.
+    for (const name of await fs.readdir(path.join(destDir, "generations"))) {
+      if (!GENERATION.test(name) || name === generation || history.includes(name)) continue;
+      const old = path.join(destDir, "generations", name);
+      // Cleanup failure must not turn an already committed publish into a failure.
+      await fs.stat(old).then(async (stat) => {
+        if (stat.mtimeMs < Date.now() - 86_400_000) await fs.rm(old, { recursive: true, force: true });
+      }).catch(() => {});
+    }
   } finally {
-    await fs.rm(staging, { recursive: true, force: true }).catch(() => {});
+    await fs.unlink(pointerTmp).catch(() => {});
+    await lock.close();
+    await fs.unlink(lockPath);
   }
 }

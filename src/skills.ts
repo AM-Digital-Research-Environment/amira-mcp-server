@@ -1,13 +1,10 @@
-// Skills over MCP — the draft SEP-2640 extension, served from the embedded
+// Skills over MCP — the finalized SEP-2640 extension, served from the embedded
 // snapshot that scripts/skills.mjs builds at compile time.
 //
-// STATUS: PROTOTYPE. SEP-2640 is an OPEN DRAFT (modelcontextprotocol PR #2640)
-// and host support is thin. The `skill://` URIs, the catalog shape and the
-// `skills/*` methods are NOT a supported interface — they may change or be
-// withdrawn without a major version bump, and `amira-mcp-skill.zip` on the
-// GitHub release stays the supported way to install the skill. Nothing else in
-// the server depends on this module: deleting the `registerSkills` call in
-// mcpServer.ts removes the whole surface, and AMIRA_SKILLS=0 does it at runtime.
+// STATUS: official extension; SDK and host support still varies. Follow the
+// published contract at modelcontextprotocol.io/extensions/skills/overview.
+// The release zip remains available for hosts without extension support.
+// AMIRA_SKILLS=0 disables this surface without affecting the research tools.
 //
 // WHY THIS EXISTS. The companion research skill (.claude/skills/amira-mcp/) is
 // the server's operating manual: tool-selection guidance, the citation contract,
@@ -22,9 +19,6 @@
 // what to disclose and when. A host that does not implement the extension never
 // calls these methods.
 //
-// Draft status: SEP-2640 is unmerged (modelcontextprotocol/modelcontextprotocol
-// PR #2640) and the wire contract may still change. AMIRA_SKILLS=0 turns the
-// whole surface off without a rebuild.
 import { INVALID_PARAMS, ProtocolError, type McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
@@ -54,12 +48,13 @@ type SkillResource = {
   name: string;
   mimeType: string;
   digest: string;
+  size: number;
   text?: string;
   blob?: string;
 };
 
 type SkillsSnapshot = {
-  skills: { uri: string; frontmatter: Record<string, unknown>; resources: { uri: string; digest: string }[] }[];
+  skills: { uri: string; frontmatter: Record<string, unknown>; resources: { uri: string; digest: string; size: number }[] }[];
   resources: SkillResource[];
   directories: { uri: string; name: string }[];
 };
@@ -139,6 +134,7 @@ export function registerSkills(server: McpServer): void {
 
   // The catalog is small and fixed, so it ships in one page: no nextCursor.
   server.server.setRequestHandler("skills/list", { params: listParams, result: anyResult }, async () => ({
+    resultType: "complete",
     skills: SNAPSHOT.skills,
     ...SKILLS_CACHE_HINT,
   }));
@@ -146,7 +142,7 @@ export function registerSkills(server: McpServer): void {
   server.server.setRequestHandler("skills/get", { params: uriParams, result: anyResult }, async ({ uri }) => {
     const skill = skillsByUri.get(uri);
     if (skill === undefined) throw new ProtocolError(INVALID_PARAMS, `Unknown skill: ${uri}`);
-    return { skill };
+    return { resultType: "complete", skill, ...SKILLS_CACHE_HINT };
   });
 
   server.server.setRequestHandler(
@@ -177,7 +173,7 @@ export function registerSkills(server: McpServer): void {
         if (directory.uri.slice(prefix.length).includes("/")) continue;
         children.set(directory.uri, { uri: directory.uri, name: directory.name, mimeType: "inode/directory" });
       }
-      return { resources: [...children.values()].sort((a, b) => (a.uri < b.uri ? -1 : 1)) };
+      return { resultType: "complete", resources: [...children.values()].sort((a, b) => (a.uri < b.uri ? -1 : 1)) };
     },
   );
 }

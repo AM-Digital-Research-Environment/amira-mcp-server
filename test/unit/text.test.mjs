@@ -49,12 +49,23 @@ test("foldedIndexOf: accent-insensitive offsets stay valid in the ORIGINAL strin
   assert.equal(foldedIndexOf(text, "absent-token"), -1);
 });
 
-test("foldedIndexOf: falls back safely when folding changes length", () => {
+test("foldedIndexOf: maps normalization length changes to original offsets", () => {
   // NFD input: folding contracts it, so a folded offset would slice the
   // original in the wrong place. The helper detects the length change and
-  // searches the original instead.
+  // maps the folded match back to the original.
   const decomposed = "prefix Côte d'Ivoire suffix".normalize("NFD");
   assert.notEqual(fold(decomposed).length, decomposed.length);
   const i = foldedIndexOf(decomposed, "d'Ivoire");
   assert.equal(decomposed.slice(i, i + 8), "d'Ivoire");
+});
+
+test("foldedIndexOf: sparse offsets survive balanced expansions, accents and cache invalidation", () => {
+  const text = "각 café\u0301\u0301 tail 😀";
+  assert.equal(fold(text).length, text.length);
+  for (let i = 0; i < 2; i++) {
+    assert.equal(foldedIndexOf(text, "cafe"), text.indexOf("café"));
+    assert.equal(foldedIndexOf(text, "tail"), text.indexOf("tail"));
+    assert.equal(foldedIndexOf(text, "😀"), text.indexOf("😀"));
+    clearFoldCache();
+  }
 });

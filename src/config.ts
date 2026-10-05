@@ -135,6 +135,8 @@ export const config = {
   liveRefresh: parseBool(envValue("AMIRA_LIVE_REFRESH"), true),
   /** Periodic freshness check interval. 0 disables periodic checks. */
   refreshIntervalHours: parseNonNegativeNumber(envValue("AMIRA_REFRESH_INTERVAL_HOURS"), 24),
+  /** Refresh vocabularies even when item timestamps do not change (minimum one hour). */
+  fullRefreshHours: Math.max(1, parseNonNegativeNumber(envValue("AMIRA_FULL_REFRESH_HOURS"), 168)),
   /** Bind for the remote HTTP transport (server/http.js); ignored by the stdio
    * entry point. PORT/HOST are the conventional names; AMIRA_HTTP_* also work. */
   httpPort: Number(envValue("PORT") ?? envValue("AMIRA_HTTP_PORT") ?? "8787"),
@@ -143,8 +145,7 @@ export const config = {
    * clients without an Origin header are unaffected. */
   allowedOriginHostnames: parseAllowedOriginHostnames(envValue("AMIRA_ALLOWED_ORIGINS")),
   /** Per-client requests/minute allowed on /mcp; 0 disables the limiter. A
-   * courtesy cap against runaway clients — every query scans the whole
-   * in-memory snapshot — not a security control. Put a real one in the proxy. */
+   * courtesy cap against runaway clients querying the in-memory snapshot — not a security control. Put a real one in the proxy. */
   rateLimitPerMinute: parseNonNegativeNumber(envValue("AMIRA_RATE_LIMIT"), 120),
   /** Read the client IP from X-Forwarded-For. Only enable behind a proxy that
    * sets it: a direct client can forge the header and dodge the rate limit. */

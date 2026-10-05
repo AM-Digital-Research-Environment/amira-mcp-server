@@ -29,7 +29,7 @@ function check(cond, label) {
 
 const tools = await client.listTools();
 console.log(`tools (${tools.tools.length}):`, tools.tools.map((t) => t.name).join(", "));
-check(tools.tools.length === 27, `expected 27 tools, got ${tools.tools.length}`);
+check(tools.tools.length === 33, `expected 33 tools, got ${tools.tools.length}`);
 
 async function call(name, args, { expect = [] } = {}) {
   const res = await client.callTool({ name, arguments: args });
@@ -283,6 +283,28 @@ for (const [method, params, label] of [
     .then(() => check(false, `skills: ${label} rejected`))
     .catch((err) => check(err?.code === -32602, `skills: ${label} rejected with INVALID_PARAMS (got ${err?.code})`));
 }
+
+// New research tools cross the actual stdio transport with the bundled corpus.
+const resolved = await call("resolve_entity", { query: "Ulli Beier", type: "person" });
+check(resolved.results?.length > 0, "resolver: a typed person is available");
+if (resolved.results?.length) {
+  const graph = await call("get_entity_graph", { seed: resolved.results[0].id, max_nodes: 8, max_edges: 10 });
+  check(graph.nodes.length <= 8 && graph.edges.length > 0 && graph.edges.length <= 10, "graph: bounded linked records");
+  const evidence = await call("get_entity_graph", { seed: graph.seed, edge_id: graph.edges[0].id, snapshot_id: graph.snapshot_id, limit: 2 });
+  check(evidence.results.every((r) => r.amira_url), "graph: cited evidence");
+}
+if (ftPubs.results?.length) {
+  const passages = await call("get_text_passages", { ids: [`publication:${ftPubs.results[0].omeka_id}`], keyword: "Africa", limit: 2 });
+  check(Array.isArray(passages.results) && passages.snapshot_id, "passages: bounded source-grounded response");
+}
+if (colls.results?.length >= 2) {
+  const compared = await call("compare_collections", { cohorts: colls.results.slice(0, 2).map((r) => ({ type: "collection", id: String(r.id) })) });
+  check(compared.cohorts.every((c) => c.matched_items <= c.total_items), "comparison: consistent denominators");
+}
+const quality = await call("get_data_quality", {});
+check(quality.counts.research_items === overview.counts.research_items, "quality: corpus parity");
+const changes = await call("get_snapshot_changes", { limit: 2 });
+check(["ready", "history_unavailable"].includes(changes.status), "changes: explicit local history state");
 
 await client.close();
 await transport.close();

@@ -1,4 +1,4 @@
-// Build-time Agent Skills discovery for "Skills over MCP" (draft SEP-2640).
+// Build-time Agent Skills discovery for "Skills over MCP" (final SEP-2640).
 //
 // Walks the committed skill directory, validates each skill, hashes every file,
 // and returns an IMMUTABLE SNAPSHOT that scripts/build.mjs inlines into the
@@ -26,7 +26,7 @@ import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseYaml } from "yaml";
 
-/** Capability id negotiated for the draft Skills over MCP extension. */
+/** Capability id negotiated for the Skills over MCP extension. */
 export const SKILLS_EXTENSION_ID = "io.modelcontextprotocol/skills";
 
 /** Conventional skill directory — the same folder Claude Code loads locally. */
@@ -173,6 +173,7 @@ async function readSkill(absDir, skillPath) {
       name: rel.split("/").pop(),
       mimeType,
       digest: digestOf(bytes),
+      size: bytes.length,
       ...(binary ? { blob: bytes.toString("base64") } : { text: bytes.toString("utf8") }),
     });
   }
@@ -187,7 +188,7 @@ async function readSkill(absDir, skillPath) {
       uri: skillUri(skillPath, "SKILL.md"),
       frontmatter,
       // Complete manifest: every file exactly once, SKILL.md included.
-      resources: resources.map(({ uri, digest }) => ({ uri, digest })),
+      resources: resources.map(({ uri, digest, size }) => ({ uri, digest, size })),
     },
     resources,
     directories,

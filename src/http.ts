@@ -18,7 +18,7 @@ import { createMcpHandler } from "@modelcontextprotocol/server";
 import { localhostHostValidation, originValidation, toNodeHandler } from "@modelcontextprotocol/node";
 import { createAmiraServer, VERSION } from "./mcpServer.js";
 import { config } from "./config.js";
-import { currentStore, ensureStore } from "./data.js";
+import { currentStore, ensureStore, refreshStatus, stopBackgroundRefresh } from "./data.js";
 
 const MCP_PATH = "/mcp";
 let startupError: string | null = null;
@@ -78,12 +78,13 @@ function clientKey(req: IncomingMessage): string {
 function rateLimited(req: IncomingMessage): number {
   if (config.rateLimitPerMinute <= 0) return 0;
   const now = Date.now();
-  if (buckets.size > 10_000) {
+  if (buckets.size >= 10_000) {
     for (const [k, b] of buckets) if (b.resetAt <= now) buckets.delete(k);
   }
   const key = clientKey(req);
   const bucket = buckets.get(key);
   if (!bucket || bucket.resetAt <= now) {
+    if (!bucket && buckets.size >= 10_000) return 60;
     buckets.set(key, { count: 1, resetAt: now + 60_000 });
     return 0;
   }
@@ -109,6 +110,7 @@ function healthBody(): Record<string, unknown> {
     transport: "streamable-http",
     mcp_endpoint: MCP_PATH,
     site: config.siteBase,
+    refresh: refreshStatus(),
     ...(store
       ? {
           data_snapshot: {
@@ -139,10 +141,11 @@ function healthBody(): Record<string, unknown> {
  * concurrent clients from colliding on JSON-RPC ids is preserved; the data
  * still lives in the process-wide snapshot singleton, so this stays cheap.
  */
-const mcpEntry = createMcpHandler(() => createAmiraServer({ openai: true })); // 27 rich tools + search/fetch
+const MAX_REQUEST_BYTES = 64 * 1024;
+const mcpEntry = createMcpHandler(() => createAmiraServer({ openai: true }), { maxRequestBodySize: MAX_REQUEST_BYTES });
 const mcpHandler = toNodeHandler(
   mcpEntry,
-  { onerror: (err) => console.error("[amira] mcp handler error:", err) },
+  { maxRequestBodySize: MAX_REQUEST_BYTES, onerror: (err) => console.error("[amira] mcp handler error:", err) },
 );
 
 const httpServer = createServer((req, res) => {
@@ -218,7 +221,10 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     httpServer.close((err) => (err ? reject(err) : resolve()));
   });
   try {
-    await Promise.all([mcpEntry.close(), httpClosed]);
+    const deadline = setTimeout(() => { httpServer.closeAllConnections(); process.exitCode = 1; }, 10_000);
+    deadline.unref();
+    try { await Promise.all([stopBackgroundRefresh(), mcpEntry.close(), httpClosed]); }
+    finally { clearTimeout(deadline); }
   } catch (err) {
     console.error("[amira] HTTP shutdown failed:", err);
     process.exitCode = 1;

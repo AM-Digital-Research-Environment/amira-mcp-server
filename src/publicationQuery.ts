@@ -9,12 +9,12 @@ import {
 } from "./tools/_shared.js";
 
 export const publicationFilters = {
-  keyword: z.string().optional().describe("Title, abstract, venue, subjects or full text; substring match"),
-  author: z.string().optional().describe("Author/editor name, either name order"),
-  type: z.string().optional().describe("Exact type; discover values with list_publication_facets"),
-  venue: z.string().optional().describe("Journal/book title, partial"),
-  subject: z.string().optional().describe("Subject heading, partial"),
-  language: z.string().optional().describe("Language name or ISO code"),
+  keyword: z.string().max(1000).optional().describe("Title, abstract, venue, subjects or full text; substring match"),
+  author: z.string().max(1000).optional().describe("Author/editor name, either name order"),
+  type: z.string().max(1000).optional().describe("Exact type; discover values with list_publication_facets"),
+  venue: z.string().max(1000).optional().describe("Journal/book title, partial"),
+  subject: z.string().max(1000).optional().describe("Subject heading, partial"),
+  language: z.string().max(1000).optional().describe("Language name or ISO code"),
   has_fulltext: z.boolean().optional().describe("Filter by extracted full-text availability"),
   year_from: z.number().int().min(0).max(2200).optional(),
   year_to: z.number().int().min(0).max(2200).optional(),

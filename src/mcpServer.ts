@@ -1,3 +1,4 @@
+import { configureToolRegistration, resolveToolProfile } from "./toolProfiles.js";
 // Shared MCP server factory — one definition of the server's identity, tools and
 // instructions, used by BOTH transports: the stdio entry (src/index.ts, the
 // .mcpb) and the remote Streamable HTTP entry (src/http.ts). Only the transport
@@ -99,6 +100,7 @@ export const INSTRUCTIONS =
 export interface CreateServerOptions {
   /** Also register the OpenAI-compatible `search`/`fetch` tools (HTTP transport). */
   openai?: boolean;
+  profile?: import("./toolProfiles.js").ToolProfile;
 }
 
 /** Build a fully-configured AMIRA MCP server (tools registered, not yet connected). */
@@ -117,11 +119,12 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
       instructions: INSTRUCTIONS,
       supportedProtocolVersions: PROTOCOL_VERSIONS,
       cacheHints: CACHE_HINTS,
-      // Draft SEP-2640. Declared only when a valid skill catalog was built, so
+      // SEP-2640. Declared only when a valid skill catalog was built, so
       // a host never sees the capability without `skills/list` behind it.
       ...(skillsEnabled() ? { capabilities: { extensions: SKILLS_CAPABILITY } } : {}),
     },
   );
+  configureToolRegistration(server, opts.profile ?? resolveToolProfile());
   registerTools(server);
   if (opts.openai) registerOpenAITools(server);
   registerSkills(server);

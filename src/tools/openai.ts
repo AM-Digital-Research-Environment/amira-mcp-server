@@ -1,3 +1,4 @@
+import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
 // OpenAI / ChatGPT compatibility tools: `search` and `fetch`.
 //
 // ChatGPT's Deep Research + connector contract calls exactly two tools, with
@@ -7,7 +8,7 @@
 // Both must return `structuredContent` alongside the JSON content array — which
 // our `textResult` helper already does. These adapters sit OVER the same
 // in-memory store the rich tools use; they are registered only on the remote
-// HTTP transport (src/http.ts), so the stdio .mcpb keeps its 25-tool surface.
+// HTTP transport (src/http.ts), so the stdio .mcpb keeps its 33-tool surface.
 //
 // `id` is typed as `<kind>:<omeka_o_id>` (item:7392, pub:30001, video:39218,
 // podcast:39121, project:37700, section:218) so fetch can route back and a
@@ -15,12 +16,11 @@
 import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import type { DataStore } from "../data.js";
-import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
+import { allowDescriptive, allowStructured } from "../exposure.js";
 import {
   annotate,
   capText,
   CHARACTER_LIMIT,
-  containsCI,
   dateStatus,
   refLabels,
   textResult,
@@ -31,22 +31,11 @@ import {
   type WindowOpts,
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
-import { fold, foldCached } from "../text.js";
 
 const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_SEARCH_LIMIT = 50;
 
 /** Record kinds the `types` filter accepts (id prefixes are built inline). */
-const SEARCH_TYPES = ["item", "publication", "video", "podcast", "project", "section"] as const;
-type SearchType = (typeof SEARCH_TYPES)[number];
-
-interface Hit {
-  id: string;
-  title: string;
-  url: string;
-  score: number;
-}
-
 /** Drop null/undefined/empty-array entries so metadata stays compact. */
 function compact(o: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
@@ -64,172 +53,6 @@ function placeWithCountry(store: DataStore, label: string, oId: number | null): 
   const ancestors = store.locationAncestors(oId);
   const country = ancestors[ancestors.length - 1];
   return country && country !== label ? `${label} (${country})` : label;
-}
-
-// Common EN/FR function words — dropped from queries so a natural-language
-// question ("which projects study migration?") matches on its content words.
-const STOPWORDS = new Set(
-  (
-    "the a an of in on at to for and or but with by from as is are was were be been which who whom whose what when " +
-    "where why how do does did about into over across this that these those there here their them they our your you we it its not no " +
-    "le la les un une des de du et ou mais avec par pour dans sur qui que quoi dont est sont ete etre ce ces cette aux au se sa son ses"
-  )
-    .split(/\s+/)
-    .filter(Boolean),
-);
-
-/** Folded content terms (>=2 chars, no stopwords, de-duplicated). Folding is
- * what makes the unaccented stopwords above ("ete", "etre") actually fire. */
-function tokenize(q: string): string[] {
-  const toks = fold(q)
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
-  return [...new Set(toks)];
-}
-
-/**
- * Fold a field group ONCE per query rather than once per term. Folding cost is
- * per string, and `containsCI` re-folded every title, subject and label for
- * every term of the query — with ~4,000 items × ~10 fields that dominated
- * search time. `terms` and `phrase` arrive pre-folded from `tokenize`, so the
- * comparison below is a plain substring test.
- */
-function foldAll(xs: (string | null | undefined)[]): string[] {
-  const out: string[] = [];
-  for (const s of xs) if (s) out.push(foldCached(s));
-  return out;
-}
-
-function anyHas(folded: string[], term: string): boolean {
-  return folded.some((s) => s.includes(term));
-}
-
-/** Body length at or below which a body hit keeps full weight (an abstract). */
-const BODY_REFERENCE = 2_000;
-
-/**
- * Damping for body hits, by how much text was searched. Undamped, a
- * 95,000-char publication full text that happened to contain five query terms
- * scored 5 and outranked a precise title hit (3) — length won, not relevance.
- * Abstracts keep full weight; a full text is worth ~0.37 per term, a
- * 40,000-char transcript ~0.43, so a single title hit still wins.
- */
-function bodyWeight(bodies: (string | null | undefined)[]): number {
-  let len = 0;
-  for (const b of bodies) len += b?.length ?? 0;
-  if (len <= BODY_REFERENCE) return 1;
-  return Math.max(0.25, 1 / (1 + Math.log10(len / BODY_REFERENCE)));
-}
-
-/**
- * Token-aware relevance: each query term scores at the weight of the best field
- * it appears in (title 3 / mid 2 / body 1×damping), so matches accumulate by how
- * many terms land and where. A full-phrase title hit adds a bonus. This is what
- * lets multi-word and natural-language queries match — the old whole-phrase
- * substring test returned nothing for anything but an exact phrase.
- */
-function scoreRecord(
-  terms: string[],
-  phrase: string,
-  title: (string | null | undefined)[],
-  mid: (string | null | undefined)[],
-  body: (string | null | undefined)[],
-): number {
-  const ft = foldAll(title);
-  let fm: string[] | null = null; // folded on first miss, not upfront
-  let fb: string[] | null = null;
-  let s = 0;
-  for (const t of terms) {
-    if (anyHas(ft, t)) {
-      s += 3;
-      continue;
-    }
-    fm ??= foldAll(mid);
-    if (anyHas(fm, t)) {
-      s += 2;
-      continue;
-    }
-    fb ??= foldAll(body);
-    if (anyHas(fb, t)) s += bodyWeight(body);
-  }
-  if (s > 0 && terms.length > 1 && anyHas(ft, phrase)) s += 4;
-  return s;
-}
-
-/** Rank the readable corpora (items, publications, videos, podcasts, projects,
- * research sections) for a query by token-aware relevance, optionally restricted
- * to a set of record kinds and capped at `limit`. The fields searched follow the
- * exposure level: titles always; descriptive text, structured labels, and
- * transcripts/full text only when the level exposes them. */
-function runSearch(store: DataStore, query: string, limit: number, types?: SearchType[]): Hit[] {
-  const phrase = fold(query.trim());
-  const terms = tokenize(query);
-  if (!terms.length) return [];
-  const hits: Hit[] = [];
-  const add = (id: string, title: string, url: string, score: number) => {
-    if (score > 0) hits.push({ id, title, url, score });
-  };
-  // Scoring a corpus the caller excluded is pure waste — `types: ['project']`
-  // used to still scan every publication full text and transcript.
-  const want = (t: SearchType): boolean => !types?.length || types.includes(t);
-  const desc = allowDescriptive();
-  const struct = allowStructured();
-  const full = allowFullText();
-  const mids = (xs: (string | null | undefined)[]): (string | null | undefined)[] => (struct ? xs : []);
-  const bodies = (xs: (string | null | undefined)[]): (string | null | undefined)[] => (desc ? xs : []);
-
-  if (want("item"))
-    for (const it of store.items) {
-      add(
-        `item:${it.o_id}`, it.title, itemUrl(it.o_id),
-        scoreRecord(terms, phrase,
-          [it.title, ...it.alt_titles],
-          mids([...refLabels(it.subjects), ...it.contributors.map((c) => c.name), ...it.places.map((p) => p.label), ...refLabels(it.formats), ...it.identifiers, it.dre_id]),
-          bodies([it.abstract, it.description, it.toc])),
-      );
-    }
-  if (want("publication"))
-    for (const p of store.publications) {
-      add(
-        `pub:${p.o_id}`, p.title, itemUrl(p.o_id),
-        scoreRecord(terms, phrase, [p.title],
-          mids([...refLabels(p.authors), ...refLabels(p.editors), p.venue, ...refLabels(p.subjects)]),
-          [...bodies([p.abstract]), ...(full ? [p.fulltext] : [])]),
-      );
-    }
-  if (want("video"))
-    for (const v of store.videos) {
-      add(
-        `video:${v.o_id}`, v.title, itemUrl(v.o_id),
-        scoreRecord(terms, phrase, [v.title],
-          mids([...v.speakers.map((c) => c.name), ...refLabels(v.playlists)]),
-          [...bodies([v.abstract]), ...(full ? [v.transcript] : [])]),
-      );
-    }
-  if (want("podcast"))
-    for (const p of store.podcasts) {
-      add(
-        `podcast:${p.o_id}`, p.title, itemUrl(p.o_id),
-        scoreRecord(terms, phrase, [p.title],
-          mids([...p.people.map((c) => c.name), p.series?.label]),
-          [...bodies([p.abstract]), ...(full ? [p.transcript] : [])]),
-      );
-    }
-  if (want("project"))
-    for (const p of store.projects) {
-      add(
-        `project:${p.o_id}`, p.name, itemUrl(p.o_id),
-        scoreRecord(terms, phrase, [p.name],
-          mids([...refLabels(p.sections), ...refLabels(p.pis), ...refLabels(p.members), ...refLabels(p.funded_by)]),
-          bodies([p.description])),
-      );
-    }
-  if (want("section"))
-    for (const s of store.sections) {
-      add(`section:${s.o_id}`, s.name, itemUrl(s.o_id), scoreRecord(terms, phrase, [s.name], mids([...refLabels(s.pis)]), bodies([s.description])));
-    }
-
-  return hits.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
 // Transcript/full-text windowing for `fetch` lives in the shared
@@ -538,18 +361,11 @@ export function registerOpenAITools(server: Server): void {
     "search",
     {
       title: "Search the AMIRA collection",
-      description:
-        "Search the Africa Multiple (AMIRA) research collection, ranked by relevance. Covers research " +
-        "items (digitised artefacts), the cluster bibliography (reaching INTO the extracted full text of " +
-        "open-access publications), podcasts and YouTube videos (reaching INTO their transcripts), and " +
-        "the cluster's projects and research sections. Matching is accent-insensitive. Returns " +
-        "{ results: [{ id, title, url }] }, where `url` is the citable AMIRA/Omeka record page; pass an " +
-        "`id` to the fetch tool for the full record. (The OpenAI/ChatGPT-compatible entry point; richer " +
-        "filtered tools — search_research_items, find_related, list_* — are also available.)",
+      description: "Ranked search across items, publications, videos, podcasts, projects and sections. Returns typed IDs, titles and citation URLs. Fetch selected records for evidence.",
       annotations: annotate("Search the AMIRA collection"),
       inputSchema: z.strictObject({
         query: z
-          .string()
+          .string().max(1000)
           .describe(
             "A few keywords, names, places or themes — e.g. 'Yoruba architecture'. Terms are matched " +
               "individually, so concise queries beat full sentences",
@@ -584,20 +400,11 @@ export function registerOpenAITools(server: Server): void {
     "fetch",
     {
       title: "Fetch one AMIRA record",
-      description:
-        "Retrieve one AMIRA record by an `id` from the search tool. Returns { id, title, text, url, " +
-        "metadata } — `text` concatenates the record's descriptive fields, `url` is the citable " +
-        "AMIRA/Omeka page, and DOI / watch / listen URLs appear in metadata when available. Large text " +
-        "is OPT-IN: video and podcast transcripts, and publications' extracted PDF full text, are omitted " +
-        "by default (metadata reports has_transcript / transcript_length and has_fulltext / " +
-        "fulltext_length) because either can run to tens of thousands of characters. Set the matching " +
-        "include_* flag to append one, and page it with the offset/max_chars pair — the window is sized " +
-        "to what `max_chars` leaves after the metadata header, and `*_returned_chars` is exactly what " +
-        "landed in `text`, so the next page starts at offset + returned_chars with no gap.",
+      description: "Read a typed search result as a cited document. Full text/transcripts are opt-in and pageable; metadata and text respect exposure policy. Unknown ID returns an error.",
       annotations: annotate("Fetch one AMIRA record"),
       inputSchema: z.strictObject({
         id: z
-          .string()
+          .string().max(1000)
           .describe("A typed record id from search: item:7392 | pub:30001 | video:39218 | podcast:39121 | project:37700 | section:218"),
         include_transcript: z.boolean().optional().describe("Default false — set true to append the video/podcast transcript"),
         transcript_offset: z.number().int().min(0).optional().describe("Start offset into the transcript (chars), with include_transcript"),

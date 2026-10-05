@@ -8,13 +8,15 @@ import {
   equalsCI,
   exposureRestrictedResult,
   itemRef,
-  refLabels,
   textResult,
   type Server,
 } from "./_shared.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
-import { nameMatchesQuery, samePerson } from "../names.js";
+import { nameMatchesQuery } from "../names.js";
 import { RELATED_UI_META } from "./apps.js";
+import { resolveEntities } from "../entityGraph.js";
+import { fold } from "../text.js";
+import { limitEcho } from "./_shared.js";
 
 type EntityType = "subject" | "location" | "person" | "project";
 
@@ -31,13 +33,17 @@ const MATCHING: Record<EntityType, string> = {
   project: "Items in the project whose Omeka id or legacy project key equals the value, or whose project label contains it.",
 };
 
-function topN(map: Map<string, number>, n: number): { name: string; count: number }[] {
-  return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([name, count]) => ({ name, count }));
-}
-
-function inc(map: Map<string, number>, key: string | undefined | null): void {
-  if (!key) return;
-  map.set(key, (map.get(key) ?? 0) + 1);
+interface Count { name: string; omeka_id: number | null; count: number; research_item_count: number; publication_count: number; amira_url: string | null }
+const topN = (map: Map<string, Count>, n: number) => [...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, n);
+function countRecord(map: Map<string, Count>, refs: { label: string; o_id: number | null }[], corpus: "research_item_count" | "publication_count") {
+  const seen = new Set<string>();
+  for (const ref of refs) {
+    const key = ref.o_id == null ? `label:${fold(ref.label)}` : `id:${ref.o_id}`;
+    if (!ref.label || seen.has(key)) continue;
+    seen.add(key);
+    const row = map.get(key) ?? { name: ref.label, omeka_id: ref.o_id, count: 0, research_item_count: 0, publication_count: 0, amira_url: itemUrlOrNull(ref.o_id) };
+    row[corpus]++; row.count++; map.set(key, row);
+  }
 }
 
 export function registerRelatedTools(server: Server): void {
@@ -47,21 +53,14 @@ export function registerRelatedTools(server: Server): void {
       title: "Find related entities",
       // Renders as a radial co-occurrence hub in MCP Apps hosts; plain JSON elsewhere.
       _meta: RELATED_UI_META,
-      description:
-        "Cross-entity discovery: given one entity, find what it connects to through the research items " +
-        "that mention it — for 'what subjects/people/places co-occur with X?' and for tracing how a theme " +
-        "spans projects. Returns the matched-item count plus ranked related projects, research sections, " +
-        "subjects, people, countries and formats, sample items, and the seed's own `amira_url`. Subject " +
-        "and person seeds also pivot into the cluster bibliography (related_publications). How the value " +
-        "was matched is echoed in the response `matching` field — note `matched_items` counts ITEMS, so " +
-        "it differs from list_subjects, which counts distinct headings.",
+      description: "Subjects, people, places and projects connected through shared records. Per-corpus counts deduplicate each record; subject/person seeds also include publications. Returns ambiguity and cited samples.",
       annotations: annotate("Find related entities"),
       inputSchema: z.strictObject({
         entity_type: z
           .enum(["subject", "location", "person", "project"])
           .describe("What the value denotes. Tags are merged into subjects — there is no tag pivot"),
         value: z
-          .string()
+          .string().max(1000)
           .describe(
             "The entity to pivot on. subject: substring of a heading ('Islam'). location: any level of " +
               "the city→country hierarchy ('Nigeria' includes Lagos items). person: a name in either " +
@@ -96,20 +95,20 @@ export function registerRelatedTools(server: Server): void {
 
       const seed = store.items.filter(matches);
 
-      const projects = new Map<string, number>();
-      const sections = new Map<string, number>();
-      const subjects = new Map<string, number>();
-      const people = new Map<string, number>();
-      const countries = new Map<string, number>();
-      const formats = new Map<string, number>();
+      const projects = new Map<string, Count>();
+      const sections = new Map<string, Count>();
+      const subjects = new Map<string, Count>();
+      const people = new Map<string, Count>();
+      const countries = new Map<string, Count>();
+      const formats = new Map<string, Count>();
 
       for (const it of seed) {
-        inc(projects, it.project?.label);
-        for (const s of store.sectionsOfItem(it)) inc(sections, s);
-        for (const s of it.subjects) if (!(type === "subject" && containsCI(s.label, value))) inc(subjects, s.label);
-        for (const c of it.contributors) if (!(type === "person" && matchesPerson(c.name))) inc(people, c.name);
-        for (const p of it.places) inc(countries, store.countryOf(p));
-        for (const f of it.formats) inc(formats, f.label);
+        countRecord(projects, it.project ? [it.project] : [], "research_item_count");
+        countRecord(sections, store.projectOf(it)?.sections ?? [], "research_item_count");
+        countRecord(subjects, it.subjects.filter((s) => !(type === "subject" && containsCI(s.label, value))), "research_item_count");
+        countRecord(people, it.contributors.filter((c) => !(type === "person" && matchesPerson(c.name))).map((c) => ({ label: c.name, o_id: c.o_id })), "research_item_count");
+        countRecord(countries, it.places.map((p) => store.placeChainRefs(p).at(-1)!), "research_item_count");
+        countRecord(formats, it.formats, "research_item_count");
       }
 
       // Publications join the pivot for subject/person seeds (they carry
@@ -123,44 +122,18 @@ export function registerRelatedTools(server: Server): void {
               )
             : [];
       for (const p of matchedPubs) {
-        for (const s of p.subjects) if (!(type === "subject" && containsCI(s.label, value))) inc(subjects, s.label);
-        for (const n of refLabels(p.authors)) if (!(type === "person" && matchesPerson(n))) inc(people, n);
+        countRecord(subjects, p.subjects.filter((s) => !(type === "subject" && containsCI(s.label, value))), "publication_count");
+        countRecord(people, [...p.authors, ...p.editors].filter((s) => !(type === "person" && matchesPerson(s.label))), "publication_count");
       }
 
-      // Best-effort amira_url for the seed entity itself.
-      let seedOId: number | null = null;
-      if (type === "person") {
-        seedOId =
-          store.getPersonByName(value)?.o_id ??
-          store.persons.find((p) => samePerson(p.name, value) || nameMatchesQuery(p.name, value))?.o_id ??
-          null;
-      } else if (type === "project") {
-        seedOId =
-          store.getProject(value)?.o_id ??
-          store.projects.find((p) => equalsCI(p.name, value))?.o_id ??
-          store.projects.find((p) => containsCI(p.name, value))?.o_id ??
-          null;
-      } else if (type === "location") {
-        seedOId =
-          store.getLocationByName(value)?.o_id ??
-          store.locations.find((l) => equalsCI(l.name, value))?.o_id ??
-          store.locations.find((l) => containsCI(l.name, value))?.o_id ??
-          null;
-      } else {
-        for (const it of seed) {
-          const hit = it.subjects.find((s) => equalsCI(s.label, value)) ?? it.subjects.find((s) => containsCI(s.label, value));
-          if (hit?.o_id != null) {
-            seedOId = hit.o_id;
-            break;
-          }
-        }
-      }
-
+      const candidates = resolveEntities(store, value, type);
       return textResult({
         entity_type: type,
         value,
         matching: MATCHING[type],
-        amira_url: itemUrlOrNull(seedOId),
+        amira_url: candidates.length === 1 ? candidates[0]!.amira_url : null,
+        seed_candidates: candidates.slice(0, 20), seed_candidate_count: candidates.length, ambiguous: candidates.length > 1,
+        ...limitEcho(args.limit, 50, limit),
         matched_items: seed.length,
         ...(type === "subject" || type === "person" ? { matched_publications: matchedPubs.length } : {}),
         related_projects: topN(projects, limit),

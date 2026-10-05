@@ -5,6 +5,7 @@
 #   docker build -t amira-mcp .
 #   docker run -p 8787:8787 amira-mcp     # → http://localhost:8787/mcp
 
+ARG SNAPSHOT_STAGE=fetch
 FROM node:26-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -14,8 +15,18 @@ COPY src ./src
 COPY scripts ./scripts
 COPY .claude/skills ./.claude/skills
 RUN npm run skills:check
-# Bundles the server (incl. server/http.js) AND writes the data/ snapshot.
-RUN npm run fetch-data
+RUN npm run build:strict
+
+# Default convenience target still fetches current public data.
+FROM build AS fetch
+RUN node server/fetchCli.js
+
+# Reproducible build using an already reviewed snapshot; no Omeka request.
+FROM build AS bundled
+COPY data ./data
+RUN node --input-type=module -e "import {loadSnapshot} from './server/lib.js'; await loadSnapshot('./data')"
+
+FROM ${SNAPSHOT_STAGE} AS snapshot
 
 FROM node:26-slim AS run
 WORKDIR /app
@@ -25,8 +36,8 @@ ENV NODE_ENV=production \
     AMIRA_LIVE_REFRESH=true \
     AMIRA_CACHE_DIR=/tmp/amira-cache
 # Self-contained bundles + the JSON snapshot; nothing from node_modules.
-COPY --from=build /app/server ./server
-COPY --from=build /app/data ./data
+COPY --from=snapshot /app/server ./server
+COPY --from=snapshot /app/data ./data
 EXPOSE 8787
 USER node
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s \

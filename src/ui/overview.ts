@@ -69,7 +69,7 @@ function tile(n, label, sub) {
 function panel(title, rows, labelWidth) {
   if (!rows.length) return "";
   return '<section class="panel"><h2>' + esc(title) + "</h2>" +
-    barChart(rows, { label: title, labelWidth: labelWidth }) + "</section>";
+    barChart(rows, { label: title, labelWidth: labelWidth }) + '<details><summary>Read values</summary><table><tbody>' + rows.map(function(r){return '<tr><th>' + esc(r[0]) + '</th><td>' + r[1] + '</td></tr>';}).join('') + '</tbody></table></details></section>';
 }
 
 function render(d) {

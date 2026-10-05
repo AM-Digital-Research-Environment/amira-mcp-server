@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { z } from "zod";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
 
 const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), "amira-fixture-"));
@@ -25,6 +26,7 @@ delete process.env.AMIRA_EXPOSURE;
 const lib = await import("../../server/lib.js");
 const { InMemoryTransport } = await import("@modelcontextprotocol/server");
 const { Client } = await import("@modelcontextprotocol/client");
+const { StdioClientTransport } = await import("@modelcontextprotocol/client/stdio");
 
 await lib.writeSnapshot(fixtureDir, buildFixture(lib.SNAPSHOT_SCHEMA_VERSION));
 
@@ -52,6 +54,44 @@ test("tool surface matches the extension manifest, plus HTTP search/fetch", asyn
   assert.deepEqual([...names].sort(), [...manifest.tools.map((tool) => tool.name), "search", "fetch"].sort());
   for (const expected of ["list_journals", "search", "fetch", "get_collection_overview"]) {
     assert.ok(names.includes(expected), expected);
+  }
+});
+
+test("Skills extension returns finalized completion, caching and byte-size contracts", { timeout: 15000 }, async () => {
+  // The SDK consumes resultType when decoding. Inspect modern wire responses
+  // separately from the neutral results returned by client.request().
+  const ct = new StdioClientTransport({ command: process.execPath, args: ["server/index.js"],
+    env: { ...process.env }, stderr: "pipe" });
+  const modernClient = new Client({ name: "skills-modern", version: "1.0.0" }, {
+    versionNegotiation: { mode: { pin: "2026-07-28" } },
+  });
+  const responses = [];
+  try {
+    await modernClient.connect(ct);
+    const receive = ct.onmessage;
+    ct.onmessage = (message, extra) => {
+      if (message.result) responses.push(message.result);
+      receive(message, extra);
+    };
+    const cached = z.object({ ttlMs: z.number().nonnegative(), cacheScope: z.literal("public") }).loose();
+    const listing = await modernClient.request({ method: "skills/list", params: {} }, cached);
+    assert.ok(listing.skills.length > 0);
+    for (const skill of listing.skills) {
+      const detail = await modernClient.request({ method: "skills/get", params: { uri: skill.uri } }, cached);
+      assert.deepEqual(detail.skill, skill);
+      for (const resource of skill.resources) {
+        const read = await modernClient.readResource({ uri: resource.uri });
+        const content = read.contents[0];
+        const bytes = content.text !== undefined ? Buffer.from(content.text, "utf8") : Buffer.from(content.blob, "base64");
+        assert.equal(resource.size, bytes.length, resource.uri);
+      }
+    }
+    const directory = await modernClient.request({ method: "resources/directory/read", params: { uri: "skill://amira-mcp" } }, z.looseObject({}));
+    assert.ok(directory.resources.some((r) => r.name === "SKILL.md"));
+    assert.ok(responses.length >= 7);
+    for (const response of responses) assert.equal(response.resultType, "complete");
+  } finally {
+    await modernClient.close();
   }
 });
 
@@ -628,6 +668,9 @@ const APPS = [
   { tool: "get_collection_overview", uri: "ui://amira/overview" },
   { tool: "list_research_sections", uri: "ui://amira/sections" },
   { tool: "find_related", uri: "ui://amira/related" },
+  { tool: "get_entity_graph", uri: "ui://amira/graph" },
+  { tool: "list_locations", uri: "ui://amira/map" },
+  { tool: "search_publications", uri: "ui://amira/bibliography" },
 ];
 
 test("MCP Apps: each opted-in tool links to a self-contained ui:// resource", async () => {
@@ -647,6 +690,7 @@ test("MCP Apps: each opted-in tool links to a self-contained ui:// resource", as
     const read = await client.readResource({ uri });
     const html = read.contents[0].text;
     assert.equal(read.contents[0].mimeType, "text/html;profile=mcp-app", uri);
+    assert.equal(read.contents[0]._meta.ui.prefersBorder, false, uri);
     assert.ok(html.startsWith("<!doctype html>"), uri);
     // It must speak the MCP Apps dialect...
     assert.ok(html.includes("ui/initialize"), uri);
@@ -655,7 +699,8 @@ test("MCP Apps: each opted-in tool links to a self-contained ui:// resource", as
     // ...and be self-contained, so no csp domains are needed to render it.
     assert.ok(!/<script[^>]+src=/i.test(html), `${uri}: no external scripts`);
     assert.ok(!/<link[^>]+href=/i.test(html), `${uri}: no external stylesheets`);
-    assert.ok(!/https?:\/\//.test(html.replace(/xmlns="[^"]*"/g, "")), `${uri}: no remote origins`);
+    // The bundled SDK contains JSON Schema URLs; those are identifiers, not fetches.
+    assert.ok(!/<(?:img|iframe|script|link)[^>]+(?:src|href)=["']https?:/i.test(html), `${uri}: no external assets`);
     // Colours come from the DRE theme and were validated against its surfaces.
     assert.ok(html.includes("#007a50") && html.includes("#35a87d"), `${uri}: DRE accent in both modes`);
   }

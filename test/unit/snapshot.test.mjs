@@ -14,7 +14,12 @@ import {
   SNAPSHOT_SCHEMA_VERSION,
   writeSnapshot,
   writeSnapshotAtomic,
+  readSnapshotPointer,
+  assertSnapshotSource,
+  snapshotCacheDir,
+  fetchJSON,
 } from "../../server/lib.js";
+import fsDefault from "node:fs/promises";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
 
 async function tempDir() {
@@ -52,7 +57,7 @@ function mockCrawl(t, { changes = false, duplicates = false, missingTotal = fals
   t.mock.method(globalThis, "fetch", async (url) => {
     const u = new URL(url);
     requests.push(u);
-    const isProbe = u.searchParams.get("sort_by") === "modified";
+    const isProbe = u.searchParams.get("sort_by") === "modified" && u.pathname.endsWith("/items");
     if (isProbe) probes++;
     const date = changes && probes > 1 ? "2026-09-10T00:00:00+00:00" : "2026-09-09T00:00:00+00:00";
     const body = isProbe ? [{ "o:id": 999, "o:modified": { "@value": date } }]
@@ -137,4 +142,57 @@ test("isStale: only a newer remote signal (either of the D11 pair) triggers", ()
   assert.equal(isStale(local, { maxModified: local.maxModified, totalItems: local.totalItemsOnInstance + 1 }), true, "changed totals (covers deletions)");
   assert.equal(isStale(local, { maxModified: "2026-06-01T00:00:00+00:00", totalItems: local.totalItemsOnInstance }), false, "older remote never refreshes");
   assert.equal(isStale({ ...local, maxModified: null }, { maxModified: "2026-01-01T00:00:00+00:00", totalItems: local.totalItemsOnInstance }), true, "local without signal defers to remote");
+});
+
+test("snapshot provenance isolates overlapping IDs from different Omeka installations", () => {
+  const manifest = buildFixture(SNAPSHOT_SCHEMA_VERSION).manifest;
+  assert.doesNotThrow(() => assertSnapshotSource(manifest, `${manifest.apiBase}/`));
+  assert.throws(() => assertSnapshotSource(manifest, "https://another.example/api"), /different Omeka instance/);
+  assert.notEqual(snapshotCacheDir("cache", manifest.apiBase), snapshotCacheDir("cache", "https://another.example/api"));
+  assert.notEqual(snapshotCacheDir("cache", "https://example.test/a/api"), snapshotCacheDir("cache", "https://example.test/b/api"));
+});
+
+test("failed promotion leaves the prior generation readable, and concurrent writers serialize", async (t) => {
+  const dir = await tempDir();
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const old = buildFixture(SNAPSHOT_SCHEMA_VERSION);
+  await writeSnapshotAtomic(dir, old);
+  const pointer = await readSnapshotPointer(dir);
+  const next = structuredClone(old);
+  next.manifest.fetchedAt = "2026-10-02T00:00:00Z";
+  const rename = fsDefault.rename;
+  const mock = t.mock.method(fsDefault, "rename", async (from, to) => {
+    if (path.basename(to) === "active.json") throw new Error("injected publication failure");
+    return rename(from, to);
+  });
+  await assert.rejects(writeSnapshotAtomic(dir, next), /injected publication failure/);
+  mock.mock.restore();
+  assert.deepEqual(await readSnapshotPointer(dir), pointer);
+  assert.equal((await loadSnapshot(dir)).manifest.fetchedAt, old.manifest.fetchedAt);
+  const other = structuredClone(next);
+  other.manifest.fetchedAt = "2026-10-03T00:00:00Z";
+  other.data.persons[0].name = "Changed";
+  await Promise.all([writeSnapshotAtomic(dir, next), writeSnapshotAtomic(dir, other)]);
+  const loaded = await loadSnapshot(dir);
+  assert.ok([next.manifest.fetchedAt, other.manifest.fetchedAt].includes(loaded.manifest.fetchedAt));
+  assert.equal(loaded.data.persons[0].name, loaded.manifest.fetchedAt === other.manifest.fetchedAt ? "Changed" : old.data.persons[0].name);
+  assert.ok((await readSnapshotPointer(dir)).previous.length <= 2);
+  assert.equal((await fs.readdir(dir)).includes("writer.lock"), false);
+  await writeSnapshotAtomic(dir, old);
+  assert.equal((await loadSnapshot(dir)).manifest.fetchedAt, other.manifest.fetchedAt, "late older crawl cannot roll back the active snapshot");
+});
+
+test("refresh retries transient errors, rejects permanent errors and accepts cancellation", async (t) => {
+  let requests = 0;
+  t.mock.method(globalThis, "fetch", async () => { requests++; return new Response("{}", { status: 404 }); });
+  await assert.rejects(fetchJSON("https://example.test/api"), /HTTP 404/);
+  assert.equal(requests, 1);
+  t.mock.method(globalThis, "fetch", async () => { requests++; return requests === 2
+    ? new Response("{}", { status: 429, headers: { "retry-after": "0" } }) : new Response("[]"); });
+  assert.deepEqual((await fetchJSON("https://example.test/api")).body, []);
+  const ctrl = new AbortController();
+  t.mock.method(globalThis, "fetch", async () => { ctrl.abort(); throw new TypeError("network failed"); });
+  await assert.rejects(fetchJSON("https://example.test/api", ctrl.signal), /abort/i);
+  assert.equal(isStale(buildFixture(SNAPSHOT_SCHEMA_VERSION).manifest,
+    { maxModified: null, totalItems: 25, itemSetsSignature: "changed" }), true);
 });

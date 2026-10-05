@@ -1,3 +1,4 @@
+import { invalidYearRange } from "../researchItemQuery.js";
 // Podcasts + YouTube videos (issue #1 §4, D4/D13) — content that exists only in
 // Omeka. Both can carry full transcripts (bibo:content): searchable here (with a
 // match snippet), never included in summaries, and opt-in + windowable in the
@@ -45,17 +46,12 @@ export function registerMediaTools(server: Server): void {
     "search_podcasts",
     {
       title: "Search podcasts",
-      description:
-        "Search the cluster's podcast episodes (e.g. the 'Cluster Conversations' series; ~43 episodes, " +
-        "all with AI-generated transcripts). Keyword search reaches INTO the transcripts — a " +
-        "transcript-only hit is flagged `matched_in: 'transcript'` with a `transcript_snippet` around the " +
-        "match. Filters are optional and AND-combined. Use get_podcast for one episode's detail and the " +
-        "transcript itself.",
+      description: "Search podcast metadata and transcripts. Text-only hits include snippets; full transcripts require get_podcast with opt-in.",
       annotations: annotate("Search podcasts"),
       inputSchema: z.strictObject({
-        keyword: z.string().optional().describe("Matches title, abstract — and the transcript"),
-        series: z.string().optional().describe("Series title, partial (e.g. 'Cluster Conversations')"),
-        person: z.string().optional().describe("A speaker/host name; either name order works"),
+        keyword: z.string().max(1000).optional().describe("Matches title, abstract — and the transcript"),
+        series: z.string().max(1000).optional().describe("Series title, partial (e.g. 'Cluster Conversations')"),
+        person: z.string().max(1000).optional().describe("A speaker/host name; either name order works"),
         year_from: z.number().int().min(0).max(2200).optional().describe("Earliest episode year"),
         year_to: z.number().int().min(0).max(2200).optional().describe("Latest episode year"),
         limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
@@ -63,6 +59,7 @@ export function registerMediaTools(server: Server): void {
       }),
     },
     async (args) => {
+      if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", "year_from must be less than or equal to year_to.");
       const store = await ensureStore();
       const limit = capLimit(args.limit, 20, 100);
       const offset = capOffset(args.offset);
@@ -106,14 +103,10 @@ export function registerMediaTools(server: Server): void {
     "get_podcast",
     {
       title: "Get podcast episode detail",
-      description:
-        "Full detail for one podcast episode: series, episode number, date and `date_status` " +
-        "(published/scheduled/unknown), abstract, people with roles, the episode URL and the citable " +
-        "`amira_url`. The transcript is OMITTED by default (only has_transcript + transcript_length are " +
-        "shown) — pass include_transcript=true and page a long one. Returns { error } if the id is unknown.",
+      description: "Podcast detail and citation link. Transcript is opt-in, bounded and pageable with original character offsets.",
       annotations: annotate("Get podcast detail"),
       inputSchema: z.strictObject({
-        id: z.union([z.string(), z.number()]).describe("Podcast id from search_podcasts, e.g. 39121"),
+        id: z.union([z.string().max(1000), z.number()]).describe("Podcast id from search_podcasts, e.g. 39121"),
         ...transcriptParams,
       }),
     },
@@ -152,18 +145,13 @@ export function registerMediaTools(server: Server): void {
     "search_videos",
     {
       title: "Search YouTube videos",
-      description:
-        "Search the Africa Multiple YouTube channel videos catalogued in the collection (~140 lectures, " +
-        "interviews and events; most carry transcripts). Keyword search reaches INTO the transcripts — " +
-        "the main full-text search over cluster talks — and flags such a hit as " +
-        "`matched_in: 'transcript'` with a `transcript_snippet`. Filters are optional and AND-combined. " +
-        "Use get_video for one video's detail and the transcript itself.",
+      description: "Search video metadata and transcripts. Text-only hits include snippets; full transcripts require get_video with opt-in.",
       annotations: annotate("Search YouTube videos"),
       inputSchema: z.strictObject({
-        keyword: z.string().optional().describe("Matches title, abstract — and the transcript"),
-        playlist: z.string().optional().describe("Playlist title, partial"),
-        speaker: z.string().optional().describe("A speaker name; either name order works"),
-        language: z.string().optional().describe("Name or ISO code — 'French', 'fr', 'fra' all match"),
+        keyword: z.string().max(1000).optional().describe("Matches title, abstract — and the transcript"),
+        playlist: z.string().max(1000).optional().describe("Playlist title, partial"),
+        speaker: z.string().max(1000).optional().describe("A speaker name; either name order works"),
+        language: z.string().max(1000).optional().describe("Name or ISO code — 'French', 'fr', 'fra' all match"),
         year_from: z.number().int().min(0).max(2200).optional().describe("Earliest upload year"),
         year_to: z.number().int().min(0).max(2200).optional().describe("Latest upload year"),
         limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
@@ -171,6 +159,7 @@ export function registerMediaTools(server: Server): void {
       }),
     },
     async (args) => {
+      if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", "year_from must be less than or equal to year_to.");
       const store = await ensureStore();
       const limit = capLimit(args.limit, 20, 100);
       const offset = capOffset(args.offset);
@@ -216,14 +205,10 @@ export function registerMediaTools(server: Server): void {
     "get_video",
     {
       title: "Get YouTube video detail",
-      description:
-        "Full detail for one YouTube video: upload date and `date_status`, abstract, playlists, speakers, " +
-        "languages, the watch URL and the citable `amira_url`. The transcript is OMITTED by default " +
-        "(transcripts are large; only has_transcript + transcript_length are shown) — pass " +
-        "include_transcript=true and page a long one. Returns { error } if the id is unknown.",
+      description: "Video detail and citation link. Transcript is opt-in, bounded and pageable with original character offsets.",
       annotations: annotate("Get video detail"),
       inputSchema: z.strictObject({
-        id: z.union([z.string(), z.number()]).describe("Video id from search_videos, e.g. 39218"),
+        id: z.union([z.string().max(1000), z.number()]).describe("Video id from search_videos, e.g. 39218"),
         ...transcriptParams,
       }),
     },

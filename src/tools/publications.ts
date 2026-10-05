@@ -37,13 +37,9 @@ export function registerPublicationTools(server: Server): void {
     "search_publications",
     {
       title: "Search publications",
-      description:
-        "Search the ERef/EPub cluster bibliography. Filters are AND-combined; newest first. " +
-        "Keyword reaches extracted PDF text, with matched_in='fulltext' and a snippet for text-only hits. " +
-        "Use list_publication_facets for types, years, languages, subjects, contributors and venues; " +
-        "get_publication for detail. Set citation_format to export complete entries (no abstracts/full text); " +
-        "follow next_offset until has_more=false. Cite amira_url; DOI/repository url is an additional link.",
+      description: "AND-filtered bibliography, newest first. Keyword includes PDF text and returns match snippets. citation_format exports whole records (max 25 per page); follow next_offset. Cite amira_url.",
       annotations: annotate("Search publications"),
+      _meta: { ui: { resourceUri: "ui://amira/bibliography", visibility: ["model", "app"] } },
       inputSchema: z.strictObject({
         ...publicationFilters,
         citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Omit for summaries; export results contain bibtex, ris or csl_json"),
@@ -85,14 +81,10 @@ export function registerPublicationTools(server: Server): void {
     "get_publication",
     {
       title: "Get publication detail",
-      description:
-        "Publication metadata, linked authors/editors/publisher/venue, conference details, page extent, " +
-        "access statements, thesis advisers, supplementary links, and a citation export (BibTeX default). " +
-        "Full text is omitted unless include_fulltext=true; page long texts. " +
-        "Cite amira_url; DOI/repository url is an additional link. Unknown id returns { error }.",
+      description: "Publication metadata and citation export (BibTeX default). Full text is opt-in and paginated. Cite amira_url; DOI/repository links are additional sources.",
       annotations: annotate("Get publication detail"),
       inputSchema: z.strictObject({
-        id: z.union([z.string(), z.number()]).describe("Publication Omeka o:id (legacy publication keys also work)"),
+        id: z.union([z.string().max(1000), z.number()]).describe("Publication Omeka o:id (legacy publication keys also work)"),
         citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Default bibtex; selects bibtex, ris or csl_json field"),
         include_fulltext: z.boolean().optional().describe("Default false — set true to include the extracted full text"),
         fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
@@ -179,10 +171,7 @@ export function registerPublicationTools(server: Server): void {
     "list_publication_facets",
     {
       title: "Publication facets",
-      description:
-        "Count publications by type, year, language, subject, author/editor or venue across the complete " +
-        "filtered bibliography. Each publication counts once per value; missing_values counts records " +
-        "without this facet. Ranked by count, paginated. Use values in search_publications filters.",
+      description: "Ranked facets for the entire filtered bibliography before pagination. Uses the same selection rules as search_publications.",
       annotations: annotate("Publication facets"),
       inputSchema: z.strictObject({
         facet: z.enum(["type", "year", "language", "subject", "author", "venue"]),
@@ -250,13 +239,10 @@ export function registerPublicationTools(server: Server): void {
     "list_journals",
     {
       title: "List journals",
-      description:
-        "List the journals the cluster publishes in (the Journal venue authority), ranked by how many " +
-        "publications appeared in each, with ISSN, country of publication and website. Feed a title into " +
-        "the `venue` filter of search_publications to retrieve its articles.",
+      description: "Publication venues ranked by linked bibliography records, with ISSN and catalogue links.",
       annotations: annotate("List journals"),
       inputSchema: z.strictObject({
-        keyword: z.string().optional().describe("Substring filter on the journal title"),
+        keyword: z.string().max(1000).optional().describe("Substring filter on the journal title"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),

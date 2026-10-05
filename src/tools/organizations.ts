@@ -144,14 +144,10 @@ export function registerOrganizationTools(server: Server): void {
     "list_institutions",
     {
       title: "List institutions",
-      description:
-        "List institutions in the authority list. Optional `keyword` filters by name; `limit` (default 50, " +
-        "max 200) and `offset` paginate. Each result has name, project_count (projects it funds/hosts), " +
-        "coordinates when reconciled, and a citable `amira_url`. Use get_institution for the affiliated " +
-        "projects and contributed items. Research groups are a separate list — see list_groups.",
+      description: "Browse institution authorities by name, country or affiliation; returns citation links.",
       annotations: annotate("List institutions"),
       inputSchema: z.strictObject({
-        keyword: z.string().optional(),
+        keyword: z.string().max(1000).optional(),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -189,13 +185,9 @@ export function registerOrganizationTools(server: Server): void {
     "get_institution",
     {
       title: "Get institution detail",
-      description:
-        "Detail for one institution (or group) by `name` (case-insensitive). Returns the projects it " +
-        "funds/hosts, the research items crediting it (slim refs, capped at 50, total reported), people " +
-        "affiliated with it, coordinates when known, and a citable `amira_url`. Returns { error } if the " +
-        "name is not in the organisation authority list.",
+      description: "Institution profile, members, funded projects and research connections, with citation links.",
       annotations: annotate("Get institution detail"),
-      inputSchema: z.strictObject({ name: z.string().describe("Institution name") }),
+      inputSchema: z.strictObject({ name: z.string().max(1000).describe("Institution name") }),
     },
     async ({ name }) => {
       const store = await ensureStore();
@@ -249,16 +241,11 @@ export function registerOrganizationTools(server: Server): void {
     "list_cluster_partners",
     {
       title: "List cluster partner institutions",
-      description:
-        "List Africa Multiple partner institutions by Omeka partner-category authority: Africa Multiple " +
-        "Research Centres, Privileged partner, Cooperation partners, and Global partner Centres of " +
-        "African Studies. Optional `category` accepts amrc, privileged, cooperation, global, or a " +
-        "category label. Results include institution coordinates, Wikidata URI, category authority " +
-        "Omeka ids, and citable `amira_url` links.",
+      description: "Cluster partner institutions grouped by catalogue category, with citation links.",
       annotations: annotate("List cluster partners"),
       inputSchema: z.strictObject({
         category: z
-          .string()
+          .string().max(1000)
           .optional()
           .describe("Optional: amrc | privileged | cooperation | global, or a category label"),
       }),
@@ -307,14 +294,10 @@ export function registerOrganizationTools(server: Server): void {
     "list_groups",
     {
       title: "List groups",
-      description:
-        "List research groups (organisation authority records typed 'Group'). Optional `keyword` filters " +
-        "by name; `limit` (default 50, max 200) and `offset` paginate. Each result has name, " +
-        "contributed_item_count (items crediting the group) and a citable `amira_url`. Use " +
-        "get_institution with the group's name for its items.",
+      description: "Browse research groups and associations by name, with citation links.",
       annotations: annotate("List groups"),
       inputSchema: z.strictObject({
-        keyword: z.string().optional(),
+        keyword: z.string().max(1000).optional(),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),

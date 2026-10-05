@@ -10,8 +10,9 @@ import { registerRelatedTools } from "./related.js";
 import { registerMediaTools } from "./media.js";
 import { registerAppResources } from "./apps.js";
 import type { Server } from "./_shared.js";
+import { registerResearchTools } from "./research.js";
 
-/** Register every AMIRA tool on the server, grouped by domain (27 tools). */
+/** Register every AMIRA tool on the server, grouped by domain (33 tools). */
 export function registerTools(server: Server): void {
   registerOverviewTools(server); // get_collection_overview
   registerResearchItemTools(server); // search_research_items, get_research_item
@@ -23,5 +24,6 @@ export function registerTools(server: Server): void {
   registerPublicationTools(server); // search_publications, get_publication, list_publication_facets, list_journals
   registerRelatedTools(server); // find_related
   registerMediaTools(server); // search_podcasts, get_podcast, search_videos, get_video
-  registerAppResources(server); // ui://amira/timeline (MCP Apps)
+  registerResearchTools(server);
+  registerAppResources(server); // Seven self-contained MCP Apps
 }

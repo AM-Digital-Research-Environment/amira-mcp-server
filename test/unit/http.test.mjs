@@ -46,4 +46,33 @@ test("HTTP health recovers after an initially unavailable snapshot becomes reada
   assert.equal(body.status, "ok");
   assert.equal(body.error, undefined);
   assert.equal(body.data_snapshot.publications, 2);
+
+  const modern = new Client({ name: "http-modern-test", version: "0.0.0" }, {
+    versionNegotiation: { mode: { pin: "2026-07-28" } },
+  });
+  t.after(() => modern.close());
+  const captured = [];
+  await modern.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      if (request.method === "POST") captured.push({ headers: Object.fromEntries(request.headers), body: await request.clone().text() });
+      return fetch(request);
+    },
+  }));
+  const modernResult = await modern.callTool({ name: "get_collection_overview", arguments: {} });
+  assert.equal(modernResult.isError, undefined);
+  assert.equal(modernResult.structuredContent.counts.publications, 2);
+  const modernResources = await modern.listResources();
+  assert.ok(modernResources.resources.some((r) => r.uri === "ui://amira/overview"));
+  assert.equal(body.refresh.enabled, false);
+  const toolCall = captured.find((request) => request.headers["mcp-name"] === "get_collection_overview");
+  assert.ok(toolCall, "modern SDK sent routing headers");
+  for (const headers of [{ "mcp-name": "get_data_quality" }, { "mcp-method": "tools/list" }]) {
+    const mismatch = await fetch(`${base}/mcp`, { method: "POST", headers: { ...toolCall.headers, ...headers }, body: toolCall.body });
+    assert.equal(mismatch.status, 400, "routing headers must agree with the envelope");
+  }
+  const oversized = await fetch(`${base}/mcp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: " ".repeat(65 * 1024) });
+  assert.equal(oversized.status, 413);
+  const concurrent = await Promise.all(Array.from({ length: 8 }, (_, index) => (index % 2 ? client : modern).callTool({ name: "get_collection_overview", arguments: {} })));
+  assert.ok(concurrent.every((response) => response.structuredContent.counts.publications === 2));
 });

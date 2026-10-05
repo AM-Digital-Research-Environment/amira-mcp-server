@@ -2,8 +2,8 @@ name: Refresh data snapshot
 
 # Keeps a downloadable .mcpb in sync with the live Omeka S data.
 # Runs on a schedule (and on demand): crawls the public API, and ONLY if the
-# data changed since the last published build (max o:modified + per-corpus
-# counts — the D11 freshness pair recorded in data/manifest.json), rebuilds,
+# transformed content changed since the last build (including item sets and
+# vocabulary metadata via snapshot-signature.mjs), rebuilds,
 # re-tests and updates the rolling `data-latest` pre-release. No database or
 # VPN involved — it reads the same public JSON any browser can.
 
@@ -43,7 +43,7 @@ jobs:
       - name: Read snapshot freshness signature
         id: snap
         run: |
-          sig=$(node -p "const m=require('./data/manifest.json'); m.maxModified + '|' + JSON.stringify(m.counts)")
+          sig=$(node scripts/snapshot-signature.mjs)
           echo "signature=$sig" >> "$GITHUB_OUTPUT"
           printf '%s' "$sig" > snapshot-signature.txt
 

@@ -31,7 +31,7 @@ digitised **research items**, **people**, **institutions**, **groups**,
 **collections**, the cluster **bibliography with searchable full text** (extracted
 from the open-access PDFs) and its **journals**, **podcast episodes with
 transcripts**, and the cluster's **YouTube videos with searchable transcripts** —
-as 27 core tools an LLM can query. From one MCP interface, clients can move across
+as 33 core tools an LLM can query. From one MCP interface, clients can move across
 records and the places, languages, and subjects that connect them.
 
 Every record carries an **`amira_url`** — its public page on the Omeka S site
@@ -46,6 +46,11 @@ and 140 videos. Counts are a dated snapshot; use `get_collection_overview` for
 what your running server actually holds. See the [publication guide](docs/publications.md)
 and the [roadmap](ROADMAP.md) for further improvements.
 
+The [October 2026 technical review](docs/review-2026-10-05.md) covers current
+dependencies, performance measurements, MCP Apps and graph correctness.
+The [implementation report](docs/implementation-2026-10-05.md) documents version 1.18.0,
+its six new research tools, seven apps, snapshot safety changes and measured improvements.
+
 ## How it gets its data — and why nothing else is needed
 
 The server is **self-contained and offline-first**. It reads from two sources:
@@ -53,12 +58,13 @@ The server is **self-contained and offline-first**. It reads from two sources:
 1. A complete **data snapshot bundled inside the `.mcpb`** — crawled from the
    public Omeka S REST API at build time and transformed into compact typed
    records, so the server works fully offline with zero setup.
-2. *(optional, on by default)* the **Omeka S API** over HTTPS. At startup, and
-   then once per day while the server keeps running, a one-request probe compares
-   the snapshot's freshness signature (max `o:modified` + item totals) against
-   the live API; only when stale does a full re-crawl run — staged on disk and
-   **atomically promoted**, so a failed or interrupted refresh can never corrupt
-   the cache. If the site is unreachable, the bundled snapshot keeps serving.
+2. *(optional, on by default)* the **Omeka S API** over HTTPS. At startup and
+   daily, probes compare item and item-set modification signatures and totals.
+   A changed signal triggers a complete crawl; a weekly forced crawl also catches
+   vocabulary-only edits. A writer lock, immutable generations and an atomic
+   pointer preserve the previous usable snapshot if refresh fails. The API origin
+   and installation path partition the cache and must match the manifest before
+   its records can be served under that site's citation URLs.
 
 End users need **no API key, no credentials, and no VPN** — it's the same openly
 published data that powers the public site.
@@ -87,6 +93,33 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications) |
 | `search_podcasts` / `get_podcast` | Cluster podcast episodes with searchable transcripts; transcript text is opt-in on detail |
 | `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; transcript opt-in on detail) |
+| `resolve_entity` | Resolve names or typed IDs; return separate candidates for homonyms and unreconciled literals |
+| `get_entity_graph` | Bounded one-hop graph with distinct explicit links/co-occurrences and paginated cited evidence |
+| `get_text_passages` | Find passages in selected publication/video/podcast records, with exact original-text offsets |
+| `compare_collections` | Compare 2–4 projects or collections using common filters, denominators and missingness |
+| `get_data_quality` | Snapshot coverage, missing metadata and unresolved-reference counts |
+| `get_snapshot_changes` | Page added, updated or deleted records across retained snapshots from the same instance |
+
+### Profiles and research workflows
+
+`AMIRA_TOOL_PROFILE=full` is the default: 33 core tools, or 35 over HTTP.
+`research`, `discovery` and `visualization` expose smaller documented subsets
+(22/12/14 core tools respectively; HTTP adds `search` and `fetch`). Profiles are
+fixed at startup; they reduce discovery cost, not access permissions. See
+[`src/toolProfiles.ts`](src/toolProfiles.ts) for the exact lists.
+
+Use `resolve_entity` before graph traversal; pass its typed `id` unchanged to
+`get_entity_graph`. Graph edges count distinct source records, separate each
+corpus, and distinguish catalogue links from co-occurrence. Neither co-occurrence
+nor a shared subject establishes collaboration. Follow an edge with `edge_id`
+and the returned `snapshot_id` for stable evidence paging. Graphs cap at 100 nodes,
+200 edges and 60,000 JSON bytes, so check `truncated`.
+
+`get_text_passages` takes 1–10 `publication:ID`, `video:ID` or `podcast:ID`
+identifiers. It returns at most 20 passages per page, original UTF-16 offsets,
+source citations and a scanning-cap flag. These are extracted-text offsets, not
+PDF page numbers or audio timestamps. `get_snapshot_changes` requires two local
+same-source generations; it reports available history instead of inventing a diff.
 
 ### Example questions it can answer
 
@@ -119,14 +152,14 @@ Install it either way:
   `~/.claude/skills/amira-mcp/`.
 - **Or copy** the [`.claude/skills/amira-mcp/`](.claude/skills/amira-mcp/) folder from this repo there.
 
-### …or let the server hand it over (Skills over MCP) — prototype
+### …or let the server hand it over (Skills over MCP)
 
-> **Prototype.** `skill://` resources and the `skills/*` methods implement an extension that is still
-> a **draft** (SEP-2640 is unmerged), against **thin host support**. Treat this surface as
-> experimental: it may change shape or be withdrawn, and the zip above remains the supported way to
-> install the skill. The tools, resources and citation contract are unaffected either way.
+> **Official extension; host support varies.** SEP-2640 is now Final. The server follows the
+> [published Skills extension](https://modelcontextprotocol.io/extensions/skills/overview), including
+> SHA-256 digests and byte sizes for every file. The zip above remains available for clients without
+> extension support. The research tools and citation contract work either way.
 
-The server also **serves that same skill over the connection**, following the draft
+The server also **serves that same skill over the connection**, following the
 [SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640) extension
 (`io.modelcontextprotocol/skills`). Nothing to download and nothing to keep in sync: a host that
 implements the extension discovers the skill on connect, and the copy it gets is the one built into
@@ -136,7 +169,7 @@ local skills directory.
 
 | Method | What it returns |
 | --- | --- |
-| `skills/list` | The catalog: `skill://amira-mcp/SKILL.md`, its frontmatter, and a SHA-256 digest for every file |
+| `skills/list` | The catalog: `skill://amira-mcp/SKILL.md`, its frontmatter, and a SHA-256 digest and byte size for every file |
 | `skills/get` | One skill by URI, to refresh digests without re-listing |
 | `resources/read` | Any single file — `SKILL.md` or a reference — read on demand |
 | `resources/directory/read` | One directory level at a time (`skill://amira-mcp`, `skill://amira-mcp/references`) |
@@ -146,8 +179,7 @@ tool description, so the `tools/list` payload — the part re-sent every turn �
 whether or not a host supports the extension. Disclosure timing stays a host decision; the three
 reference files load only when something actually reads them.
 
-Set `AMIRA_SKILLS=0` to drop the capability and the three methods entirely. The extension is a draft:
-the wire contract may change before it is finalised.
+Set `AMIRA_SKILLS=0` to drop the capability and the three methods entirely.
 
 ## Install (end users)
 
@@ -164,8 +196,8 @@ The `.mcpb` is the local, offline option for Claude Desktop. The same server can
 also run as a **remote Streamable HTTP endpoint** — one HTTPS URL that ChatGPT,
 Claude (web + desktop remote connectors), the OpenAI and Anthropic APIs, Cursor,
 VS Code and other clients connect to by pasting a URL (no download, always-fresh
-data). The remote surface serves the same 27 tools **plus** the
-OpenAI-compatible `search` / `fetch` tools for ChatGPT research integrations (29
+data). The remote surface serves the same 33 tools **plus** the
+OpenAI-compatible `search` / `fetch` tools for ChatGPT research integrations (35
 total). Access is unauthenticated — the data is public and read-only.
 
 `search` takes plain keywords (matched term-by-term, not as an exact phrase),
@@ -224,12 +256,26 @@ User=www-data
 ```
 
 ```nginx
-location /mcp { proxy_pass http://127.0.0.1:8787/mcp; proxy_buffering off; }
+location /mcp { proxy_pass http://127.0.0.1:8787/mcp; proxy_buffering off; client_max_body_size 64k; }
 ```
 
 `proxy_buffering off` keeps the Streamable-HTTP/SSE responses flowing. The refresh uses `AMIRA_SITE_BASE` (the public HTTPS API by default), even when
 co-located with Omeka. It performs a full crawl when changes are detected;
-co-location does not eliminate API load.
+co-location does not eliminate API load. The server caps request bodies at 64 KiB
+and rate-limit state at 10,000 clients. Configure connection, request-rate and
+concurrency limits at the reverse proxy for public deployments; the in-process
+limiter is a courtesy control. Shutdown cancels refresh work and gives HTTP
+connections a ten-second drain window.
+
+For a build that consumes a previously reviewed `data/` snapshot without calling
+Omeka during the build:
+
+```bash
+docker build --build-arg SNAPSHOT_STAGE=bundled -t amira-mcp .
+```
+
+The default `SNAPSHOT_STAGE=fetch` still crawls fresh data. Both stages validate the
+snapshot. The image pins its base digest; `npm ci` uses the committed lockfile.
 
 ## Develop / rebuild
 
@@ -242,10 +288,11 @@ npm test              # unit tests: transform fixtures, folding, snapshot + stor
                       # and the full tool layer against a fixture snapshot via
                       # InMemoryTransport (offline)
 npm run test:live     # integration tests against the live API (network)
-npm run smoke         # spawn the stdio server, exercise all 27 tools offline
-npm run smoke:http    # spawn the HTTP server: search/fetch + parity (29 tools), CORS
+npm run smoke         # spawn the stdio server, exercise all 33 tools offline
+npm run smoke:http    # spawn the HTTP server: search/fetch + parity (35 tools), CORS
                       # preflight for both protocol revisions, and the rate limiter
 npm run weigh         # token budget report (needs ./data — run fetch-data first)
+npm run benchmark     # offline latency baseline against ./data (30 warm samples per query)
 ```
 
 ### Token budgets
@@ -256,7 +303,7 @@ bytes/4 — comparable to itself, not to a billing statement):
 
 | | what | budget | drift |
 |---|---|---|---|
-| **Surface** | the `tools/list` payload, re-sent every turn | 10,000 tok per transport | **fails** over 3 % |
+| **Surface** | the `tools/list` payload, re-sent every turn | 14,000 tok per full-profile transport | **fails** over 3 % |
 | **Responses** | each tool called at its *maximum* limit | 20,000 tok per call | warns over 10 % |
 
 No tool description is derived from the snapshot, so the surface is a pure
@@ -269,9 +316,12 @@ absolute cap (Claude Code truncates tool results at 25,000 tokens) is fatal, as
 is any probe whose call *failed*, since a structured refusal is ~60 tokens and
 would otherwise sail under every ceiling.
 
-Current measured baseline: **8,329 tokens** stdio / **9,543 tokens** HTTP surface; heaviest response is
-`search_research_items` at `limit=100`, ~15,000 tok. Defaults are far cheaper —
-a keyword search is ~165 tok.
+Version 1.18 deliberately raises the full-profile ceiling to 14,000 estimated
+tokens to accommodate six tools and useful output schemas. Smaller profile gates
+remain 10,000 (`research`), 6,500 (`discovery`) and 9,500 (`visualization`).
+The committed [baseline](test/token-baseline.json) records the exact surface size,
+text bytes and serialized wire bytes (text and structured content both count).
+The graph is byte-bounded and all measured responses fit the 20,000-token ceiling.
 
 When a change legitimately grows either number:
 
@@ -302,17 +352,18 @@ workflows crawl the **public** API — no credentials):
 
 - **CI** (`.github/workflows/ci.yml`) — on pull requests and pushes to `main`:
   type-checks and runs the offline unit suite (including the tool-surface token
-  budget) on the oldest supported Node.js release and the current release, then
+  budget) on Node.js 20, 24 and 26 on Linux and Node.js 24 on Windows, then
   exercises both MCP transports, weighs every tool's response at its maximum
-  limit, and validates the MCPB manifest. The production audit gate fails on high
-  or critical advisories.
+  limit, and validates the MCPB manifest. The complete dependency audit fails on high or critical advisories.
+  A separate container job builds an offline fixture image and checks health.
+  Windows CI also packs a fixture extension.
 
 - **Release** (`.github/workflows/release.yml`) — on a pushed `v*` tag: fresh
   snapshot, unit + live tests, smoke, pack the `.mcpb` and zip the companion
   skill (`amira-mcp-skill.zip`), and attach both to the GitHub Release.
 - **Refresh data snapshot** (`.github/workflows/refresh-data.yml`) — weekly and
-  on demand; rebuilds **only when the data's freshness signature (max
-  `o:modified` + per-corpus counts) changed**, updating the rolling
+  on demand; rebuilds **only when the transformed snapshot content hash changes**, including
+  item-set and vocabulary changes, updating the rolling
   `data-latest` pre-release.
 
 > **Publishing from Actions requires a writable token.** If the organization
@@ -328,17 +379,38 @@ workflows crawl the **public** API — no credentials):
 | --- | --- | --- | --- |
 | `AMIRA_LIVE_REFRESH` | Refresh data from the live site | `true` | Probe + refresh the snapshot from the public API at startup and on the periodic interval |
 | `AMIRA_REFRESH_INTERVAL_HOURS` | — | `24` | When live refresh is on, repeat the freshness probe this often while the server is running; set `0` to disable periodic checks |
+| `AMIRA_FULL_REFRESH_HOURS` | — | `168` | Force a complete crawl after this snapshot age even if item signatures are unchanged; minimum 1 hour |
+| `AMIRA_TOOL_PROFILE` | — | `full` | `full`, `research`, `discovery`, or `visualization`; restart to change |
 | `AMIRA_CACHE_DIR` | Refreshed-data cache directory | `~/.amira-mcp/cache` | Where refreshed snapshots are stored |
 | `AMIRA_SITE_BASE` | Site base URL (advanced) | `https://data.africamultiple.uni-bayreuth.de` | Base for citations + refresh (`AMIRA_DASHBOARD_BASE` is honoured with a deprecation warning) |
 | `AMIRA_SITE_SLUG` | — | `amira` | Omeka site slug used in `amira_url` |
 | `AMIRA_DATA_DIR` | — | bundled `data/` | Override the bundled snapshot path (dev) |
 | `AMIRA_EXPOSURE` | — | `full` | **Benchmark experiments only**: restrict which metadata the tools expose (see below) |
-| `AMIRA_SKILLS` | — | on | **Prototype**: serve the companion skill over the draft SEP-2640 extension. `0`/`false`/`off` withdraws the capability and the `skills/*` methods |
+| `AMIRA_SKILLS` | — | on | Serve the companion skill over the finalized SEP-2640 extension. `0`/`false`/`off` withdraws the capability and the `skills/*` methods |
 | `PORT` | — | `8787` | Port for the remote HTTP transport (`server/http.js`); ignored by the `.mcpb` |
 | `HOST` | — | `127.0.0.1` | HTTP bind address; set `0.0.0.0` explicitly for remote access. The Docker image sets this itself |
 | `AMIRA_ALLOWED_ORIGINS` | — | `localhost, 127.0.0.1, [::1]` | Comma-separated browser Origin hostnames or URLs allowed to call the HTTP endpoint. Server-to-server clients, which omit `Origin`, are unaffected. Add trusted web-client origins explicitly; wildcards are rejected. |
-| `AMIRA_RATE_LIMIT` | — | `120` | Requests/minute per client on `/mcp` (`0` disables). A courtesy cap — every query scans the whole in-memory snapshot — not a security control; `/healthz` is exempt |
+| `AMIRA_RATE_LIMIT` | — | `120` | Requests/minute per client on `/mcp` (`0` disables). A courtesy cap — queries operate on the in-memory snapshot — not a security control; `/healthz` is exempt |
 | `AMIRA_TRUST_PROXY` | — | `false` | Read the client IP from `X-Forwarded-For` for rate limiting. Enable **only** behind a proxy that sets it; a direct client can forge the header |
+
+### Snapshot layout and recovery
+
+The cache lives under `AMIRA_CACHE_DIR/<API identity hash>/`. `active.json` names
+the current immutable `generations/<uuid>/` directory and two previous generations.
+Unreferenced generations have a 24-hour cleanup grace period. Existing flat
+snapshots and a same-source legacy `cache/current` remain readable; the first new
+publication migrates a flat destination into generation history. `npm run fetch-data`
+also writes the generation layout to `data/`; scripts must use `loadSnapshot`
+rather than assuming `data/manifest.json` is active.
+
+A crashed writer can leave `writer.lock`. Stop **all processes using that cache**,
+confirm no writer is running, then remove that one lock file and restart. The
+server deliberately never guesses whether an old lock is safe to steal. Failed
+refreshes leave the last usable data available. `/healthz`, overview and data
+quality report refresh attempt/success times, in-flight state and failure class.
+Retries apply only to transient upstream failures, honor bounded `Retry-After`,
+and abort after a 15-minute refresh deadline or shutdown. Probes cannot provide a
+transactional Omeka snapshot; periodic complete crawls remain necessary.
 
 ### Metadata-exposure levels (benchmark experiments)
 
@@ -363,8 +435,8 @@ it cannot answer rather than hallucinating.
   build time (`src/transform.ts`, evidence in `scripts/census-report.json`);
   the runtime loads compact records and indexes them at startup. No native
   bindings; the esbuild bundles are self-contained.
-- **Offline-first with atomic refresh.** Bundled snapshot + staged cache
-  promotion; the freshest manifest wins at startup (an old cache can never
+- **Offline-first with atomic refresh.** Bundled snapshot + locked generation
+  publication; the freshest manifest wins at startup (an old cache can never
   shadow a newer bundled snapshot).
 - **Citations** are uniform: every entity is an Omeka item, so every record
   carries `amira_url = <site>/s/amira/item/<o:id>`.
@@ -375,7 +447,7 @@ it cannot answer rather than hallucinating.
   (NFD, drop combining marks, lowercase), so the answer no longer depends on
   which spelling the caller guessed. Folds of large texts are memoised and
   dropped when a refresh replaces the snapshot.
-- **Interactive results (MCP Apps).** Four tools carry `_meta.ui.resourceUri`
+- **Interactive results (MCP Apps).** Seven tools carry `_meta.ui.resourceUri`
   pointing at a `text/html;profile=mcp-app` resource, so hosts implementing the
   [`io.modelcontextprotocol/ui`](https://modelcontextprotocol.io/docs/extensions/apps)
   extension (Claude, Claude Desktop) render the result inline. Every other
@@ -387,13 +459,17 @@ it cannot answer rather than hallucinating.
   | `list_years` | `ui://amira/timeline` | Histogram of items per year or decade |
   | `list_research_sections` | `ui://amira/sections` | Gantt of the sections across the AM 1.0 / AM 2.0 funding phases, with a "now" marker |
   | `find_related` | `ui://amira/related` | Radial co-occurrence hub: the seed at the centre, one labelled sector per relation type |
+  | `get_entity_graph` | `ui://amira/graph` | Typed entity graph, keyboard navigation and paginated evidence |
+  | `list_locations` | `ui://amira/map` | Offline map, country filters, place table and item evidence |
+  | `search_publications` | `ui://amira/bibliography` | Filterable bibliography and selection export |
 
-  The modules live in `src/ui/`: `shell.ts` holds the design tokens, the host
-  bridge and the shared bar-chart primitive; each app supplies only its own CSS
-  and render function. The templates load **nothing** from the network — no
+  The modules live in `src/ui/`: `shell.ts` holds the design tokens and shared
+  bar-chart primitive; `bridge.ts` bundles the official Apps SDK. Each app supplies
+  its own CSS and render function. The templates load **nothing** from the network — no
   scripts, styles, fonts or tiles — so they need no `_meta.ui.csp` grants and
-  run in the strictest sandbox. They are also read-only: an app renders the tool
-  result it is handed and never calls back into the server.
+  run in the strictest sandbox. App controls call an allowlisted set of read-only tools through the host.
+  Citation links and file downloads also go through host APIs. Every visual has
+  a table or text alternative. See [app development and provenance](docs/apps.md).
 
   Colours come from the [DREVisualizations](https://github.com/AM-Digital-Research-Environment)
   Omeka module's theme (`--primary` / the Africa Multiple brand palette), so a
@@ -411,7 +487,7 @@ it cannot answer rather than hallucinating.
 ### Protocol posture
 
 Verified against the [current specification](https://modelcontextprotocol.io/specification/2026-07-28)
-and [TypeScript SDK documentation](https://ts.sdk.modelcontextprotocol.io/v2/) on 9 September 2026.
+and [TypeScript SDK documentation](https://ts.sdk.modelcontextprotocol.io/v2/) on 5 October 2026.
 The server speaks MCP **2026-07-28** on both transports, and still answers
 2025-era clients unchanged.
 
