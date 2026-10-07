@@ -7,15 +7,18 @@ export const CHARACTER_LIMIT = 25000;
 
 // --- result / annotation helpers --------------------------------------------
 
-export function annotate(title: string) {
-  return {
-    title,
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  };
-}
+/**
+ * Behaviour hints shared by every tool. The display name lives in the tool's own
+ * `title` (hosts prefer it over `annotations.title`), so the annotations no
+ * longer repeat it — that duplicate cost ~250 discovery tokens. The explicit
+ * read-only/destructive/open-world hints stay: OpenAI's app review checks them.
+ */
+export const READ_ONLY = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
 
 /** Standard tool result: COMPACT JSON text (pretty-printing cost ~24% of every
  * response pre-1.0) plus structuredContent for structured-data clients. */
@@ -53,4 +56,9 @@ export function textAccessDisabledResult(field: WindowField): ReturnType<typeof 
 /** Structured refusal for a whole tool/filter gated by the exposure level. */
 export function exposureRestrictedResult(needs: "descriptive" | "structured" | "full", what: string): ReturnType<typeof textResult> {
   return errorResult("exposure_restricted", `${what} is not available: ${exposureMessage(needs)}`);
+}
+
+/** Render a typed query-layer error (src/researchItemQuery.ts QueryError). */
+export function queryErrorResult(err: { code: string; message: string; needs?: "descriptive" | "structured" | "full" }) {
+  return err.needs ? errorResult("exposure_restricted", `${err.message}: ${exposureMessage(err.needs)}`) : errorResult(err.code, err.message);
 }

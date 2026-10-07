@@ -147,9 +147,14 @@ export const config = {
   /** Per-client requests/minute allowed on /mcp; 0 disables the limiter. A
    * courtesy cap against runaway clients querying the in-memory snapshot — not a security control. Put a real one in the proxy. */
   rateLimitPerMinute: parseNonNegativeNumber(envValue("AMIRA_RATE_LIMIT"), 120),
-  /** Read the client IP from X-Forwarded-For. Only enable behind a proxy that
-   * sets it: a direct client can forge the header and dodge the rate limit. */
+  /** Attribute requests to the address a trusted reverse proxy observed
+   * (X-Real-IP, else the X-Forwarded-For hop AMIRA_PROXY_HOPS from the right)
+   * instead of the socket peer. Enable it behind a proxy — otherwise every
+   * request comes from the proxy and all clients share one rate-limit bucket —
+   * and never when clients connect directly: they could then forge the header. */
   trustProxy: parseBool(envValue("AMIRA_TRUST_PROXY"), false),
+  /** Trusted proxies in front of the server (1 = a single nginx). */
+  proxyHops: Math.max(1, Math.floor(parseNonNegativeNumber(envValue("AMIRA_PROXY_HOPS"), 1))),
 };
 
 export type Config = typeof config;

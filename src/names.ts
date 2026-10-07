@@ -40,3 +40,13 @@ export function nameMatchesQuery(candidate: string | null | undefined, query: st
   if (qt.length === 0 || ct.length === 0) return false;
   return qt.every((q) => ct.some((c) => c === q || c.startsWith(q)));
 }
+
+/**
+ * The person filter every tool applies to a credited name: an order-independent
+ * token match ("Oliver Baumann" = "Baumann, Oliver") or, for partial input, an
+ * accent-insensitive substring. One definition instead of seven copies.
+ */
+export function personMatches(candidate: string | null | undefined, query: string): boolean {
+  if (!candidate) return false;
+  return nameMatchesQuery(candidate, query) || fold(candidate).includes(fold(query.trim()));
+}

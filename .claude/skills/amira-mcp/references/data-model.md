@@ -14,7 +14,7 @@ The central artefact (image, text, audio, moving image, …). Returned in full b
 | `title` / `alternative_titles[]` | Main title; translated titles, subtitles and variants. |
 | `type` | Text · Image · Audio · Moving image · Manuscript · Dataset · … |
 | `dates{}` / `date` | Typed dates keyed `created` / `collected` / `issued` / `copyrighted` / … Rights/admin dates (`copyrighted`, `available`, `valid`, `modified`) are exposed in `dates{}` but excluded from the derived content year range. `date` is the derived content year (range). |
-| `contributors[]` | `{ name, role }` — 50+ MARC relator roles (Author, Photographer, Interviewee, Musician, …). |
+| `contributors[]` | `{ name, role, amira_url?, affiliation_at_time? }` — 50+ MARC relator roles (Author, Photographer, Interviewee, Musician, …); the affiliation is the one recorded for this credit, which can differ from the person's current one. |
 | `subjects[]` | Subject headings `{ label, amira_url }` — **includes the former free-form tags** (one merged facet). |
 | `places[]` | `{ name, within[], amira_url }` — `within` is the region → country chain. |
 | `project` / `research_sections` | Parent project `{ id, name, amira_url }` and its sections. |
@@ -22,8 +22,13 @@ The central artefact (image, text, audio, moving image, …). Returned in full b
 | `languages[]` | Canonical names ("English", "Twi") — query with names or any ISO code. |
 | `formats[]` / `physical_notes[]` | Genre/format descriptors (linked authority) and free-text physical notes. |
 | `description`, `abstract`, `table_of_contents` | Free text (truncated at 25,000 chars). |
-| `sponsors[]`, `provenance[]`, `access_rights[]`, `license` | Funding, holding source, rights. |
-| `identifiers[]`, `doi`, `external_urls[]`, `collection_url`, `wisski_url` | Provenance / external links. |
+| `sponsors[]`, `access_rights[]`, `license` | Funding and rights statements. |
+| `provenance[]` | Holding institution(s) `{ name, amira_url }` — linked when the institution has its own record. |
+| `identifiers[]` | `{ value, type }` — e.g. "Locally defined identifier", "Publisher, distributor, or vendor stock number". |
+| `doi`, `external_urls[]`, `collection_url`, `wisski_url`, `rdspace_handle` | External links and repository handles. |
+| `extent` | Physical or file extent ("126 KB", "3 photographs"). |
+| `media[]` / `iiif_manifest` | Attached files `{ type (MIME), url, source, size }` and the IIIF Presentation 3 manifest for viewers. |
+| `created` / `modified` | When the record was added to / last changed in AMIRA — not content dates. |
 | `related_items[]` | `{ relation (replaces/replaced by/has version/…), title, amira_url }` — resolvable links. |
 | `citation[]` | The record's own `dcterms:bibliographicCitation`, when curators supplied one — **31 items of ~4,000 do**. |
 | `generated_citation` + `bibtex` | Built by the server from the fields above (creator + role, medium, date, collection, holding repository, `amira_url`) because `citation[]` is almost always empty. `citation_format=ris` / `csl-json` returns `ris` / `csl_json` instead of `bibtex`. |
@@ -52,15 +57,18 @@ hardcode it.
 ## Person
 
 `search_persons` returns `{ name, affiliations[], amira_url }` (names stored 'Surname, Forename').
-`get_person` aggregates a name across the graph: `as_principal_investigator[]`, `as_member[]`,
-`contributed_items[]` (slim refs with the person's `role`; capped at 50, total reported), and
-`publications[]` (author/editor). Works even for names absent from the authority list.
+`get_person` aggregates a complete name (or an id) across the graph: `identifiers[]` (`{ scheme, id,
+url }`, e.g. GND), `as_principal_investigator[]`, `as_member[]`, `contributed_items[]` (slim refs with the
+person's `role`; capped at 50, total reported), `publications[]` (author/editor) and
+`top_collaborators[]` (`shared_items`, `shared_publications`). Works for names absent from the authority
+list when they occur as a full credit; a fragment returns candidates.
 
 ## Institution / Group
 
 Organisation authority records, typed: `kind` = institution (508) or group (84). `get_institution`
 (works for both) adds `part_of[]`, `partner_categories[]`, funded/hosted projects, affiliated
-persons, and contributed items (slim refs); coordinates and Wikidata link when reconciled.
+persons, and contributed items (slim refs); coordinates, Wikidata link and `identifiers[]` when
+reconciled, and `name_variants[]` (acronyms such as "UJKZ", which also resolve).
 `list_cluster_partners` groups the Africa Multiple institutional partner network by Omeka category:
 `amrc`, `privileged`, `cooperation`, and `global`.
 
@@ -74,7 +82,8 @@ persons, and contributed items (slim refs); coordinates and Wikidata link when r
 `title`, `year`, `authors[]`, `editors[]`, `venue` (journal/book/series title — for journal articles
 also `venue_omeka_id` / `venue_amira_url` / `venue_issn`, linking the Journal authority record),
 `volume`, `issue`, `pages`, `publisher`, `doi`, `isbn`/`issn`, `status` (peer-review flag),
-`funders[]`, `places_of_publication[]`, `subjects[]`, `abstract`, `language`,
+`funders[]`, `places_of_publication[]`, `subjects[]`, `abstract` (plus `abstracts[]` `{ lang, text }`
+when there are several languages), `language` / `languages[]`,
 `identifiers[]` (all ERef/EPub aliases), `series[]` (distinct from the containing venue),
 `repository_urls[]` (ERef/EPub), `url` (publication DOI/repository link), `has_media` (open-access
 PDF attached) + `thumbnail`, `amira_url` (the AMIRA record link to cite whenever possible), and
@@ -105,15 +114,23 @@ The publication-venue authority (`list_journals`): `journal` (title), `id` / `om
 ## Podcast episode / YouTube video
 
 Podcasts: `title`, `series`, `episode`, `date`, `date_status` (published/scheduled/unknown),
-`abstract`, `people[]` (speaker/host/sound engineer), `url` plus `amira_url`, and `has_transcript` /
-`transcript_length` (43/43 filled in the refreshed 2026-06 snapshot). Videos: `title`, `date`,
-`date_status`, `abstract`, `playlists[]`, `speakers[]`, `languages[]`, watch `url`, `amira_url`,
-and `has_transcript` (most videos have transcripts). Transcripts are searchable in full via
+`duration` (ISO 8601, e.g. `PT21M35S`), `abstract`, `people[]` (speaker/host/sound engineer), `url`
+plus `amira_url`, `media[]` (the audio file), `transcript_generated_by` (the speech model that wrote the
+transcript — all 43 are machine-generated), and `has_transcript` / `transcript_length`. Videos: `title`,
+`date`, `date_status`, `abstract`, `playlists[]`, `speakers[]`, `languages[]`, watch `url`, `thumbnail`,
+`amira_url`, and `has_transcript` (most videos have transcripts). Transcripts are searchable in full via
 `search_podcasts` and `search_videos` (a transcript hit returns a `transcript_snippet`), but the
 detail tools (`get_video` / `get_podcast`) **omit the transcript text unless
 `include_transcript=true`** — then `transcript_offset` / `transcript_max_chars` page it (cap
 25k chars per call). The ChatGPT `search` / `fetch` tools use the AMIRA/Omeka page as the primary
 `url`; DOI, watch, or listen URLs appear in metadata/text as secondary links.
+
+## Subjects and places
+
+Subject authorities are either curated **Library of Congress Subject Headings** (646, each with an
+`id.loc.gov` URI) or free **tags** (2,438); `list_subjects` reports which. Places carry coordinates and,
+when reconciled, a Wikidata id; countries are the roots of the place hierarchy (42), with cities and
+regions beneath them.
 
 ## Relationships to exploit
 

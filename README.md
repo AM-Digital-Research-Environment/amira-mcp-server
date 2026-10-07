@@ -31,8 +31,9 @@ digitised **research items**, **people**, **institutions**, **groups**,
 **collections**, the cluster **bibliography with searchable full text** (extracted
 from the open-access PDFs) and its **journals**, **podcast episodes with
 transcripts**, and the cluster's **YouTube videos with searchable transcripts** —
-as 33 core tools an LLM can query. From one MCP interface, clients can move across
-records and the places, languages, and subjects that connect them.
+as 33 core tools an LLM can query, five research-workflow prompts, and resources
+for citable records and bulk exports. From one MCP interface, clients can move
+across records and the places, languages, and subjects that connect them.
 
 Every record carries an **`amira_url`** — its public page on the Omeka S site
 (`…/s/amira/item/<id>`) — so findings can be **cited as links** back to the source.
@@ -40,16 +41,18 @@ AMIRA focuses on the Cluster's research data. For news, events, and general
 information about the Africa Multiple Cluster of Excellence, visit
 [africamultiple.uni-bayreuth.de](https://www.africamultiple.uni-bayreuth.de/).
 
-**Coverage checked 9 September 2026:** 3,975 research items, 93 projects,
-562 publications (60 with extracted full text), 87 journals, 43 podcast episodes,
-and 140 videos. Counts are a dated snapshot; use `get_collection_overview` for
+**Coverage checked 6 October 2026:** 3,975 research items (1,419 with digitised
+media), 93 projects, 555 publications (60 with extracted full text), 87 journals,
+43 podcast episodes, 140 videos and 3,085 subject authorities (646 Library of
+Congress headings). Counts are a dated snapshot; use `get_collection_overview` for
 what your running server actually holds. See the [publication guide](docs/publications.md)
 and the [roadmap](ROADMAP.md) for further improvements.
 
-The [October 2026 technical review](docs/review-2026-10-05.md) covers current
-dependencies, performance measurements, MCP Apps and graph correctness.
-The [implementation report](docs/implementation-2026-10-05.md) documents version 1.18.0,
-its six new research tools, seven apps, snapshot safety changes and measured improvements.
+Two October 2026 reviews document the current design: the [5 October review](docs/review-2026-10-05.md)
+and its [implementation in 1.18](docs/implementation-2026-10-05.md) (research tools, apps,
+durable snapshots), and the [6 October review](docs/review-2026-10-06.md) and its
+[implementation in 1.19](docs/implementation-2026-10-06.md) (matching fixes, prompts,
+resources, authority identifiers, media and hardening).
 
 ## How it gets its data — and why nothing else is needed
 
@@ -76,48 +79,80 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | Tool | Purpose |
 | --- | --- |
 | `get_collection_overview` | Counts and breakdowns across the whole collection + snapshot freshness |
-| `search_research_items` | Find items by keyword, **subject**, **location** (hierarchy-aware), contributor, project, section, university, resource type, format/genre, language, year |
-| `get_research_item` | Full metadata for one item (by Omeka `id` / `omeka_id`): typed dates, roles, places with their region/country chain, sponsors, collections, related items, media thumbnail — plus a **generated citation** and a BibTeX/RIS/CSL-JSON export (`citation_format`) |
-| `search_projects` / `get_project` | Projects by keyword, university, section, PI, member, funder — detail with item breakdown + top subjects |
-| `list_research_sections` / `get_research_section` | Thematic sections with funding phases (AM 1.0 / AM 2.0), PIs, counts, projects |
-| `search_persons` / `get_person` | People (either name order works) — profile across projects, items, publications |
-| `list_institutions` / `get_institution` / `list_cluster_partners` / `list_groups` | Organisations (institutions, Africa Multiple partner categories, and research groups), their projects, people and items |
-| `list_subjects` | Subject headings (former tags merged in) ranked by item frequency |
-| `list_locations` | Every place — countries and cities in one flat list (hierarchy rolled up) — ranked by item count, with coordinates |
-| `list_collections` | Collections (item sets) ranked by research-item count — pair with the `collection` filter |
+| `search_research_items` | Find items by keyword (every word must match; quote a phrase), **subject**, **location** (hierarchy-aware), **country** (exact, with aliases such as Côte d'Ivoire = Ivory Coast), contributor, project, section, university, resource type, format/genre, language, year, **`has_media`**, **`added_since` / `modified_since`**; `export=csv|jsonl` returns a file link instead of rows |
+| `get_research_item` | Full metadata for one item (by Omeka `id` or typed id): typed dates, roles with the **affiliation at the time**, places with their region/country chain, provenance as linked institutions, typed identifiers, collections, related items, **media files** and the **IIIF manifest** — plus a **generated citation** and a BibTeX/RIS/CSL-JSON export (`citation_format`) |
+| `search_projects` / `get_project` | Projects by keyword or acronym, university, section, PI, member, funder — detail with item breakdown, top subjects and sample items |
+| `list_research_sections` / `get_research_section` | Thematic sections with funding phases (AM 1.0 / AM 2.0), PIs, counts, projects; detail by name or id |
+| `search_persons` / `get_person` | People (either name order works) — profile with GND and other authority identifiers, projects, items, publications and top collaborators |
+| `list_institutions` / `get_institution` / `list_cluster_partners` / `list_groups` | Organisations (institutions, Africa Multiple partner categories, and research groups) by name, acronym or id, their projects, people and items |
+| `list_subjects` | Subject headings ranked by item frequency, each marked as a Library of Congress heading (with its id.loc.gov URI) or a free tag (`vocabulary=lcsh|tag`) |
+| `list_locations` | Every place — countries and cities in one flat list (hierarchy rolled up) — ranked by item count, with coordinates and Wikidata ids; filter by country, name, `near` (radius) or `bbox` |
+| `list_collections` | Collections (item sets) ranked by research-item count, with IIIF collection links — pair with the `collection` filter |
 | `list_categories` | Facet values: formats/genres, languages, resource types |
 | `list_years` | Date histogram of research items by year or decade — coverage over time, most-covered year/decade |
-| `search_publications` / `get_publication` | Filter the bibliography by author, subject, language, type, venue, year and full-text availability; search extracted PDF text. Detail adds linked authorities, conference/extent/access/thesis metadata. `citation_format` selects BibTeX/RIS/CSL-JSON for one record or a bounded batch of matching publications |
+| `search_publications` / `get_publication` | Filter the bibliography by author, subject, language, type, venue, year, date added and full-text availability; search abstracts in every language and extracted PDF text. Detail adds every abstract with its language, linked authorities, conference/extent/access/thesis metadata. `citation_format` selects BibTeX/RIS/CSL-JSON per page; `export` links the whole result as one file |
 | `list_publication_facets` | Counts by type, year, language, subject, author/editor or venue across the complete filtered bibliography; ranked and paginated |
 | `list_journals` | The journals the cluster publishes in, ranked by publication count, with ISSN and country — pair with the `venue` filter |
 | `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications) |
-| `search_podcasts` / `get_podcast` | Cluster podcast episodes with searchable transcripts; transcript text is opt-in on detail |
-| `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; transcript opt-in on detail) |
-| `resolve_entity` | Resolve names or typed IDs; return separate candidates for homonyms and unreconciled literals |
+| `search_podcasts` / `get_podcast` | Cluster podcast episodes with searchable transcripts, filterable by language; detail gives the duration, audio file and the **model that generated the transcript**; transcript text is opt-in |
+| `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; thumbnail; transcript opt-in on detail) |
+| `resolve_entity` | Resolve names or typed IDs (either vocabulary: `item:7392` = `research_item:7392`); return separate candidates for homonyms and unreconciled literals |
 | `get_entity_graph` | Bounded one-hop graph with distinct explicit links/co-occurrences and paginated cited evidence |
 | `get_text_passages` | Find passages in selected publication/video/podcast records, with exact original-text offsets |
 | `compare_collections` | Compare 2–4 projects or collections using common filters, denominators and missingness |
 | `get_data_quality` | Snapshot coverage, missing metadata and unresolved-reference counts |
 | `get_snapshot_changes` | Page added, updated or deleted records across retained snapshots from the same instance |
 
+### Prompts and resources
+
+Five **prompts** package multi-step research workflows. Hosts show them as slash
+commands; their arguments autocomplete from the snapshot's own authority names, and
+each restates the citation rules. They are listed through `prompts/list`, so they
+add nothing to the per-turn tool payload.
+
+| Prompt | Arguments | Workflow |
+| --- | --- | --- |
+| `literature_review` | `topic`, `year_from?`, `year_to?` | Facets, publications, full-text passages and related research data on a topic |
+| `project_dossier` | `project` | Team, holdings, periods, places and connections of one project |
+| `person_profile` | `name` | Disambiguation, profile, graph and publication list of one person |
+| `place_report` | `place` | Items, projects, subjects and periods for a country, city or region |
+| `transcript_evidence` | `query` | Quoted passages from transcripts and open-access full texts |
+
+**Resources** expose data outside the tool calls:
+
+| URI | Content |
+| --- | --- |
+| `amira://record/{kind}/{id}` | Any record as citable JSON — the same projection as its `get_*` tool; kinds follow `resolve_entity` ids (`research_item`, `publication`, `person`, `location`, `subject`, …) |
+| `amira://export/{corpus}/{format}/{query}` | A filtered export (CSV/JSONL for research items; CSV/JSONL/BibTeX/RIS/CSL-JSON for publications). The search tools return these links as `resource_link`s when called with `export` |
+| `amira://dataset` | A schema.org `Dataset` description of the served snapshot: counts, coverage, licence mix, funder and how to cite it |
+
 ### Profiles and research workflows
 
 `AMIRA_TOOL_PROFILE=full` is the default: 33 core tools, or 35 over HTTP.
 `research`, `discovery` and `visualization` expose smaller documented subsets
 (22/12/14 core tools respectively; HTTP adds `search` and `fetch`). Profiles are
-fixed at startup; they reduce discovery cost, not access permissions. See
+fixed at startup; they reduce discovery cost, not access permissions. Tools
+outside a profile are removed, and so are the apps that render them. See
 [`src/toolProfiles.ts`](src/toolProfiles.ts) for the exact lists.
+
+Typed ids work everywhere in either vocabulary (`item:` / `research_item:`,
+`pub:` / `publication:`, `section:`, `person:`, `organisation:`, `project:`,
+`video:`, `podcast:`), including the `id` of every `get_*` tool. Paged results
+stop early, with `response_limited: true` and a correct `next_offset`, when a page
+would exceed 40,000 characters — Claude Code moves larger tool results out of
+the conversation. Error results carry the error as JSON text only.
 
 Use `resolve_entity` before graph traversal; pass its typed `id` unchanged to
 `get_entity_graph`. Graph edges count distinct source records, separate each
 corpus, and distinguish catalogue links from co-occurrence. Neither co-occurrence
 nor a shared subject establishes collaboration. Follow an edge with `edge_id`
 and the returned `snapshot_id` for stable evidence paging. Graphs cap at 100 nodes,
-200 edges and 60,000 JSON bytes, so check `truncated`.
+200 edges and 42,000 JSON bytes, so check `truncated`.
 
-`get_text_passages` takes 1–10 `publication:ID`, `video:ID` or `podcast:ID`
-identifiers. It returns at most 20 passages per page, original UTF-16 offsets,
-source citations and a scanning-cap flag. These are extracted-text offsets, not
+`get_text_passages` takes 1–10 `publication:ID` (or `pub:ID`), `video:ID` or
+`podcast:ID` identifiers. It returns at most 20 passages per page, original UTF-16
+offsets and source citations; every match is reachable through `next_offset`
+(`scanned_matches_capped` reports a document with more than 10,000 matches). These are extracted-text offsets, not
 PDF page numbers or audio timestamps. `get_snapshot_changes` requires two local
 same-source generations; it reports available history instead of inventing a diff.
 
@@ -128,7 +163,11 @@ same-source generations; it reports available history instead of inventing a dif
 | "What does the collection hold on Islam?" | `list_subjects keyword=Islam` → `search_research_items subject=Islam` |
 | "Show me all the **French**-language items" | `search_research_items language=French` (codes `fr`/`fra`/legacy `fre` work too) |
 | "What has Ulli Beier contributed?" | `get_person name="Ulli Beier"` (resolves to 'Beier, Ulli') |
-| "Which items come from **Nigeria**?" | `search_research_items location=Nigeria` (Lagos items count too — `location` walks the place hierarchy, covering both countries and cities) |
+| "Which items come from **Nigeria**?" | `search_research_items location=Nigeria` (Lagos items count too — `location` walks the place hierarchy) or `country=Nigeria` (exact: Niger stays out) |
+| "What does AMIRA hold from **Côte d'Ivoire**?" | `search_research_items country="Côte d'Ivoire"` (the authority stores "Ivory Coast"; common aliases resolve) |
+| "What has been **added since September**?" | `search_research_items added_since=2026-09-01` (or `search_publications added_since=…`) |
+| "Which Lagos items have **digitised images**?" | `search_research_items location=Lagos has_media=true` → `get_research_item` for the files and IIIF manifest |
+| "Give me all Islam-related items as a spreadsheet" | `search_research_items subject=Islam export=csv` → read the returned `amira://export/…` link |
 | "What audio recordings are in the ILAM collection?" | `search_research_items project_id=37700 resource_type=Audio` |
 | "In which talks does anyone discuss **decoloniality**?" | `search_videos keyword=decolonial` (matches inside transcripts, flagged `matched_in`) |
 | "Which cluster publications discuss **migration control** — and what do they actually say?" | `search_publications keyword="migration control"` (matches inside the extracted full text, flagged `matched_in`) → `get_publication include_fulltext=true` |
@@ -288,9 +327,9 @@ npm test              # unit tests: transform fixtures, folding, snapshot + stor
                       # and the full tool layer against a fixture snapshot via
                       # InMemoryTransport (offline)
 npm run test:live     # integration tests against the live API (network)
-npm run smoke         # spawn the stdio server, exercise all 33 tools offline
-npm run smoke:http    # spawn the HTTP server: search/fetch + parity (35 tools), CORS
-                      # preflight for both protocol revisions, and the rate limiter
+npm run smoke         # test/smoke/stdio.mjs: spawn the stdio server, exercise every tool offline
+npm run smoke:http    # test/smoke/http.mjs: spawn the HTTP server on a free port: search/fetch +
+                      # parity, CORS preflight for both protocol revisions, the rate limiter
 npm run weigh         # token budget report (needs ./data — run fetch-data first)
 npm run benchmark     # offline latency baseline against ./data (30 warm samples per query)
 ```
@@ -304,7 +343,7 @@ bytes/4 — comparable to itself, not to a billing statement):
 | | what | budget | drift |
 |---|---|---|---|
 | **Surface** | the `tools/list` payload, re-sent every turn | 14,000 tok per full-profile transport | **fails** over 3 % |
-| **Responses** | each tool called at its *maximum* limit | 20,000 tok per call | warns over 10 % |
+| **Responses** | each tool called at its *maximum* limit | 20,000 tok and < 45,000 characters per call | warns over 10 % |
 
 No tool description is derived from the snapshot, so the surface is a pure
 function of the code: `test/unit/budget.test.mjs` gates it offline against no
@@ -320,8 +359,10 @@ Version 1.18 deliberately raises the full-profile ceiling to 14,000 estimated
 tokens to accommodate six tools and useful output schemas. Smaller profile gates
 remain 10,000 (`research`), 6,500 (`discovery`) and 9,500 (`visualization`).
 The committed [baseline](test/token-baseline.json) records the exact surface size,
-text bytes and serialized wire bytes (text and structured content both count).
-The graph is byte-bounded and all measured responses fit the 20,000-token ceiling.
+text bytes, serialized wire bytes (text and structured content both count) and the
+snapshot it was measured on. Every response must also stay under 45,000 characters:
+Claude Code stores any tool result over 50,000 characters in a file instead of the
+conversation. Paged results and the graph are byte-bounded to fit.
 
 When a change legitimately grows either number:
 
@@ -351,16 +392,21 @@ Three GitHub Actions cover pull requests and distribution (the two distribution
 workflows crawl the **public** API — no credentials):
 
 - **CI** (`.github/workflows/ci.yml`) — on pull requests and pushes to `main`:
-  type-checks and runs the offline unit suite (including the tool-surface token
-  budget) on Node.js 20, 24 and 26 on Linux and Node.js 24 on Windows, then
+  type-checks once, then runs the offline unit suite (including the tool-surface
+  token budget) on Node.js 22, 24 and 26 on Linux and Node.js 24 on Windows, then
   exercises both MCP transports, weighs every tool's response at its maximum
   limit, and validates the MCPB manifest. The complete dependency audit fails on high or critical advisories.
   A separate container job builds an offline fixture image and checks health.
-  Windows CI also packs a fixture extension.
+  Windows CI also packs a fixture extension and checks its file list. A
+  non-blocking job runs the official MCP conformance suite against the HTTP server.
+  Actions are pinned to commit SHAs; every job has a timeout.
 
-- **Release** (`.github/workflows/release.yml`) — on a pushed `v*` tag: fresh
-  snapshot, unit + live tests, smoke, pack the `.mcpb` and zip the companion
-  skill (`amira-mcp-skill.zip`), and attach both to the GitHub Release.
+- **Release** (`.github/workflows/release.yml`) — on a pushed `v*` tag: checks the
+  tag against `package.json`, crawls a fresh snapshot, runs unit, live and smoke
+  tests, packs the `.mcpb` and zips the companion skill (`amira-mcp-skill.zip`) in a
+  read-only job; a separate publish job attaches both to the GitHub Release with
+  build-provenance attestations. A non-blocking job publishes `server.json` to the
+  [MCP Registry](https://registry.modelcontextprotocol.io).
 - **Refresh data snapshot** (`.github/workflows/refresh-data.yml`) — weekly and
   on demand; rebuilds **only when the transformed snapshot content hash changes**, including
   item-set and vocabulary changes, updating the rolling
@@ -391,7 +437,8 @@ workflows crawl the **public** API — no credentials):
 | `HOST` | — | `127.0.0.1` | HTTP bind address; set `0.0.0.0` explicitly for remote access. The Docker image sets this itself |
 | `AMIRA_ALLOWED_ORIGINS` | — | `localhost, 127.0.0.1, [::1]` | Comma-separated browser Origin hostnames or URLs allowed to call the HTTP endpoint. Server-to-server clients, which omit `Origin`, are unaffected. Add trusted web-client origins explicitly; wildcards are rejected. |
 | `AMIRA_RATE_LIMIT` | — | `120` | Requests/minute per client on `/mcp` (`0` disables). A courtesy cap — queries operate on the in-memory snapshot — not a security control; `/healthz` is exempt |
-| `AMIRA_TRUST_PROXY` | — | `false` | Read the client IP from `X-Forwarded-For` for rate limiting. Enable **only** behind a proxy that sets it; a direct client can forge the header |
+| `AMIRA_TRUST_PROXY` | — | `false` | Attribute requests to the address the reverse proxy observed: `X-Real-IP`, otherwise the `X-Forwarded-For` entry `AMIRA_PROXY_HOPS` from the right (never the client-supplied leftmost one). Enable it behind a proxy — otherwise every request comes from the proxy and all clients share one bucket — and never when clients connect directly |
+| `AMIRA_PROXY_HOPS` | — | `1` | Number of trusted proxies in front of the server, for reading `X-Forwarded-For` when `X-Real-IP` is absent. IPv6 clients are bucketed by /64 |
 
 ### Snapshot layout and recovery
 
@@ -444,9 +491,10 @@ it cannot answer rather than hallucinating.
   francophone-Africa-heavy and its authority records are not consistently
   accented against the free text — "Côte d'Ivoire" is the subject heading while
   item titles carry "Cote d'Ivoire". Every keyword comparison folds both sides
-  (NFD, drop combining marks, lowercase), so the answer no longer depends on
-  which spelling the caller guessed. Folds of large texts are memoised and
-  dropped when a refresh replaces the snapshot.
+  (NFD, drop combining marks, lowercase, and map curly quotes, dashes and the
+  ligatures œ/æ/ß to plain forms), so the answer no longer depends on which
+  spelling the caller guessed. Folds of large texts are memoised and dropped when
+  a refresh replaces the snapshot.
 - **Interactive results (MCP Apps).** Seven tools carry `_meta.ui.resourceUri`
   pointing at a `text/html;profile=mcp-app` resource, so hosts implementing the
   [`io.modelcontextprotocol/ui`](https://modelcontextprotocol.io/docs/extensions/apps)
@@ -487,7 +535,7 @@ it cannot answer rather than hallucinating.
 ### Protocol posture
 
 Verified against the [current specification](https://modelcontextprotocol.io/specification/2026-07-28)
-and [TypeScript SDK documentation](https://ts.sdk.modelcontextprotocol.io/v2/) on 5 October 2026.
+and [TypeScript SDK documentation](https://ts.sdk.modelcontextprotocol.io/v2/) on 6 October 2026.
 The server speaks MCP **2026-07-28** on both transports, and still answers
 2025-era clients unchanged.
 

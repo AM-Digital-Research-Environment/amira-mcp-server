@@ -5,9 +5,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
-import {
+import fsDefault from "node:fs/promises";
+import { buildFixture } from "../fixtures/fixture-data.mjs";
+import { hermeticEnv, tempDir as registeredTempDir } from "../helpers/env.mjs";
+
+hermeticEnv();
+const {
   isStale,
   crawlSnapshot,
   loadSnapshot,
@@ -18,12 +22,10 @@ import {
   assertSnapshotSource,
   snapshotCacheDir,
   fetchJSON,
-} from "../../server/lib.js";
-import fsDefault from "node:fs/promises";
-import { buildFixture } from "../fixtures/fixture-data.mjs";
+} = await import("../../server/lib.js");
 
 async function tempDir() {
-  return fs.mkdtemp(path.join(os.tmpdir(), "amira-snap-"));
+  return registeredTempDir("snap");
 }
 
 test("write → load roundtrip preserves data and manifest", async (t) => {
@@ -92,11 +94,24 @@ test("a changing upstream, duplicate pages or missing totals never become a snap
   }
 });
 
-test("a snapshot with the wrong schema version is rejected", async (t) => {
+test("snapshot schemas outside the supported range are rejected; v4 still loads", async (t) => {
   const dir = await tempDir();
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
-  await writeSnapshot(dir, buildFixture(SNAPSHOT_SCHEMA_VERSION - 1));
-  await assert.rejects(loadSnapshot(dir), /schema v/);
+  for (const version of [3, SNAPSHOT_SCHEMA_VERSION + 1]) {
+    await writeSnapshot(dir, buildFixture(version));
+    await assert.rejects(loadSnapshot(dir), /schema v/);
+  }
+  // A v4 snapshot (no subjects corpus) keeps serving until the refresh replaces it.
+  const v4 = buildFixture(4);
+  delete v4.data.subjects;
+  delete v4.manifest.counts.subjects;
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+  for (const [corpus, rows] of Object.entries(v4.data)) await fs.writeFile(`${dir}/${corpus}.json`, JSON.stringify(rows));
+  await fs.writeFile(`${dir}/manifest.json`, JSON.stringify(v4.manifest));
+  const loaded = await loadSnapshot(dir);
+  assert.equal(loaded.manifest.schemaVersion, 4);
+  assert.deepEqual(loaded.data.subjects, []);
 });
 
 test("a corpus/manifest count mismatch is rejected (torn-write guard)", async (t) => {

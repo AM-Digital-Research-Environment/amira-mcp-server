@@ -2,7 +2,7 @@
 //
 // The server can restrict WHICH metadata the model sees, so the same tasks can
 // be run under graded visibility conditions (the RQ5 "metadata mediation"
-// design in BENCHMARK_EVALUATION_PLAN.md). This is an experiment flag, not an
+// design of the JCDL 2026 benchmark). This is an experiment flag, not an
 // end-user setting: it defaults to "full" and is read from the environment on
 // every call, so a test harness can flip it between calls.
 //

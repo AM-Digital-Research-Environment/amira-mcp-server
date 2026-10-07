@@ -36,11 +36,22 @@ export interface Page<T> {
   offset: number;
   has_more: boolean;
   next_offset?: number;
+  /** True when the page stopped short of `limit` to stay within PAGE_CHAR_BUDGET. */
+  response_limited?: boolean;
   results: T[];
   [k: string]: unknown;
 }
 
-/** Paginate `all`, mapping ONLY the returned page through `toSummary`. */
+/**
+ * Serialized size budget for one page of results. Hosts move large tool results
+ * out of the conversation — Claude Code stores any text result over 50,000
+ * characters in a file — and a full page of 100 research items measured 59,808.
+ * The budget holds for any future snapshot, whatever a record's length.
+ */
+export const PAGE_CHAR_BUDGET = 40_000;
+
+/** Paginate `all`, mapping ONLY the returned page through `toSummary`, and stop
+ * early (with `response_limited`) when the page would exceed the budget. */
 export function pageOf<T, S>(
   all: T[],
   offset: number,
@@ -49,17 +60,30 @@ export function pageOf<T, S>(
   extra: Record<string, unknown> = {},
 ): Page<S> {
   const total = all.length;
-  const slice = all.slice(offset, offset + limit);
-  const hasMore = offset + slice.length < total;
+  const results: S[] = [];
+  let chars = 0;
+  let limited = false;
+  for (const record of all.slice(offset, offset + limit)) {
+    const summary = toSummary(record);
+    const size = JSON.stringify(summary).length + 1;
+    if (results.length && chars + size > PAGE_CHAR_BUDGET) {
+      limited = true;
+      break;
+    }
+    results.push(summary);
+    chars += size;
+  }
+  const hasMore = offset + results.length < total;
   const env: Page<S> = {
     ...extra,
-    count: slice.length,
+    count: results.length,
     total_matches: total,
     offset,
     has_more: hasMore,
-    results: slice.map(toSummary),
+    results,
   };
-  if (hasMore) env.next_offset = offset + limit;
+  if (hasMore) env.next_offset = offset + results.length;
+  if (limited) env.response_limited = true;
   return env;
 }
 
@@ -67,7 +91,7 @@ export function pageOf<T, S>(
  * Pagination knobs are not filters, so limit/offset never appear here. */
 export function filtersEcho(filters: Record<string, unknown>): Record<string, unknown> {
   const set = Object.fromEntries(
-    Object.entries(filters).filter(([k, v]) => v !== undefined && v !== null && k !== "limit" && k !== "offset"),
+    Object.entries(filters).filter(([k, v]) => v !== undefined && v !== null && v !== "" && k !== "limit" && k !== "offset"),
   );
   return Object.keys(set).length ? { filters: set } : {};
 }

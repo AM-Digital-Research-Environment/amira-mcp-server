@@ -94,7 +94,8 @@ Every entity is an Omeka item with a stable public page: its **`amira_url`**
 number in that URL; use that when an identifier is needed.
 
 See [references/data-model.md](references/data-model.md) for field-level detail, and
-[references/tools-by-task.md](references/tools-by-task.md) for the full 27-tool catalogue.
+[references/tools-by-task.md](references/tools-by-task.md) for the full 33-tool catalogue (35 over HTTP),
+the five prompts and the resources.
 
 ## Workflow
 
@@ -109,11 +110,14 @@ from the payload.
 Use the right entry point for the question:
 - Things/artefacts → `search_research_items` (filters: keyword, **subject**, **location** (any level —
   a country OR a city; `location=Nigeria` finds Lagos items too, since the place hierarchy is walked),
-  **country** (the country level specifically), contributor, project_id (Omeka id preferred),
-  research_section, university,
-  resource_type, genre/format, language, year range). When a strict AND combination returns nothing, the envelope adds
-  `suggestions` naming which single filter to drop (and how many items that would surface) — relax,
-  don't give up.
+  **country** (the country level, exact name or a common alias: `Côte d'Ivoire` finds the stored
+  "Ivory Coast", and `Niger` never includes Nigeria), contributor, project_id, research_section,
+  university, resource_type, genre/format, language, year range, `has_media`, and `added_since` /
+  `modified_since` for what is new). A multi-word `keyword` matches records containing **every**
+  word, in any field; put a phrase in quotes to match it exactly. When a strict AND combination
+  returns nothing, the envelope adds `suggestions` naming which single filter to drop (and how many
+  items that would surface), and `did_you_mean` names stored places close to an unmatched place —
+  relax, don't give up.
 - Projects → `search_projects`. Sections → `list_research_sections`. People → `search_persons`.
   Institutions → `list_institutions`. Bibliography → `search_publications` (keyword reaches INTO the
   extracted full text of open-access publications — hits are flagged `matched_in: "fulltext"` with a
@@ -129,18 +133,27 @@ Use the right entry point for the question:
   value straight back into the matching filter. `list_years` gives the date distribution (by year or
   decade) for coverage-over-time and most-covered-year questions. For date ranges, pass `from <= to`
   / `year_from <= year_to`; research-item, publication and timeline tools return
-  `invalid_range` for inverted ranges. Media searches currently return no hits.
+  `invalid_range` for inverted ranges, podcast and video searches included.
 
 Keep `limit` modest (10–25) while scoping; paginate with `offset` / `next_offset`. Ask for more than
-a tool's max and it caps silently but tells you — the envelope echoes `requested_limit` /
-`effective_limit`.
+a tool's max and it caps but tells you — the envelope echoes `requested_limit` / `effective_limit`. A
+page can also stop short of `limit` to stay small (`response_limited: true`): keep following
+`next_offset`. For a whole result set, pass `export` (`csv`/`jsonl`; publications also `bibtex`,
+`ris`, `csl-json`): the tool returns a `resource_link` to an `amira://export/…` file instead of rows.
 
 ### 3 — Drill
-`get_research_item` (by Omeka `id` / `omeka_id`) returns the full record — including the **typed dates**, the
-place hierarchy and a ready-to-paste `generated_citation` + `bibtex`. `get_project`, `get_research_section`, `get_person`, `get_institution`,
+`get_research_item` (by Omeka `id` / `omeka_id`, or a typed id) returns the full record — including the
+**typed dates**, the place hierarchy, contributors with their **affiliation at the time**, provenance as
+linked institutions, typed identifiers, the attached **media** files and, when there are any, the
+**IIIF manifest** — plus a ready-to-paste `generated_citation` + `bibtex`. `get_project`, `get_research_section`, `get_person`, `get_institution`,
 `get_publication` (with citation exports, peer-review status, funders, linked contributors/publisher,
 conference/extent/access/thesis metadata, and the venue's `amira_url` when it is a Journal record),
-`get_podcast`, `get_video` complete the detail layer.
+`get_podcast`, `get_video` complete the detail layer. `get_person` needs a **complete** name (either
+order) or an id; a fragment returns candidates instead of a profile. It reports GND and other
+authority identifiers and the top collaborators (people credited on the same items or publications).
+`get_podcast` names the model that generated the transcript (`transcript_generated_by`): podcast
+transcripts are machine-generated, so quote them as such and check important passages against the
+audio.
 **Transcripts and publication full text are opt-in:** `get_podcast` / `get_video` omit the transcript
 by default (you still see `has_transcript` + `transcript_length`); pass `include_transcript=true` for
 the text, and `transcript_offset` / `transcript_max_chars` to page a long one. `get_publication`
@@ -156,8 +169,9 @@ it (related projects, sections, subjects, people, countries, formats, with count
 theme across projects — the cluster's core analytic. For subject and person seeds the bibliography
 joins the pivot: `matched_publications` counts publications whose subjects or authors/editors match,
 with up to 10 `related_publications`. Matching is by substring (subject), name in
-either order (person), any level of the place hierarchy (location) or id/label (project); the response
-echoes the rule in `matching`. `matched_items` counts *items*, so it can legitimately differ from a
+either order (person), an exact place name or alias at any level of the hierarchy (location; an
+unknown name falls back to word prefixes) or id/label (project); the response echoes the rule in
+`matching`. `matched_items` counts *items*, so it can legitimately differ from a
 `list_subjects` heading count.
 
 Prefer `resolve_entity` when a name could be ambiguous. It returns typed IDs,
@@ -171,15 +185,23 @@ require resolving the graph again. Check `truncated` before describing coverage.
 For close reading, `get_text_passages` finds bounded passages in selected
 `publication:ID`, `video:ID` or `podcast:ID` records, with exact original UTF-16
 offsets and citations. These are extracted-text offsets, not page numbers or
-timestamps. Follow `next_offset`; disclose `scanned_matches_capped`. Full exposure
-is required. The older remote `search`/`fetch` pair uses `pub:ID` and `item:ID`
-aliases: do not interchange those prefixes with graph/passage IDs.
+timestamps. Every match is reachable through `next_offset`; `scanned_matches_capped`
+only flags a document with more than 10,000 matches. Full exposure is required.
+Typed ids are interchangeable across tools: the remote `search`/`fetch` pair's
+`item:ID` / `pub:ID` work in the graph, passage and `get_*` tools, and
+`research_item:ID` / `publication:ID` work in `fetch`.
 
 Use `compare_collections` for 2–4 project/collection cohorts with identical research
 filters. Report denominators and missingness; overlapping cohorts and date ranges
 must not be summed as disjoint observations. `get_data_quality` summarizes source
 coverage and unresolved references. `get_snapshot_changes` compares only retained
 local generations from the same source, not arbitrary dates or the live site.
+
+### Prompts and resources
+Hosts may offer the server's prompts as commands: `literature_review`, `project_dossier`,
+`person_profile`, `place_report` and `transcript_evidence` run the workflows above with the citation
+rules built in. `amira://record/{kind}/{id}` returns any record as JSON, and `amira://dataset`
+describes the snapshot (counts, coverage, licence mix, funder) for citing the data set itself.
 
 ### 5 — Synthesise with citations
 Every record carries an **`amira_url`**. Cite each entity you mention as a **markdown link** to that

@@ -18,3 +18,13 @@ export function itemUrlOrNull(oId: number | null | undefined): string | null {
 export function itemSetUrl(oId: number): string {
   return `${SITE_BASE}/s/${SITE_SLUG}/item-set/${oId}`;
 }
+
+/** IIIF Presentation 3 manifest of an item with media (Omeka IIIF Server module). */
+export function iiifManifestUrl(oId: number): string {
+  return `${SITE_BASE}/iiif/3/${oId}/manifest`;
+}
+
+/** IIIF Presentation 3 collection for an item set. */
+export function iiifCollectionUrl(oId: number): string {
+  return `${SITE_BASE}/iiif/3/collection/${oId}`;
+}

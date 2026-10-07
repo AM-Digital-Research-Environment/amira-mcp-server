@@ -4,7 +4,11 @@
 
 import {
   allStrings,
+  annotationRef,
+  annotationValues,
+  authorityIds,
   firstLinked,
+  languageTagged,
   firstString,
   itemSetIds,
   linkedRefs,
@@ -26,6 +30,7 @@ import type {
   LanguageRec,
   LinkedRef,
   LocationRec,
+  MediaRec,
   OrganisationRec,
   PersonRec,
   PlaylistRec,
@@ -35,6 +40,7 @@ import type {
   RelatedRef,
   ResearchItemRec,
   SectionRec,
+  SubjectRec,
   University,
   VideoRec,
 } from "./types.js";
@@ -67,10 +73,26 @@ function contributorsOf(item: OmekaItem, ctx: TransformContext): Contributor[] {
     for (const v of values(item, term)) {
       const name = valueText(v);
       if (!name) continue;
-      out.push({ name, role, o_id: typeof v.value_resource_id === "number" ? v.value_resource_id : null });
+      // The sync annotates a credit with the contributor's affiliation at the time.
+      const affiliation = annotationRef(v, "dcterms:isPartOf");
+      out.push({ name, role, o_id: typeof v.value_resource_id === "number" ? v.value_resource_id : null, ...(affiliation ? { affiliation } : {}) });
     }
   }
   return out;
+}
+
+/** o:created / o:modified, the record-level timestamps "what's new" filters use. */
+function stamps(item: OmekaItem): { created: string | null; modified: string | null } {
+  return { created: systemDate(item, "o:created"), modified: systemDate(item, "o:modified") };
+}
+
+/** The model that generated a transcript (`dre:generatedBy` on bibo:content). */
+function transcriptGeneratedBy(item: OmekaItem): LinkedRef | null {
+  for (const v of values(item, "bibo:content")) {
+    const ref = annotationRef(v, "dre:generatedBy");
+    if (ref) return ref;
+  }
+  return null;
 }
 
 // --- research items -----------------------------------------------------------
@@ -167,9 +189,13 @@ export function transformResearchItem(
     audiences: allStrings(item, "dcterms:audience"),
     sponsors: allStrings(item, "frapo:isFundedBy"),
     provenance: allStrings(item, "dcterms:provenance"),
+    provenance_refs: linkedRefs(item, "dcterms:provenance"),
     access_rights: allStrings(item, "dcterms:accessRights"),
     license: firstString(item, "dcterms:license"),
     identifiers: allStrings(item, "dcterms:identifier"),
+    typed_identifiers: values(item, "dcterms:identifier")
+      .map((v) => ({ value: valueText(v), type: annotationValues(v, "dcterms:type").map(valueText).find(Boolean) ?? null }))
+      .filter((v) => v.value),
     doi: uriValues(item, "bibo:doi")[0]?.url ?? null,
     urls: uriValues(item, "fabio:hasURL").map((u) => u.url),
     collection_url: uriValues(item, "dre:collectionUrl")[0]?.url ?? null,
@@ -180,12 +206,38 @@ export function transformResearchItem(
     thumbnail: thumbnailUrl(item),
     item_sets: itemSetIds(item),
     university: universityOfProject(project?.o_id ?? null),
+    ...stamps(item),
+    extent: firstString(item, "dcterms:extent"),
+    rdspace_handle: firstString(item, "dre:rdspaceHandle"),
+    media: [],
   };
 }
 
 /** An item set (collection) — fetched from /api/item_sets, not /api/items. */
 export function transformItemSet(itemSet: OmekaItem): { o_id: number; title: string } {
   return { o_id: oid(itemSet), title: omekaTitle(itemSet) };
+}
+
+/** A media record and the item it belongs to (/api/media). */
+export function transformMedia(media: OmekaItem): { owner: number | null; record: MediaRec } {
+  const item = media["o:item"];
+  const owner = item && typeof item === "object" && typeof (item as Record<string, unknown>)["o:id"] === "number"
+    ? (item as Record<string, number>)["o:id"]! : null;
+  const str = (key: string): string | null => {
+    const v = media[key];
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  };
+  const size = media["o:size"];
+  return {
+    owner,
+    record: {
+      o_id: oid(media),
+      type: str("o:media_type"),
+      url: str("o:original_url"),
+      source: str("o:source"),
+      size: typeof size === "number" && Number.isFinite(size) ? size : null,
+    },
+  };
 }
 
 // --- authorities & registry corpora -------------------------------------------
@@ -195,6 +247,18 @@ export function transformPerson(item: OmekaItem): PersonRec {
     o_id: oid(item),
     name: omekaTitle(item),
     affiliations: linkedRefs(item, "dcterms:isPartOf"),
+    identifiers: authorityIds(item, "dcterms:identifier"),
+    alt_names: allStrings(item, "dcterms:alternative"),
+  };
+}
+
+/** A subject authority (template 6, item set 1852): LCSH heading or free tag. */
+export function transformSubject(item: OmekaItem): SubjectRec {
+  return {
+    o_id: oid(item),
+    name: omekaTitle(item),
+    vocabulary: firstString(item, "dcterms:type"),
+    uri: uriValues(item, "dcterms:identifier")[0]?.url ?? null,
   };
 }
 
@@ -209,7 +273,10 @@ export function transformOrganisation(item: OmekaItem): OrganisationRec {
     part_of: linkedRefs(item, "dcterms:isPartOf"),
     latitude: Number.isFinite(lat) ? lat : null,
     longitude: Number.isFinite(lng) ? lng : null,
-    wikidata: uriValues(item, "dcterms:identifier")[0]?.url ?? null,
+    wikidata: uriValues(item, "dcterms:identifier").find((u) => /wikidata\.org/i.test(u.url))?.url
+      ?? uriValues(item, "dcterms:identifier")[0]?.url ?? null,
+    alt_names: allStrings(item, "dcterms:alternative"),
+    identifiers: authorityIds(item, "dcterms:identifier"),
   };
 }
 
@@ -223,6 +290,7 @@ export function transformLocation(item: OmekaItem): LocationRec {
     longitude: Number.isFinite(lng) ? lng : null,
     parent: firstLinked(item, "dcterms:isPartOf"),
     wikidata: uriValues(item, "dcterms:identifier")[0]?.url ?? null,
+    place_type: firstString(item, "dcterms:type"),
   };
 }
 
@@ -248,6 +316,7 @@ export function transformProject(item: OmekaItem): ProjectRec {
     date: temporalRange(item),
     url: uriValues(item, "fabio:hasURL")[0]?.url ?? null,
     university: uniFromDreId(dreId),
+    alt_names: allStrings(item, "dcterms:alternative"),
   };
 }
 
@@ -347,6 +416,10 @@ export function transformPublication(item: OmekaItem, ctx: TransformContext, cla
     fulltext: firstString(item, "bibo:content"),
     has_media: Array.isArray(item["o:media"]) && item["o:media"].length > 0,
     thumbnail: thumbnailUrl(item),
+    abstracts: languageTagged(item, "bibo:abstract"),
+    languages: allStrings(item, "dcterms:language"),
+    ...stamps(item),
+    media: [],
   };
 }
 
@@ -378,6 +451,10 @@ export function transformPodcast(item: OmekaItem, ctx: TransformContext): Podcas
     url: uriValues(item, "fabio:hasURL")[0]?.url ?? null,
     transcript: firstString(item, "bibo:content"),
     languages: linkedRefs(item, "dcterms:language"),
+    duration: firstString(item, "dcterms:extent"),
+    transcript_generated_by: transcriptGeneratedBy(item),
+    ...stamps(item),
+    media: [],
   };
 }
 
@@ -394,6 +471,10 @@ export function transformVideo(item: OmekaItem, ctx: TransformContext): VideoRec
     languages: linkedRefs(item, "dcterms:language"),
     url: uriValues(item, "fabio:hasURL")[0]?.url ?? null,
     transcript: firstString(item, "bibo:content"),
+    thumbnail: thumbnailUrl(item),
+    duration: firstString(item, "dcterms:extent"),
+    transcript_generated_by: transcriptGeneratedBy(item),
+    ...stamps(item),
   };
 }
 

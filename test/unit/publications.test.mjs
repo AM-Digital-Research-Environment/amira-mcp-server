@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DataStore, publicationBibtex, publicationCitation, transformPublication, SNAPSHOT_SCHEMA_VERSION } from "../../server/lib.js";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
+import { hermeticEnv } from "../helpers/env.mjs";
+
+hermeticEnv();
+const { DataStore, publicationBibtex, publicationCitation, transformPublication, SNAPSHOT_SCHEMA_VERSION } = await import(
+  "../../server/lib.js"
+);
 
 test("publication aliases and series survive transform and resolve to the same record", () => {
   const literal = (value) => ({ type: "literal", "@value": value });
@@ -24,10 +29,10 @@ test("publication BibTeX preserves corporate authors and avoids false thesis typ
   const p = buildFixture(SNAPSHOT_SCHEMA_VERSION).data.publications[0];
   p.authors = [{ label: "Institute of African and Diaspora Studies", o_id: null }];
   assert.match(publicationBibtex(p), /author = \{\{Institute of African and Diaspora Studies\}\}/);
-  for (const type of ["bachelors_thesis", "habilitation", "translation"]) {
+  for (const [type, label] of [["bachelors_thesis", "Bachelor's thesis"], ["habilitation", "Habilitation thesis"], ["translation", "Translation"]]) {
     const bib = publicationBibtex({ ...p, type });
     assert.match(bib, /^@misc\{/);
-    assert.ok(bib.includes(`type = {${type}}`));
+    assert.ok(bib.includes(`type = {${label}}`), bib);
   }
 });
 

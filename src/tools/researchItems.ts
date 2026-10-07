@@ -1,54 +1,49 @@
-import { selectResearchItems, invalidYearRange } from "../researchItemQuery.js";
+import type { ToolMap } from "./policy.js";
+import { isoDate, researchFilterError, selectResearchItems } from "../researchItemQuery.js";
 import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import {
-  annotate,
+  READ_ONLY,
   capLimit,
   capOffset,
   capText,
   errorResult,
-  exposureRestrictedResult,
   filtersEcho,
   itemSummary,
   limitEcho,
   pageOf,
+  queryErrorResult,
   refLabels,
   textResult,
   yearLabel,
   type Server,
 } from "./_shared.js";
-import { itemSetUrl, itemUrl, itemUrlOrNull } from "../urls.js";
+import { iiifManifestUrl, itemSetUrl, itemUrl, itemUrlOrNull } from "../urls.js";
 import { allowDescriptive, allowStructured } from "../exposure.js";
 import { generateItemCitation } from "../citation.js";
+import { stripTypedId } from "../typedIds.js";
+import { exportLink, EXPORT_FORMATS } from "../resources.js";
 
-export function registerResearchItemTools(server: Server): void {
+export function registerResearchItemTools(server: Server, tools: ToolMap): void {
   // === search_research_items ================================================
-  server.registerTool(
+  tools.search_research_items = server.registerTool(
     "search_research_items",
     {
       title: "Search research items",
-      description: "Search digitised research items. Optional filters are AND-combined; empty results suggest a single filter to relax. Use get_research_item for detail and citations.",
-      annotations: annotate("Search research items"),
+      description: "Search digitised research items. Filters are AND-combined; empty results suggest a filter to relax or a stored place name. export links all matches as a file.",
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
-        keyword: z
-          .string().max(1000)
-          .optional()
-          .describe("Matches titles, description, abstract, table of contents and identifiers. Accent- and case-insensitive"),
-        subject: z
-          .string().max(1000)
-          .optional()
+        keyword: z.string().max(1000).optional()
+          .describe("Every word must occur in the title, description, abstract, contents or identifiers; quote a phrase to match it exactly"),
+        subject: z.string().max(1000).optional()
           .describe("Subject heading, partial (e.g. 'Architecture'). Subjects absorb the former free-form tags — there is no tag filter"),
-        location: z
-          .string().max(1000)
-          .optional()
+        location: z.string().max(1000).optional()
           .describe("A place at ANY level of the city→country hierarchy: 'Nigeria' finds Lagos items, 'Lagos' finds only Lagos"),
         location_id: z.number().int().positive().optional().describe("Exact location authority ID, including descendants; avoids homonym matches"),
-        country: z
-          .string().max(1000)
-          .optional()
-          .describe("Only the country level of the hierarchy. Use `location` to match a city or any level"),
+        country: z.string().max(1000).optional()
+          .describe("Country only, exact name or common alias ('Côte d'Ivoire' = 'Ivory Coast'). Use `location` for cities"),
         contributor: z.string().max(1000).optional().describe("A person/organisation credited on the item; either name order works"),
-        project_id: z.union([z.string().max(1000), z.number()]).optional().describe("Project Omeka o:id (legacy project keys also work)"),
+        project_id: z.union([z.string().max(1000), z.number()]).optional().describe("Project Omeka id"),
         research_section: z.string().max(1000).optional().describe("e.g. 'Arts & Aesthetics', 'Mobilities'"),
         university: z.string().max(1000).optional().describe("ubt | unilag | ujkz | ufba | external — code or full name"),
         resource_type: z.string().max(1000).optional().describe("e.g. 'Image', 'Text', 'Audio', 'Moving image'"),
@@ -57,6 +52,10 @@ export function registerResearchItemTools(server: Server): void {
         language: z.string().max(1000).optional().describe("Name or ISO code — 'French', 'fr', 'fra' and legacy 'fre' all match"),
         year_from: z.number().int().min(0).max(2200).optional().describe("Keep items whose content dates overlap from this year"),
         year_to: z.number().int().min(0).max(2200).optional().describe("Keep items whose content dates overlap up to this year"),
+        has_media: z.boolean().optional().describe("true: only items with digitised files"),
+        added_since: isoDate.optional().describe("Added to AMIRA on or after this ISO date"),
+        modified_since: isoDate.optional().describe("Changed on or after this ISO date"),
+        export: z.enum(EXPORT_FORMATS.research_items).optional().describe("Return a file link instead of rows"),
         limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -65,40 +64,37 @@ export function registerResearchItemTools(server: Server): void {
       const store = await ensureStore();
       const limit = capLimit(args.limit, 20, 100);
       const offset = capOffset(args.offset);
-      if (invalidYearRange(args.year_from, args.year_to)) {
-        return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
-      }
+      const { export: format, limit: _l, offset: _o, ...filters } = args;
       // Structured-metadata filters are refused under restricted exposure, so a
       // benchmark model cannot narrow by fields it is not allowed to see.
-      if (!allowStructured()) {
-        const gated = ["subject", "location", "location_id", "country", "contributor", "project_id", "research_section", "university", "genre", "collection", "language"] as const;
-        const used = gated.filter((g) => (args as Record<string, unknown>)[g] != null);
-        if (used.length) return exposureRestrictedResult("structured", `The ${used.map((u) => `\`${u}\``).join(", ")} filter${used.length > 1 ? "s" : ""}`);
-      }
+      const refused = researchFilterError(filters);
+      if (refused) return queryErrorResult(refused);
 
-      const { filtered, suggestions } = selectResearchItems(store, args);
+      const { filtered, suggestions, did_you_mean } = selectResearchItems(store, filters);
+      if (format) return exportLink("research_items", format, filters, filtered.length);
 
       return textResult(
         pageOf(filtered, offset, limit, (it) => itemSummary(it, store), {
           ...limitEcho(args.limit, 100, limit),
-          ...filtersEcho(args),
+          ...filtersEcho(filters),
           ...(suggestions ? { suggestions } : {}),
+          ...(did_you_mean ? { did_you_mean } : {}),
         }),
       );
     },
   );
 
   // === get_research_item ====================================================
-  server.registerTool(
+  tools.get_research_item = server.registerTool(
     "get_research_item",
     {
       title: "Get research item detail",
-      description: "Research-item metadata, linked entities, rights, media and a generated citation (BibTeX/RIS/CSL-JSON). Long fields cap at 25,000 characters. Unknown ID returns an error.",
-      annotations: annotate("Get research item detail"),
+      description: "Research-item metadata, linked entities, rights, media files, IIIF manifest and a generated citation (BibTeX/RIS/CSL-JSON). Long fields cap at 25,000 characters.",
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
         id: z
           .union([z.string().max(1000), z.number()])
-          .describe("The item's Omeka o:id — the number ending its amira_url, e.g. 7392. Legacy DRE keys also work"),
+          .describe("Omeka id (the number ending its amira_url, e.g. 7392) or a typed id such as research_item:7392"),
         citation_format: z
           .enum(["bibtex", "ris", "csl-json"])
           .optional()
@@ -107,7 +103,7 @@ export function registerResearchItemTools(server: Server): void {
     },
     async ({ id, citation_format }) => {
       const store = await ensureStore();
-      const key = String(id);
+      const key = stripTypedId(String(id), ["research_item"]);
       const it = store.getItem(key);
       if (!it) {
         return errorResult("not_found", `No research item with id '${key}'.`, {
@@ -128,6 +124,7 @@ export function registerResearchItemTools(server: Server): void {
       const description = allowDescriptive() && it.description ? capText(it.description) : null;
       const abstract = allowDescriptive() && it.abstract ? capText(it.abstract) : null;
       const toc = allowDescriptive() && it.toc ? capText(it.toc) : null;
+      const provenance = it.provenance_refs?.length ? it.provenance_refs : it.provenance.map((label) => ({ label, o_id: null }));
 
       return textResult({
         id: String(it.o_id),
@@ -142,7 +139,13 @@ export function registerResearchItemTools(server: Server): void {
               university: UNIVERSITY_LABELS[it.university],
               project: project ? { id: String(project.o_id), omeka_id: project.o_id, name: project.name, amira_url: itemUrl(project.o_id) } : null,
               research_sections: store.sectionsOfItem(it),
-              contributors: it.contributors.map((c) => ({ name: c.name, role: c.role })),
+              contributors: it.contributors.map((c) => ({
+                name: c.name,
+                role: c.role,
+                ...(c.o_id != null ? { amira_url: itemUrl(c.o_id) } : {}),
+                // The affiliation recorded for this credit, which can differ from today's.
+                ...(c.affiliation ? { affiliation_at_time: c.affiliation.label, affiliation_amira_url: itemUrlOrNull(c.affiliation.o_id) } : {}),
+              })),
               subjects: it.subjects.map((s) => ({ label: s.label, amira_url: itemUrlOrNull(s.o_id) })),
               places: it.places.map((p) => ({
                 name: p.label,
@@ -154,25 +157,29 @@ export function registerResearchItemTools(server: Server): void {
               physical_notes: it.format_notes,
               audiences: it.audiences,
               sponsors: it.sponsors,
-              provenance: it.provenance,
+              provenance: provenance.map((p) => ({ name: p.label, amira_url: itemUrlOrNull(p.o_id) })),
               related_items: it.related.map((r) => ({
                 relation: r.relation,
                 title: r.ref.label,
                 amira_url: itemUrlOrNull(r.ref.o_id),
               })),
-              collections: it.item_sets.map((id) => ({
-                title: store.getItemSet(id)?.title ?? `Collection ${id}`,
-                amira_url: itemSetUrl(id),
+              collections: it.item_sets.map((setId) => ({
+                title: store.getItemSet(setId)?.title ?? `Collection ${setId}`,
+                id: String(setId),
+                omeka_id: setId,
+                amira_url: itemSetUrl(setId),
               })),
             }
           : {}),
         access_rights: it.access_rights,
         license: it.license,
-        identifiers: it.identifiers,
+        identifiers: it.typed_identifiers?.length ? it.typed_identifiers : it.identifiers.map((value) => ({ value, type: null })),
         doi: it.doi,
         external_urls: it.urls,
         collection_url: it.collection_url,
         wisski_url: it.wisski_url,
+        rdspace_handle: it.rdspace_handle ?? null,
+        extent: it.extent ?? null,
         ...(allowDescriptive() ? { citation: it.citation } : {}),
         generated_citation: cite.citation,
         [cite.field]: cite.export,
@@ -181,8 +188,13 @@ export function registerResearchItemTools(server: Server): void {
         abstract: abstract?.text ?? null,
         abstract_truncated: abstract?.truncated || undefined,
         table_of_contents: toc?.text ?? null,
+        table_of_contents_truncated: toc?.truncated || undefined,
         has_media: it.has_media,
+        media: (it.media ?? []).map((m) => ({ type: m.type, url: m.url, source: m.source, size: m.size })),
+        iiif_manifest: it.has_media ? iiifManifestUrl(it.o_id) : null,
         thumbnail: it.thumbnail,
+        created: it.created ?? null,
+        modified: it.modified ?? null,
         amira_url: itemUrl(it.o_id),
       });
     },

@@ -1,9 +1,10 @@
+import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore } from "../data.js";
 import type { LinkedRef, ResearchItemRec } from "../types.js";
 import { allowStructured } from "../exposure.js";
 import {
-  annotate,
+  READ_ONLY,
   capLimit,
   capOffset,
   containsCI,
@@ -16,9 +17,12 @@ import {
   textResult,
   type Server,
 } from "./_shared.js";
-import { itemSetUrl, itemUrlOrNull } from "../urls.js";
-import { TIMELINE_UI_META } from "./apps.js";
-import { researchFilters, selectResearchItems, invalidYearRange } from "../researchItemQuery.js";
+import { iiifCollectionUrl, itemSetUrl, itemUrlOrNull } from "../urls.js";
+import { MAP_UI_META, TIMELINE_UI_META } from "./apps.js";
+import { researchFilterError, researchFilters, selectResearchItems } from "../researchItemQuery.js";
+import { placeAliases } from "../matching.js";
+import { fold } from "../text.js";
+import { queryErrorResult } from "./responses.js";
 import { timelineSchema } from "./outputSchemas.js";
 
 interface RefCount {
@@ -45,16 +49,32 @@ function countRefs(items: ResearchItemRec[], pick: (it: ResearchItemRec) => Link
   return [...counts.values()].sort((a, b) => b.count - a.count);
 }
 
-export function registerFacetTools(server: Server): void {
+/** "Library of Congress Subject Headings" → "lcsh", "Tag" → "tag". */
+function subjectVocabulary(label: string | null | undefined): string | null {
+  if (!label) return null;
+  const f = fold(label);
+  return f.includes("library of congress") || f === "lcsh" ? "lcsh" : f === "tag" ? "tag" : f;
+}
+
+/** Great-circle distance in kilometres. */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const rad = Math.PI / 180;
+  const a = Math.sin(((lat2 - lat1) * rad) / 2) ** 2 +
+    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(((lon2 - lon1) * rad) / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+export function registerFacetTools(server: Server, tools: ToolMap): void {
   // === list_subjects ========================================================
-  server.registerTool(
+  tools.list_subjects = server.registerTool(
     "list_subjects",
     {
       title: "List subjects",
-      description: "Subject headings ranked by distinct research-item count. Includes former tags. Feed a heading into search_research_items.subject.",
-      annotations: annotate("List subjects"),
+      description: "Subject headings (LCSH or free tags) ranked by distinct research-item count. Feed a heading into search_research_items.subject.",
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
         keyword: z.string().max(1000).optional().describe("Substring filter on the subject heading"),
+        vocabulary: z.enum(["lcsh", "tag"]).optional().describe("Only Library of Congress headings or only free tags"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -66,8 +86,15 @@ export function registerFacetTools(server: Server): void {
       const offset = capOffset(args.offset);
       let ranked = store.cached("facets:subjects", () => countRefs(store.items, (it) => it.subjects));
       if (args.keyword) ranked = ranked.filter((r) => containsCI(r.label, args.keyword!));
+      if (args.vocabulary) ranked = ranked.filter((r) => subjectVocabulary(r.o_id != null ? store.getSubject(r.o_id)?.vocabulary : null) === args.vocabulary);
       return textResult(
-        pageOf(ranked, offset, limit, (r) => subjectEntry(r.label, r.o_id, r.count), {
+        pageOf(ranked, offset, limit, (r) => {
+          const authority = r.o_id != null ? store.getSubject(r.o_id) : undefined;
+          return {
+            ...subjectEntry(r.label, r.o_id, r.count),
+            ...(authority ? { vocabulary: subjectVocabulary(authority.vocabulary), ...(authority.uri ? { authority_uri: authority.uri } : {}) } : {}),
+          };
+        }, {
           distinct_subjects: ranked.length,
           ...limitEcho(args.limit, 300, limit),
           ...filtersEcho(args),
@@ -77,17 +104,19 @@ export function registerFacetTools(server: Server): void {
   );
 
   // === list_locations =======================================================
-  server.registerTool(
+  tools.list_locations = server.registerTool(
     "list_locations",
     {
       title: "List locations",
       description: "Research places with coordinates and ancestor rollups. One item can count under both city and country. Feed a name into search_research_items.location.",
-      annotations: annotate("List locations"),
-      _meta: { ui: { resourceUri: "ui://amira/map", visibility: ["model", "app"] } },
+      annotations: READ_ONLY,
+      _meta: MAP_UI_META,
       inputSchema: z.strictObject({
         filters: researchFilters.optional().describe("Research-item filters applied before place counts"),
-        country: z.string().max(1000).optional().describe("Narrow to one country: the country itself plus its cities/regions"),
+        country: z.string().max(1000).optional().describe("One country, exact name or alias, plus its cities"),
         keyword: z.string().max(1000).optional().describe("Substring filter on the place name"),
+        near: z.strictObject({ latitude: z.number(), longitude: z.number(), km: z.number().positive() }).optional().describe("Places within km of a point"),
+        bbox: z.array(z.number()).length(4).optional().describe("[west, south, east, north]"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -95,7 +124,8 @@ export function registerFacetTools(server: Server): void {
     async (args) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_locations");
-      if (invalidYearRange(args.filters?.year_from, args.filters?.year_to)) return errorResult("invalid_range", "year_from must be less than or equal to year_to.");
+      const refused = researchFilterError(args.filters ?? {});
+      if (refused) return queryErrorResult(refused);
       const limit = capLimit(args.limit, 50, 300);
       const offset = capOffset(args.offset);
 
@@ -129,8 +159,25 @@ export function registerFacetTools(server: Server): void {
       return [...counts.values()].sort((a, b) => b.count - a.count);
       };
       let ranked = Object.keys(args.filters ?? {}).length ? aggregate() : store.cached("facets:locations", aggregate);
-      if (args.country) ranked = ranked.filter((r) => containsCI(r.label, args.country!) || containsCI(r.country, args.country!));
+      if (args.country) {
+        // Exact country (with aliases): "Niger" no longer pulls in Lagos and Ibadan.
+        const names = placeAliases(args.country);
+        ranked = ranked.filter((r) => names.has(fold(r.country ?? r.label)));
+      }
       if (args.keyword) ranked = ranked.filter((r) => containsCI(r.label, args.keyword!));
+      if (args.near || args.bbox) {
+        ranked = ranked.filter((r) => {
+          const loc = r.o_id != null ? store.getLocation(r.o_id) : undefined;
+          if (loc?.latitude == null || loc.longitude == null) return false;
+          if (args.near && haversineKm(args.near.latitude, args.near.longitude, loc.latitude, loc.longitude) > args.near.km) return false;
+          if (args.bbox) {
+            const [west, south, east, north] = args.bbox as [number, number, number, number];
+            const inLon = west <= east ? loc.longitude >= west && loc.longitude <= east : loc.longitude >= west || loc.longitude <= east;
+            if (!inLon || loc.latitude < south || loc.latitude > north) return false;
+          }
+          return true;
+        });
+      }
 
       return textResult(
         pageOf(
@@ -141,12 +188,14 @@ export function registerFacetTools(server: Server): void {
             const loc = r.o_id != null ? store.getLocation(r.o_id) : undefined;
             return {
               name: r.label,
+              ...(r.o_id != null ? { id: String(r.o_id) } : {}),
               omeka_id: r.o_id,
               coordinate_scope: r.country ? "place" : "hierarchy_root",
               ...(r.country ? { country: r.country } : {}),
               item_count: r.count,
               latitude: loc?.latitude ?? null,
               longitude: loc?.longitude ?? null,
+              ...(loc?.wikidata ? { wikidata: loc.wikidata } : {}),
               amira_url: itemUrlOrNull(r.o_id),
             };
           },
@@ -155,7 +204,7 @@ export function registerFacetTools(server: Server): void {
             matched_items: selected.length,
             items_without_place: selected.filter((it) => !it.places.length).length,
             ...limitEcho(args.limit, 300, limit),
-            ...filtersEcho({ country: args.country, keyword: args.keyword, filters: args.filters }),
+            ...filtersEcho({ country: args.country, keyword: args.keyword, near: args.near, bbox: args.bbox, filters: args.filters }),
           },
         ),
       );
@@ -163,12 +212,12 @@ export function registerFacetTools(server: Server): void {
   );
 
   // === list_collections =====================================================
-  server.registerTool(
+  tools.list_collections = server.registerTool(
     "list_collections",
     {
       title: "List collections",
       description: "Omeka item sets ranked by research-item count, with catalogue links. Feed an ID into search_research_items.collection.",
-      annotations: annotate("List collections"),
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
         keyword: z.string().max(1000).optional().describe("Substring filter on the collection title"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
@@ -194,7 +243,8 @@ export function registerFacetTools(server: Server): void {
           ranked,
           offset,
           limit,
-          (r) => ({ collection: r.title, id: r.oId, item_count: r.count, amira_url: itemSetUrl(r.oId) }),
+          (r) => ({ collection: r.title, id: String(r.oId), omeka_id: r.oId, item_count: r.count,
+            iiif_collection: iiifCollectionUrl(r.oId), amira_url: itemSetUrl(r.oId) }),
           { distinct_collections: ranked.length, ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
         ),
       );
@@ -202,12 +252,12 @@ export function registerFacetTools(server: Server): void {
   );
 
   // === list_categories ======================================================
-  server.registerTool(
+  tools.list_categories = server.registerTool(
     "list_categories",
     {
       title: "List a category facet",
       description: "Ranked formats, languages or resource types used by research items. Feed values into the corresponding search filters.",
-      annotations: annotate("List category facet"),
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
         category: z
           .enum(["formats", "genres", "languages", "resource_types"])
@@ -269,7 +319,7 @@ export function registerFacetTools(server: Server): void {
   );
 
   // === list_years ===========================================================
-  server.registerTool(
+  tools.list_years = server.registerTool(
     "list_years",
     {
       title: "List years",
@@ -277,7 +327,7 @@ export function registerFacetTools(server: Server): void {
       // extension; ignored (plain JSON) everywhere else.
       _meta: TIMELINE_UI_META,
       description: "Research-item year/decade histogram with dated and undated counts. A date range counts in each spanned bucket. Supports shared item filters and pagination.",
-      annotations: annotate("List years"),
+      annotations: READ_ONLY,
       outputSchema: timelineSchema,
       inputSchema: z.strictObject({
         filters: researchFilters.optional().describe("Research-item filters applied before bucketing"),
@@ -296,8 +346,10 @@ export function registerFacetTools(server: Server): void {
       const limit = capLimit(args.limit, 200, 500);
       const offset = capOffset(args.offset);
       const { from, to } = args;
-      if (args.filters && !allowStructured()) return exposureRestrictedResult("structured", "Timeline filters");
-      if (invalidYearRange(args.filters?.year_from, args.filters?.year_to)) return errorResult("invalid_range", "year_from must be less than or equal to year_to.");
+      // The same gate as search_research_items: keyword and year filters stay
+      // available below `structured`, relational ones are refused.
+      const refused = researchFilterError(args.filters ?? {});
+      if (refused) return queryErrorResult(refused);
       if (from !== undefined && to !== undefined && from > to) {
         return errorResult("invalid_range", "`from` must be less than or equal to `to`.");
       }

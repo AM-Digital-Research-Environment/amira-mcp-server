@@ -20,8 +20,9 @@ The bridge in `src/ui/bridge.ts` uses the official handshake, initializes within
 10 seconds, times out tool calls after 15 seconds, handles partial host context
 updates, resizes to the host, and cancels pending work on teardown. Only explicitly
 allowlisted read-only server tools can be invoked. Tool errors use an `aria-live`
-status region. Links use `openLink`; citation files use `downloadFile`. A host may
-decline either action. All evidence required for research remains in ordinary
+status region. Links use `openLink`; citation files use `downloadFile` when the host
+advertises that capability (it is still a draft in the Apps specification), and are
+otherwise shown in a text box to copy. A host may decline either action. All evidence required for research remains in ordinary
 model-visible JSON; clients without Apps support retain the tools and citations.
 
 Graph lines distinguish explicit catalogue relationships from co-occurrence;

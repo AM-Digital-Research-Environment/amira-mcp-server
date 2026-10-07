@@ -1,10 +1,11 @@
+import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore } from "../data.js";
 import type { DataStore } from "../data.js";
-import type { OrganisationRec } from "../types.js";
+import type { OrganisationRec, ResearchItemRec } from "../types.js";
 import { allowStructured } from "../exposure.js";
 import {
-  annotate,
+  READ_ONLY,
   capLimit,
   capOffset,
   containsCI,
@@ -19,6 +20,9 @@ import {
   type Server,
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
+import { anyContainsCI } from "../matching.js";
+import { stripTypedId } from "../typedIds.js";
+import { fold } from "../text.js";
 
 type PartnerCategoryKey = "amrc" | "privileged" | "cooperation" | "global";
 
@@ -132,22 +136,44 @@ function projectCountFor(store: DataStore, org: OrganisationRec): number {
   ).length;
 }
 
-function contributedItems(store: DataStore, org: OrganisationRec) {
-  return store.items.filter((it) =>
-    it.contributors.some((c) => c.o_id === org.o_id || equalsCI(c.name, org.name)),
-  );
+/** Items crediting each organisation, by Omeka id and by folded name — built once
+ * per snapshot. list_groups used to rescan every item for every row (~250 ms). */
+function contributorIndex(store: DataStore): { byId: Map<number, ResearchItemRec[]>; byName: Map<string, ResearchItemRec[]> } {
+  return store.cached("org-contributions", () => {
+    const byId = new Map<number, ResearchItemRec[]>(), byName = new Map<string, ResearchItemRec[]>();
+    const push = <K>(map: Map<K, ResearchItemRec[]>, key: K, it: ResearchItemRec) => {
+      const list = map.get(key);
+      if (!list) map.set(key, [it]); else if (list[list.length - 1] !== it) list.push(it);
+    };
+    for (const it of store.items) {
+      for (const c of it.contributors) {
+        if (c.o_id != null) push(byId, c.o_id, it);
+        push(byName, fold(c.name), it);
+      }
+    }
+    return { byId, byName };
+  });
 }
 
-export function registerOrganizationTools(server: Server): void {
+function contributedItems(store: DataStore, org: OrganisationRec): ResearchItemRec[] {
+  const { byId, byName } = contributorIndex(store);
+  const found = new Set([...(byId.get(org.o_id) ?? []), ...(byName.get(fold(org.name)) ?? [])]);
+  return store.items.filter((it) => found.has(it));
+}
+
+const orgMatches = (o: OrganisationRec, keyword: string): boolean =>
+  containsCI(o.name, keyword) || anyContainsCI(o.alt_names, keyword);
+
+export function registerOrganizationTools(server: Server, tools: ToolMap): void {
   // === list_institutions ====================================================
-  server.registerTool(
+  tools.list_institutions = server.registerTool(
     "list_institutions",
     {
       title: "List institutions",
-      description: "Browse institution authorities by name, country or affiliation; returns citation links.",
-      annotations: annotate("List institutions"),
+      description: "Browse institution authorities by name or acronym (e.g. 'UJKZ'), with project counts and citation links.",
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
-        keyword: z.string().max(1000).optional(),
+        keyword: z.string().max(1000).optional().describe("Name or acronym, partial"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -158,7 +184,7 @@ export function registerOrganizationTools(server: Server): void {
       const limit = capLimit(args.limit, 50, 200);
       const offset = capOffset(args.offset);
       const filtered = store.organisations.filter(
-        (o) => o.kind === "institution" && (!args.keyword || containsCI(o.name, args.keyword)),
+        (o) => o.kind === "institution" && (!args.keyword || orgMatches(o, args.keyword)),
       );
       return textResult(
         pageOf(
@@ -167,6 +193,9 @@ export function registerOrganizationTools(server: Server): void {
           limit,
           (o) => ({
             name: o.name,
+            id: String(o.o_id),
+            omeka_id: o.o_id,
+            ...(o.alt_names?.length ? { name_variants: o.alt_names } : {}),
             project_count: projectCountFor(store, o),
             ...(partnerCategoriesFor(o).length > 0
               ? { partner_categories: partnerCategoriesFor(o).map((c) => c.name) }
@@ -181,20 +210,26 @@ export function registerOrganizationTools(server: Server): void {
   );
 
   // === get_institution ======================================================
-  server.registerTool(
+  tools.get_institution = server.registerTool(
     "get_institution",
     {
       title: "Get institution detail",
-      description: "Institution profile, members, funded projects and research connections, with citation links.",
-      annotations: annotate("Get institution detail"),
-      inputSchema: z.strictObject({ name: z.string().max(1000).describe("Institution name") }),
+      description: "Institution or group profile: identifiers, members, funded projects and credited items, with citation links.",
+      annotations: READ_ONLY,
+      inputSchema: z.strictObject({
+        name: z.string().max(1000).optional().describe("Institution or group name, or an acronym"),
+        id: z.union([z.string().max(64), z.number()]).optional().describe("Omeka id or typed id organisation:1224"),
+      }),
     },
-    async ({ name }) => {
+    async ({ name, id }) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_institution");
-      const record = store.getOrganisation(name);
+      if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
+      const record = id != null
+        ? store.getOrganisationByOId(Number(stripTypedId(String(id), ["organisation"])))
+        : store.getOrganisation(name!);
       if (!record) {
-        return errorResult("not_found", `No institution or group matching '${name}'.`, {
+        return errorResult("not_found", `No institution or group matching '${id ?? name}'.`, {
           suggested_tool: "list_institutions",
         });
       }
@@ -207,7 +242,10 @@ export function registerOrganizationTools(server: Server): void {
       );
 
       return textResult({
+        id: String(record.o_id),
+        omeka_id: record.o_id,
         name: record.name,
+        ...(record.alt_names?.length ? { name_variants: record.alt_names } : {}),
         kind: record.kind,
         part_of: (record.part_of ?? []).map((p) => ({
           id: p.o_id != null ? String(p.o_id) : null,
@@ -223,6 +261,7 @@ export function registerOrganizationTools(server: Server): void {
         })),
         ...(record.latitude != null ? { latitude: record.latitude, longitude: record.longitude } : {}),
         wikidata: record.wikidata,
+        identifiers: record.identifiers ?? [],
         project_count: projects.length,
         projects: projects.map((p) => ({ id: String(p.o_id), omeka_id: p.o_id, name: p.name })),
         affiliated_person_count: people.length,
@@ -237,12 +276,12 @@ export function registerOrganizationTools(server: Server): void {
   );
 
   // === list_cluster_partners ===============================================
-  server.registerTool(
+  tools.list_cluster_partners = server.registerTool(
     "list_cluster_partners",
     {
       title: "List cluster partner institutions",
       description: "Cluster partner institutions grouped by catalogue category, with citation links.",
-      annotations: annotate("List cluster partners"),
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
         category: z
           .string().max(1000)
@@ -290,14 +329,14 @@ export function registerOrganizationTools(server: Server): void {
   );
 
   // === list_groups ==========================================================
-  server.registerTool(
+  tools.list_groups = server.registerTool(
     "list_groups",
     {
       title: "List groups",
       description: "Browse research groups and associations by name, with citation links.",
-      annotations: annotate("List groups"),
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
-        keyword: z.string().max(1000).optional(),
+        keyword: z.string().max(1000).optional().describe("Name or acronym, partial"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -308,7 +347,7 @@ export function registerOrganizationTools(server: Server): void {
       const limit = capLimit(args.limit, 50, 200);
       const offset = capOffset(args.offset);
       const filtered = store.organisations.filter(
-        (o) => o.kind === "group" && (!args.keyword || containsCI(o.name, args.keyword)),
+        (o) => o.kind === "group" && (!args.keyword || orgMatches(o, args.keyword)),
       );
       return textResult(
         pageOf(
@@ -317,6 +356,8 @@ export function registerOrganizationTools(server: Server): void {
           limit,
           (g) => ({
             name: g.name,
+            id: String(g.o_id),
+            omeka_id: g.o_id,
             contributed_item_count: contributedItems(store, g).length,
             amira_url: itemUrl(g.o_id),
           }),

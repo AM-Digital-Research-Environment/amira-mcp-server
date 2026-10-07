@@ -4,6 +4,14 @@ name: Release
 # API) and attach it to a GitHub Release. Triggered by pushing a version tag
 # (e.g. `git tag v1.0.0 && git push --tags`); also runs on demand for a build
 # sanity check (artifact only, no release).
+#
+# Least privilege: the workflow token is read-only by default. Only `publish`
+# (release upload, provenance, CITATION.cff bump) can write, and only
+# `publish-registry` can mint an OIDC token for the MCP Registry. The build job
+# that runs `npm ci`, the crawl and the tests never sees a write token.
+#
+# Every action is pinned to a full commit SHA; the trailing comment names the
+# release. Dependabot (github-actions ecosystem) bumps both together.
 
 on:
   push:
@@ -11,14 +19,32 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release:
+  build:
+    name: Build, test and pack
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tag matches package.json version
+        if: github.ref_type == 'tag'
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$pkg" != "$tag" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${pkg}. Bump package.json and manifest.json, then re-tag."
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches package.json ${pkg}."
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "26"
           cache: npm
@@ -41,12 +67,15 @@ jobs:
           fi
       - name: Build data snapshot from the public Omeka S API
         run: npm run fetch-data
-      - name: Unit tests
-        run: npm test
-      - name: Live API tests
-        run: npm run test:live
-      - name: Type-check, bundle, smoke-test
+      # The single release gate: clean, typecheck, skills check, build + unit
+      # tests, stdio and HTTP smoke, response weight, manifest. Unit tests run
+      # here only, not in a separate step as well.
+      - name: Type-check, bundle, unit + smoke tests
         run: npm run prepack-mcpb
+      # Reuses the bundle prepack-mcpb just built instead of `npm run
+      # test:live`, which would rebuild it a third time.
+      - name: Live API tests
+        run: node scripts/test.mjs live
       - name: Pack .mcpb
         run: node scripts/mcpb.mjs pack . amira-mcp-server.mcpb
       - name: Pack companion skill
@@ -54,41 +83,73 @@ jobs:
         # unzip it straight into their Claude skills dir (~/.claude/skills/).
         run: (cd .claude/skills && zip -r "$GITHUB_WORKSPACE/amira-mcp-skill.zip" amira-mcp)
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: amira-mcp-server-mcpb
           path: |
             amira-mcp-server.mcpb
             amira-mcp-skill.zip
           if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # create/upload the release, push the CITATION.cff bump
+      id-token: write # Sigstore signing certificate for the attestation
+      attestations: write # store the build-provenance attestation
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: amira-mcp-server-mcpb
+          path: dist
+      # SLSA build provenance for both release assets. Replaces MCPB signing,
+      # which was dropped with the vulnerable node-forge stack. Verify with:
+      #   gh attestation verify amira-mcp-server.mcpb -R AM-Digital-Research-Environment/amira-mcp-server
+      # actions/attest is what actions/attest-build-provenance v4 wraps; with
+      # no predicate inputs it produces the same SLSA provenance.
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            dist/amira-mcp-server.mcpb
+            dist/amira-mcp-skill.zip
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           # Uses a PAT/App secret if present, else the default token (which needs
           # org "Read and write" workflow permissions to publish releases).
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
-            gh release upload "${{ github.ref_name }}" amira-mcp-server.mcpb amira-mcp-skill.zip --clobber
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/amira-mcp-server.mcpb dist/amira-mcp-skill.zip --clobber
           else
-            gh release create "${{ github.ref_name }}" amira-mcp-server.mcpb amira-mcp-skill.zip \
-              --title "${{ github.ref_name }} — AMIRA MCP server" \
+            gh release create "$GITHUB_REF_NAME" dist/amira-mcp-server.mcpb dist/amira-mcp-skill.zip \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME — AMIRA MCP server" \
               --generate-notes
           fi
 
-      # The stamp above only reached the packed artifact; the checkout is
-      # detached at the tag. GitHub's "Cite this repository" button reads the
-      # file on the default branch, so main needs the same edit. Separate
-      # checkout, because main may have moved on since the tag.
-      - name: Carry the stamped CITATION.cff back to main
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/checkout@v7
+      # The stamp in `build` only reached the packed artifact; that checkout
+      # was detached at the tag. GitHub's "Cite this repository" button reads
+      # the file on the default branch, so main needs the same edit. Separate
+      # checkout of main, because main may have moved on since the tag.
+      # persist-credentials stays at its default (true) here on purpose: the
+      # step below pushes to main with exactly these checkout credentials.
+      - name: Check out main for the CITATION.cff bump
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           path: main-checkout
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
       - name: Commit CITATION.cff to main
-        if: startsWith(github.ref, 'refs/tags/')
         working-directory: main-checkout
         run: |
           node scripts/stamp-citation.mjs \
@@ -109,3 +170,53 @@ jobs:
             echo "::warning::Could not push the CITATION.cff bump to main. Run 'npm run stamp-citation' locally and commit it."
             exit 0
           }
+
+  # MCP Registry listing (https://registry.modelcontextprotocol.io, preview).
+  # Non-blocking: the registry is in preview and a failure here must not red a
+  # release whose assets already shipped. GitHub OIDC grants the
+  # io.github.AM-Digital-Research-Environment/* namespace to workflows of this
+  # repository's owner; no secret is involved.
+  publish-registry:
+    name: Publish to the MCP Registry (non-blocking)
+    needs: publish
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: read
+      id-token: write # mcp-publisher login github-oidc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: amira-mcp-server-mcpb
+          path: dist
+      # server.json in git describes the last release; point it at this one:
+      # version from the tag, the .mcpb release-asset URL and its SHA-256
+      # (clients verify the hash before installing).
+      - name: Stamp server.json for this release
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/amira-mcp-server.mcpb"
+          sha=$(sha256sum dist/amira-mcp-server.mcpb | cut -d' ' -f1)
+          jq --arg v "$version" --arg url "$url" --arg sha "$sha" '
+            .version = $v
+            | .packages |= map(if .registryType == "mcpb" then .identifier = $url | .fileSha256 = $sha else . end)
+          ' server.json > server.json.tmp
+          mv server.json.tmp server.json
+          cat server.json
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher --version || true
+      - name: Validate server.json
+        run: ./mcp-publisher validate
+      - name: Authenticate to the MCP Registry
+        run: ./mcp-publisher login github-oidc
+      - name: Publish to the MCP Registry
+        run: ./mcp-publisher publish

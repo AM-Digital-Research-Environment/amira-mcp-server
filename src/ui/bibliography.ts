@@ -16,8 +16,8 @@ async function exportSelection(){
       batch.forEach(function(p){entries.push(format==='csl-json'?p.csl_json:p[format]);});
     }
     var text=format==='csl-json'?JSON.stringify(entries,null,2):entries.join('\n\n');
-    await api.download(text,format==='bibtex'?'bib':format==='ris'?'ris':'json');
-    api.status('Exported ' + entries.length + ' selected publications.');
+    var how=await api.download(text,format==='bibtex'?'bib':format==='ris'?'ris':'json');
+    api.status(how==='shown' ? 'This host cannot save files: the ' + entries.length + ' citations are shown below to copy.' : 'Exported ' + entries.length + ' selected publications.');
   }catch(error){api.status(error.message);}finally{button.disabled=selected.size===0;}
 }
 function selection(){var count=document.getElementById('selection-count');count.textContent=selected.size + ' selected (maximum 25)';document.getElementById('export-selected').disabled=!selected.size;}

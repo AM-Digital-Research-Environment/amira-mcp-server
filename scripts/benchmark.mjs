@@ -1,19 +1,18 @@
 // Offline, sequential MCP round trips against the bundled snapshot. This is
 // a local latency baseline, not an HTTP load test or a retrieval-quality eval.
 import { performance } from "node:perf_hooks";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { hermeticEnv } from "../test/helpers/env.mjs";
 
 const iterations = Number(process.env.AMIRA_BENCH_ITERATIONS ?? 30);
 if (!Number.isInteger(iterations) || iterations < 5 || iterations > 1000) {
   throw new Error("AMIRA_BENCH_ITERATIONS must be an integer between 5 and 1000");
 }
-const cache = await mkdtemp(path.join(tmpdir(), "amira-benchmark-"));
-process.env.AMIRA_LIVE_REFRESH = "0";
-process.env.AMIRA_CACHE_DIR = cache;
-process.env.AMIRA_DATA_DIR ??= fileURLToPath(new URL("../data", import.meta.url));
+// Hermetic before the bundle loads: every AMIRA_* cleared (iterations were
+// read above), live refresh off, a throwaway cache removed on exit, and the
+// shipped data/ snapshot measured — never ~/.amira-mcp/cache.
+hermeticEnv();
+process.env.AMIRA_DATA_DIR = fileURLToPath(new URL("../data", import.meta.url));
 process.env.AMIRA_EXPOSURE = "full";
 
 const { createAmiraServer, ensureStore } = await import("../server/lib.js");
@@ -73,5 +72,4 @@ try {
 } finally {
   await client.close();
   await server.close();
-  await rm(cache, { recursive: true, force: true });
 }

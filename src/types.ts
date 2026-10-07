@@ -15,6 +15,27 @@ export interface Contributor {
   name: string;
   role: string;
   o_id: number | null;
+  /** v5: the `dcterms:isPartOf` value annotation — affiliation at the time of the credit. */
+  affiliation?: LinkedRef | null;
+}
+
+/** v5: an authority identifier from a `dcterms:identifier` URI (GND, ORCID, VIAF, Wikidata, LCSH, …). */
+export interface AuthorityId {
+  scheme: string;
+  id: string;
+  url: string;
+}
+
+/** v5: one Omeka media record attached to an item (from /api/media). */
+export interface MediaRec {
+  o_id: number;
+  /** MIME type, e.g. "image/webp", "application/pdf", "audio/mpeg". */
+  type: string | null;
+  /** o:original_url — the file on the AMIRA server, when one was ingested. */
+  url: string | null;
+  /** o:source — the upstream file or page the media was ingested from. */
+  source: string | null;
+  size: number | null;
 }
 
 export interface PersonRec {
@@ -23,6 +44,10 @@ export interface PersonRec {
   name: string;
   /** dcterms:isPartOf → Organisation items. */
   affiliations: LinkedRef[];
+  /** v5: dcterms:identifier URIs (GND, ORCID, VIAF, Wikidata…). */
+  identifiers?: AuthorityId[];
+  /** v5: dcterms:alternative name variants. */
+  alt_names?: string[];
 }
 
 export interface OrganisationRec {
@@ -36,6 +61,10 @@ export interface OrganisationRec {
   longitude: number | null;
   /** dcterms:identifier (Wikidata URI) when reconciled. */
   wikidata: string | null;
+  /** v5: dcterms:alternative — acronyms and name variants ("UJKZ"). */
+  alt_names?: string[];
+  /** v5: every dcterms:identifier URI. */
+  identifiers?: AuthorityId[];
 }
 
 export interface LocationRec {
@@ -46,6 +75,8 @@ export interface LocationRec {
   /** dcterms:isPartOf → parent location (region → country chain). */
   parent: LinkedRef | null;
   wikidata: string | null;
+  /** v5: dcterms:type label, e.g. "Country" or "Geographic location". */
+  place_type?: string | null;
 }
 
 export interface ProjectRec {
@@ -67,6 +98,8 @@ export interface ProjectRec {
   url: string | null;
   /** Derived from the dre:id prefix. */
   university: University;
+  /** v5: dcterms:alternative name variants and acronyms. */
+  alt_names?: string[];
 }
 
 export interface SectionRec {
@@ -131,10 +164,14 @@ export interface ResearchItemRec {
   sponsors: string[];
   /** dcterms:provenance — holding/source institution or place. */
   provenance: string[];
+  /** v5: the same provenance values as links (an institution with its own record). */
+  provenance_refs?: LinkedRef[];
   access_rights: string[];
   license: string | null;
   /** dcterms:identifier literals (local ids etc.). */
   identifiers: string[];
+  /** v5: the same identifiers with their annotated type ("Locally defined identifier", …). */
+  typed_identifiers?: { value: string; type: string | null }[];
   doi: string | null;
   /** fabio:hasURL external links. */
   urls: string[];
@@ -152,6 +189,15 @@ export interface ResearchItemRec {
   item_sets: number[];
   /** Derived from the parent project's dre:id prefix. */
   university: University;
+  /** v5: o:created / o:modified record timestamps (ISO). */
+  created?: string | null;
+  modified?: string | null;
+  /** v5: dcterms:extent, e.g. "126 KB", "3 photographs". */
+  extent?: string | null;
+  /** v5: dre:rdspaceHandle — the research-data repository handle. */
+  rdspace_handle?: string | null;
+  /** v5: attached media files. */
+  media?: MediaRec[];
 }
 
 export interface ItemSetRec {
@@ -216,6 +262,13 @@ export interface PublicationRec {
   has_media: boolean;
   /** Large thumbnail of the attached PDF, when present. */
   thumbnail: string | null;
+  /** v5: every bibo:abstract with its language tag (only the first is in `abstract`). */
+  abstracts?: { lang: string | null; text: string }[];
+  /** v5: every dcterms:language value (only the first is in `language`). */
+  languages?: string[];
+  created?: string | null;
+  modified?: string | null;
+  media?: MediaRec[];
 }
 
 /** A publication venue (Journal authority item, template 23 / set 41268). */
@@ -247,6 +300,13 @@ export interface PodcastRec {
   /** bibo:content — full transcript when present (43/43 filled in the refreshed 2026-06 snapshot). */
   transcript: string | null;
   languages: LinkedRef[];
+  /** v5: dcterms:extent ISO 8601 duration, e.g. "PT21M35S". */
+  duration?: string | null;
+  /** v5: the `dre:generatedBy` annotation on the transcript — the model that produced it. */
+  transcript_generated_by?: LinkedRef | null;
+  created?: string | null;
+  modified?: string | null;
+  media?: MediaRec[];
 }
 
 export interface VideoRec {
@@ -264,6 +324,14 @@ export interface VideoRec {
   url: string | null;
   /** bibo:content — full transcript when present (most videos filled as of 2026-06). */
   transcript: string | null;
+  /** v5: large thumbnail. */
+  thumbnail?: string | null;
+  /** v5: dcterms:extent duration when catalogued. */
+  duration?: string | null;
+  /** v5: `dre:generatedBy` on the transcript, when annotated. */
+  transcript_generated_by?: LinkedRef | null;
+  created?: string | null;
+  modified?: string | null;
 }
 
 export interface PlaylistRec {
@@ -282,6 +350,16 @@ export interface LanguageRec {
   code: string | null;
 }
 
+/** v5: a subject authority (item set 1852): a curated LCSH heading or a free tag. */
+export interface SubjectRec {
+  o_id: number;
+  name: string;
+  /** dcterms:type label, e.g. "Library of Congress Subject Headings" or "Tag". */
+  vocabulary: string | null;
+  /** dcterms:identifier URI, e.g. an id.loc.gov authority. */
+  uri: string | null;
+}
+
 /** Corpus-name → record-array map, mirrored by the snapshot's file layout. */
 export interface SnapshotData {
   persons: PersonRec[];
@@ -297,6 +375,8 @@ export interface SnapshotData {
   playlists: PlaylistRec[];
   languages: LanguageRec[];
   item_sets: ItemSetRec[];
+  /** v5. Empty when a v4 snapshot is loaded. */
+  subjects: SubjectRec[];
 }
 
 export const CORPORA = [
@@ -313,6 +393,7 @@ export const CORPORA = [
   "playlists",
   "languages",
   "item_sets",
+  "subjects",
 ] as const;
 export type CorpusName = (typeof CORPORA)[number];
 
@@ -330,5 +411,11 @@ export interface SnapshotManifest {
   counts: Record<CorpusName, number>;
 }
 
-/** v4: publication fulltext/venue_ref/status/funders/media + journals corpus. */
-export const SNAPSHOT_SCHEMA_VERSION = 4;
+/** v5: subjects corpus, media records, record timestamps, authority identifiers,
+ * alternative names, value annotations (affiliation at the time, transcript
+ * provenance, identifier types), all abstracts and languages. */
+export const SNAPSHOT_SCHEMA_VERSION = 5;
+/** Oldest snapshot schema the loader still serves; v5 fields are then absent. */
+export const MIN_SNAPSHOT_SCHEMA_VERSION = 4;
+/** Corpora a v4 snapshot does not carry. */
+export const V5_CORPORA: readonly CorpusName[] = ["subjects"];

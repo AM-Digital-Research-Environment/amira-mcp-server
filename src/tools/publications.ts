@@ -1,3 +1,4 @@
+import type { ToolMap } from "./policy.js";
 // The cluster bibliography (ERef/EPub harvest) + the Journal venue authority.
 // Open-access publications carry extracted PDF full text (bibo:content):
 // searchable here (with a match snippet), never included in summaries, and
@@ -7,7 +8,7 @@ import { ensureStore } from "../data.js";
 import type { LinkedRef } from "../types.js";
 import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
 import {
-  annotate,
+  READ_ONLY,
   capLimit,
   capOffset,
   capText,
@@ -27,22 +28,27 @@ import {
 } from "./_shared.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
 import { publicationCitation } from "../publicationCitation.js";
-import { publicationExportPage } from "../publicationExport.js";
-import { publicationFilters, publicationFilterError, selectPublications } from "../publicationQuery.js";
+import { publicationExportPage } from "./publicationExport.js";
+import { languagesOf, publicationFilters, publicationFilterError, selectPublications } from "../publicationQuery.js";
+import { queryErrorResult } from "./responses.js";
+import { exportLink, EXPORT_FORMATS } from "../resources.js";
+import { stripTypedId } from "../typedIds.js";
 import { fold } from "../text.js";
+import { BIBLIOGRAPHY_UI_META } from "./apps.js";
 
-export function registerPublicationTools(server: Server): void {
+export function registerPublicationTools(server: Server, tools: ToolMap): void {
   // === search_publications ==================================================
-  server.registerTool(
+  tools.search_publications = server.registerTool(
     "search_publications",
     {
       title: "Search publications",
-      description: "AND-filtered bibliography, newest first. Keyword includes PDF text and returns match snippets. citation_format exports whole records (max 25 per page); follow next_offset. Cite amira_url.",
-      annotations: annotate("Search publications"),
-      _meta: { ui: { resourceUri: "ui://amira/bibliography", visibility: ["model", "app"] } },
+      description: "AND-filtered bibliography, newest first. Keyword includes PDF text and returns match snippets. citation_format returns citations per page; export links every match as one file. Cite amira_url.",
+      annotations: READ_ONLY,
+      _meta: BIBLIOGRAPHY_UI_META,
       inputSchema: z.strictObject({
         ...publicationFilters,
-        citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Omit for summaries; export results contain bibtex, ris or csl_json"),
+        citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Omit for summaries; pages carry bibtex, ris or csl_json"),
+        export: z.enum(EXPORT_FORMATS.publications).optional().describe("Return a file link instead of rows"),
         limit: z.number().int().min(1).optional().describe("Default 25; max 100 summaries or 25 exports, also byte-bounded"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -52,12 +58,13 @@ export function registerPublicationTools(server: Server): void {
       const maxLimit = args.citation_format ? 25 : 100;
       const limit = capLimit(args.limit, 25, maxLimit);
       const offset = capOffset(args.offset);
-      const invalid = publicationFilterError(args);
-      if (invalid) return invalid;
-      const { records: filtered, fulltextOnly } = selectPublications(store, args);
+      const { citation_format, export: format, limit: _l, offset: _o, ...filters } = args;
+      const invalid = publicationFilterError(filters);
+      if (invalid) return queryErrorResult(invalid);
+      const { records: filtered, fulltextOnly } = selectPublications(store, filters);
+      if (format) return exportLink("publications", format, filters, filtered.length);
 
       filtered.sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title) || a.o_id - b.o_id);
-      const { citation_format, ...filters } = args;
       const extra = { ...limitEcho(args.limit, maxLimit, limit), ...filtersEcho(filters) };
       if (citation_format) return publicationExportPage(filtered, offset, limit, citation_format, extra);
 
@@ -77,14 +84,14 @@ export function registerPublicationTools(server: Server): void {
   );
 
   // === get_publication ======================================================
-  server.registerTool(
+  tools.get_publication = server.registerTool(
     "get_publication",
     {
       title: "Get publication detail",
       description: "Publication metadata and citation export (BibTeX default). Full text is opt-in and paginated. Cite amira_url; DOI/repository links are additional sources.",
-      annotations: annotate("Get publication detail"),
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
-        id: z.union([z.string().max(1000), z.number()]).describe("Publication Omeka o:id (legacy publication keys also work)"),
+        id: z.union([z.string().max(1000), z.number()]).describe("Publication Omeka id or typed id publication:29919"),
         citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Default bibtex; selects bibtex, ris or csl_json field"),
         include_fulltext: z.boolean().optional().describe("Default false — set true to include the extracted full text"),
         fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
@@ -93,7 +100,7 @@ export function registerPublicationTools(server: Server): void {
     },
     async ({ id, citation_format, include_fulltext, fulltext_offset, fulltext_max_chars }) => {
       const store = await ensureStore();
-      const p = store.getPublication(String(id));
+      const p = store.getPublication(stripTypedId(String(id), ["publication"]));
       if (!p) {
         return errorResult("not_found", `No publication with id '${id}'.`, { suggested_tool: "search_publications" });
       }
@@ -148,13 +155,20 @@ export function registerPublicationTools(server: Server): void {
         issn: p.issn,
         status: p.status,
         language: p.language,
+        languages: languagesOf(p),
         abstract: allowDescriptive() && p.abstract ? capText(p.abstract).text : null,
+        // Every abstract with its language tag; the first alone hid 46 non-English ones.
+        ...(allowDescriptive() && (p.abstracts?.length ?? 0) > 1
+          ? { abstracts: p.abstracts!.map((a) => ({ lang: a.lang, text: capText(a.text).text })) }
+          : {}),
         url: p.doi ?? p.urls[0] ?? null,
         repository_urls: p.urls,
         external_links: p.external_links ?? [],
         identifiers: p.identifiers ?? [p.pub_id],
         has_media: p.has_media,
+        media: (p.media ?? []).map((m) => ({ type: m.type, url: m.url, size: m.size })),
         thumbnail: p.thumbnail,
+        created: p.created ?? null,
         ...textWindowFields("fulltext", p.fulltext, {
           include: include_fulltext,
           offset: fulltext_offset,
@@ -167,12 +181,12 @@ export function registerPublicationTools(server: Server): void {
   );
 
   // === list_publication_facets ==============================================
-  server.registerTool(
+  tools.list_publication_facets = server.registerTool(
     "list_publication_facets",
     {
       title: "Publication facets",
       description: "Ranked facets for the entire filtered bibliography before pagination. Uses the same selection rules as search_publications.",
-      annotations: annotate("Publication facets"),
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
         facet: z.enum(["type", "year", "language", "subject", "author", "venue"]),
         ...publicationFilters,
@@ -191,6 +205,7 @@ export function registerPublicationTools(server: Server): void {
         filters: z.record(z.string(), z.unknown()).optional(),
         requested_limit: z.number().optional(),
         effective_limit: z.number().optional(),
+        response_limited: z.boolean().optional(),
         results: z.array(z.object({
           value: z.string(),
           publication_count: z.number(),
@@ -198,12 +213,13 @@ export function registerPublicationTools(server: Server): void {
         })),
       }),
     },
-    async ({ facet, ...args }) => {
+    async ({ facet, limit: rawLimit, offset: rawOffset, ...filters }) => {
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_publication_facets");
-      const invalid = publicationFilterError(args);
-      if (invalid) return invalid;
+      const args = { ...filters, limit: rawLimit, offset: rawOffset };
+      const invalid = publicationFilterError(filters);
+      if (invalid) return queryErrorResult(invalid);
       const store = await ensureStore();
-      const { records } = selectPublications(store, args);
+      const { records } = selectPublications(store, filters);
       const buckets = new Map<string, { value: string; publication_count: number; amira_url?: string }>();
       let missing = 0;
       for (const p of records) {
@@ -212,6 +228,7 @@ export function registerPublicationTools(server: Server): void {
           : facet === "subject" ? p.subjects
           : facet === "venue" ? p.venue_ref ? [p.venue_ref] : literal(p.venue)
           : facet === "year" ? literal(p.year == null ? null : String(p.year))
+          : facet === "language" ? languagesOf(p).map((label) => ({ label, o_id: null }))
           : literal(p[facet]);
         const seen = new Set<string>();
         for (const ref of refs) {
@@ -229,18 +246,18 @@ export function registerPublicationTools(server: Server): void {
       const limit = capLimit(args.limit, 25, 100);
       return textResult(pageOf(ranked, capOffset(args.offset), limit, (r) => r, {
         facet, total_publications: records.length, missing_values: missing,
-        ...limitEcho(args.limit, 100, limit), ...filtersEcho(args),
+        ...limitEcho(args.limit, 100, limit), ...filtersEcho(filters),
       }));
     },
   );
 
   // === list_journals ========================================================
-  server.registerTool(
+  tools.list_journals = server.registerTool(
     "list_journals",
     {
       title: "List journals",
       description: "Publication venues ranked by linked bibliography records, with ISSN and catalogue links.",
-      annotations: annotate("List journals"),
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
         keyword: z.string().max(1000).optional().describe("Substring filter on the journal title"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),

@@ -192,9 +192,20 @@ function joinSegments(segments: (string | null | undefined)[]): string {
 
 // --- export formats ----------------------------------------------------------
 
-/** BibTeX braces are markup; corporate names are brace-protected instead, so
- * "Institute of African and Diaspora Studies" is not split on its " and ". */
-const escBibtex = (s: string) => s.replace(/[{}]/g, "");
+/** Characters LaTeX reads as commands; unescaped, "Opera & Music Theatre" or
+ * "Bio_Ökonomie" broke compilation of an exported .bib file. */
+const LATEX_SPECIALS: Record<string, string> = {
+  "\\": "\\textbackslash{}", "&": "\\&", "%": "\\%", "$": "\\$", "#": "\\#", "_": "\\_",
+  "~": "\\textasciitilde{}", "^": "\\textasciicircum{}",
+};
+
+/** BibTeX field text: braces are markup (dropped), LaTeX specials escaped.
+ * Corporate names are brace-protected instead, so "Institute of African and
+ * Diaspora Studies" is not split on its " and ". */
+export const escBibtex = (s: string): string =>
+  s.replace(/[{}]/g, "").replace(/[\\&%$#_~^]/g, (c) => LATEX_SPECIALS[c]!);
+/** URLs and DOIs stay verbatim (the url/doi packages read them raw); only braces go. */
+export const rawBibtex = (s: string): string => s.replace(/[{}]/g, "");
 export const bibtexName = (name: string) => (name.includes(",") ? escBibtex(name) : `{${escBibtex(name)}}`);
 
 function toBibtex(
@@ -207,7 +218,7 @@ function toBibtex(
   const entry = BIBTEX_ENTRY[lower(it.type)] ?? "misc";
   const lines: string[] = [];
   const add = (k: string, v: string | null | undefined) => {
-    if (v) lines.push(`  ${k} = {${escBibtex(v)}}`);
+    if (v) lines.push(`  ${k} = {${(k === "url" || k === "doi" ? rawBibtex : escBibtex)(v)}}`);
   };
   if (credits.length) lines.push(`  author = {${credits.map((c) => bibtexName(c.name)).join(" and ")}}`);
   add("title", it.title);

@@ -1,5 +1,6 @@
-import type { McpServer, RegisteredTool } from "@modelcontextprotocol/server";
-
+// Deployment profiles: smaller tool surfaces for hosts that pay for every tool
+// definition on every turn. `full` (the default) registers everything. Removal
+// happens in tools/policy.ts through the SDK's public `RegisteredTool.remove()`.
 export const TOOL_PROFILES = {
   full: null,
   research: ["get_collection_overview", "search_research_items", "get_research_item", "search_projects", "get_project",
@@ -13,21 +14,15 @@ export const TOOL_PROFILES = {
     "compare_collections", "get_data_quality", "search", "fetch"],
 } as const;
 export type ToolProfile = keyof typeof TOOL_PROFILES;
+
 export function resolveToolProfile(value = process.env.AMIRA_TOOL_PROFILE ?? "full"): ToolProfile {
-  if (!Object.hasOwn(TOOL_PROFILES, value)) throw new Error("AMIRA_TOOL_PROFILE must be full, research, discovery or visualization");
-  return value as ToolProfile;
+  const profile = value.trim() || "full";
+  if (!Object.hasOwn(TOOL_PROFILES, profile)) throw new Error("AMIRA_TOOL_PROFILE must be full, research, discovery or visualization");
+  return profile as ToolProfile;
 }
 
-// Concise discovery text. Detailed workflow guidance lives in the companion skill;
-// input schemas retain matching, pagination and opt-in semantics.
-/** Use only the SDK's public registration/disable API, before connecting. */
-export function configureToolRegistration(server: McpServer, profile: ToolProfile): void {
-  const register = server.registerTool;
-  const allowed = TOOL_PROFILES[profile] as readonly string[] | null;
-  server.registerTool = ((...args: Parameters<McpServer["registerTool"]>) => {
-    const [name] = args;
-    const registered = Reflect.apply(register, server, args) as RegisteredTool;
-    if (allowed && !allowed.includes(name)) registered.disable();
-    return registered;
-  }) as McpServer["registerTool"];
+/** Tool names a profile keeps, or null for every tool. */
+export function allowedTools(profile: ToolProfile): ReadonlySet<string> | null {
+  const names = TOOL_PROFILES[profile] as readonly string[] | null;
+  return names ? new Set(names) : null;
 }

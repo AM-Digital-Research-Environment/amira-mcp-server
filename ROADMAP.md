@@ -1,6 +1,22 @@
 # Roadmap — amira-mcp-server
 
-## Implemented — October 2026
+## Implemented — 6 October 2026
+
+Version **1.19.0** implements the [6 October review](docs/review-2026-10-06.md),
+except WissKI links and licence/access-rights filters, which were set aside.
+Matching fixes: exact countries with aliases, exact-then-prefix places, typed ids in
+either vocabulary, full-name person resolution, typographic folding, trimmed
+arguments, multi-word keywords, BibTeX escaping. Protocol and host fit: instructions
+under Claude Code's 2,048-character cut, text-only errors, page and graph size
+budgets, always-loaded entry tools, profile-aware apps, rate limiting per real client
+behind a proxy. New capabilities: snapshot schema v5 (subjects corpus, media, record
+timestamps, authority identifiers, name variants, value annotations, every abstract),
+five prompts with argument completion, record/dataset/export resources, IIIF links,
+`has_media` and `added_since`/`modified_since` filters, collaborators, geographic
+place filters, corpus-interleaved ranking. CI, packaging and test hermeticity were
+hardened. See the [implementation report](docs/implementation-2026-10-06.md).
+
+## Implemented — 5 October 2026
 
 Version **1.18.0** implements the [October review](docs/review-2026-10-05.md):
 shared query/index refactors, durable source-specific snapshots, six research tools,
@@ -44,14 +60,20 @@ below. The historical progress log records earlier releases and their datasets.
 
 ## Next priorities
 
-1. **Retrieval effectiveness.** Build a blind multilingual evaluation with judged
-   answers and citations before replacing the measured substring/term ranker with
-   BM25 or semantic search. The current fixture tests cover deterministic retrieval
-   and identity contracts, not real-world recall or researcher judgments.
-2. **Operational validation.** Exercise the new Linux/Windows/Node matrix and
+1. **Deploy 1.19.** The public endpoint still served 1.17.0 on 6 October. Tag
+   v1.19.0, run `deploy/amira/update-amira-mcp.sh v1.19.0` in `omeka-s-docker`
+   (whose compose file now enables `AMIRA_TRUST_PROXY`), then reconnect the ChatGPT
+   connector so it re-reads the tool schemas.
+2. **Retrieval effectiveness.** Build a blind multilingual evaluation with judged
+   answers and citations. 1.19 changed the ranker (word-start matching, IDF,
+   corpus interleaving, German/Portuguese stopwords) and keyword filters (all words
+   must match); measure those against judged queries before BM25 or semantic search.
+   The current fixture tests cover deterministic retrieval and identity contracts,
+   not real-world recall or researcher judgments.
+3. **Operational validation.** Exercise the new Linux/Windows/Node matrix and
    container health job in CI, then validate supported production MCP Apps hosts.
    Local browser previews emulate host RPC; they do not certify every host.
-3. **Scale when evidence warrants it.** Profile larger corpora and long-running
+4. **Scale when evidence warrants it.** Profile larger corpora and long-running
    export workloads before adding databases, search services, background task
    protocols or authenticated features to this public read-only server.
 

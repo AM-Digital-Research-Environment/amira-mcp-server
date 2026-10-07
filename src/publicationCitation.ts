@@ -2,7 +2,7 @@
 // names and venues respect the same exposure policy as the detail JSON.
 import type { PublicationRec } from "./types.js";
 import { allowStructured } from "./exposure.js";
-import { bibtexName, cslName, type CitationFormat, type GeneratedCitation } from "./citation.js";
+import { bibtexName, cslName, escBibtex, rawBibtex, type CitationFormat, type GeneratedCitation } from "./citation.js";
 import { itemUrl } from "./urls.js";
 
 const BIBTEX_ENTRY: Record<string, string> = {
@@ -30,6 +30,13 @@ const BIBTEX_ENTRY: Record<string, string> = {
   bachelors_thesis: "misc",
 };
 
+/** `type` field text for types BibTeX has no entry for (printed by most styles). */
+const BIBTEX_TYPE_LABELS: Record<string, string> = {
+  habilitation: "Habilitation thesis",
+  bachelors_thesis: "Bachelor's thesis",
+  translation: "Translation",
+};
+
 /** Types whose venue is a periodical (BibTeX `journal`) rather than a book. */
 const VENUE_IS_JOURNAL = new Set(["article", "book_review", "newspaper_article"]);
 /** Types whose venue is the containing volume (BibTeX `booktitle`). */
@@ -43,10 +50,9 @@ const VENUE_IS_BOOKTITLE = new Set([
 /** Minimal BibTeX from the structured fields (Omeka carries no raw BibTeX). */
 export function publicationBibtex(p: PublicationRec): string {
   const entry = BIBTEX_ENTRY[p.type] ?? "misc";
-  const esc = (s: string) => s.replace(/[{}]/g, "");
   const lines: string[] = [];
   const add = (k: string, v: string | null | undefined) => {
-    if (v) lines.push(`  ${k} = {${esc(v)}}`);
+    if (v) lines.push(`  ${k} = {${(k === "url" || k === "doi" ? rawBibtex : escBibtex)(v)}}`);
   };
   if (allowStructured()) {
     for (const [role, refs] of [["author", p.authors], ["editor", p.editors]] as const) {
@@ -69,7 +75,8 @@ export function publicationBibtex(p: PublicationRec): string {
   add("issn", p.issn);
   add("url", p.doi ?? p.urls[0]);
   add("note", publicationNote(p));
-  if (["habilitation", "bachelors_thesis", "translation"].includes(p.type)) add("type", p.type);
+  const typeLabel = BIBTEX_TYPE_LABELS[p.type];
+  if (typeLabel) add("type", typeLabel);
   return `@${entry}{${p.pub_id},\n${lines.join(",\n")}\n}`;
 }
 

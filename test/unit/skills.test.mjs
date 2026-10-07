@@ -13,11 +13,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { buildSkillsSnapshot } from "../../scripts/skills.mjs";
+import { hermeticEnv, REPO_ROOT as REPO, tempDir } from "../helpers/env.mjs";
 
-const REPO = path.resolve(import.meta.dirname, "..", "..");
+hermeticEnv();
 
 /** Write a minimal valid skill; `frontmatter` overrides the defaults. */
 async function writeSkill(root, dirName, { name = dirName, description = "A test skill.", extra = {} } = {}) {
@@ -28,7 +28,8 @@ async function writeSkill(root, dirName, { name = dirName, description = "A test
   return dir;
 }
 
-const tmp = async (label) => fs.mkdtemp(path.join(os.tmpdir(), `amira-skills-${label}-`));
+// Registered temp dirs: removed when this file's process exits.
+const tmp = async (label) => tempDir(`skills-${label}`);
 
 test("the repo catalog holds the companion skill with a complete manifest", async () => {
   const { snapshot, errors } = await buildSkillsSnapshot({ root: REPO, strict: true });

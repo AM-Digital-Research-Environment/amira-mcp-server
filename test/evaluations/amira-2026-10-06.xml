@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Functional retrieval checks for v1.19, verified on 2026-10-06 against the
+     bundled public snapshot fetchedAt 2026-10-06T15:37:16.611Z (maxModified
+     2026-09-16T12:39:36+00:00). Expected answers are exact strings. They span
+     publications, research items, places, people, institutions, subjects and
+     podcasts. test/unit/evaluation.test.mjs replays each one deterministically
+     through the real tools when that snapshot is the bundled one; re-verify and
+     re-date the file after a new snapshot. Verified by the implementer, not as a
+     blind model evaluation. -->
+<evaluation>
+  <qa_pair>
+    <question>Using list_publication_facets, find how many AMIRA publications are in French, then use search_publications to count the French journal articles. Return the two counts as integers separated by a comma and a space.</question>
+    <answer>37, 18</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many publications in the bibliography carry no language metadata at all? Use the language facet's missing count, not a single search page. Return an integer.</question>
+    <answer>11</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Look up the repository identifiers epub-9405 and eref-95983 separately with get_publication. They are the same record; return its amira_url without Markdown formatting.</question>
+    <answer>https://data.africamultiple.uni-bayreuth.de/s/amira/item/29919</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Compare the collection overview's count of publications with extracted full text with search_publications filtered by has_fulltext=true. Return the count once both agree.</question>
+    <answer>60</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Publication 29949 is a thesis. Return the AMIRA authority URL of its thesis adviser as given in the publication detail, without constructing a URL from the adviser's name.</question>
+    <answer>https://data.africamultiple.uni-bayreuth.de/s/amira/item/315</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many research items come from Côte d'Ivoire? Use the country filter. Return an integer.</question>
+    <answer>91</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Count the research items from Niger and, separately, from Nigeria, using the country filter for each. Return the two integers separated by a comma and a space, Niger first.</question>
+    <answer>86, 304</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many research items have digitised media files attached? Return an integer.</question>
+    <answer>1419</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which model generated the transcripts of the AMIRA podcast episodes, and for how many episodes? Return the model name and the episode count separated by a comma and a space.</question>
+    <answer>Qwen3-Omni-30B-A3B-Instruct, 43</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Among the subjects used by research items, how many are Library of Congress Subject Headings and how many are free tags? Return the two integers separated by a comma and a space, LCSH first.</question>
+    <answer>597, 1108</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What is the GND identifier recorded for the person Drescher, Martina? Return the identifier only.</question>
+    <answer>124120881</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which institution does the acronym UJKZ denote? Return its amira_url without Markdown formatting.</question>
+    <answer>https://data.africamultiple.uni-bayreuth.de/s/amira/item/25136</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Research item 10185 is held by an institution recorded as its provenance. Return that institution's amira_url without Markdown formatting.</question>
+    <answer>https://data.africamultiple.uni-bayreuth.de/s/amira/item/7032</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Research item 10185 carries the identifier 30625. What type of identifier is it, as recorded in the catalogue? Return the type exactly.</question>
+    <answer>Publisher, distributor, or vendor stock number</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many research places with items lie within 150 km of Ibadan (latitude 7.3775, longitude 3.947)? Return an integer.</question>
+    <answer>6</answer>
+  </qa_pair>
+</evaluation>

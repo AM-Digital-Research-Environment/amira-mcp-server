@@ -12,21 +12,15 @@
 // in the smoke job (`npm run weigh -- --check`).
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
+import { hermeticEnv } from "../helpers/env.mjs";
+import { connectInMemory } from "../helpers/mcp.mjs";
 
-// Set BEFORE the bundle is imported — config reads the environment at module
-// load, and the cache must be isolated or a real snapshot left in
+// Hermetic BEFORE the bundle is imported — config reads the environment at
+// module load, and the cache must be isolated or a real snapshot left in
 // ~/.amira-mcp/cache by `npm run test:live` outranks the empty fixture dir.
-process.env.AMIRA_DATA_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "amira-budget-"));
-process.env.AMIRA_CACHE_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "amira-budget-cache-"));
-process.env.AMIRA_LIVE_REFRESH = "0";
-delete process.env.AMIRA_EXPOSURE;
+hermeticEnv({ dataDir: true });
 
 const lib = await import("../../server/lib.js");
-const { InMemoryTransport } = await import("@modelcontextprotocol/server");
-const { Client } = await import("@modelcontextprotocol/client");
 const { measureSurface, checkSurface, readBaseline, SURFACE_TOKEN_BUDGET, SURFACE_DRIFT_TOLERANCE } = await import(
   "../../scripts/weigh.mjs"
 );
@@ -35,13 +29,12 @@ const baseline = await readBaseline();
 
 /** Measure one transport's surface through a real in-process client. */
 async function surfaceOf(opts) {
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const server = lib.createAmiraServer(opts);
-  const client = new Client({ name: "budget", version: "0.0.0" });
-  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
-  const surface = await measureSurface(client);
-  await Promise.all([client.close(), server.close()]);
-  return surface;
+  const conn = await connectInMemory(lib, opts, { name: "budget" });
+  try {
+    return await measureSurface(conn.client);
+  } finally {
+    await conn.close();
+  }
 }
 
 // stdio ships in the .mcpb; http adds the ChatGPT search/fetch pair. They are
@@ -97,11 +90,6 @@ for (const [label, opts] of VARIANTS) {
     );
   });
 }
-
-test.after(async () => {
-  await fs.rm(process.env.AMIRA_DATA_DIR, { recursive: true, force: true });
-  await fs.rm(process.env.AMIRA_CACHE_DIR, { recursive: true, force: true });
-});
 
 for (const [profile, budget] of [["research", 10_000], ["discovery", 6_500], ["visualization", 9_500]]) {
   test(`${profile} profile stays within its deliberate discovery budget`, async () => {

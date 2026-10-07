@@ -1,35 +1,41 @@
-// MCP round-trip smoke test: spawn the bundled server, list tools, exercise
+// stdio smoke test (`npm run smoke`): spawn the bundled stdio server — the one
+// the .mcpb runs — against the REAL snapshot in data/, list tools, exercise
 // every tool family (including the get_* detail tools and transcript search),
 // and assert the citation contract: amira_url everywhere, dashboard_url gone.
+//
+// Needs `npm run build` and a data/ snapshot (`npm run fetch-data`, or the one
+// bundled locally). It runs from any cwd: paths resolve from this file. The
+// child gets a sanitized env — no AMIRA_* inherited from your shell, live
+// refresh off and a throwaway cache dir — so it measures data/ and never
+// reads or writes ~/.amira-mcp/cache. Floors shared with the HTTP smoke test
+// live in ./expectations.mjs; the tool count comes from manifest.json.
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { childEnv, SERVER_STDIO } from "../helpers/env.mjs";
+import { expectedToolNames } from "../helpers/mcp.mjs";
+import {
+  check, checkToolSurface, failureCount, MIN_JOURNALS, MIN_PUBLICATIONS, MIN_RESEARCH_ITEMS,
+} from "./expectations.mjs";
 
 /** Extension methods are not in the client's spec table — supply a result schema. */
 const ANY = z.looseObject({});
 
 const transport = new StdioClientTransport({
   command: process.execPath,
-  args: ["server/index.js"],
+  args: [SERVER_STDIO],
   stderr: "inherit",
-  env: { ...process.env, AMIRA_LIVE_REFRESH: "0" }, // offline: bundled snapshot only
+  env: childEnv(), // offline: data/ snapshot only, isolated cache
 });
 
 const client = new Client({ name: "smoke", version: "0.0.0" });
 await client.connect(transport);
-
-let failures = 0;
-function check(cond, label) {
-  if (!cond) {
-    failures++;
-    console.error(`  FAIL: ${label}`);
-  }
-}
+const serverPid = transport.pid;
 
 const tools = await client.listTools();
 console.log(`tools (${tools.tools.length}):`, tools.tools.map((t) => t.name).join(", "));
-check(tools.tools.length === 33, `expected 33 tools, got ${tools.tools.length}`);
+checkToolSurface(tools.tools.map((t) => t.name), expectedToolNames(), "stdio surface vs manifest.json");
 
 async function call(name, args, { expect = [] } = {}) {
   const res = await client.callTool({ name, arguments: args });
@@ -52,10 +58,10 @@ async function call(name, args, { expect = [] } = {}) {
 const AMIRA = "https://data.africamultiple.uni-bayreuth.de/s/amira/item/";
 
 const overview = await call("get_collection_overview", {}, { expect: ["podcasts", "youtube_videos"] });
-check(overview.counts?.research_items >= 3975, "overview: >= 3975 research items (v0.2.0 parity)");
-check(overview.counts?.publications >= 240, "overview: >= 240 publications");
+check(overview.counts?.research_items >= MIN_RESEARCH_ITEMS, `overview: >= ${MIN_RESEARCH_ITEMS} research items (v0.2.0 parity)`);
+check(overview.counts?.publications >= MIN_PUBLICATIONS, `overview: >= ${MIN_PUBLICATIONS} publications`);
 check(overview.counts?.publications_with_fulltext >= 1, "overview: publications with fulltext counted");
-check(overview.counts?.journals >= 50, "overview: journals corpus present");
+check(overview.counts?.journals >= MIN_JOURNALS, `overview: >= ${MIN_JOURNALS} journals`);
 
 const search = await call("search_research_items", { subject: "Islam", limit: 3 }, { expect: [AMIRA] });
 check(search.results?.[0]?.amira_url?.startsWith(AMIRA), "search: amira_url shape");
@@ -67,7 +73,7 @@ await call("search_research_items", { language: "fre", limit: 1 }, { expect: [AM
 // `country` is a real, advertised filter again (v1.4.1): it must NARROW to the
 // country — not silently return the whole collection (the reported regression) —
 // and stay a subset of the any-level `location` match for the same name.
-const fullCount = overview.counts?.research_items ?? 3975;
+const fullCount = overview.counts?.research_items ?? MIN_RESEARCH_ITEMS;
 const byCountry = await call("search_research_items", { country: "Nigeria", limit: 1 });
 const byLocation = await call("search_research_items", { location: "Nigeria", limit: 1 });
 check(byCountry.total_matches > 0 && byCountry.total_matches < fullCount, "search: `country` narrows (not the full collection)");
@@ -184,7 +190,7 @@ if (ftPubs.results?.[0]?.id) {
 
 // Journals (v1.6.0): venue authority round-trips into the venue filter.
 const journals = await call("list_journals", { limit: 5 }, { expect: [AMIRA] });
-check(journals.total_matches >= 50, "list_journals: journal authority listed");
+check(journals.total_matches >= MIN_JOURNALS, "list_journals: journal authority listed");
 const topJournal = journals.results?.find((j) => j.publication_count > 0);
 if (topJournal) {
   const byVenue = await call("search_publications", { venue: topJournal.journal, limit: 3 });
@@ -306,11 +312,34 @@ check(quality.counts.research_items === overview.counts.research_items, "quality
 const changes = await call("get_snapshot_changes", { limit: 2 });
 check(["ready", "history_unavailable"].includes(changes.status), "changes: explicit local history state");
 
+// The server must have survived every call above (the transport clears its pid
+// once the child closes), and must actually go away once the client hangs up.
+check(transport.pid !== null, "lifecycle: stdio server still alive after the run");
 await client.close();
 await transport.close();
+check(await exitedWithin(serverPid, 5000), `lifecycle: stdio server (pid ${serverPid}) exited after the client closed`);
 
-if (failures > 0) {
-  console.error(`\nsmoke test FAILED: ${failures} check(s)`);
+/** Poll until `pid` is gone; false if it is still running after `ms`. */
+async function exitedWithin(pid, ms) {
+  for (const deadline = Date.now() + ms; Date.now() < deadline; await new Promise((r) => setTimeout(r, 100))) {
+    if (!isAlive(pid)) return true;
+  }
+  return !isAlive(pid);
+}
+
+/** Whether a pid still names a live process (signal 0 only probes). */
+function isAlive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === "EPERM";
+  }
+}
+
+if (failureCount() > 0) {
+  console.error(`\nsmoke test FAILED: ${failureCount()} check(s)`);
   process.exit(1);
 }
 console.log("\nsmoke test complete — all checks passed");

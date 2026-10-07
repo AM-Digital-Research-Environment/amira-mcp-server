@@ -1,9 +1,37 @@
+# The image build COPYs only package.json, package-lock.json, tsconfig.json,
+# src/, scripts/, .claude/skills/ and (bundled stage) data/. Everything else is
+# kept out of the build context. Keep `data` NOT ignored: the bundled stage
+# copies the reviewed snapshot from it.
+#
+# Patterns without a slash match at the context root only, so `*.md` does not
+# reach the skill's SKILL.md / references under .claude/skills/.
+
+# Dependencies and build output (rebuilt inside the image)
 node_modules
 server
+
+# VCS, CI and local tooling state
 .git
 .github
+.agents
 .census-cache
+.claude/settings.local.json
+.editorconfig
+
+# Docs, tests and repo-process files the image never reads
+docs
+test
+*.md
+CITATION.cff
+.zenodo.json
+server.json
+conformance-results
+
+# Release artifacts
 *.mcpb
+amira-mcp-skill.zip
+
+# Secrets and noise
 .env
 .env.*
 *.log

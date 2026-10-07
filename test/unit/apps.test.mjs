@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
-import { BRIDGE_JS } from "../../server/lib.js";
+import { hermeticEnv } from "../helpers/env.mjs";
+
+hermeticEnv();
+const { BRIDGE_JS } = await import("../../server/lib.js");
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 function harness() {

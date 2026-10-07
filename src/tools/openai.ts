@@ -1,3 +1,4 @@
+import type { ToolMap } from "./policy.js";
 import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
 // OpenAI / ChatGPT compatibility tools: `search` and `fetch`.
 //
@@ -12,13 +13,14 @@ import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
 //
 // `id` is typed as `<kind>:<omeka_o_id>` (item:7392, pub:30001, video:39218,
 // podcast:39121, project:37700, section:218) so fetch can route back and a
-// human can reconstruct the Omeka URL from the final number.
+// human can reconstruct the Omeka URL from the final number. fetch also accepts
+// the research tools' vocabulary (research_item:7392, publication:30001).
 import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import type { DataStore } from "../data.js";
 import { allowDescriptive, allowStructured } from "../exposure.js";
 import {
-  annotate,
+  READ_ONLY,
   capText,
   CHARACTER_LIMIT,
   dateStatus,
@@ -31,11 +33,12 @@ import {
   type WindowOpts,
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
+import { parseTypedId } from "../typedIds.js";
+import { limitEcho } from "./pagination.js";
 
 const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_SEARCH_LIMIT = 50;
 
-/** Record kinds the `types` filter accepts (id prefixes are built inline). */
 /** Drop null/undefined/empty-array entries so metadata stays compact. */
 function compact(o: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
@@ -100,10 +103,15 @@ interface FetchOpts {
   fulltextMaxChars?: number;
 }
 
+/** The adapter's own id prefixes for each record kind fetch can render. */
+const FETCH_KINDS: Record<string, string> = {
+  research_item: "item", publication: "pub", video: "video", podcast: "podcast", project: "project", section: "section",
+};
+
 function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string, unknown> {
-  const sep = id.indexOf(":");
-  const kind = sep === -1 ? id : id.slice(0, sep);
-  const key = sep === -1 ? "" : id.slice(sep + 1);
+  const parsed = parseTypedId(id);
+  const kind = parsed ? FETCH_KINDS[parsed.kind] ?? parsed.kind : id;
+  const key = parsed?.key ?? "";
   const notFound = { error: { code: "not_found", message: `No record with id '${id}'.`, suggested_tool: "search" } };
 
   const desc = allowDescriptive();
@@ -355,14 +363,14 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
   return notFound;
 }
 
-export function registerOpenAITools(server: Server): void {
+export function registerOpenAITools(server: Server, tools: ToolMap): void {
   // === search ===============================================================
-  server.registerTool(
+  tools.search = server.registerTool(
     "search",
     {
       title: "Search the AMIRA collection",
       description: "Ranked search across items, publications, videos, podcasts, projects and sections. Returns typed IDs, titles and citation URLs. Fetch selected records for evidence.",
-      annotations: annotate("Search the AMIRA collection"),
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
         query: z
           .string().max(1000)
@@ -381,6 +389,8 @@ export function registerOpenAITools(server: Server): void {
             url: z.string().describe("The AMIRA/Omeka public record page"),
           }),
         ),
+        requested_limit: z.number().optional(),
+        effective_limit: z.number().optional(),
       }),
     },
     async ({ query, limit, types }) => {
@@ -391,21 +401,21 @@ export function registerOpenAITools(server: Server): void {
         title: h.title,
         url: h.url,
       }));
-      return textResult({ results });
+      return textResult({ results, ...limitEcho(limit, MAX_SEARCH_LIMIT, capped) });
     },
   );
 
   // === fetch ================================================================
-  server.registerTool(
+  tools.fetch = server.registerTool(
     "fetch",
     {
       title: "Fetch one AMIRA record",
       description: "Read a typed search result as a cited document. Full text/transcripts are opt-in and pageable; metadata and text respect exposure policy. Unknown ID returns an error.",
-      annotations: annotate("Fetch one AMIRA record"),
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
         id: z
           .string().max(1000)
-          .describe("A typed record id from search: item:7392 | pub:30001 | video:39218 | podcast:39121 | project:37700 | section:218"),
+          .describe("A typed record id from search (item:7392, pub:30001, video:…, podcast:…, project:…, section:…) or resolve_entity"),
         include_transcript: z.boolean().optional().describe("Default false — set true to append the video/podcast transcript"),
         transcript_offset: z.number().int().min(0).optional().describe("Start offset into the transcript (chars), with include_transcript"),
         transcript_max_chars: z.number().int().min(1).optional().describe("Max transcript characters to return (default/max 25000)"),

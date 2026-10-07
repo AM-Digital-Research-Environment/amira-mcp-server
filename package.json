@@ -1,13 +1,13 @@
 {
   "name": "amira-mcp-server-bundle",
-  "version": "1.18.1",
+  "version": "1.19.0",
   "description": "Node MCP server for AMIRA, the Africa Multiple research-data platform on Omeka S, packaged as a Claude Desktop extension (.mcpb).",
   "private": true,
   "type": "module",
   "main": "server/index.js",
   "license": "MIT",
   "author": {
-    "name": "FrÃ©dÃ©rick Madore",
+    "name": "Frédérick Madore",
     "email": "frederick.madore@uni-bayreuth.de",
     "url": "https://orcid.org/0000-0003-0959-2092"
   },
@@ -46,8 +46,8 @@
     "clean": "rimraf server",
     "test": "npm run build && node scripts/test.mjs unit",
     "test:live": "npm run build && node scripts/test.mjs live",
-    "smoke": "node smoke-test.mjs",
-    "smoke:http": "node smoke-http-test.mjs",
+    "smoke": "node test/smoke/stdio.mjs",
+    "smoke:http": "node test/smoke/http.mjs",
     "weigh": "node scripts/weigh.mjs",
     "benchmark": "npm run build && node scripts/benchmark.mjs",
     "stamp-citation": "node scripts/stamp-citation.mjs",
@@ -60,21 +60,23 @@
     "preview:apps": "npm run build && node scripts/preview-apps.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^2.0.3",
     "@modelcontextprotocol/node": "^2.1.1",
-    "@modelcontextprotocol/server": "^2.3.0",
+    "@modelcontextprotocol/server": "^2.3.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "^2.3.0",
+    "@modelcontextprotocol/client": "^2.3.1",
     "@types/node": "^26.6.4",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "esbuild": "^0.28.2",
+    "fast-check": "^4.10.2",
     "fflate": "^0.8.3",
+    "happy-dom": "^20.14.5",
     "ignore": "^7.0.12",
     "rimraf": "^6.1.3",
     "typescript": "^7.0.2",

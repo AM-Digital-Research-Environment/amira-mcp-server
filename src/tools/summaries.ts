@@ -1,7 +1,7 @@
-// Cross-cutting helpers shared by every tool module: result formatting (compact
-// JSON — D10), input capping, paginate-then-map, text matching, large-text
-// windowing (transcripts + publication full text), and the summary/ref mappers
-// that attach a citable `amira_url` to every record.
+// Search-result summaries and slim references: the record shapes every list
+// tool returns, each with a citable `amira_url`. Lists inside a summary are
+// capped (with a `_total` count) so a full page stays under the size at which
+// hosts move a result out of the conversation; detail lives in the get_* tools.
 import type { DataStore } from "../data.js";
 import { UNIVERSITY_LABELS } from "../data.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
@@ -25,9 +25,25 @@ export function yearLabel(it: ResearchItemRec): string | null {
   return it.year_max != null && it.year_max !== it.year_min ? `${it.year_min}–${it.year_max}` : String(it.year_min);
 }
 
+/** Entries shown per list inside a search summary; the rest is counted. */
+const SUMMARY_LIST_CAP = 6;
+
+/** `{ [key]: first N, [key_total]: N }` — the total only when the list was cut. */
+function capped(key: string, values: string[]): Record<string, unknown> {
+  return values.length > SUMMARY_LIST_CAP
+    ? { [key]: values.slice(0, SUMMARY_LIST_CAP), [`${key}_total`]: values.length }
+    : { [key]: values };
+}
+
+/** Distinct MIME types of a record's media files. */
+export function mediaTypes(media: { type: string | null }[] | undefined): string[] {
+  return [...new Set((media ?? []).map((m) => m.type).filter((t): t is string => !!t))];
+}
+
 /** Search-result summary of a research item. */
 export function itemSummary(it: ResearchItemRec, store: DataStore): Record<string, unknown> {
   const project = store.projectOf(it);
+  const types = mediaTypes(it.media);
   return {
     id: String(it.o_id),
     omeka_id: it.o_id,
@@ -40,11 +56,13 @@ export function itemSummary(it: ResearchItemRec, store: DataStore): Record<strin
           project: it.project?.label ?? null,
           project_omeka_id: project?.o_id ?? null,
           university: UNIVERSITY_LABELS[it.university],
-          contributors: it.contributors.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
-          subjects: refLabels(it.subjects),
+          ...capped("contributors", it.contributors.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`)),
+          ...capped("subjects", refLabels(it.subjects)),
           place: it.places[0]?.label ?? null,
         }
       : {}),
+    has_media: it.has_media,
+    ...(types.length ? { media_types: types } : {}),
     amira_url: itemUrl(it.o_id),
   };
 }
@@ -135,7 +153,7 @@ export function publicationSummary(p: PublicationRec): Record<string, unknown> {
 
 export function podcastSummary(p: PodcastRec): Record<string, unknown> {
   return {
-    id: p.o_id,
+    id: String(p.o_id),
     omeka_id: p.o_id,
     title: p.title,
     episode: p.episode,
@@ -145,6 +163,7 @@ export function podcastSummary(p: PodcastRec): Record<string, unknown> {
       ? { series: p.series?.label ?? null, people: p.people.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`) }
       : {}),
     url: p.url,
+    ...(p.duration ? { duration: p.duration } : {}),
     has_transcript: !!p.transcript,
     amira_url: itemUrl(p.o_id),
   };
@@ -152,12 +171,12 @@ export function podcastSummary(p: PodcastRec): Record<string, unknown> {
 
 export function videoSummary(v: VideoRec): Record<string, unknown> {
   return {
-    id: v.o_id,
+    id: String(v.o_id),
     omeka_id: v.o_id,
     title: v.title,
     date: v.date,
     date_status: dateStatus(v.date),
-    ...(allowStructured() ? { playlists: refLabels(v.playlists), speakers: v.speakers.map((c) => c.name) } : {}),
+    ...(allowStructured() ? { playlists: refLabels(v.playlists), ...capped("speakers", v.speakers.map((c) => c.name)) } : {}),
     url: v.url,
     has_transcript: !!v.transcript,
     amira_url: itemUrl(v.o_id),

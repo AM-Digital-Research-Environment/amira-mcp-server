@@ -34,8 +34,14 @@ function render(d){
   var svg=['<svg viewBox="0 0 720 360" role="img" aria-label="Research locations on a world map"><path class="land" d="__OUTLINE__"/>'];
   mapped.forEach(function(r){var x=(r.longitude+180)*2,y=(90-r.latitude)*2;svg.push('<circle role="button" tabindex="0" class="place ' + (r.coordinate_scope==='hierarchy_root'?'root':'') + '" data-place-id="' + (r.omeka_id || '') + '" data-place="' + esc(r.name) + '" aria-label="Browse ' + esc(r.name) + '" cx="' + x + '" cy="' + y + '" r="' + Math.max(3,Math.min(10,Math.sqrt(r.item_count)/3)) + '"><title>' + esc(r.name) + ': ' + r.item_count + ' items</title></circle>');});
   svg.push('</svg>');
+  var filterForm='<form id="map-filter" class="controls"><label>Country<input name="country" maxlength="1000" value="' + esc((d.filters||{}).country || '') + '" placeholder="All countries"></label><button>Filter places</button></form>';
+  if(!rows.length){
+    // Empty state: say so and keep the filter, rather than an empty map and "Places 1–0 of 0".
+    document.getElementById('root').innerHTML='<h1>Research places</h1>' + filterForm +
+      '<p class="empty">No research places match these filters. Clear the country filter or broaden the search.</p>';
+  } else
   document.getElementById('root').innerHTML='<h1>Research places</h1><p class="sub">' + mapped.length + ' of ' + rows.length + ' returned places have coordinates · ' + (d.items_without_place || 0) + ' matching items have no place</p>' +
-    '<form id="map-filter" class="controls"><label>Country<input name="country" maxlength="1000" value="' + esc((d.filters||{}).country || '') + '" placeholder="All countries"></label><button>Filter places</button></form><div class="map">' + svg.join('') + '</div>' +
+    filterForm + '<div class="map">' + svg.join('') + '</div>' +
     '<p class="note">Hollow markers show hierarchy roots, which may represent whole countries. Coordinates are catalogue locations, not inferred item positions. Counts include descendants and overlap. Made with Natural Earth.</p>' +
     '<table><caption>All returned places, including missing coordinates</caption><thead><tr><th>Place</th><th>Within</th><th>Items</th><th>Coordinates</th></tr></thead><tbody>' + rows.map(function(r){return '<tr><td><button class="name-button" data-place-id="' + (r.omeka_id || '') + '" data-place="' + esc(r.name) + '">' + esc(r.name) + '</button></td><td>' + esc(r.country || 'Hierarchy root') + '</td><td>' + r.item_count + '</td><td>' + (Number.isFinite(r.latitude) && Number.isFinite(r.longitude) ? r.latitude.toFixed(2) + ', ' + r.longitude.toFixed(2) : 'Not recorded') + '</td></tr>';}).join('') + '</tbody></table>' +
     '<p class="note">Places ' + (d.offset+1) + '–' + (d.offset+rows.length) + ' of ' + d.total_matches + '</p>' + (d.has_more ? '<button id="more-places">Next places</button>' : '') + '<section id="map-evidence" class="evidence" aria-live="polite"></section>';

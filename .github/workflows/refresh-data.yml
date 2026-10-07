@@ -2,10 +2,19 @@ name: Refresh data snapshot
 
 # Keeps a downloadable .mcpb in sync with the live Omeka S data.
 # Runs on a schedule (and on demand): crawls the public API, and ONLY if the
-# transformed content changed since the last build (including item sets and
-# vocabulary metadata via snapshot-signature.mjs), rebuilds,
-# re-tests and updates the rolling `data-latest` pre-release. No database or
-# VPN involved — it reads the same public JSON any browser can.
+# snapshot signature changed since the last build, rebuilds, re-tests and
+# updates the rolling `data-latest` pre-release. The signature
+# (scripts/snapshot-signature.mjs) covers the transformed content — item sets
+# and vocabulary metadata included — and the package.json version, so a code
+# release refreshes the rolling asset too. No database or VPN involved — it
+# reads the same public JSON any browser can.
+#
+# Least privilege: the workflow token is read-only by default. `build` (npm ci,
+# crawl, tests, pack) never holds a write token; only `publish` does, and only
+# in the single step that talks to the GitHub API.
+#
+# Every action is pinned to a full commit SHA; the trailing comment names the
+# release. Dependabot (github-actions ecosystem) bumps both together.
 
 on:
   schedule:
@@ -13,7 +22,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: refresh-data
@@ -21,16 +30,20 @@ concurrency:
 
 env:
   ROLLING_TAG: data-latest
-  # Uses a PAT/App secret if present, else the default token (which needs org
-  # "Read and write" workflow permissions to publish releases).
-  GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
 
 jobs:
-  refresh:
+  build:
+    name: Crawl, test and pack
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+      signature: ${{ steps.snap.outputs.signature }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "26"
           cache: npm
@@ -49,6 +62,10 @@ jobs:
 
       - name: Read previously published signature
         id: prev
+        env:
+          # Read-only here: this job's token only has contents: read.
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           prev=""
           if gh release download "$ROLLING_TAG" --pattern snapshot-signature.txt --output prev.txt 2>/dev/null; then
@@ -64,36 +81,90 @@ jobs:
         run: |
           if [ -n "$PREVIOUS" ] && [ "$CURRENT" = "$PREVIOUS" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Data unchanged ($CURRENT) — nothing to publish."
+            echo "Data and code version unchanged ($CURRENT) — nothing to publish."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "New data ($CURRENT, was '$PREVIOUS') — rebuilding."
+            echo "New signature ($CURRENT, was '$PREVIOUS') — rebuilding."
           fi
 
-      - name: Unit + live API tests
+      # The single gate: clean, typecheck, skills check, build + unit tests,
+      # stdio and HTTP smoke, response weight, manifest. Unit tests run here
+      # only, not in a separate step as well.
+      - name: Type-check, bundle, unit + smoke tests
         if: steps.check.outputs.changed == 'true'
-        run: |
-          npm test
-          npm run test:live
+        run: npm run prepack-mcpb
 
-      - name: Type-check, bundle, smoke-test, pack
+      # Reuses the bundle prepack-mcpb just built (no third build).
+      - name: Live API tests
         if: steps.check.outputs.changed == 'true'
-        run: |
-          npm run prepack-mcpb
-          node scripts/mcpb.mjs pack . amira-mcp-server.mcpb
+        run: node scripts/test.mjs live
+
+      - name: Pack .mcpb
+        if: steps.check.outputs.changed == 'true'
+        run: node scripts/mcpb.mjs pack . amira-mcp-server.mcpb
+
+      - name: Upload build artifacts
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: amira-mcp-server-data-latest
+          path: |
+            amira-mcp-server.mcpb
+            snapshot-signature.txt
+          if-no-files-found: error
+
+  publish:
+    name: Update the rolling pre-release
+    needs: build
+    if: needs.build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # upload release assets, move the data-latest tag
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: amira-mcp-server-data-latest
+          path: dist
 
       - name: Publish / update rolling pre-release
-        if: steps.check.outputs.changed == 'true'
         env:
-          CURRENT: ${{ steps.snap.outputs.signature }}
+          # Uses a PAT/App secret if present, else the default token (which needs
+          # org "Read and write" workflow permissions to publish releases).
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          CURRENT: ${{ needs.build.outputs.signature }}
+          # The commit the snapshot and bundle were built from.
+          BUILT_FROM: ${{ github.sha }}
         run: |
-          notes="Auto-built .mcpb tracking the live Omeka S data (snapshot signature: $CURRENT).
+          notes="Auto-built .mcpb tracking the live Omeka S data (snapshot signature: $CURRENT; built from ${BUILT_FROM:0:7}).
 
           This rolling pre-release always carries the latest data. For versioned, code-tagged builds see the main Releases list."
+
           if gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
-            gh release upload "$ROLLING_TAG" amira-mcp-server.mcpb snapshot-signature.txt --clobber
+            gh release upload "$ROLLING_TAG" dist/amira-mcp-server.mcpb dist/snapshot-signature.txt --clobber
             gh release edit "$ROLLING_TAG" --title "Latest data snapshot" --notes "$notes" --prerelease
+
+            # Pre-rename leftovers (June 2026) that otherwise sit next to the
+            # current bundle forever. Absent on a fresh release, hence `|| true`.
+            for legacy in africa-multiple-mcp-server.mcpb generatedAt.txt; do
+              gh release delete-asset "$ROLLING_TAG" "$legacy" --yes 2>/dev/null \
+                && echo "Removed legacy asset $legacy" || true
+            done
+
+            # `gh release edit --target` cannot move an existing tag, so point
+            # the tag ref itself at the commit this bundle was built from.
+            # Moving it past commits that touch .github/workflows needs a token
+            # with the `workflow` scope (RELEASE_TOKEN); the default
+            # GITHUB_TOKEN may be refused. The assets above are already
+            # current, so that is a warning, not a failure.
+            gh api --method PATCH "repos/${GH_REPO}/git/refs/tags/${ROLLING_TAG}" \
+              -f sha="$BUILT_FROM" -F force=true >/dev/null \
+              && echo "Moved $ROLLING_TAG to $BUILT_FROM" \
+              || echo "::warning::Could not move the $ROLLING_TAG tag to $BUILT_FROM. Set a RELEASE_TOKEN with the workflow scope, or move it by hand: git tag -f $ROLLING_TAG $BUILT_FROM && git push -f origin $ROLLING_TAG"
           else
-            gh release create "$ROLLING_TAG" amira-mcp-server.mcpb snapshot-signature.txt \
+            gh release create "$ROLLING_TAG" dist/amira-mcp-server.mcpb dist/snapshot-signature.txt \
+              --target "$BUILT_FROM" \
               --title "Latest data snapshot" --notes "$notes" --prerelease
           fi

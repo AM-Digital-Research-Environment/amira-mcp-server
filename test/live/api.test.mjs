@@ -5,7 +5,14 @@
 // packing, so an instance-side template change fails loudly, not silently.
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
+import { hermeticEnv } from "../helpers/env.mjs";
+
+// AMIRA_SITE_BASE is the one deliberate input (test another Omeka instance);
+// everything else is cleared and the cache isolated before the bundle loads.
+const siteOverride = process.env.AMIRA_SITE_BASE;
+hermeticEnv();
+if (siteOverride) process.env.AMIRA_SITE_BASE = siteOverride;
+const {
   probeRemote,
   transformJournal,
   transformPodcast,
@@ -13,14 +20,21 @@ import {
   transformPublication,
   transformResearchItem,
   transformVideo,
-} from "../../server/lib.js";
+} = await import("../../server/lib.js");
 
-const SITE = process.env.AMIRA_SITE_BASE?.replace(/\/+$/, "") || "https://data.africamultiple.uni-bayreuth.de";
+const SITE = siteOverride?.replace(/\/+$/, "") || "https://data.africamultiple.uni-bayreuth.de";
 const API = `${SITE}/api`;
 const ctx = { roleLabel: () => null, classTerm: () => null };
 
+// Every request carries its own deadline: a hung Omeka request must fail this
+// test, not hold the job until the CI runner's 6-hour limit. (scripts/test.mjs
+// also caps each test at 60 s; probeRemote() uses the server's own fetchJSON.)
+const FETCH_TIMEOUT_MS = 30_000;
+const fetchLive = (url) =>
+  fetch(url, { headers: { "User-Agent": "amira-mcp-live-tests" }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+
 async function get(url) {
-  const res = await fetch(url, { headers: { "User-Agent": "amira-mcp-live-tests" } });
+  const res = await fetchLive(url);
   assert.ok(res.ok, `${url} -> HTTP ${res.status}`);
   return { body: await res.json(), headers: res.headers };
 }
@@ -106,7 +120,7 @@ test("podcast: live records transform; absent transcripts stay null", async () =
 });
 
 test("citation pages resolve: /s/amira/item/<o:id> -> 200", async () => {
-  const res = await fetch(`${SITE}/s/amira/item/7392`, { headers: { "User-Agent": "amira-mcp-live-tests" } });
+  const res = await fetchLive(`${SITE}/s/amira/item/7392`);
   assert.equal(res.status, 200);
 });
 

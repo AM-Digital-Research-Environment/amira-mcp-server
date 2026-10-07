@@ -23,6 +23,8 @@ export interface OmekaValue {
   value_resource_id?: number;
   display_title?: string;
   is_public?: boolean;
+  /** Value annotation: a nested term → values map (Omeka S 4). */
+  "@annotation"?: Record<string, OmekaValue[]>;
 }
 
 export type OmekaItem = Record<string, unknown>;
@@ -85,6 +87,56 @@ export function uriValues(item: OmekaItem, term: string): { url: string; label: 
   return out;
 }
 
+// --- value annotations ----------------------------------------------------------
+
+/** Values of `term` inside one value's annotation ([] when unannotated). */
+export function annotationValues(v: OmekaValue, term: string): OmekaValue[] {
+  const values = v["@annotation"]?.[term];
+  return Array.isArray(values) ? values : [];
+}
+
+/** First annotation value of `term` as a linked ref, or null. */
+export function annotationRef(v: OmekaValue, term: string): LinkedRef | null {
+  for (const a of annotationValues(v, term)) {
+    const label = valueText(a);
+    if (label) return { label, o_id: typeof a.value_resource_id === "number" ? a.value_resource_id : null };
+  }
+  return null;
+}
+
+/** Texts of a term with their `@language` tags, in order. */
+export function languageTagged(item: OmekaItem, term: string): { lang: string | null; text: string }[] {
+  return values(item, term)
+    .map((v) => ({ lang: typeof v["@language"] === "string" && v["@language"] ? v["@language"] : null, text: valueText(v) }))
+    .filter((v) => v.text);
+}
+
+/** Recognised authority schemes by URL; anything else keeps its host name. */
+const SCHEMES: [RegExp, string][] = [
+  [/^https?:\/\/d-nb\.info\/gnd\/([^/?#]+)/i, "gnd"],
+  [/^https?:\/\/orcid\.org\/([^/?#]+)/i, "orcid"],
+  [/^https?:\/\/viaf\.org\/viaf\/([^/?#]+)/i, "viaf"],
+  [/^https?:\/\/(?:www\.)?wikidata\.org\/(?:wiki|entity)\/([^/?#]+)/i, "wikidata"],
+  [/^https?:\/\/id\.loc\.gov\/authorities\/subjects\/([^/?#]+)/i, "lcsh"],
+  [/^https?:\/\/id\.loc\.gov\/authorities\/names\/([^/?#]+)/i, "lcnaf"],
+  [/^https?:\/\/(?:www\.)?isni\.org\/(?:isni\/)?([^/?#]+)/i, "isni"],
+  [/^https?:\/\/ror\.org\/([^/?#]+)/i, "ror"],
+  [/^https?:\/\/sws\.geonames\.org\/([^/?#]+)/i, "geonames"],
+];
+
+/** URI identifiers of a term as `{scheme, id, url}` (GND, ORCID, Wikidata, LCSH…). */
+export function authorityIds(item: OmekaItem, term: string): { scheme: string; id: string; url: string }[] {
+  return uriValues(item, term).map(({ url, label }) => {
+    for (const [re, scheme] of SCHEMES) {
+      const m = re.exec(url);
+      if (m) return { scheme, id: decodeURIComponent(m[1]!), url };
+    }
+    let host = "uri";
+    try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep "uri" */ }
+    return { scheme: host, id: label ?? url, url };
+  });
+}
+
 // --- item-level accessors -----------------------------------------------------
 
 export function oid(item: OmekaItem): number {
@@ -96,11 +148,6 @@ export function oid(item: OmekaItem): number {
 export function omekaTitle(item: OmekaItem): string {
   const t = item["o:title"];
   return (typeof t === "string" && t.trim()) || firstString(item, "dcterms:title") || "(untitled)";
-}
-
-export function templateId(item: OmekaItem): number | null {
-  const t = item["o:resource_template"];
-  return isObj(t) && typeof t["o:id"] === "number" ? (t["o:id"] as number) : null;
 }
 
 export function classId(item: OmekaItem): number | null {

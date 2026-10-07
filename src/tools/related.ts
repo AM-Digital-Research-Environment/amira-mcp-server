@@ -1,9 +1,10 @@
+import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore } from "../data.js";
 import type { PublicationRec, ResearchItemRec } from "../types.js";
 import { allowStructured } from "../exposure.js";
 import {
-  annotate,
+  READ_ONLY,
   containsCI,
   equalsCI,
   exposureRestrictedResult,
@@ -12,7 +13,9 @@ import {
   type Server,
 } from "./_shared.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
-import { nameMatchesQuery } from "../names.js";
+import { personMatches } from "../names.js";
+import { placeMatcher } from "../researchItemQuery.js";
+import { stripTypedId } from "../typedIds.js";
 import { RELATED_UI_META } from "./apps.js";
 import { resolveEntities } from "../entityGraph.js";
 import { fold } from "../text.js";
@@ -27,7 +30,8 @@ const MATCHING: Record<EntityType, string> = {
     "Items whose subject label CONTAINS the value (substring, case-insensitive; subjects include the former free-form tags). " +
     "This is why matched_items can exceed an exact-heading count — and differ from list_subjects, which lists distinct headings, not items.",
   location:
-    "Items whose place matches the value at ANY level of the city→country hierarchy (so 'Nigeria' also matches Lagos items).",
+    "Items whose place matches the value exactly (or by a common alias) at ANY level of the city→country hierarchy, so 'Nigeria' " +
+    "also matches Lagos items but 'Niger' does not match Nigeria. An unknown name falls back to word prefixes ('Ibad' → Ibadan).",
   person:
     "Items crediting a contributor whose name matches the value in either order and accent-insensitively (e.g. 'Ulli Beier' = 'Beier, Ulli').",
   project: "Items in the project whose Omeka id or legacy project key equals the value, or whose project label contains it.",
@@ -46,15 +50,15 @@ function countRecord(map: Map<string, Count>, refs: { label: string; o_id: numbe
   }
 }
 
-export function registerRelatedTools(server: Server): void {
-  server.registerTool(
+export function registerRelatedTools(server: Server, tools: ToolMap): void {
+  tools.find_related = server.registerTool(
     "find_related",
     {
       title: "Find related entities",
       // Renders as a radial co-occurrence hub in MCP Apps hosts; plain JSON elsewhere.
       _meta: RELATED_UI_META,
       description: "Subjects, people, places and projects connected through shared records. Per-corpus counts deduplicate each record; subject/person seeds also include publications. Returns ambiguity and cited samples.",
-      annotations: annotate("Find related entities"),
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({
         entity_type: z
           .enum(["subject", "location", "person", "project"])
@@ -75,17 +79,17 @@ export function registerRelatedTools(server: Server): void {
       if (!allowStructured()) return exposureRestrictedResult("structured", "find_related");
       const limit = Math.max(1, Math.min(args.limit ?? 20, 50));
       const type = args.entity_type as EntityType;
-      const value = args.value;
+      const value = type === "project" ? stripTypedId(args.value, ["project"]) : args.value;
 
-      const matchesPerson = (name: string): boolean =>
-        nameMatchesQuery(name, value) || containsCI(name, value);
+      const matchesPerson = (name: string): boolean => personMatches(name, value);
+      const matchesPlace = type === "location" ? placeMatcher(store, value, "any") : () => false;
 
       const matches = (it: ResearchItemRec): boolean => {
         switch (type) {
           case "subject":
             return it.subjects.some((s) => containsCI(s.label, value));
           case "location":
-            return it.places.some((p) => store.placeChain(p).some((l) => containsCI(l, value)));
+            return it.places.some(matchesPlace);
           case "person":
             return it.contributors.some((c) => matchesPerson(c.name));
           case "project":

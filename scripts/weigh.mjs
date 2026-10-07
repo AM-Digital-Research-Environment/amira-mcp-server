@@ -12,8 +12,17 @@
 //              limit. The defaults were never the risk (a keyword search costs
 //              ~165 tokens); the ceiling is — `search_research_items` at
 //              limit=100 is ~15k. These vary with the snapshot, so the absolute
-//              cap is a hard failure while drift against the baseline is only a
+//              caps (tokens, and characters for Claude Code's file spill) are
+//              hard failures while drift against the baseline is only a
 //              warning: otherwise a routine `npm run fetch-data` reds the build.
+//
+// What is measured is ALWAYS the data/ snapshot (the one the .mcpb ships, or
+// CI's fresh crawl): the run clears every AMIRA_* variable, forces
+// AMIRA_LIVE_REFRESH=0 and points AMIRA_CACHE_DIR at a throwaway dir, so a
+// newer snapshot in ~/.amira-mcp/cache can never outrank it. The baseline
+// records which snapshot it was measured against (`snapshot`), and --check
+// says so when the current one differs: response drift notes are then
+// comparisons across two datasets, not a code change.
 //
 // Tokens are estimated as bytes/4 rather than run through a real tokenizer. A
 // regression gate needs determinism and zero dependencies more than it needs
@@ -29,6 +38,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { hermeticEnv } from "../test/helpers/env.mjs";
+import { connectInMemory } from "../test/helpers/mcp.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const BASELINE_PATH = path.join(HERE, "..", "test", "token-baseline.json");
@@ -54,6 +65,15 @@ export const SURFACE_DRIFT_TOLERANCE = 0.03;
  * in the pessimistic direction.
  */
 export const RESPONSE_TOKEN_BUDGET = 20_000;
+
+/**
+ * Hard ceiling on any single response's text, in characters. Claude Code
+ * persists a tool result over 50,000 characters to a file and hands the model
+ * a preview instead, so a response at the limit silently stops being read in
+ * full; 45,000 keeps headroom below that. Independent of the token cap above:
+ * ASCII-heavy JSON can pass bytes/4 and still cross 50k characters.
+ */
+export const RESPONSE_CHAR_LIMIT = 45_000;
 
 /** Response growth that earns a printed warning (never a failure — see above). */
 export const RESPONSE_DRIFT_TOLERANCE = 0.1;
@@ -333,13 +353,14 @@ export function checkSurface(label, current, baseline) {
 }
 
 /**
- * Gate the response probes. The absolute cap fails; drift only warns, because
+ * Gate the response probes. The absolute caps fail; drift only warns, because
  * these numbers move with the snapshot and a data refresh must not red the build.
  */
 export function checkResponses(current, baseline) {
   const failures = [];
   const notes = [];
-  for (const [id, { tokens, error }] of Object.entries(current)) {
+  const oversized = [];
+  for (const [id, { tokens, chars, error }] of Object.entries(current)) {
     if (error) {
       failures.push(`probe ${id} did not measure anything — the call failed: ${error}`);
       continue;
@@ -350,6 +371,7 @@ export function checkResponses(current, baseline) {
           `max limit, or slim its per-result summary.`,
       );
     }
+    if (chars >= RESPONSE_CHAR_LIMIT) oversized.push(`${id} (${num(chars)} chars)`);
     const was = baseline?.[id]?.tokens;
     if (!was) {
       notes.push(`  new probe ${id}: ${tokens} tokens`);
@@ -365,8 +387,39 @@ export function checkResponses(current, baseline) {
   for (const id of Object.keys(baseline ?? {})) {
     if (!(id in current)) notes.push(`  probe ${id} no longer measured (was ${baseline[id].tokens} tokens)`);
   }
+  if (oversized.length) {
+    failures.push(
+      `responses at or over ${num(RESPONSE_CHAR_LIMIT)} characters (Claude Code spills results over 50,000 ` +
+        `characters to a file): ${oversized.join(", ")}. Lower the tool's max limit or slim its summaries.`,
+    );
+  }
   return { failures, notes };
 }
+
+/**
+ * Identity of the snapshot a measurement ran against. `snapshot_id` is the
+ * server's own hash (the one get_entity_graph pins) over api base, fetchedAt,
+ * maxModified and counts; fetchedAt is kept beside it for humans.
+ */
+export function snapshotIdentity(lib, store) {
+  const m = store.manifest;
+  return {
+    snapshot_id: typeof lib.snapshotId === "function" ? lib.snapshotId(m) : null,
+    fetchedAt: m.fetchedAt,
+    maxModified: m.maxModified ?? null,
+    schemaVersion: m.schemaVersion,
+  };
+}
+
+/** Whether two snapshot identities name the same data (id if both have one). */
+export function sameSnapshot(a, b) {
+  if (!a || !b) return false;
+  if (a.snapshot_id && b.snapshot_id) return a.snapshot_id === b.snapshot_id;
+  return a.fetchedAt === b.fetchedAt;
+}
+
+const describeSnapshot = (s) =>
+  s ? `${s.fetchedAt}${s.snapshot_id ? ` (snapshot_id ${s.snapshot_id})` : ""}` : "not recorded";
 
 export async function readBaseline() {
   try {
@@ -386,19 +439,17 @@ async function main() {
   const update = argv.has("--update");
   const asJson = argv.has("--json");
 
-  process.env.AMIRA_LIVE_REFRESH ??= "0";
+  // UNCONDITIONALLY hermetic, before the bundle loads: no AMIRA_* from the
+  // shell (an exported AMIRA_LIVE_REFRESH=1 would start a crawl; an exposure
+  // or profile setting would shrink the numbers), and a throwaway cache, so
+  // the bundled data/ snapshot is what gets measured — never ~/.amira-mcp/cache.
+  hermeticEnv();
   const lib = await import("../server/lib.js");
-  const { InMemoryTransport } = await import("@modelcontextprotocol/server");
-  const { Client } = await import("@modelcontextprotocol/client");
+  const store = await lib.ensureStore();
+  const snapshot = snapshotIdentity(lib, store);
 
   /** Connect an in-process client to a freshly built server. */
-  async function connect(opts) {
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const server = lib.createAmiraServer(opts);
-    const client = new Client({ name: "weigh", version: "0.0.0" });
-    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
-    return { client, server, close: () => Promise.all([client.close(), server.close()]) };
-  }
+  const connect = (opts) => connectInMemory(lib, opts, { name: "weigh" });
 
   // Both shipped surfaces: the .mcpb/stdio build and the HTTP build, which adds
   // the ChatGPT `search`/`fetch` pair. They are billed to different clients, so
@@ -413,8 +464,9 @@ async function main() {
   const responses = await measureResponses(http.client, probes);
   await http.close();
 
-  const current = { surface: { stdio: surfaceStdio, http: surfaceHttp }, responses };
+  const current = { snapshot, surface: { stdio: surfaceStdio, http: surfaceHttp }, responses };
   const baseline = await readBaseline();
+  const snapshotMatches = sameSnapshot(baseline?.snapshot, snapshot);
 
   const results = [
     checkSurface("stdio", surfaceStdio, baseline?.surface?.stdio),
@@ -424,9 +476,23 @@ async function main() {
   const failures = results.flatMap((r) => r.failures);
 
   if (asJson) {
-    console.log(JSON.stringify({ ...current, failures }, null, 2));
+    console.log(JSON.stringify({ ...current, baseline_snapshot: baseline?.snapshot ?? null, failures }, null, 2));
   } else {
     console.log("AMIRA token budget — estimate is bytes/4, comparable only to itself.\n");
+    console.log(`SNAPSHOT current   ${describeSnapshot(snapshot)}  [${store.source}]`);
+    console.log(`         baseline  ${describeSnapshot(baseline?.snapshot)}`);
+    if (baseline && !baseline.snapshot) {
+      console.log(
+        "         The baseline predates snapshot recording (`--update` adds it): response drift below may " +
+          "compare two datasets.",
+      );
+    } else if (baseline && !snapshotMatches) {
+      console.log(
+        "         DIFFERENT SNAPSHOT: response drift below compares two datasets, not a code change " +
+          "(the surface is data-independent and still gated).",
+      );
+    }
+    console.log("");
     for (const [label, s] of [
       ["stdio (.mcpb)", surfaceStdio],
       ["http (+ChatGPT)", surfaceHttp],
@@ -440,9 +506,18 @@ async function main() {
     const heaviest = Object.entries(surfaceHttp.tools).slice(0, 5);
     console.log(`         heaviest: ${heaviest.map(([n, t]) => `${n} ${t}`).join(" · ")}\n`);
 
-    console.log(`RESPONSES at each tool's maximum limit — cap ${num(RESPONSE_TOKEN_BUDGET)} tok`);
+    console.log(
+      `RESPONSES at each tool's maximum limit — caps ${num(RESPONSE_TOKEN_BUDGET)} tok, ` +
+        `< ${num(RESPONSE_CHAR_LIMIT)} ch`,
+    );
     for (const [id, r] of Object.entries(responses).sort(([, a], [, b]) => b.tokens - a.tokens)) {
-      const flag = r.error ? `  CALL FAILED: ${r.error}` : r.tokens > RESPONSE_TOKEN_BUDGET ? "  OVER CAP" : "";
+      const flag = r.error
+        ? `  CALL FAILED: ${r.error}`
+        : r.tokens > RESPONSE_TOKEN_BUDGET
+          ? "  OVER CAP"
+          : r.chars >= RESPONSE_CHAR_LIMIT
+            ? "  OVER CHAR LIMIT"
+            : "";
       console.log(`  ${num(r.tokens).padStart(7)} tok  ${num(r.chars).padStart(8)} ch  ${id}${flag}`);
     }
     if (skipped.length) {
@@ -452,7 +527,10 @@ async function main() {
 
     const notes = results.flatMap((r) => r.notes);
     if (notes.length) {
-      console.log(`\nCHANGES vs baseline:`);
+      const caveat = baseline && !snapshotMatches
+        ? baseline.snapshot ? " (response notes span two different snapshots)" : " (baseline snapshot unrecorded)"
+        : "";
+      console.log(`\nCHANGES vs baseline${caveat}:`);
       for (const n of notes) console.log(n.startsWith(" ") ? n : `  ${n}`);
     } else if (!baseline) {
       console.log("\nNo baseline yet — run with --update to write one.");
@@ -472,7 +550,9 @@ async function main() {
         "Token baseline for the AMIRA tool layer, in bytes/4 estimated tokens. Regenerate with " +
         "`npm run weigh -- --update` and commit the diff: the cost of a schema or summary change " +
         "belongs in code review. See scripts/weigh.mjs for the two budgets and why drift is fatal " +
-        "for the surface but only a warning for responses.",
+        "for the surface but only a warning for responses. `snapshot` names the data/ snapshot the " +
+        "responses were measured against.",
+      snapshot: current.snapshot,
       surface: current.surface,
       responses: Object.fromEntries(
         Object.entries(current.responses).map(([id, r]) => [id, { tokens: r.tokens, chars: r.chars, text_bytes: r.text_bytes, wire_bytes: r.wire_bytes }]),

@@ -24,9 +24,32 @@
 // U+0300–U+036F, the combining-diacritic block NFD decomposition produces.
 const COMBINING_MARKS = /[̀-ͯ]/g;
 
-/** Lowercase + strip diacritics, for accent-insensitive comparison. */
+// Typographic variants that NFD leaves alone. The publication metadata alone
+// holds 517 curly apostrophes against 182 straight ones, so "Sankara's Agenda"
+// found nothing while "Sankara’s Agenda" found 12. Ligatures and the sharp s
+// expand (œ → oe, ß → ss); the offset helpers below already handle width changes.
+const TYPOGRAPHIC: Record<string, string> = {
+  "’": "'", "‘": "'", "ʼ": "'", "´": "'", "`": "'", "′": "'", "‛": "'",
+  "“": '"', "”": '"', "„": '"', "«": '"', "»": '"', "″": '"', "‟": '"',
+  "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-", "―": "-", "−": "-",
+  "\u00a0": " ", "\u202f": " ", "\u2009": " ",
+  "œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE", "ß": "ss", "ẞ": "SS",
+};
+const TYPOGRAPHIC_RE = new RegExp(`[${Object.keys(TYPOGRAPHIC).join("")}]`, "g");
+
+/** Normalise typographic variants, NFD, drop combining marks — but no lowercasing.
+ * The mapping runs before NFD, so a spacing accent (´) reads as an apostrophe, and
+ * again after it, so a ligature that only appears once its accent is split off
+ * (precomposed Ǽ → Æ + ◌́) folds like the plain one: composed and decomposed text
+ * must fold identically. */
+function stripMarks(s: string): string {
+  const map = (t: string) => t.replace(TYPOGRAPHIC_RE, (c) => TYPOGRAPHIC[c]!);
+  return map(map(s).normalize("NFD").replace(COMBINING_MARKS, ""));
+}
+
+/** Lowercase + strip diacritics + normalise quotes, dashes and ligatures. */
 export function fold(s: string): string {
-  return s.normalize("NFD").replace(COMBINING_MARKS, "").toLowerCase();
+  return stripMarks(s).toLowerCase();
 }
 
 /** Above this length a haystack is worth memoising (transcripts, full text). */
@@ -45,7 +68,7 @@ function originalStart(text: string, index: number): number {
     let delta = 0;
     for (const match of text.matchAll(/[^\u0000-\u007f]/gu)) {
       const char = match[0];
-      const width = char.normalize("NFD").replace(COMBINING_MARKS, "").length;
+      const width = stripMarks(char).length;
       if (width === char.length) continue;
       const start = match.index - delta;
       delta += char.length - width;
@@ -96,6 +119,43 @@ export function foldedIndexOf(haystack: string, needle: string): number {
   return originalStart(haystack, index);
 }
 
+/** Original end offset of the character that produced folded position `index`,
+ * including a surrogate pair and any combining marks that folded away. */
+function originalEnd(text: string, index: number): number {
+  const start = originalStart(text, index);
+  let end = start + ((text.codePointAt(start) ?? 0) > 0xffff ? 2 : 1);
+  while (end < text.length && /[̀-ͯ]/.test(text[end]!)) end++;
+  return end;
+}
+
+/**
+ * Every accent-insensitive match of `needle` as ORIGINAL offsets, paged without
+ * rebuilding a per-character index: the folded copy and the sparse offset index
+ * are both memoised per text. `total` counts every match up to `cap`.
+ */
+export function foldedMatches(
+  text: string, needle: string, opts: { skip?: number; take?: number; cap?: number } = {},
+): { total: number; capped: boolean; ranges: { start: number; end: number }[] } {
+  const query = fold(needle);
+  const cap = opts.cap ?? 100_000;
+  if (!query) return { total: 0, capped: false, ranges: [] };
+  const folded = foldCached(text);
+  const skip = opts.skip ?? 0, take = opts.take ?? Infinity;
+  const ranges: { start: number; end: number }[] = [];
+  let total = 0, cursor = 0;
+  for (;;) {
+    const index = folded.indexOf(query, cursor);
+    if (index < 0) break;
+    if (total >= skip && ranges.length < take) {
+      ranges.push({ start: originalStart(text, index), end: originalEnd(text, index + query.length - 1) });
+    }
+    total++;
+    if (total >= cap) return { total, capped: true, ranges };
+    cursor = index + query.length;
+  }
+  return { total, capped: false, ranges };
+}
+
 /** Original UTF-16 offsets, including decomposed accents and surrogate pairs. */
 export function foldedRanges(text: string, needle: string, limit = 20, from = 0): { start: number; end: number }[] {
   const query = fold(needle);
@@ -103,10 +163,14 @@ export function foldedRanges(text: string, needle: string, limit = 20, from = 0)
   let normalized = "";
   const starts: number[] = [], ends: number[] = [];
   let offset = 0;
+  let baseUnits = 0; // index of the first folded unit of the last character that produced any
   for (const char of text) {
-    const folded = char.normalize("NFD").replace(COMBINING_MARKS, "");
+    const folded = stripMarks(char);
+    if (folded) baseUnits = ends.length;
     for (let i = 0; i < folded.length; i++) { starts.push(offset); ends.push(offset + char.length); }
-    if (!folded && ends.length) ends[ends.length - 1] = offset + char.length;
+    // A mark that folds away belongs to the preceding character: every unit that
+    // character produced (œ → "oe") now ends after the mark, as in foldedMatches.
+    if (!folded) for (let i = baseUnits; i < ends.length; i++) ends[i] = offset + char.length;
     normalized += folded;
     offset += char.length;
   }

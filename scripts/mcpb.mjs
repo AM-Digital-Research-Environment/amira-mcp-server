@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
-import { zipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import ignore from "ignore";
 
 const ajv = new Ajv({ allErrors: true });
@@ -52,6 +52,15 @@ export function validateManifest(filename) {
   if (manifest.icon && !readBundleFile(root, manifest.icon).subarray(0, 8).equals(pngSignature)) {
     throw new Error("Manifest icon must be a local PNG file");
   }
+  // icons[] (manifest 0.3): each entry must be a local PNG whose IHDR
+  // dimensions match the declared `size`, so the directory never shows a
+  // mislabelled or missing image.
+  for (const { src, size } of manifest.icons ?? []) {
+    const png = readBundleFile(root, src);
+    if (!png.subarray(0, 8).equals(pngSignature)) throw new Error(`Manifest icons entry must be a local PNG file: ${src}`);
+    const actual = `${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`;
+    if (actual !== size) throw new Error(`Manifest icons entry ${src} is ${actual}, not ${size}`);
+  }
   const pkg = JSON.parse(readBundleFile(root, "package.json").toString("utf8"));
   if (pkg.version !== manifest.version) throw new Error("Package and manifest versions differ");
   return manifest;
@@ -87,7 +96,8 @@ export function packBundle(directory, output) {
     }
   }
   visit();
-  for (const name of ["manifest.json", "package.json", manifest.server.entry_point, manifest.icon].filter(Boolean)) {
+  const iconSources = (manifest.icons ?? []).map((icon) => icon.src);
+  for (const name of ["manifest.json", "package.json", manifest.server.entry_point, manifest.icon, ...iconSources].filter(Boolean)) {
     if (!Object.hasOwn(files, name)) throw new Error(`Required file excluded from bundle: ${name}`);
   }
   const archive = zipSync(files, { level: 9 });
@@ -102,6 +112,16 @@ export function packBundle(directory, output) {
   return { files: Object.keys(files), bytes: archive.length };
 }
 
+// Entry names of a packed archive, sorted, without inflating any of them. CI
+// uses this to check the real artifact rather than what .mcpbignore implies.
+export function listBundle(filename) {
+  const names = [];
+  unzipSync(readFileSync(path.resolve(filename)), {
+    filter(file) { names.push(file.name); return false; },
+  });
+  return names.sort();
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   try {
     const [command, input, output] = process.argv.slice(2);
@@ -111,8 +131,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     } else if (command === "pack" && input && output && process.argv.length === 5) {
       const result = packBundle(input, output);
       console.log(`Packed ${result.files.length} files (${result.bytes.toLocaleString("en-US")} bytes) into ${output}`);
+    } else if (command === "list" && input && !output) {
+      for (const name of listBundle(input)) console.log(name);
     } else {
-      throw new Error("Usage: node scripts/mcpb.mjs validate manifest.json | pack DIRECTORY OUTPUT.mcpb");
+      throw new Error("Usage: node scripts/mcpb.mjs validate manifest.json | pack DIRECTORY OUTPUT.mcpb | list BUNDLE.mcpb");
     }
   } catch (error) {
     console.error(`mcpb: ${error.message}`);

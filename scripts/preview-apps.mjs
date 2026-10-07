@@ -1,14 +1,15 @@
-// Local MCP Apps host for manual visual QA. Uses the built server and real tools.
+// Local MCP Apps host for manual visual QA. Uses the built server and real tools
+// against the bundled data/ snapshot: the environment is made hermetic before
+// the bundle loads (no AMIRA_* from the shell, live refresh off, a throwaway
+// cache dir), so the preview never reads or writes ~/.amira-mcp/cache.
 import { createServer } from "node:http";
-import { Client } from "@modelcontextprotocol/client";
-import { InMemoryTransport } from "@modelcontextprotocol/server";
-process.env.AMIRA_LIVE_REFRESH = "0";
+import { hermeticEnv } from "../test/helpers/env.mjs";
+import { connectInMemory } from "../test/helpers/mcp.mjs";
+const previewPort = Number(process.env.AMIRA_PREVIEW_PORT ?? 8790); // read before hermeticEnv() clears it
+hermeticEnv();
 process.env.AMIRA_TOOL_PROFILE = "full";
-const { createAmiraServer } = await import("../server/lib.js");
-const server = createAmiraServer({ openai: true });
-const client = new Client({ name: "app-preview", version: "1" });
-const [ct, st] = InMemoryTransport.createLinkedPair();
-await Promise.all([server.connect(st), client.connect(ct)]);
+const lib = await import("../server/lib.js");
+const { client, server } = await connectInMemory(lib, { openai: true }, { name: "app-preview" });
 const apps = {
   graph: { tool: "get_entity_graph", args: null }, map: { tool: "list_locations", args: { limit: 100 } },
   bibliography: { tool: "search_publications", args: { limit: 20 } }, timeline: { tool: "list_years", args: { bucket: "decade" } },
@@ -57,5 +58,5 @@ const http = createServer(async (req, res) => {
     } else res.writeHead(404).end();
   } catch (error) { res.writeHead(500, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message })); }
 });
-http.listen(Number(process.env.AMIRA_PREVIEW_PORT ?? 8790), "127.0.0.1", () => console.log(`AMIRA preview: http://127.0.0.1:${http.address().port}`));
+http.listen(previewPort, "127.0.0.1", () => console.log(`AMIRA preview: http://127.0.0.1:${http.address().port}`));
 process.once("SIGINT", async () => { http.closeAllConnections(); http.close(); await client.close(); await server.close(); });

@@ -16,7 +16,13 @@
 export function buildFixture(schemaVersion) {
   const data = {
     persons: [
-      { o_id: 100, name: "Beier, Ulli", affiliations: [{ label: "University of Bayreuth", o_id: 200 }] },
+      {
+        o_id: 100,
+        name: "Beier, Ulli",
+        affiliations: [{ label: "University of Bayreuth", o_id: 200 }],
+        identifiers: [{ scheme: "gnd", id: "118508121", url: "https://d-nb.info/gnd/118508121" }],
+        alt_names: [],
+      },
       { o_id: 101, name: "Fendler, Ute", affiliations: [] },
     ],
     organisations: [
@@ -28,11 +34,13 @@ export function buildFixture(schemaVersion) {
         latitude: 49.94,
         longitude: 11.58,
         wikidata: null,
+        alt_names: ["UBT"],
+        identifiers: [],
       },
       { o_id: 201, name: "Test Research Group", kind: "group", part_of: [], latitude: null, longitude: null, wikidata: null },
     ],
     locations: [
-      { o_id: 900, name: "Nigeria", latitude: 9.08, longitude: 8.68, parent: null, wikidata: null },
+      { o_id: 900, name: "Nigeria", latitude: 9.08, longitude: 8.68, parent: null, wikidata: "http://www.wikidata.org/entity/Q1033", place_type: "Country" },
       { o_id: 901, name: "Lagos", latitude: 6.45, longitude: 3.39, parent: { label: "Nigeria", o_id: 900 }, wikidata: null },
       { o_id: 902, name: "Germany", latitude: 51.16, longitude: 10.45, parent: null, wikidata: null },
       { o_id: 903, name: "Bayreuth", latitude: 49.94, longitude: 11.57, parent: { label: "Germany", o_id: 902 }, wikidata: null },
@@ -95,7 +103,7 @@ export function buildFixture(schemaVersion) {
         languages: [{ label: "French", o_id: 700 }],
         formats: [{ label: "photograph", o_id: 610 }],
         format_notes: [],
-        contributors: [{ name: "Beier, Ulli", role: "Author", o_id: 100 }],
+        contributors: [{ name: "Beier, Ulli", role: "Author", o_id: 100, affiliation: { label: "Iwalewahaus", o_id: 205 } }],
         dates: { created: "2013-01-01" },
         year_min: 2013,
         year_max: 2013,
@@ -105,9 +113,11 @@ export function buildFixture(schemaVersion) {
         audiences: [],
         sponsors: ["DFG"],
         provenance: ["Iwalewahaus"],
+        provenance_refs: [{ label: "Iwalewahaus", o_id: 205 }],
         access_rights: ["Public"],
         license: null,
         identifiers: ["FX_00500"],
+        typed_identifiers: [{ value: "FX_00500", type: "Locally defined identifier" }],
         doi: null,
         urls: [],
         collection_url: null,
@@ -118,6 +128,11 @@ export function buildFixture(schemaVersion) {
         thumbnail: null,
         item_sets: [800],
         university: "ubt",
+        created: "2026-03-26T10:29:56+00:00",
+        modified: "2026-09-10T08:00:00+00:00",
+        extent: "126 KB",
+        rdspace_handle: null,
+        media: [{ o_id: 9500, type: "image/webp", url: "https://data.africamultiple.uni-bayreuth.de/files/original/fx.webp", source: null, size: 1234 }],
       },
       {
         o_id: 501,
@@ -344,6 +359,10 @@ export function buildFixture(schemaVersion) {
       { o_id: 701, name: "English", code: "eng" },
     ],
     item_sets: [{ o_id: 800, title: "Fixture Collection" }],
+    subjects: [
+      { o_id: 600, name: "Architecture", vocabulary: "Library of Congress Subject Headings", uri: "http://id.loc.gov/authorities/subjects/sh85006611" },
+      { o_id: 601, name: "Islam", vocabulary: "Tag", uri: null },
+    ],
   };
 
   const counts = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v.length]));

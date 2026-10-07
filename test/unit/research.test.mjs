@@ -1,17 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
-import { Client } from "@modelcontextprotocol/client";
-import { InMemoryTransport } from "@modelcontextprotocol/server";
+import { hermeticEnv } from "../helpers/env.mjs";
+import { connectInMemory, expectedToolNames } from "../helpers/mcp.mjs";
 
-const dir = await fs.mkdtemp(path.join(os.tmpdir(), "amira-research-"));
-process.env.AMIRA_DATA_DIR = path.join(dir, "data");
-process.env.AMIRA_CACHE_DIR = path.join(dir, "cache");
-process.env.AMIRA_LIVE_REFRESH = "0";
-delete process.env.AMIRA_EXPOSURE;
+hermeticEnv({ dataDir: "absent" });
 const lib = await import("../../server/lib.js");
 const fixture = buildFixture(lib.SNAPSHOT_SCHEMA_VERSION);
 fixture.data.persons.push({ o_id: 103, name: "Beier, Ulli", affiliations: [] });
@@ -24,15 +17,9 @@ fixture.data.locations.push({ o_id: 905, name: "Lagos", latitude: null, longitud
 fixture.data.research_items[0].places.push({ label: "Lagos", o_id: 905 });
 fixture.manifest.counts.locations++;
 await lib.writeSnapshot(process.env.AMIRA_DATA_DIR, fixture);
-const [ct, st] = InMemoryTransport.createLinkedPair();
-const server = lib.createAmiraServer({ openai: true });
-const client = new Client({ name: "research-test", version: "1" });
-await Promise.all([server.connect(st), client.connect(ct)]);
-async function call(name, args = {}) {
-  const result = await client.callTool({ name, arguments: args });
-  return { ...JSON.parse(result.content[0].text), isError: result.isError };
-}
-test.after(async () => { await client.close(); await server.close(); await fs.rm(dir, { recursive: true, force: true }); });
+const conn = await connectInMemory(lib, { openai: true }, { name: "research-test" });
+const { client, call } = conn;
+test.after(() => conn.close());
 
 test("homonyms stay separate, typed IDs resolve, and profiles never merge linked people", async () => {
   const found = await call("resolve_entity", { query: "Beier, Ulli", type: "person" });
@@ -142,16 +129,15 @@ test("snapshot changes distinguish additions, deletions and updates with stable 
 });
 
 test("tool profiles retain the helpers their apps need and the full default remains available", async () => {
+  // The full stdio surface is manifest.json's tool list; every profile is a strict subset.
+  const fullCount = expectedToolNames().length;
   for (const profile of ["research", "discovery", "visualization"]) {
-    const [c, s] = InMemoryTransport.createLinkedPair();
-    const srv = lib.createAmiraServer({ profile });
-    const cli = new Client({ name: "profile-test", version: "1" });
-    await Promise.all([srv.connect(s), cli.connect(c)]);
+    const profiled = await connectInMemory(lib, { profile }, { name: "profile-test" });
     try {
-      const names = (await cli.listTools()).tools.map((t) => t.name);
-      assert.ok(names.length < 33);
+      const names = (await profiled.client.listTools()).tools.map((t) => t.name);
+      assert.ok(names.length < fullCount, `${profile}: ${names.length} tools, full surface ${fullCount}`);
       for (const name of ["get_entity_graph", "resolve_entity", "search_research_items", "list_locations"]) assert.ok(names.includes(name), `${profile}: ${name}`);
-    } finally { await cli.close(); await srv.close(); }
+    } finally { await profiled.close(); }
   }
 });
 

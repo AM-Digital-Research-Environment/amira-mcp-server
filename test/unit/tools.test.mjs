@@ -3,55 +3,36 @@
 // SDK's InMemoryTransport. This exercises registration, zod schemas, handlers,
 // pagination, windowing and exposure gating end-to-end — offline, no live data.
 //
-// AMIRA_DATA_DIR must be set BEFORE the bundle is imported (config reads the
-// environment at module load), hence the dynamic import after env setup.
+// The environment must be hermetic BEFORE the bundle is imported (config reads
+// it at module load), hence the dynamic import after hermeticEnv(). The cache
+// is isolated too: loadInitial() prefers whichever of {bundled, cache} carries
+// the newer manifest, so a real snapshot left in ~/.amira-mcp/cache by
+// `npm run test:live` would outrank the fixture and every assertion here would
+// silently run against live data instead.
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
 import { z } from "zod";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
+import { childEnv, hermeticEnv, SERVER_STDIO } from "../helpers/env.mjs";
+import { connectInMemory, expectedToolNames } from "../helpers/mcp.mjs";
 
-const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), "amira-fixture-"));
-process.env.AMIRA_DATA_DIR = fixtureDir;
-process.env.AMIRA_LIVE_REFRESH = "0";
-// The cache MUST be isolated too. loadInitial() prefers whichever of
-// {bundled, cache} carries the newer manifest, so a real snapshot left in
-// ~/.amira-mcp/cache by `npm run test:live` outranks the fixture and every
-// assertion here silently runs against live data instead.
-process.env.AMIRA_CACHE_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "amira-fixture-cache-"));
-delete process.env.AMIRA_EXPOSURE;
+const { dataDir: fixtureDir } = hermeticEnv({ dataDir: true });
 
 const lib = await import("../../server/lib.js");
-const { InMemoryTransport } = await import("@modelcontextprotocol/server");
 const { Client } = await import("@modelcontextprotocol/client");
 const { StdioClientTransport } = await import("@modelcontextprotocol/client/stdio");
 
 await lib.writeSnapshot(fixtureDir, buildFixture(lib.SNAPSHOT_SCHEMA_VERSION));
 
-const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-const server = lib.createAmiraServer({ openai: true });
-const client = new Client({ name: "tools-unit", version: "0.0.0" });
-await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+const conn = await connectInMemory(lib, { openai: true }, { name: "tools-unit" });
+const { client, call } = conn;
 
-/** Call a tool and parse its compact-JSON text body. */
-async function call(name, args = {}) {
-  const res = await client.callTool({ name, arguments: args });
-  return JSON.parse(res.content?.[0]?.text ?? "{}");
-}
-
-test.after(async () => {
-  await client.close();
-  await server.close();
-  await fs.rm(fixtureDir, { recursive: true, force: true });
-});
+test.after(() => conn.close());
 
 test("tool surface matches the extension manifest, plus HTTP search/fetch", async () => {
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name);
-  const manifest = JSON.parse(await fs.readFile(new URL("../../manifest.json", import.meta.url), "utf8"));
-  assert.deepEqual([...names].sort(), [...manifest.tools.map((tool) => tool.name), "search", "fetch"].sort());
+  assert.deepEqual([...names].sort(), expectedToolNames({ http: true }).sort());
   for (const expected of ["list_journals", "search", "fetch", "get_collection_overview"]) {
     assert.ok(names.includes(expected), expected);
   }
@@ -60,8 +41,8 @@ test("tool surface matches the extension manifest, plus HTTP search/fetch", asyn
 test("Skills extension returns finalized completion, caching and byte-size contracts", { timeout: 15000 }, async () => {
   // The SDK consumes resultType when decoding. Inspect modern wire responses
   // separately from the neutral results returned by client.request().
-  const ct = new StdioClientTransport({ command: process.execPath, args: ["server/index.js"],
-    env: { ...process.env }, stderr: "pipe" });
+  const ct = new StdioClientTransport({ command: process.execPath, args: [SERVER_STDIO],
+    env: childEnv({ AMIRA_DATA_DIR: fixtureDir }), stderr: "pipe" });
   const modernClient = new Client({ name: "skills-modern", version: "1.0.0" }, {
     versionNegotiation: { mode: { pin: "2026-07-28" } },
   });
@@ -95,11 +76,17 @@ test("Skills extension returns finalized completion, caching and byte-size contr
   }
 });
 
-test("fetch misses are MCP tool errors, with the same structured content", async () => {
-  const result = await client.callTool({ name: "fetch", arguments: { id: "pub:999999999" } });
+/** The error object of an isError result. Errors are text-only since 1.19:
+ * structured content on an error would not match the tool's output schema. */
+function toolError(result) {
   assert.equal(result.isError, true);
-  assert.equal(result.structuredContent.error.code, "not_found");
-  assert.deepEqual(result.structuredContent, JSON.parse(result.content[0].text));
+  assert.equal(result.structuredContent, undefined, "error results carry no structuredContent");
+  return JSON.parse(result.content[0].text).error;
+}
+
+test("fetch misses are MCP tool errors, reported as text only", async () => {
+  const result = await client.callTool({ name: "fetch", arguments: { id: "pub:999999999" } });
+  assert.equal(toolError(result).code, "not_found");
 });
 
 test("publication detail selects an export and keeps the BibTeX default", async () => {
@@ -163,7 +150,7 @@ test("publication export byte bounds preserve whole records and advance without 
       const ids = [];
       do {
         const result = await client.callTool({ name: "search_publications", arguments: { citation_format: format, offset } });
-        assert.ok(Buffer.byteLength(result.content[0].text, "utf8") <= 60_000);
+        assert.ok(Buffer.byteLength(result.content[0].text, "utf8") <= 44_000);
         const page = result.structuredContent;
         assert.ok(page.count > 0 && page.count < 3);
         ids.push(...page.results.map((r) => r.omeka_id));
@@ -181,9 +168,9 @@ test("publication export byte bounds preserve whole records and advance without 
     }
     store.publications[0].title = "oversized-only " + "é".repeat(60_000);
     const oversized = await client.callTool({ name: "search_publications", arguments: { citation_format: "ris", keyword: "oversized-only" } });
-    assert.equal(oversized.isError, true);
-    assert.equal(oversized.structuredContent.error.code, "export_too_large");
-    assert.equal(oversized.structuredContent.error.suggested_tool, "get_publication");
+    const error = toolError(oversized);
+    assert.equal(error.code, "export_too_large");
+    assert.equal(error.suggested_tool, "get_publication");
   } finally { store.publications.splice(0, store.publications.length, ...original); }
 });
 
@@ -231,8 +218,7 @@ test("publication language/subject filters and invalid date ranges", async () =>
     const result = await client.callTool({ name, arguments: {
       ...(name === "list_publication_facets" ? { facet: "type" } : {}), year_from: 2025, year_to: 2020,
     } });
-    assert.equal(result.isError, true);
-    assert.equal(result.structuredContent.error.code, "invalid_range");
+    assert.equal(toolError(result).code, "invalid_range");
   }
 });
 
@@ -274,8 +260,7 @@ test("publication BibTeX and facets respect restricted metadata exposure", async
         assert.equal((await call("search_publications", filter)).error.code, "exposure_restricted");
       }
       const result = await client.callTool({ name: "list_publication_facets", arguments: { facet: "author" } });
-      assert.equal(result.isError, true);
-      assert.equal(result.structuredContent.error.code, "exposure_restricted");
+      assert.equal(toolError(result).code, "exposure_restricted");
     } finally { delete process.env.AMIRA_EXPOSURE; }
   }
 });
@@ -300,12 +285,9 @@ test("tool contracts are deterministic, documented, and read-only", async () => 
   }
 });
 
-test("tool-level failures set isError and preserve their structured payload", async () => {
+test("tool-level failures set isError and report the error as text", async () => {
   const result = await client.callTool({ name: "get_research_item", arguments: { id: 999999999 } });
-  const payload = JSON.parse(result.content?.[0]?.text ?? "{}");
-  assert.equal(result.isError, true);
-  assert.equal(payload.error?.code, "not_found");
-  assert.deepEqual(result.structuredContent, payload);
+  assert.equal(toolError(result).code, "not_found");
 });
 
 test("overview: journal + fulltext/transcript coverage counts", async () => {
@@ -469,7 +451,9 @@ test("get_video / get_podcast accept a string id, like every other get_*", async
     const byNumber = await call(tool, { id });
     const byString = await call(tool, { id: String(id) });
     assert.deepEqual(byString, byNumber, `${tool}: string and number ids must agree`);
-    assert.equal(byString.id, id);
+    // Ids are strings in every response, like the other get_* tools; omeka_id is the number.
+    assert.equal(byString.id, String(id));
+    assert.equal(byString.omeka_id, id);
   }
 
   // A non-numeric id stays a clean not_found, never a crash.

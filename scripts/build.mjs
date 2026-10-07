@@ -34,7 +34,7 @@ await esbuild.build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node20",
+  target: "node22",
   // Source entries start with `#!/usr/bin/env node`; esbuild hoists the
   // shebang to line 1 of each bundle.
   legalComments: "none",

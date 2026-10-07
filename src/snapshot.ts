@@ -12,6 +12,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import {
   transformItemSet,
   transformJournal,
+  transformMedia,
+  transformSubject,
   transformLanguage,
   transformLocation,
   transformOrganisation,
@@ -25,10 +27,13 @@ import {
   transformVideo,
   type TransformContext,
 } from "./transform.js";
-import { classId, systemDate, type OmekaItem } from "./omekaJSON.js";
+import { classId, oid, systemDate, type OmekaItem } from "./omekaJSON.js";
 import {
   CORPORA,
+  MIN_SNAPSHOT_SCHEMA_VERSION,
   SNAPSHOT_SCHEMA_VERSION,
+  V5_CORPORA,
+  type MediaRec,
   type CorpusName,
   type ProjectRec,
   type SnapshotData,
@@ -132,6 +137,8 @@ const CORPUS_QUERIES: Record<Exclude<CorpusName, "item_sets">, string> = {
   videos: "resource_template_id=22",
   playlists: "item_set_id=39193",
   languages: "item_set_id=19",
+  // Subject authorities: curated LCSH headings and free tags (template 6).
+  subjects: "item_set_id=1852",
 };
 
 export interface CrawlOutput {
@@ -170,6 +177,26 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
       itemSetsRaw.length !== before.totalItemSets) throw new Error("Item sets changed during the crawl");
   log(`crawled item_sets: ${itemSetsRaw.length}`);
 
+  // Media live on their own endpoint too: one paginated pass (~17 pages) gives
+  // every file's MIME type and URLs, joined to its owner below. Per-item media
+  // requests would cost one request per digitised item.
+  const mediaByOwner = new Map<number, MediaRec[]>();
+  let mediaCount = 0;
+  for (let p = 1; ; p++) {
+    const { body } = await fetchJSON<OmekaItem[]>(`${apiBase}/media?sort_by=id&sort_order=asc&per_page=${PER_PAGE}&page=${p}`, signal);
+    for (const raw of body) {
+      const { owner, record } = transformMedia(raw);
+      if (owner == null) continue;
+      const list = mediaByOwner.get(owner);
+      if (list) list.push(record); else mediaByOwner.set(owner, [record]);
+      mediaCount++;
+    }
+    if (body.length < PER_PAGE) break;
+    await sleep(100, signal);
+  }
+  log(`crawled media: ${mediaCount}`);
+  const mediaOf = (oId: number): MediaRec[] => mediaByOwner.get(oId) ?? [];
+
   // Resolve the publication fabio classes (a handful of ids).
   const pubClassIds = new Set<number>();
   for (const it of raw.publications) {
@@ -193,14 +220,15 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     locations: raw.locations.map(transformLocation),
     projects,
     research_sections: raw.research_sections.map(transformSection),
-    research_items: raw.research_items.map((it) => transformResearchItem(it, ctx, universityOfProject)),
-    publications: raw.publications.map((it) => transformPublication(it, ctx, classId(it))),
+    research_items: raw.research_items.map((it) => ({ ...transformResearchItem(it, ctx, universityOfProject), media: mediaOf(oid(it)) })),
+    publications: raw.publications.map((it) => ({ ...transformPublication(it, ctx, classId(it)), media: mediaOf(oid(it)) })),
     journals: raw.journals.map(transformJournal),
-    podcasts: raw.podcasts.map((it) => transformPodcast(it, ctx)),
+    podcasts: raw.podcasts.map((it) => ({ ...transformPodcast(it, ctx), media: mediaOf(oid(it)) })),
     videos: raw.videos.map((it) => transformVideo(it, ctx)),
     playlists: raw.playlists.map(transformPlaylist),
     languages: raw.languages.map(transformLanguage),
     item_sets: raw.item_sets.map(transformItemSet),
+    subjects: raw.subjects.map(transformSubject),
   };
 
   const probe = await probeRemote(apiBase, signal);
@@ -241,6 +269,8 @@ export async function probeRemote(apiBase: string, signal?: AbortSignal): Promis
 
 /** True when the local manifest is older than what the probe reports. */
 export function isStale(local: SnapshotManifest, probe: RemoteProbe): boolean {
+  // An older snapshot schema lacks fields the current tools serve: recrawl.
+  if (local.schemaVersion < SNAPSHOT_SCHEMA_VERSION) return true;
   if (probe.itemSetsSignature !== undefined && local.itemSetsSignature !== probe.itemSetsSignature) return true;
   if (probe.maxModified && (!local.maxModified || probe.maxModified > local.maxModified)) return true;
   if (local.totalItemsOnInstance != null && probe.totalItems !== local.totalItemsOnInstance) return true;
@@ -263,11 +293,16 @@ export async function loadSnapshot(dir: string): Promise<CrawlOutput> {
   const active = await readSnapshotPointer(dir);
   if (active) return loadSnapshot(path.join(dir, "generations", active.current));
   const manifest = JSON.parse(await fs.readFile(path.join(dir, "manifest.json"), "utf8")) as SnapshotManifest;
-  if (manifest.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
-    throw new Error(`snapshot schema v${manifest.schemaVersion}, expected v${SNAPSHOT_SCHEMA_VERSION}`);
+  if (!(manifest.schemaVersion >= MIN_SNAPSHOT_SCHEMA_VERSION && manifest.schemaVersion <= SNAPSHOT_SCHEMA_VERSION)) {
+    throw new Error(`snapshot schema v${manifest.schemaVersion}, expected v${MIN_SNAPSHOT_SCHEMA_VERSION}–v${SNAPSHOT_SCHEMA_VERSION}`);
   }
   const data = {} as SnapshotData;
   for (const corpus of CORPORA) {
+    // A v4 snapshot predates these corpora; serve them empty.
+    if (manifest.schemaVersion < 5 && V5_CORPORA.includes(corpus) && manifest.counts?.[corpus] === undefined) {
+      (data as unknown as Record<string, unknown[]>)[corpus] = [];
+      continue;
+    }
     const arr = JSON.parse(await fs.readFile(path.join(dir, `${corpus}.json`), "utf8"));
     if (!Array.isArray(arr)) throw new Error(`snapshot ${corpus}.json is not an array`);
     const expected = manifest.counts?.[corpus];

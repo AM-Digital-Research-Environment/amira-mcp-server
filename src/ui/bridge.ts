@@ -67,15 +67,42 @@ const bridge = {
     await ready;
     await app.openLink({ url }, { timeout: 10_000, signal: lifecycle.signal });
   },
-  async download(text: string, extension: "bib" | "ris" | "json") {
+  /**
+   * Save a file through the host, or show the text to copy when the host cannot.
+   * File downloads are a draft-spec MCP Apps capability, so they are only
+   * requested from hosts that advertise `downloadFile`.
+   */
+  async download(text: string, extension: "bib" | "ris" | "json"): Promise<"saved" | "shown"> {
     await ready;
+    if (!app.getHostCapabilities()?.downloadFile) {
+      showForCopy(text);
+      return "shown";
+    }
     const result = await app.downloadFile({ contents: [{ type: "resource", resource: {
       uri: `file:///amira-bibliography.${extension}`, mimeType: extension === "json" ? "application/json" : "text/plain", text,
     } }] }, { timeout: 30_000, signal: lifecycle.signal });
     if (result.isError) throw new Error("Download was cancelled or declined by the host.");
+    return "saved";
   },
   status,
 };
+/** Fallback for hosts without file downloads: a read-only text box to copy from. */
+function showForCopy(text: string): void {
+  let box = document.getElementById("amira-export") as HTMLTextAreaElement | null;
+  if (!box) {
+    box = document.createElement("textarea");
+    box.id = "amira-export";
+    box.readOnly = true;
+    box.rows = 12;
+    box.setAttribute("aria-label", "Exported citations");
+    box.style.width = "100%";
+    box.style.marginTop = "12px";
+    document.getElementById("root")?.appendChild(box);
+  }
+  box.value = text;
+  box.focus();
+  box.select();
+}
 declare global { interface Window { amiraApp: typeof bridge } }
 window.amiraApp = bridge;
 

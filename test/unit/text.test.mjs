@@ -3,7 +3,10 @@
 // matchSnippet relies on.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clearFoldCache, fold, foldCached, foldedIndexOf } from "../../server/lib.js";
+import { hermeticEnv } from "../helpers/env.mjs";
+
+hermeticEnv();
+const { clearFoldCache, fold, foldCached, foldedIndexOf } = await import("../../server/lib.js");
 
 test("fold: lowercases and strips diacritics, both directions", () => {
   assert.equal(fold("Côte d'Ivoire"), "cote d'ivoire");

@@ -41,7 +41,16 @@ That chains clean → typecheck → skill validation → unit tests → stdio sm
 `weigh --check` → `validate:manifest`. Release and data-refresh workflows additionally run `npm run test:live`
 (hits the real API). CI, release and data-refresh workflows run `npm run audit`,
 including development dependencies; `npm run audit:prod` checks only runtime dependencies.
-The test launcher enumerates files so `npm test` works on Node 20 and Windows.
+The test launcher enumerates files so `npm test` works on every supported Node
+version (22+) and on Windows, with a 60-second timeout per test.
+
+Tests must be hermetic. Call `hermeticEnv()` from `test/helpers/env.mjs` **before**
+importing `server/lib.js`: it clears every inherited `AMIRA_*` variable, turns live
+refresh off, isolates the snapshot cache in a temporary directory (a snapshot left
+in `~/.amira-mcp/cache` would otherwise outrank the fixture) and removes its
+temporary directories on exit. Spawned servers take `childEnv()`. The smoke tests
+live in `test/smoke/` and bind the HTTP server to a free port. `connectInMemory()`
+in `test/helpers/mcp.mjs` wires a client to a server in-process.
 
 `scripts/mcpb.mjs` validates the official MCPB 0.3 JSON schema and creates unsigned
 ZIP bundles with `fflate`. Schema provenance and its MIT license live in
@@ -54,9 +63,18 @@ generation-based fixture on Windows.
 ## Things that will be asked in review
 
 - **Token budget.** Every tool response is weighed at its maximum `limit`
-  (`npm run weigh -- --check`). A new field on a list result multiplies by the
-  page size; if the check fails, the field belongs on the `get_*` detail tool,
-  not the `search_*` one. See "Token budgets" in the README.
+  (`npm run weigh -- --check`) and must stay under 45,000 characters. A new field
+  on a list result multiplies by the page size; if the check fails, the field
+  belongs on the `get_*` detail tool, not the `search_*` one. Prefer a prompt, a
+  resource or a parameter on an existing tool to a new tool: prompts and
+  resources cost nothing in the per-turn tool payload. See "Token budgets" in the
+  README.
+- **Errors are text.** Return failures through `errorResult` / `queryErrorResult`;
+  the shared policy (`src/tools/policy.ts`) strips structured content from error
+  results and trims every string argument, so handlers never see padded input.
+- **Query logic lives in the core.** `src/researchItemQuery.ts`,
+  `src/publicationQuery.ts`, `src/matching.ts` and `src/searchRanking.ts` return
+  data and typed errors and never import from `src/tools/`.
 - **`manifest.json` and the tool surface stay in sync.** The unit tests gate
   the tool list; `npm run validate:manifest` gates the extension manifest. A
   new tool needs an entry in both, plus a row in the README table.

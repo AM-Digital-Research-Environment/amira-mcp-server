@@ -13,26 +13,48 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Every action is pinned to a full commit SHA; the trailing comment names the
+# release. Dependabot (github-actions ecosystem) bumps both together.
+
 jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      # Type errors do not depend on the Node runtime, so this runs once here
+      # rather than in every unit-test lane.
+      - run: npm run typecheck
+
   test:
     name: Unit tests (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 24, 26]
+        node: [22, 24, 26]
         os: [ubuntu-latest]
         include:
           - node: 24
             os: windows-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
       # --strict: an invalid skill fails CI instead of being dropped from the
       # catalog with a warning, which is what a plain local build does.
       - run: npm run build:strict
@@ -43,14 +65,37 @@ jobs:
           node scripts/fixture-snapshot.mjs
           npm run validate:manifest
           node scripts/mcpb.mjs pack . windows-fixture.mcpb
+      # Inspect the archive that was actually packed, not what .mcpbignore
+      # implies: the runtime entry point and manifest must be there, and the
+      # HTTP-only bundles, docs and container files must not.
+      - name: Inspect the packed fixture bundle
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          node scripts/mcpb.mjs list windows-fixture.mcpb > bundle-entries.txt
+          node -e '
+            const entries = require("fs").readFileSync("bundle-entries.txt", "utf8").split(/\r?\n/).filter(Boolean);
+            const have = new Set(entries);
+            const required = ["manifest.json", "package.json", "icon.png", "server/index.js"];
+            const forbidden = [/^docs\//, /^Dockerfile$/, /^server\/http\.js$/, /^server\/lib\.js$/];
+            const missing = required.filter((name) => !have.has(name));
+            const shipped = entries.filter((name) => forbidden.some((re) => re.test(name)));
+            console.log(`${entries.length} entries in windows-fixture.mcpb`);
+            for (const name of missing) console.log(`::error::missing from the bundle: ${name}`);
+            for (const name of shipped) console.log(`::error::must not ship in the bundle: ${name}`);
+            if (missing.length || shipped.length) process.exit(1);
+          '
 
   smoke:
     name: Protocol and package smoke tests
-    needs: test
+    needs: [typecheck, test]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "26"
           cache: npm
@@ -67,9 +112,12 @@ jobs:
   container:
     name: Container build and health (offline fixture)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
           cache: npm
@@ -87,3 +135,64 @@ jobs:
           exit 1
       - if: always()
         run: docker rm -f amira-test || true
+
+  # Official MCP conformance suite against the Streamable HTTP server, scored
+  # against what the 2026-07-28 revision requires. Informational until a
+  # baseline exists: continue-on-error keeps a failure from blocking merges,
+  # and the per-scenario checks.json files are uploaded for triage. To make it
+  # gating, record known failures in conformance-baseline.yml and pass
+  # `--expected-failures conformance-baseline.yml`.
+  # 0.2.0-alpha.12 is pinned on purpose: `latest` (0.1.x) predates 2026-07-28.
+  conformance:
+    name: MCP conformance (2026-07-28, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+          cache: npm
+      - run: npm ci
+      - run: npm run build:strict
+      # Offline fixture snapshot: no Omeka crawl, deterministic data.
+      - run: node scripts/fixture-snapshot.mjs
+      - name: Start the HTTP server
+        env:
+          PORT: "8787"
+          HOST: 127.0.0.1
+          AMIRA_LIVE_REFRESH: "0"
+          # The suite fires many requests from one client; the courtesy rate
+          # limit would turn that into 429s that say nothing about conformance.
+          AMIRA_RATE_LIMIT: "0"
+        run: |
+          export AMIRA_CACHE_DIR="$RUNNER_TEMP/amira-cache"
+          nohup node server/http.js > "$RUNNER_TEMP/amira-http.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:8787/healthz; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/amira-http.log"
+          exit 1
+      - name: Run the conformance suite
+        run: >-
+          npx --yes @modelcontextprotocol/conformance@0.2.0-alpha.12 server
+          --url http://127.0.0.1:8787/mcp
+          --requirements 2026-07-28
+          --output-dir conformance-results
+      - name: Collect the server log
+        if: always()
+        run: |
+          mkdir -p conformance-results
+          cp "$RUNNER_TEMP/amira-http.log" conformance-results/ 2>/dev/null || true
+      - name: Upload conformance results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: conformance-results
+          path: conformance-results/
+          if-no-files-found: ignore
+          retention-days: 14

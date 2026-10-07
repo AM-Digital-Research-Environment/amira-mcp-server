@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.AM-Digital-Research-Environment/amira-mcp-server",
+  "title": "AMIRA — Africa Multiple Research Data",
+  "description": "Read-only access to AMIRA, the Africa Multiple research-data platform on Omeka S.",
+  "version": "1.18.1",
+  "websiteUrl": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server#readme",
+  "repository": {
+    "url": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server",
+    "source": "github",
+    "id": "1256027192"
+  },
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/AM-Digital-Research-Environment/amira-mcp-server/main/icon.png",
+      "mimeType": "image/png",
+      "sizes": ["512x512"]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server/releases/download/v1.18.1/amira-mcp-server.mcpb",
+      "fileSha256": "1e9dda9df4ad7f10678ede855630053896837c9bb6292e9e32defddab68e90fa",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://data.africamultiple.uni-bayreuth.de/mcp"
+    }
+  ]
+}

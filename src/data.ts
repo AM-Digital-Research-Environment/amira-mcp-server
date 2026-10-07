@@ -32,6 +32,7 @@ import type {
   SectionRec,
   SnapshotData,
   SnapshotManifest,
+  SubjectRec,
   University,
   VideoRec,
 } from "./types.js";
@@ -60,6 +61,8 @@ export class DataStore {
   readonly videos: VideoRec[];
   readonly playlists: PlaylistRec[];
   readonly itemSets: ItemSetRec[];
+  /** Subject authorities (empty when serving a v4 snapshot). */
+  readonly subjects: SubjectRec[];
   readonly languageIndex: LanguageIndex;
 
   private readonly itemByDreId = new Map<string, ResearchItemRec>();
@@ -82,11 +85,28 @@ export class DataStore {
   private readonly playlistByOId = new Map<number, PlaylistRec>();
   private readonly itemSetByOId = new Map<number, ItemSetRec>();
   private readonly itemsByProjectOId = new Map<number, ResearchItemRec[]>();
+  private readonly subjectByOId = new Map<number, SubjectRec>();
+  private readonly subjectByName = new Map<string, SubjectRec>();
   private readonly memo = new Map<string, unknown>();
+  private readonly lru = new Map<string, unknown>();
   /** Snapshot-owned, lazy derived data. Cache keys must include exposure when relevant. */
   cached<T>(key: string, build: () => T): T {
     if (!this.memo.has(key)) this.memo.set(key, build());
     return this.memo.get(key) as T;
+  }
+  /** Like `cached`, for per-argument data (a graph seed, a snapshot pair): keeps
+   * only the `max` most recently used entries so the memo cannot grow unbounded. */
+  cachedRecent<T>(key: string, build: () => T, max = 64): T {
+    if (this.lru.has(key)) {
+      const value = this.lru.get(key) as T;
+      this.lru.delete(key);
+      this.lru.set(key, value);
+      return value;
+    }
+    const value = build();
+    this.lru.set(key, value);
+    if (this.lru.size > max) this.lru.delete(this.lru.keys().next().value!);
+    return value;
   }
 
   constructor(source: "bundled" | "cache", data: SnapshotData, manifest: SnapshotManifest) {
@@ -104,6 +124,7 @@ export class DataStore {
     this.videos = data.videos;
     this.playlists = data.playlists;
     this.itemSets = data.item_sets;
+    this.subjects = data.subjects ?? [];
     this.languageIndex = new LanguageIndex(data.languages);
 
     // Every by-name map is keyed on the FOLDED name (src/text.ts), so a lookup
@@ -129,6 +150,14 @@ export class DataStore {
     for (const o of this.organisations) {
       this.orgByName.set(fold(o.name), o);
       this.orgByOId.set(o.o_id, o);
+    }
+    // Acronyms and variants ("UJKZ") resolve too, without shadowing a real name.
+    for (const o of this.organisations) {
+      for (const alt of o.alt_names ?? []) if (!this.orgByName.has(fold(alt))) this.orgByName.set(fold(alt), o);
+    }
+    for (const s of this.subjects) {
+      this.subjectByOId.set(s.o_id, s);
+      if (!this.subjectByName.has(fold(s.name))) this.subjectByName.set(fold(s.name), s);
     }
     for (const l of this.locations) {
       this.locationByOId.set(l.o_id, l);
@@ -173,6 +202,13 @@ export class DataStore {
   getOrganisation(name: string): OrganisationRec | undefined {
     return this.orgByOId.get(Number(name)) ?? this.orgByName.get(fold(name.trim()));
   }
+  getOrganisationByOId(oId: number): OrganisationRec | undefined {
+    return this.orgByOId.get(oId);
+  }
+  /** Subject authority by id or exact (folded) heading. */
+  getSubject(key: number | string): SubjectRec | undefined {
+    return typeof key === "number" ? this.subjectByOId.get(key) : this.subjectByName.get(fold(key.trim()));
+  }
   getSection(name: string): SectionRec | undefined {
     return this.sectionByName.get(fold(name.trim()));
   }
@@ -203,7 +239,16 @@ export class DataStore {
   }
   /** Section names of the item's parent project. */
   sectionsOfItem(item: ResearchItemRec): string[] {
-    return this.projectOf(item)?.sections.map((s) => s.label) ?? [];
+    return this.sectionRefsOfItem(item).map((s) => s.label);
+  }
+  /** Section references (with ids) of the item's parent project. */
+  sectionRefsOfItem(item: ResearchItemRec): LinkedRef[] {
+    return this.projectOf(item)?.sections ?? [];
+  }
+  /** Projects linked to a section — by id, falling back to the label for unlinked refs. */
+  projectsOfSection(section: SectionRec): ProjectRec[] {
+    return this.cached(`section-projects:${section.o_id}`, () => this.projects.filter((p) =>
+      p.sections.some((x) => x.o_id != null ? x.o_id === section.o_id : fold(x.label) === fold(section.name))));
   }
 
   /** Ancestor authority references (region, country, …), nearest first. */

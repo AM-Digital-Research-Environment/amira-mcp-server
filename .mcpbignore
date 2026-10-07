@@ -1,7 +1,17 @@
 # The esbuild bundles (server/) are fully self-contained — verified to run
-# with node_modules absent — so the packed extension ships only the bundles +
-# the JSON snapshot. No node_modules, no native bindings, cross-platform.
+# with node_modules absent — so the packed extension ships only the stdio
+# bundle + the JSON snapshot. No node_modules, no native bindings,
+# cross-platform. test/unit/packaging.test.mjs packs the REAL repository and
+# fails on any entry outside its allowlist, so a new root file has to be
+# either listed here or deliberately allowed there.
 node_modules/
+
+# The extension runs server/index.js only (manifest `server.entry_point`).
+# http.js is the container/remote entry, lib.js the test library and
+# fetchCli.js the build-time crawler: ~5 MB of dead weight inside the .mcpb.
+server/http.js
+server/lib.js
+server/fetchCli.js
 
 # Generated release archives must never be nested into a later bundle.
 *.mcpb
@@ -14,10 +24,8 @@ tsconfig.json
 *.ts
 *.map
 
-# Tests
+# Tests (the stdio/HTTP smoke tests live in test/smoke/)
 test/
-smoke-test.mjs
-smoke-http-test.mjs
 
 # Local caches
 .census-cache/
@@ -39,5 +47,13 @@ smoke-http-test.mjs
 CONTRIBUTING.md
 SECURITY.md
 .zenodo.json
+/docs/
+/.editorconfig
+/conformance-baseline.yml
 
-# Keep in the bundle: manifest.json, package.json, icon.png, CITATION.cff, server/, data/, README.md, ROADMAP.md, .claude/ (companion skill)
+# Container and MCP-registry files: the remote deployment, not the extension.
+/Dockerfile
+/.dockerignore
+/server.json
+
+# Keep in the bundle: manifest.json, package.json, icon.png, CITATION.cff, LICENSE, server/index.js, data/, README.md, ROADMAP.md, .claude/skills/ (companion skill)

@@ -4,7 +4,11 @@
 // the built library: `npm run build` first (npm test does).
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
+import { hermeticEnv } from "../helpers/env.mjs";
+
+// itemUrl() and friends read AMIRA_SITE_* at module load.
+hermeticEnv();
+const {
   LanguageIndex,
   maxModified,
   nameMatchesQuery,
@@ -22,7 +26,7 @@ import {
   transformVideo,
   uniFromDreId,
   itemUrl,
-} from "../../server/lib.js";
+} = await import("../../server/lib.js");
 
 /** Minimal TransformContext for tests. */
 const ctx = {

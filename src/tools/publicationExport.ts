@@ -1,11 +1,13 @@
-import type { PublicationRec } from "./types.js";
-import type { CitationFormat } from "./citation.js";
-import { publicationCitation } from "./publicationCitation.js";
-import { itemUrl } from "./urls.js";
-import { errorResult, textResult } from "./tools/_shared.js";
+import type { PublicationRec } from "../types.js";
+import type { CitationFormat } from "../citation.js";
+import { publicationCitation } from "../publicationCitation.js";
+import { itemUrl } from "../urls.js";
+import { errorResult, textResult } from "./responses.js";
 
 // Measure the complete compact JSON body in UTF-8; never cut an export entry.
-const EXPORT_BYTE_LIMIT = 60_000;
+// 44 KB keeps a page under the 50,000-character threshold above which Claude Code
+// stores a tool result in a file instead of the conversation.
+const EXPORT_BYTE_LIMIT = 44_000;
 
 export function publicationExportPage(
   records: PublicationRec[], offset: number, limit: number, format: CitationFormat,

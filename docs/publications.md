@@ -102,11 +102,18 @@ Omeka ID breaking ties between identical years/titles. Follow `next_offset` unti
 the `csl_json` objects into a JSON array for import.
 
 Exports default to and cap at **25 records per call**, with an additional
-**60,000-byte UTF-8 limit** on the compact JSON response. An early stop sets
+**44,000-byte UTF-8 limit** on the compact JSON response (Claude Code moves tool
+results over 50,000 characters out of the conversation). An early stop sets
 `response_limited: true`; always use `next_offset`, since a page may contain fewer
 records than requested. Entries are never cut or silently skipped. A single
 oversized entry returns `export_too_large` and identifies the publication to read
-individually. Without `citation_format`, search still returns up to 100 summaries.
+individually. Without `citation_format`, search still returns up to 100 summaries,
+within the same 40,000-character page budget as every list tool.
+
+For a whole result set, `export=bibtex` (or `ris`, `csl-json`, `csv`, `jsonl`) returns
+a single `resource_link` to `amira://export/publications/…`. Reading that resource
+recomputes the file from the snapshot with the same filters and ordering, up to
+10,000 records, so nothing passes through the conversation page by page.
 
 ## Richer detail and authority links
 

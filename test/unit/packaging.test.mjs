@@ -1,14 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import { unzipSync } from "fflate";
+import YAML from "yaml";
 import { packBundle, validateManifest } from "../../scripts/mcpb.mjs";
+import { hermeticEnv, REPO_ROOT, tempDir } from "../helpers/env.mjs";
+
+hermeticEnv();
 
 function fixture(t) {
-  const root = mkdtempSync(path.join(tmpdir(), "amira-packaging-"));
+  const root = tempDir("packaging");
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const write = (name, value) => {
     const filename = path.join(root, name);
@@ -112,4 +115,84 @@ test("packing rejects linked directories including a linked required entry point
   assert.throws(() => packBundle(root, output), /Symlinks are not supported/);
   write("manifest.json", { ...manifest, server: { ...manifest.server, entry_point: "linked/index.js" } });
   assert.throws(() => validateManifest(manifestFile), /Symlinks are not supported/);
+});
+
+// --- the REAL artifact --------------------------------------------------------
+// The fixture tests above prove the packer honours .mcpbignore; this one proves
+// .mcpbignore itself is right, by packing the actual repository and checking
+// every entry against what the extension needs at runtime. The entry point is
+// server/index.js (manifest `server.entry_point`): server/http.js, lib.js and
+// fetchCli.js are dead weight there, as are docs/ and the container files.
+
+const ALLOWED_ENTRIES = [
+  /^manifest\.json$/,
+  /^package\.json$/,
+  /^icon\.png$/,
+  /^CITATION\.cff$/,
+  /^LICENSE$/,
+  /^README\.md$/,
+  /^ROADMAP\.md$/,
+  /^server\/index\.js$/,
+  /^data\/[^/]+\.json$/, // flat snapshot layout (writeSnapshot)
+  /^data\/generations\/[^/]+\/[^/]+\.json$/, // generational layout (`npm run fetch-data`)
+  /^\.claude\/skills\/amira-mcp\/.+$/, // companion skill
+];
+const REQUIRED_ENTRIES = [
+  "manifest.json", "package.json", "icon.png", "CITATION.cff", "LICENSE", "README.md", "ROADMAP.md",
+  "server/index.js", ".claude/skills/amira-mcp/SKILL.md",
+];
+
+/** Entry names of a ZIP archive without inflating any of them. */
+function archiveEntries(file, read = () => false) {
+  const names = [];
+  const files = unzipSync(readFileSync(file), { filter(entry) { names.push(entry.name); return read(entry.name); } });
+  return { names: names.sort(), files };
+}
+
+test("the real repository packs to an allowlisted .mcpb", { timeout: 120_000 }, (t) => {
+  if (!existsSync(path.join(REPO_ROOT, "data"))) {
+    t.skip("data/ is absent: run `npm run fetch-data` (or `node scripts/fixture-snapshot.mjs`) to check the real artifact");
+    return;
+  }
+  if (!existsSync(path.join(REPO_ROOT, "server", "index.js"))) {
+    t.skip("server/ is not built: run `npm run build` to check the real artifact");
+    return;
+  }
+  const manifest = JSON.parse(readFileSync(path.join(REPO_ROOT, "manifest.json"), "utf8"));
+  assert.equal(manifest.server.entry_point, "server/index.js", "the allowlist assumes this entry point");
+  const icons = new Set([manifest.icon, ...(manifest.icons ?? []).map((icon) => icon.src)].filter(Boolean));
+
+  const output = path.join(tempDir("packaging-real"), "real.mcpb");
+  packBundle(REPO_ROOT, output);
+  const { names, files } = archiveEntries(output, (name) => name === "data/active.json");
+
+  const unexpected = names.filter((name) => !icons.has(name) && !ALLOWED_ENTRIES.some((re) => re.test(name)));
+  assert.deepEqual(unexpected, [], `entries outside the allowlist — add them to .mcpbignore:\n  ${unexpected.join("\n  ")}`);
+  const missing = [...REQUIRED_ENTRIES, ...icons].filter((name) => !names.includes(name));
+  assert.deepEqual(missing, [], "required runtime files missing from the archive");
+
+  // The snapshot manifest: data/manifest.json in the flat layout, or the
+  // active generation's manifest when data/active.json points at one.
+  const pointer = files["data/active.json"] && JSON.parse(Buffer.from(files["data/active.json"]).toString("utf8"));
+  const snapshotManifest = pointer ? `data/generations/${pointer.current}/manifest.json` : "data/manifest.json";
+  assert.ok(names.includes(snapshotManifest), `${snapshotManifest} is in the archive`);
+});
+
+test("author, email and version agree across package.json, manifest.json and CITATION.cff", () => {
+  const text = Object.fromEntries(["package.json", "manifest.json", "CITATION.cff"].map(
+    (name) => [name, readFileSync(path.join(REPO_ROOT, name), "utf8")],
+  ));
+  // UTF-8 read back as Latin-1 (é → Ã©, non-breaking space → Â ) is how
+  // v1.18.0 shipped `FrÃ©dÃ©rick` in package.json.
+  for (const [name, body] of Object.entries(text)) assert.doesNotMatch(body, /Ã.|Â./, `${name}: mojibake`);
+
+  const pkg = JSON.parse(text["package.json"]);
+  const manifest = JSON.parse(text["manifest.json"]);
+  const [cffAuthor] = YAML.parse(text["CITATION.cff"]).authors;
+  const cffName = `${cffAuthor["given-names"]} ${cffAuthor["family-names"]}`;
+  assert.equal(pkg.author.name, manifest.author.name, "package.json vs manifest.json author name");
+  assert.equal(manifest.author.name, cffName, "manifest.json vs CITATION.cff author name");
+  assert.equal(pkg.author.email, manifest.author.email, "package.json vs manifest.json author email");
+  assert.equal(manifest.author.email, cffAuthor.email, "manifest.json vs CITATION.cff author email");
+  assert.equal(manifest.version, pkg.version, "manifest.json vs package.json version");
 });

@@ -6,9 +6,11 @@
 // test/unit/tools.test.mjs covers the wiring into get_research_item.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generateItemCitation } from "../../server/lib.js";
+import { hermeticEnv } from "../helpers/env.mjs";
 
-delete process.env.AMIRA_EXPOSURE;
+// Clears AMIRA_EXPOSURE and AMIRA_SITE_* too: both change every expected string.
+hermeticEnv();
+const { generateItemCitation } = await import("../../server/lib.js");
 
 /** A minimal ResearchItemRec — only the fields a citation reads. */
 function item(over = {}) {

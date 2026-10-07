@@ -6,20 +6,14 @@
 // at module load, hence the env setup before the dynamic import.
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
+import { hermeticEnv } from "../helpers/env.mjs";
 
-const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "amira-store-"));
-const dataDir = path.join(tmp, "data"); // deliberately absent at first
-process.env.AMIRA_DATA_DIR = dataDir;
-process.env.AMIRA_CACHE_DIR = path.join(tmp, "cache"); // empty: cannot mask the failure
-process.env.AMIRA_LIVE_REFRESH = "0";
+// The data dir is deliberately absent at first; the cache is a fresh empty
+// temp dir, so it cannot mask the failure.
+const { dataDir } = hermeticEnv({ dataDir: "absent" });
 
 const lib = await import("../../server/lib.js");
-
-test.after(() => fs.rm(tmp, { recursive: true, force: true }));
 
 test("a failed initial load is retried, not latched forever", async () => {
   assert.equal(lib.currentStore(), null, "nothing served before the first load");

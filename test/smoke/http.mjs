@@ -1,27 +1,30 @@
-// Remote-transport smoke test: spawn server/http.js, connect a real MCP client
-// over Streamable HTTP, and exercise the OpenAI-compatible search/fetch tools
-// plus a rich tool — proving the HTTP endpoint serves the full surface offline.
+// HTTP smoke test (`npm run smoke:http`): spawn server/http.js against the
+// REAL snapshot in data/, connect a real MCP client over Streamable HTTP, and
+// exercise the OpenAI-compatible search/fetch tools plus a rich tool — proving
+// the HTTP endpoint serves the full surface offline.
+//
+// Needs `npm run build` and a data/ snapshot (`npm run fetch-data`, or the one
+// bundled locally). It runs from any cwd: paths resolve from this file. Each
+// server binds PORT=0 (an OS-chosen free port, read back from its startup log),
+// so a busy port can never route the checks to someone else's server. Children
+// get a sanitized env — no AMIRA_* inherited from your shell, live refresh off,
+// a throwaway cache dir — so they serve data/ and never touch
+// ~/.amira-mcp/cache. Floors shared with the stdio smoke test live in
+// ./expectations.mjs; the tool count comes from manifest.json (+ search/fetch).
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { exitedCleanly, expectedToolNames, spawnHttpServer } from "../helpers/mcp.mjs";
+import {
+  check, checkToolSurface, failureCount, MIN_JOURNALS, MIN_PUBLICATIONS, MIN_RESEARCH_ITEMS,
+} from "./expectations.mjs";
 
-const PORT = process.env.SMOKE_HTTP_PORT || "8799";
-const BASE = `http://127.0.0.1:${PORT}`;
-
-let failures = 0;
-function check(cond, label) {
-  if (!cond) {
-    failures++;
-    console.error(`  FAIL: ${label}`);
-  }
-}
-
+/** Poll until `url` answers 2xx: the port is bound before the snapshot loads. */
 async function waitReady(url, timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const r = await fetch(url);
+      const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
       if (r.ok) return;
     } catch {
       /* not up yet */
@@ -31,30 +34,32 @@ async function waitReady(url, timeoutMs = 15000) {
   throw new Error(`server not ready at ${url} after ${timeoutMs}ms`);
 }
 
-const child = spawn(process.execPath, ["server/http.js"], {
-  // offline (bundled snapshot); limiter off so the smoke run itself can never
-  // trip it — the limiter gets its own server below.
-  env: {
-    ...process.env,
-    PORT,
-    HOST: "127.0.0.1",
-    AMIRA_LIVE_REFRESH: "0",
-    AMIRA_RATE_LIMIT: "0",
-    AMIRA_ALLOWED_ORIGINS: "https://example.test",
-  },
-  stdio: ["ignore", "inherit", "inherit"],
-});
+/** Stop a server and require a clean exit (code 0, or the SIGTERM we sent). */
+async function stopAndCheck(srv, label) {
+  check(srv.alive(), `${label}: still alive after the run (exited early: ${srv.child.exitCode ?? srv.child.signalCode})`);
+  const exit = await srv.stop();
+  check(exitedCleanly(exit), `${label}: clean shutdown, got ${JSON.stringify(exit)}`);
+}
 
+let srv;
 let client;
 try {
+  // offline (data/ snapshot); limiter off so the smoke run itself can never
+  // trip it — the limiter gets its own server below.
+  srv = await spawnHttpServer({
+    forwardStderr: true,
+    env: { AMIRA_RATE_LIMIT: "0", AMIRA_ALLOWED_ORIGINS: "https://example.test" },
+  });
+  const BASE = srv.base;
+
   // Health endpoint reports identity + the MCP path.
   await waitReady(`${BASE}/healthz`);
   const health = await (await fetch(`${BASE}/healthz`)).json();
   check(health.status === "ok", "healthz: ready status reported");
   check(health.transport === "streamable-http", "healthz: transport reported");
   check(health.mcp_endpoint === "/mcp", "healthz: mcp_endpoint reported");
-  check(health.data_snapshot?.research_items >= 3975, "healthz: snapshot counts reported");
-  check(health.data_snapshot?.publications >= 270, "healthz: publication count reported");
+  check(health.data_snapshot?.research_items >= MIN_RESEARCH_ITEMS, "healthz: snapshot counts reported");
+  check(health.data_snapshot?.publications >= MIN_PUBLICATIONS, `healthz: >= ${MIN_PUBLICATIONS} publications reported`);
   check(typeof health.data_snapshot?.fetched_at === "string", "healthz: snapshot freshness reported");
 
   // CORS preflight must satisfy BOTH protocol revisions: the 2026-07-28 headers
@@ -86,7 +91,7 @@ try {
   const tools = await client.listTools();
   const names = tools.tools.map((t) => t.name);
   console.log(`tools (${names.length}):`, names.join(", "));
-  check(names.length === 35, `expected 35 tools over HTTP, got ${names.length}`);
+  checkToolSurface(names, expectedToolNames({ http: true }), "HTTP surface vs manifest.json + search/fetch");
   check(names.includes("search") && names.includes("fetch"), "HTTP exposes search + fetch");
   check(names.includes("list_cluster_partners"), "HTTP exposes cluster partner tool");
   check(names.includes("list_journals"), "HTTP exposes the journals tool");
@@ -186,8 +191,9 @@ try {
 
   // a rich tool works over HTTP too
   const overview = await call("get_collection_overview", {});
-  check(overview.counts?.research_items >= 3975, "rich tool over HTTP: overview parity");
-  check(overview.counts?.journals >= 50, "rich tool over HTTP: journals corpus present");
+  check(overview.counts?.research_items >= MIN_RESEARCH_ITEMS, "rich tool over HTTP: overview parity");
+  check(overview.counts?.publications >= MIN_PUBLICATIONS, "rich tool over HTTP: publications corpus present");
+  check(overview.counts?.journals >= MIN_JOURNALS, "rich tool over HTTP: journals corpus present");
 
   // Skills over MCP on the REMOTE surface — the reason the extension is worth
   // having. ChatGPT, Claude.ai connectors and the APIs cannot install a local
@@ -209,15 +215,13 @@ try {
   );
 
   await client.close();
+  client = undefined;
+  await stopAndCheck(srv, "main server");
 
   // --- rate limiting (its own server, so the checks above stay unthrottled) ---
-  const RL_PORT = String(Number(PORT) + 1);
-  const rlChild = spawn(process.execPath, ["server/http.js"], {
-    env: { ...process.env, PORT: RL_PORT, HOST: "127.0.0.1", AMIRA_LIVE_REFRESH: "0", AMIRA_RATE_LIMIT: "3" },
-    stdio: ["ignore", "ignore", "inherit"],
-  });
+  const rl = await spawnHttpServer({ forwardStderr: true, env: { AMIRA_RATE_LIMIT: "3" } });
   try {
-    const rlBase = `http://127.0.0.1:${RL_PORT}`;
+    const rlBase = rl.base;
     await waitReady(`${rlBase}/healthz`);
     const post = () =>
       fetch(`${rlBase}/mcp`, {
@@ -234,23 +238,23 @@ try {
     // Health probes must stay exempt, or the container's HEALTHCHECK kills it.
     const health2 = await fetch(`${rlBase}/healthz`);
     check(health2.status === 200, "rate limit: /healthz exempt");
+    await stopAndCheck(rl, "rate-limit server");
   } finally {
-    rlChild.kill();
+    await rl.stop();
   }
 } catch (err) {
-  failures++;
-  console.error(`  FAIL: unexpected error — ${err?.stack || err}`);
+  check(false, `unexpected error — ${err?.stack || err}`);
 } finally {
   try {
     await client?.close();
   } catch {
     /* already closed */
   }
-  child.kill();
+  await srv?.stop();
 }
 
-if (failures > 0) {
-  console.error(`\nHTTP smoke test FAILED: ${failures} check(s)`);
+if (failureCount() > 0) {
+  console.error(`\nHTTP smoke test FAILED: ${failureCount()} check(s)`);
   process.exit(1);
 }
 console.log("\nHTTP smoke test complete — all checks passed");

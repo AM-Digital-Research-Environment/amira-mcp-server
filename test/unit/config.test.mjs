@@ -11,13 +11,14 @@
 // before config reads it at module load.
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
+import { hermeticEnv } from "../helpers/env.mjs";
+import { connectInMemory } from "../helpers/mcp.mjs";
 
-const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), "amira-config-"));
-const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "amira-config-cache-"));
+// hermeticEnv() already sets AMIRA_DATA_DIR / AMIRA_CACHE_DIR / AMIRA_LIVE_REFRESH
+// to real values; they are re-asserted below so the intent stays explicit.
+const { dataDir: fixtureDir, cacheDir } = hermeticEnv({ dataDir: true });
 
 // The placeholders that actually caused the reported bug — the ones that feed
 // citations. AMIRA_CACHE_DIR and AMIRA_LIVE_REFRESH are deliberately REAL
@@ -35,26 +36,13 @@ process.env.AMIRA_LIVE_REFRESH = "0";
 process.env.AMIRA_ALLOWED_ORIGINS = "https://chatgpt.com, claude.ai:443, *, not a url";
 
 const lib = await import("../../server/lib.js");
-const { InMemoryTransport } = await import("@modelcontextprotocol/server");
-const { Client } = await import("@modelcontextprotocol/client");
 
 await lib.writeSnapshot(fixtureDir, buildFixture(lib.SNAPSHOT_SCHEMA_VERSION));
 
-const [ct, st] = InMemoryTransport.createLinkedPair();
-const server = lib.createAmiraServer();
-const client = new Client({ name: "config-unit", version: "0.0.0" });
-await Promise.all([server.connect(st), client.connect(ct)]);
+const conn = await connectInMemory(lib, {}, { name: "config-unit" });
+const { call } = conn;
 
-async function call(name, args = {}) {
-  const res = await client.callTool({ name, arguments: args });
-  return JSON.parse(res.content?.[0]?.text ?? "{}");
-}
-
-test.after(async () => {
-  await client.close();
-  await server.close();
-  await fs.rm(fixtureDir, { recursive: true, force: true });
-});
+test.after(() => conn.close());
 
 test("unsubstituted MCPB placeholders never leak into citations", async () => {
   const overview = await call("get_collection_overview");

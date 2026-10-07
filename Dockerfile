@@ -4,9 +4,14 @@
 # — no node_modules needed at runtime.
 #   docker build -t amira-mcp .
 #   docker run -p 8787:8787 amira-mcp     # → http://localhost:8787/mcp
+#
+# Both base images are pinned to the multi-arch index digest of node:26-slim;
+# the tag is kept for readability. Dependabot's `docker` ecosystem
+# (.github/dependabot.yml) opens a PR whenever that digest moves, so the pin
+# never silently goes stale.
 
 ARG SNAPSHOT_STAGE=fetch
-FROM node:26-slim AS build
+FROM node:26-slim@sha256:930557a230abacbc3f4fd9b8648abf8f4bee1e17cb72195dcdfb2f709bc85b33 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -28,7 +33,7 @@ RUN node --input-type=module -e "import {loadSnapshot} from './server/lib.js'; a
 
 FROM ${SNAPSHOT_STAGE} AS snapshot
 
-FROM node:26-slim AS run
+FROM node:26-slim@sha256:930557a230abacbc3f4fd9b8648abf8f4bee1e17cb72195dcdfb2f709bc85b33 AS run
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8787 \

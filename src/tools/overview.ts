@@ -1,8 +1,9 @@
+import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore, refreshStatus, UNIVERSITY_LABELS } from "../data.js";
 import { SITE_BASE } from "../config.js";
 import { allowStructured, exposureLevel } from "../exposure.js";
-import { annotate, textResult, type Server } from "./_shared.js";
+import { READ_ONLY, textResult, type Server } from "./_shared.js";
 import { OVERVIEW_UI_META } from "./apps.js";
 import type { University } from "../types.js";
 import { overviewSchema } from "./outputSchemas.js";
@@ -17,8 +18,8 @@ function tally<T>(items: T[], key: (t: T) => string | string[] | null | undefine
   return Object.fromEntries(Object.entries(out).sort((a, b) => b[1] - a[1]));
 }
 
-export function registerOverviewTools(server: Server): void {
-  server.registerTool(
+export function registerOverviewTools(server: Server, tools: ToolMap): void {
+  tools.get_collection_overview = server.registerTool(
     "get_collection_overview",
     {
       title: "Africa Multiple collection overview",
@@ -26,7 +27,7 @@ export function registerOverviewTools(server: Server): void {
       // everywhere else.
       _meta: OVERVIEW_UI_META,
       description: "Start here: corpus counts, text coverage, breakdowns, dates, snapshot freshness and refresh status.",
-      annotations: annotate("Collection overview"),
+      annotations: READ_ONLY,
       inputSchema: z.strictObject({}),
       outputSchema: overviewSchema,
     },

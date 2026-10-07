@@ -6,6 +6,7 @@ import { fold } from "./text.js";
 import { nameMatchesQuery } from "./names.js";
 import { itemSetUrl, itemUrl } from "./urls.js";
 import { snapshotId } from "./snapshotIdentity.js";
+import { canonicalTypedId } from "./typedIds.js";
 
 export const entityTypes = ["person", "project", "section", "organisation", "location", "subject", "format", "language",
   "collection", "research_item", "publication", "journal", "podcast", "video", "playlist"] as const;
@@ -24,6 +25,8 @@ interface Link { source: string; target: string; relation: string; evidence: Evi
 interface RecordLinks { evidence: Evidence; entities: Set<string> }
 export interface GraphIndex {
   entities: Map<string, Entity>; explicit: Map<string, Link[]>; records: Map<string, RecordLinks[]>;
+  /** Entities with their folded labels, for resolution without re-folding. */
+  folded: { entity: Entity; label: string }[];
 }
 
 export function graphIndex(store: DataStore): GraphIndex {
@@ -96,21 +99,33 @@ export function graphIndex(store: DataStore): GraphIndex {
     for (const p of store.persons) record(`person:${p.o_id}`, "persons", [["organisation", p.affiliations, "affiliation"]]);
     for (const p of store.organisations) record(`organisation:${p.o_id}`, "organisations", [["organisation", p.part_of, "part_of"]]);
     for (const p of store.locations) record(`location:${p.o_id}`, "locations", [["location", p.parent ? [p.parent] : [], "within"]]);
-    return { entities, explicit, records };
+    const folded = [...entities.values()].map((entity) => ({ entity, label: fold(entity.label) }));
+    return { entities, explicit, records, folded };
   });
 }
 
 export function resolveEntities(store: DataStore, query: string, type?: EntityType): Entity[] {
-  const all = [...graphIndex(store).entities.values()].filter((e) => !type || e.type === type);
-  const q = fold(query.trim());
+  const all = graphIndex(store).folded.filter(({ entity }) => !type || entity.type === type);
+  const raw = query.trim();
+  const q = fold(raw);
   if (!q) return [];
-  const exact = all.filter((e) => e.id === query || String(e.omeka_id) === query || fold(e.label) === q);
+  // Typed ids from either vocabulary (`item:7392` = `research_item:7392`).
+  const typed = canonicalTypedId(raw);
+  const exact = all.filter(({ entity, label }) => entity.id === typed || String(entity.omeka_id) === raw || label === q).map(({ entity }) => entity);
   if (exact.length) return exact;
-  return all.filter((e) => fold(e.label).includes(q) || (e.type === "person" && nameMatchesQuery(e.label, query)))
+  return all.filter(({ entity, label }) => label.includes(q) || (entity.type === "person" && nameMatchesQuery(entity.label, raw)))
+    .map(({ entity }) => entity)
     .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
 }
 
+/** A seed's edges with their evidence, cached per seed (the most recent 64): an
+ * evidence page used to recompute every edge and its SHA-256 id (~120 ms on a
+ * busy node such as a language). */
 export function entityEdges(store: DataStore, seed: string) {
+  return store.cachedRecent(`edges:${seed}`, () => computeEdges(store, seed));
+}
+
+function computeEdges(store: DataStore, seed: string) {
   const index = graphIndex(store);
   const edges = new Map<string, { edge: Edge; evidence: Map<string, Evidence> }>();
   const add = (source: string, target: string, kind: Edge["kind"], relation: string, evidence: Evidence) => {
@@ -147,7 +162,9 @@ export function entityGraph(store: DataStore, seed: string, maxNodes: number, ma
     const additions = [edge.source, edge.target].filter((id) => !ids.has(id));
     if (edges.length >= maxEdges || ids.size + additions.length > maxNodes) continue;
     const cost = Buffer.byteLength(JSON.stringify(edge)) + additions.reduce((sum, id) => sum + Buffer.byteLength(JSON.stringify(index.entities.get(id))), 0);
-    if (bytes + cost > 60_000) continue;
+    // 42 KB keeps the whole graph result under the 50,000 characters above which
+    // Claude Code moves a tool result out of the conversation into a file.
+    if (bytes + cost > 42_000) continue;
     bytes += cost;
     additions.forEach((id) => ids.add(id)); edges.push(edge);
   }

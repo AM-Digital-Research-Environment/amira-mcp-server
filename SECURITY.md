@@ -47,9 +47,21 @@ explicitly when exposing the service; the Docker image already does so.
 Origin validation remains enabled. Configure `AMIRA_ALLOWED_ORIGINS` for
 trusted browser clients and put a public endpoint behind an HTTPS proxy.
 
+Behind a reverse proxy, set `AMIRA_TRUST_PROXY=true` so the courtesy rate limit
+applies per client rather than to the proxy as a whole. From 1.19 the server
+trusts only what the proxy observed — `X-Real-IP`, otherwise the
+`X-Forwarded-For` entry `AMIRA_PROXY_HOPS` from the right — never the
+client-supplied leftmost entry, and it buckets IPv6 clients by /64. Leave the
+setting off when clients connect directly, since they could then choose the
+header. The in-process limit is a courtesy control; enforce quotas at the proxy.
+
+Release assets carry GitHub build-provenance attestations
+(`gh attestation verify amira-mcp-server.mcpb --repo AM-Digital-Research-Environment/amira-mcp-server`),
+which replace the MCPB signatures removed in 1.18.1.
+
 `npm run audit:prod` checks runtime dependencies; `npm run audit` includes all
 development dependencies. CI and both publishing workflows gate on the full
-audit. On 5 October 2026 both audits reported zero vulnerabilities for v1.18.1.
+audit. On 6 October 2026 both audits reported zero vulnerabilities for v1.19.0.
 
 Version 1.18.1 removes the MCPB CLI and its unused signing/editor dependencies,
 including the unpatched `node-forge` dependency responsible for

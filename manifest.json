@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "amira-mcp-server",
   "display_name": "AMIRA — Africa Multiple Research Data",
-  "version": "1.18.1",
+  "version": "1.19.0",
   "description": "Read-only access to AMIRA, the Africa Multiple research-data platform on Omeka S.",
   "long_description": "The Africa Multiple Interactive Research Atlas (AMIRA) is the research-data platform of the Africa Multiple Cluster of Excellence at the University of Bayreuth. It is built and maintained by the Cluster's Digital Research Environment (DRE), its digital infrastructure unit, which connects researchers across the Africa Multiple Research Centres (AMRCs) and partner institutions worldwide.\n\nCuration and description are joint efforts with partners at the AMRCs in Université Joseph Ki-Zerbo, Rhodes University, the University of Lagos, and Moi University. Bayreuth hosts the coordinating DRE infrastructure and metadata layer. Federal University of Bahia is a privileged partner, not an AMRC. Storage stays distributed by default: research data remains in local repositories and becomes findable without being relocated.\n\nThis read-only MCP server exposes AMIRA's Omeka S metadata through well-described tools for research items, projects, research sections, people, institutions, groups, collections, publications (open-access ones with searchable extracted full text), journals, podcast episodes, YouTube videos and searchable transcripts, plus the places, languages and subjects that connect them. No API key, database, account or VPN is required. A complete data snapshot is bundled in the extension, so the server works fully offline; when enabled, it can refresh from the public Omeka S API.\n\nEvery record carries an `amira_url` — its public page on the Omeka S site — so results can be cited as links back to the source. AMIRA focuses on the Cluster's research data; for news, events and general information, visit https://www.africamultiple.uni-bayreuth.de/.",
   "author": {
@@ -18,6 +18,12 @@
   "documentation": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server#readme",
   "support": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server/issues",
   "icon": "icon.png",
+  "icons": [
+    {
+      "src": "icon.png",
+      "size": "512x512"
+    }
+  ],
   "license": "MIT",
   "keywords": [
     "africa-multiple",
@@ -53,11 +59,11 @@
     },
     {
       "name": "search_research_items",
-      "description": "Search ~4,000 research items by keyword, subject, location, country, contributor, project, section, university, resource type, format/genre, language, and year."
+      "description": "Search digitised research items by keyword (every word must match), subject, place, country, contributor, project, section, language, years, media and date added. Can return a CSV/JSONL export link."
     },
     {
       "name": "get_research_item",
-      "description": "Full metadata for one research item by Omeka o:id: dates, contributors with roles, places with hierarchy, sponsors, formats, collections, related items, media thumbnail, plus a generated citation and BibTeX/RIS/CSL-JSON export."
+      "description": "Full record of one research item: contributors with their affiliation at the time, places, rights, provenance, media files, IIIF manifest and a generated citation."
     },
     {
       "name": "search_projects",
@@ -65,7 +71,7 @@
     },
     {
       "name": "get_project",
-      "description": "Full detail for one project, with item breakdown and top subjects."
+      "description": "Project detail: team, sections, funders, item counts by type, top subjects and sample items."
     },
     {
       "name": "list_research_sections",
@@ -73,7 +79,7 @@
     },
     {
       "name": "get_research_section",
-      "description": "Full detail for one research section, including its projects."
+      "description": "One research section, by name or id: description, team and projects with item counts."
     },
     {
       "name": "search_persons",
@@ -81,7 +87,7 @@
     },
     {
       "name": "get_person",
-      "description": "Profile aggregating a person's projects led/joined, items contributed, and publications."
+      "description": "Profile of one person: affiliations, GND and other identifiers, projects, credited items, publications and top collaborators."
     },
     {
       "name": "list_institutions",
@@ -89,7 +95,7 @@
     },
     {
       "name": "get_institution",
-      "description": "One institution's or group's projects, affiliated people, and contributed items."
+      "description": "Profile of an institution or group, by name, acronym or id: identifiers, members, funded projects and credited items."
     },
     {
       "name": "list_cluster_partners",
@@ -101,15 +107,15 @@
     },
     {
       "name": "list_subjects",
-      "description": "Subject headings (tags merged in) ranked by item frequency, each with its authority page."
+      "description": "Subject headings ranked by item count, each marked as a Library of Congress heading or a free tag."
     },
     {
       "name": "list_locations",
-      "description": "Every place — countries and cities in one flat list (hierarchy rolled up) — ranked by item count, with coordinates."
+      "description": "Research places with coordinates, Wikidata ids and country rollups; filter by country, name, radius or bounding box. Renders as a map in hosts that support MCP Apps."
     },
     {
       "name": "list_collections",
-      "description": "Collections (item sets) ranked by research-item count, each with its browsable page."
+      "description": "Item sets ranked by item count, with catalogue and IIIF collection links."
     },
     {
       "name": "list_categories",
@@ -121,7 +127,7 @@
     },
     {
       "name": "search_publications",
-      "description": "Search the bibliography and full text; optionally export matching publications as bounded BibTeX, RIS or CSL-JSON batches."
+      "description": "Search the cluster bibliography (abstracts in every language and open-access full text). Returns citations per page or a BibTeX/RIS/CSL-JSON/CSV export link. Renders as a bibliography explorer in hosts that support MCP Apps."
     },
     {
       "name": "get_publication",
@@ -141,11 +147,11 @@
     },
     {
       "name": "search_podcasts",
-      "description": "Search cluster podcast episodes by keyword, series, person, or year — including full-text search over transcripts."
+      "description": "Search podcast episodes by keyword (incl. transcripts), series, person, language and year."
     },
     {
       "name": "get_podcast",
-      "description": "Full detail for one podcast episode; transcript opt-in via include_transcript, with offset/length paging."
+      "description": "One podcast episode: duration, audio file, speakers and the model that generated its transcript; transcript opt-in and pageable."
     },
     {
       "name": "search_videos",
@@ -153,7 +159,7 @@
     },
     {
       "name": "get_video",
-      "description": "Full detail for one video; transcript opt-in via include_transcript, with offset/length paging."
+      "description": "One YouTube video: thumbnail, speakers, playlists; transcript opt-in and pageable."
     },
     {
       "name": "resolve_entity",
@@ -180,6 +186,51 @@
       "description": "Page additions, updates and deletions between retained snapshots."
     }
   ],
+  "prompts": [
+    {
+      "name": "literature_review",
+      "description": "Survey the bibliography and research data on a topic, with cited sources.",
+      "arguments": [
+        "topic",
+        "year_from",
+        "year_to"
+      ],
+      "text": "Write a short literature review on \"${arguments.topic}\" from the AMIRA collection, citing every record with its amira_url."
+    },
+    {
+      "name": "project_dossier",
+      "description": "Profile one research project: team, holdings, places, time span and connections.",
+      "arguments": [
+        "project"
+      ],
+      "text": "Prepare a dossier on the research project \"${arguments.project}\", citing every record with its amira_url."
+    },
+    {
+      "name": "person_profile",
+      "description": "Profile one researcher: affiliations, projects, publications and collaborators.",
+      "arguments": [
+        "name"
+      ],
+      "text": "Profile the researcher \"${arguments.name}\" from the AMIRA collection, citing every record with its amira_url."
+    },
+    {
+      "name": "place_report",
+      "description": "What the collection holds about a place: items, projects, subjects and periods.",
+      "arguments": [
+        "place"
+      ],
+      "text": "Report what the AMIRA collection holds about \"${arguments.place}\", citing every record with its amira_url."
+    },
+    {
+      "name": "transcript_evidence",
+      "description": "Find and quote passages on a theme in transcripts and open-access full texts.",
+      "arguments": [
+        "query"
+      ],
+      "text": "Find and quote evidence about \"${arguments.query}\" in AMIRA transcripts and full texts, citing every record with its amira_url."
+    }
+  ],
+  "prompts_generated": true,
   "compatibility": {
     "claude_desktop": ">=0.10.0",
     "platforms": [
@@ -188,7 +239,7 @@
       "linux"
     ],
     "runtimes": {
-      "node": ">=20.0.0"
+      "node": ">=22.0.0"
     }
   },
   "user_config": {
