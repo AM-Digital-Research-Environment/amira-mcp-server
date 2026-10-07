@@ -56,4 +56,4 @@ SECURITY.md
 /.dockerignore
 /server.json
 
-# Keep in the bundle: manifest.json, package.json, icon.png, CITATION.cff, LICENSE, server/index.js, data/, README.md, ROADMAP.md, .claude/skills/ (companion skill)
+# Keep in the bundle: manifest.json, package.json, icon.png, CITATION.cff, LICENSE, server/index.js, data/, README.md, ROADMAP.md, CHANGELOG.md, .claude/skills/ (companion skill)

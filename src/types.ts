@@ -1,6 +1,6 @@
 // Snapshot record types — the shapes the build-time fetcher (src/transform.ts)
 // produces from Omeka S JSON-LD and the runtime serves from memory. Field
-// provenance is the census in scripts/census-report.json (ROADMAP §2.4).
+// provenance is the census in scripts/census-report.json.
 
 export type University = "ubt" | "unilag" | "ujkz" | "ufba" | "external";
 

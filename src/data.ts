@@ -1,4 +1,4 @@
-// In-memory store over the Omeka snapshot (ROADMAP §2.3).
+// In-memory store over the Omeka snapshot.
 //
 // Two data planes, offline-first (issue #1 D2):
 //   1. A snapshot BUNDLED in the .mcpb — the server is fully usable from it

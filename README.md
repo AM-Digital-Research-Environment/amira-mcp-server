@@ -45,14 +45,9 @@ information about the Africa Multiple Cluster of Excellence, visit
 media), 93 projects, 555 publications (60 with extracted full text), 87 journals,
 43 podcast episodes, 140 videos and 3,085 subject authorities (646 Library of
 Congress headings). Counts are a dated snapshot; use `get_collection_overview` for
-what your running server actually holds. See the [publication guide](docs/publications.md)
-and the [roadmap](ROADMAP.md) for further improvements.
-
-Two October 2026 reviews document the current design: the [5 October review](docs/review-2026-10-05.md)
-and its [implementation in 1.18](docs/implementation-2026-10-05.md) (research tools, apps,
-durable snapshots), and the [6 October review](docs/review-2026-10-06.md) and its
-[implementation in 1.19](docs/implementation-2026-10-06.md) (matching fixes, prompts,
-resources, authority identifiers, media and hardening).
+what your running server actually holds. See the [publication guide](docs/publications.md),
+the [changelog](CHANGELOG.md) for what each release changed, and the
+[roadmap](ROADMAP.md) for further improvements.
 
 ## How it gets its data — and why nothing else is needed
 
@@ -384,7 +379,8 @@ npm run pack-mcpb                          # -> amira-mcp-server.mcpb
 
 `scripts/census.mjs` re-runs the property census behind the field mapping
 (`scripts/census-report.json`) — rerun and diff it if the instance's templates
-change. See `ROADMAP.md` for the migration plan and progress log.
+change. The design decisions behind it are in `ROADMAP.md`; `CHANGELOG.md`
+records each release.
 
 ## Continuous delivery
 

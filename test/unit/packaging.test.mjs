@@ -132,6 +132,7 @@ const ALLOWED_ENTRIES = [
   /^LICENSE$/,
   /^README\.md$/,
   /^ROADMAP\.md$/,
+  /^CHANGELOG\.md$/,
   /^server\/index\.js$/,
   /^data\/[^/]+\.json$/, // flat snapshot layout (writeSnapshot)
   /^data\/generations\/[^/]+\/[^/]+\.json$/, // generational layout (`npm run fetch-data`)
@@ -139,7 +140,7 @@ const ALLOWED_ENTRIES = [
 ];
 const REQUIRED_ENTRIES = [
   "manifest.json", "package.json", "icon.png", "CITATION.cff", "LICENSE", "README.md", "ROADMAP.md",
-  "server/index.js", ".claude/skills/amira-mcp/SKILL.md",
+  "CHANGELOG.md", "server/index.js", ".claude/skills/amira-mcp/SKILL.md",
 ];
 
 /** Entry names of a ZIP archive without inflating any of them. */

@@ -1,4 +1,4 @@
-// Omeka JSON-LD items → snapshot records (ROADMAP §2.4). One function per
+// Omeka JSON-LD items → snapshot records. One function per
 // corpus; all evidence for the term choices is scripts/census-report.json.
 // Used by the build-time fetcher and the runtime live refresh alike.
 

@@ -1,8 +1,8 @@
-// Property census of the public Omeka S API (ROADMAP §2.2).
+// Property census of the public Omeka S API.
 //
 // Crawls every resource template / item set the server cares about, then reports
 // per-property fill counts, value-type distributions, multiplicity and a sample —
-// the evidence base for the field mapping in ROADMAP §2.4. Raw pages are cached
+// the evidence base for the field mapping in src/transform.ts. Raw pages are cached
 // under .census-cache/ so reruns are offline; pass --fresh to refetch.
 //
 //   node scripts/census.mjs [--fresh]
@@ -196,7 +196,8 @@ report.propertyLabels = await fetchPropertyLabels();
 await fs.writeFile(REPORT, JSON.stringify(report, null, 1));
 console.error(`[census] report written to ${REPORT}`);
 
-// Console digest: the questions ROADMAP §2.2 asks.
+// Console digest: which properties hold dates, `dre:id` coverage, and the
+// organisation and resource classes in use.
 const ri = report.targets.research_item;
 const dateProps = Object.keys(ri.properties).filter((k) => /date|created|issued|temporal|copyright/i.test(k));
 console.log(JSON.stringify({

@@ -87,9 +87,10 @@ generation-based fixture on Windows.
 
 ## Versioning and releases
 
-Version lives in both `package.json` and `manifest.json` — bump both. Releases
-are tag-driven: pushing `v*` builds a fresh snapshot, packs the `.mcpb` and the
-companion skill, and publishes the GitHub Release.
+Version lives in both `package.json` and `manifest.json` — bump both, and add
+an entry to `CHANGELOG.md` in the same commit. Releases are tag-driven: pushing
+`v*` builds a fresh snapshot, packs the `.mcpb` and the companion skill, and
+publishes the GitHub Release.
 
 `CITATION.cff` is **not** a third file to bump. The release workflow stamps its
 `version` and `date-released` from the tag — into the packed `.mcpb`, then back
