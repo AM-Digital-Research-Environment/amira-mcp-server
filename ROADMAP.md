@@ -12,13 +12,13 @@ progress log) remains in Git at the same tag.
 
 ## Next priorities
 
-1. **Deploy 1.19.** On 7 October the public endpoint still answered 1.17.0,
-   while the MCP Registry already listed 1.19.0 with that endpoint. In
-   `omeka-s-docker`, commit the `compose.amira.yml` change (default pin v1.19.0,
-   `AMIRA_TRUST_PROXY=true`, `AMIRA_PROXY_HOPS=1`), run
-   `deploy/amira/update-amira-mcp.sh v1.19.0`, and check `serverInfo.version`
-   with a raw `initialize` request. Then reconnect the ChatGPT connector, which
-   caches tool schemas.
+1. **Deploy 1.20.** On 7 October the public endpoint still answered 1.17.0,
+   while the MCP Registry already listed a newer release with that endpoint. In
+   `omeka-s-docker`, commit the `compose.amira.yml` change with its default pin
+   raised from v1.19.0 to v1.20.0 (it also sets `AMIRA_TRUST_PROXY=true` and
+   `AMIRA_PROXY_HOPS=1`). Run `deploy/amira/update-amira-mcp.sh v1.20.0` and
+   check `serverInfo.version` with a raw `initialize` request. Then reconnect
+   the ChatGPT connector, which caches tool schemas.
 2. **Retrieval effectiveness.** Build a blind multilingual query set with judged
    answers and citations. Use it to measure the 1.19 ranker (word-start matching,
    IDF, corpus interleaving, German/Portuguese stopwords) and the AND semantics of
