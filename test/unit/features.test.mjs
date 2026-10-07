@@ -186,6 +186,13 @@ test("prompts and argument completion", async () => {
   assert.deepEqual(place.completion.values, ["Lagos"]);
 });
 
+test("capabilities declare fixed lists: listChanged is false, never the SDK's default true", () => {
+  const caps = client.getServerCapabilities();
+  for (const kind of ["tools", "prompts", "resources"]) {
+    assert.equal(caps[kind]?.listChanged, false, `${kind}.listChanged`);
+  }
+});
+
 test("discovery: no annotation titles, entry tools always loaded", async () => {
   const { tools } = await client.listTools();
   assert.ok(tools.every((t) => !t.annotations?.title));

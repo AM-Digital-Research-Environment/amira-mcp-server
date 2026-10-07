@@ -31,12 +31,8 @@ progress log) remains in Git at the same tag.
    would add discovery tokens. Follow with a UI audit in a real host (narrow
    panels, keyboard use, accessible alternatives to the graph).
 4. **CI follow-ups.**
-   - Triage the conformance suite's failures. The 1.19.0 run passed tools-list,
-     resources-list, prompts-list, caching and DNS-rebinding, but failed at least
-     one check in 25 scenarios. Separate the expected ones (scenarios that call
-     the suite's own test tools and prompts) from real defects. Record the
-     expected ones in `conformance-baseline.yml` and pass `--expected-failures`,
-     so the job can gate.
+   - Make the conformance job gate: drop its `continue-on-error` once a CI run
+     confirms the `conformance-baseline.yml` result seen locally (exit 0).
    - Golden files for `tools/list` with an `--update` flag.
    - Inspector `skills/list --verify --require-digests`, the check ChatGPT's
      skill importer applies.

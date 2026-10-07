@@ -9,6 +9,13 @@ force and what comes next.
 
 - **Removed:** WissKI. `get_research_item` no longer returns `wisski_url`, and
   the snapshot no longer captures `dre:wisskiUrl`.
+- **Capabilities:** `tools`, `prompts` and `resources` declare
+  `listChanged: false`, since the lists never change while a process runs.
+  2026-07-28 clients no longer hold a listen stream open for them.
+- **Conformance:** the MCP conformance job runs against
+  `conformance-baseline.yml`. Its 31 entries are checks that need the suite's
+  own reference fixtures. Any other failure, or a baselined check that starts
+  passing, fails the job.
 
 ## 1.19.0 — 2026-10-07
 

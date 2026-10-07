@@ -48,7 +48,7 @@ const PROTOCOL_VERSIONS = [MODERN_PROTOCOL_VERSION, ...SUPPORTED_PROTOCOL_VERSIO
  * are listed — so a shared cache can serve every client the same bytes.
  *
  * An hour is a freshness hint, not a contract: the surface changes only on
- * redeploy, and `listChanged: true` stays advertised for connected clients.
+ * redeploy, which ends every connection anyway.
  * `resources/read` gets longer because the app HTML is immutable per build.
  */
 const CACHE_HINTS = {
@@ -100,6 +100,18 @@ export interface CreateServerOptions {
  */
 const MAX_TOOL_INPUT_ELEMENTS = 200;
 
+/**
+ * The tool, prompt and resource lists are fixed for the life of a process (see
+ * CACHE_HINTS), so `listChanged` is declared false. The SDK would otherwise
+ * advertise true, and 2026-07-28 clients use that bit to decide whether to hold
+ * a `subscriptions/listen` stream open for list changes that never come.
+ */
+const FIXED_LISTS = {
+  tools: { listChanged: false },
+  prompts: { listChanged: false },
+  resources: { listChanged: false },
+} as const;
+
 /** Build a fully-configured AMIRA MCP server (tools registered, not yet connected). */
 export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
   const server = new McpServer(
@@ -117,9 +129,12 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
       supportedProtocolVersions: PROTOCOL_VERSIONS,
       cacheHints: CACHE_HINTS,
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
-      // SEP-2640. Declared only when a valid skill catalog was built, so
-      // a host never sees the capability without `skills/list` behind it.
-      ...(skillsEnabled() ? { capabilities: { extensions: SKILLS_CAPABILITY } } : {}),
+      capabilities: {
+        ...FIXED_LISTS,
+        // SEP-2640. Declared only when a valid skill catalog was built, so
+        // a host never sees the capability without `skills/list` behind it.
+        ...(skillsEnabled() ? { extensions: SKILLS_CAPABILITY } : {}),
+      },
     },
   );
   const tools = registerTools(server, opts.profile ?? resolveToolProfile(), { openai: opts.openai });

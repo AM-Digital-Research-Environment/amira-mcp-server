@@ -137,12 +137,14 @@ jobs:
         run: docker rm -f amira-test || true
 
   # Official MCP conformance suite against the Streamable HTTP server, scored
-  # against what the 2026-07-28 revision requires. Informational until a
-  # baseline exists: continue-on-error keeps a failure from blocking merges,
-  # and the per-scenario checks.json files are uploaded for triage. To make it
-  # gating, record known failures in conformance-baseline.yml and pass
-  # `--expected-failures conformance-baseline.yml`.
+  # against what the 2026-07-28 revision requires. conformance-baseline.yml
+  # lists, check by check, the failures that only the suite's reference
+  # fixtures could pass. The run fails on any other failure, and on a
+  # baselined check that starts passing. The per-scenario checks.json files
+  # are uploaded for triage. Still continue-on-error; removing that line
+  # makes the job gate.
   # 0.2.0-alpha.12 is pinned on purpose: `latest` (0.1.x) predates 2026-07-28.
+  # A new suite version needs a fresh triage, because check ids move.
   conformance:
     name: MCP conformance (2026-07-28, non-blocking)
     runs-on: ubuntu-latest
@@ -182,6 +184,7 @@ jobs:
           npx --yes @modelcontextprotocol/conformance@0.2.0-alpha.12 server
           --url http://127.0.0.1:8787/mcp
           --requirements 2026-07-28
+          --expected-failures conformance-baseline.yml
           --output-dir conformance-results
       - name: Collect the server log
         if: always()
