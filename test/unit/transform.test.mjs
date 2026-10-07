@@ -100,7 +100,8 @@ test("research item: every value type lands in the right field", () => {
   assert.deepEqual(out.provenance, ["Iwalewahaus"]);
   assert.equal(out.doi, "https://doi.org/10.1234/x");
   assert.deepEqual(out.urls, ["https://example.org/page"]);
-  assert.equal(out.wisski_url, "https://wisski.example/item");
+  // WissKI is out of scope: the property is present upstream but never captured.
+  assert.equal("wisski_url" in out, false);
   assert.deepEqual(out.related, [{ relation: "replaces", ref: { label: "Earlier report", o_id: 7686 } }]);
   assert.equal(out.has_media, true);
 });

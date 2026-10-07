@@ -48,8 +48,6 @@ progress log) remains in Git at the same tag.
 
 ## On request
 
-- **WissKI links** (`dre:wisskiUrl`: 795 persons, 89 of 93 projects). Set aside
-  in 1.19.
 - **Licence and access-rights filters** (CC-BY-NC-SA-4.0 on 1,219 items; access
   Public / No Raw Data / Group / Individual). Set aside in 1.19.
 - `find_related` with several seeds (AND) and year-windowed co-occurrence.
@@ -118,7 +116,7 @@ and the June 2026 migration. Source comments cite them by number.
 
 - Per-call live API querying (D2).
 - Writing to Omeka: the server is read-only for good.
-- Querying WissKI or SPARQL: that is a separate system (links may return on
-  request, above).
+- WissKI, entirely: no querying, no SPARQL, and no links. The crawl ignores
+  `dre:wisskiUrl`.
 - OAuth, sampling, elicitation and resource subscriptions, beyond
   `notifications/resources/list_changed` after a refresh.

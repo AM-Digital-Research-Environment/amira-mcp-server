@@ -25,7 +25,7 @@ The central artefact (image, text, audio, moving image, …). Returned in full b
 | `sponsors[]`, `access_rights[]`, `license` | Funding and rights statements. |
 | `provenance[]` | Holding institution(s) `{ name, amira_url }` — linked when the institution has its own record. |
 | `identifiers[]` | `{ value, type }` — e.g. "Locally defined identifier", "Publisher, distributor, or vendor stock number". |
-| `doi`, `external_urls[]`, `collection_url`, `wisski_url`, `rdspace_handle` | External links and repository handles. |
+| `doi`, `external_urls[]`, `collection_url`, `rdspace_handle` | External links and repository handles. |
 | `extent` | Physical or file extent ("126 KB", "3 photographs"). |
 | `media[]` / `iiif_manifest` | Attached files `{ type (MIME), url, source, size }` and the IIIF Presentation 3 manifest for viewers. |
 | `created` / `modified` | When the record was added to / last changed in AMIRA — not content dates. |

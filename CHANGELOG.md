@@ -5,6 +5,11 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+- **Removed:** WissKI. `get_research_item` no longer returns `wisski_url`, and
+  the snapshot no longer captures `dre:wisskiUrl`.
+
 ## 1.19.0 — 2026-10-07
 
 Implements the 6 October review, except WissKI links and licence/access-rights

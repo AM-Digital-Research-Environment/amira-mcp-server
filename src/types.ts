@@ -181,7 +181,6 @@ export interface ResearchItemRec {
   related: RelatedRef[];
   /** dcterms:bibliographicCitation. */
   citation: string[];
-  wisski_url: string | null;
   has_media: boolean;
   /** Large thumbnail of the primary media, when digitised media is attached. */
   thumbnail: string | null;

@@ -177,7 +177,6 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
         doi: it.doi,
         external_urls: it.urls,
         collection_url: it.collection_url,
-        wisski_url: it.wisski_url,
         rdspace_handle: it.rdspace_handle ?? null,
         extent: it.extent ?? null,
         ...(allowDescriptive() ? { citation: it.citation } : {}),
