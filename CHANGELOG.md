@@ -5,7 +5,7 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.23.0 — 2026-10-08
 
 - **`get_person`** reports research-section roles in `as_section_principal_investigator`
   and `as_section_member`, each with its funding phase. It used to read projects
