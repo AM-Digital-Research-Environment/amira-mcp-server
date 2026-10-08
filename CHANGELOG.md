@@ -5,7 +5,7 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.22.0 — 2026-10-08
 
 - **Guidance switch.** `AMIRA_GUIDANCE=off` serves the same tools without the
   curatorial guidance, for an evaluation's guidance-ablation condition: no
