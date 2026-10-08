@@ -19,6 +19,7 @@ import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import type { DataStore } from "../data.js";
 import { allowDescriptive, allowStructured } from "../exposure.js";
+import { guidanceEnabled } from "../guidance.js";
 import {
   READ_ONLY,
   capText,
@@ -112,7 +113,7 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
   const parsed = parseTypedId(id);
   const kind = parsed ? FETCH_KINDS[parsed.kind] ?? parsed.kind : id;
   const key = parsed?.key ?? "";
-  const notFound = { error: { code: "not_found", message: `No record with id '${id}'.`, suggested_tool: "search" } };
+  const notFound = { error: { code: "not_found", message: `No record with id '${id}'.`, ...(guidanceEnabled() ? { suggested_tool: "search" } : {}) } };
 
   const desc = allowDescriptive();
   const struct = allowStructured();

@@ -464,13 +464,27 @@ async function main() {
   const responses = await measureResponses(http.client, probes);
   await http.close();
 
-  const current = { snapshot, surface: { stdio: surfaceStdio, http: surfaceHttp }, responses };
+  // The guidance ablation (AMIRA_GUIDANCE=off, src/guidance.ts): the same tools
+  // without their titles and descriptions. Recording it puts the per-turn cost
+  // of the guidance (the difference from the surfaces above) in the baseline.
+  const surfaceOff = {};
+  process.env.AMIRA_GUIDANCE = "off";
+  try {
+    for (const [label, opts] of [["stdio_guidance_off", {}], ["http_guidance_off", { openai: true }]]) {
+      const conn = await connect(opts);
+      surfaceOff[label] = await measureSurface(conn.client);
+      await conn.close();
+    }
+  } finally {
+    delete process.env.AMIRA_GUIDANCE;
+  }
+
+  const current = { snapshot, surface: { stdio: surfaceStdio, http: surfaceHttp, ...surfaceOff }, responses };
   const baseline = await readBaseline();
   const snapshotMatches = sameSnapshot(baseline?.snapshot, snapshot);
 
   const results = [
-    checkSurface("stdio", surfaceStdio, baseline?.surface?.stdio),
-    checkSurface("http", surfaceHttp, baseline?.surface?.http),
+    ...Object.entries(current.surface).map(([label, s]) => checkSurface(label, s, baseline?.surface?.[label])),
     checkResponses(responses, baseline?.responses),
   ];
   const failures = results.flatMap((r) => r.failures);
@@ -496,10 +510,12 @@ async function main() {
     for (const [label, s] of [
       ["stdio (.mcpb)", surfaceStdio],
       ["http (+ChatGPT)", surfaceHttp],
+      ["stdio, guidance off", surfaceOff.stdio_guidance_off],
+      ["http, guidance off", surfaceOff.http_guidance_off],
     ]) {
       const over = s.total_tokens > SURFACE_TOKEN_BUDGET ? "  OVER BUDGET" : "";
       console.log(
-        `SURFACE  ${label.padEnd(16)} ${num(s.total_tokens).padStart(7)} tok  ` +
+        `SURFACE  ${label.padEnd(19)} ${num(s.total_tokens).padStart(7)} tok  ` +
           `${String(s.tool_count).padStart(3)} tools  budget ${num(SURFACE_TOKEN_BUDGET)}${over}`,
       );
     }

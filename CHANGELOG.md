@@ -5,6 +5,27 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+- **Guidance switch.** `AMIRA_GUIDANCE=off` serves the same tools without the
+  curatorial guidance, for an evaluation's guidance-ablation condition: no
+  server instructions, prompts or companion skill; no tool or resource titles
+  and descriptions, no parameter descriptions and no
+  `anthropic/alwaysLoad` hint; errors keep their `code` and a terse message
+  without `suggested_tool`, `available_values` or advice; results drop the
+  `*_hint` fields, the export `note` and person suggestions. Names, schemas and
+  data are unchanged, and the default (`on`) changes nothing. The tool list
+  weighs 12,040 estimated tokens on stdio with guidance and 8,485 without; the
+  token baseline now records both.
+- **Near-miss person suggestions.** A `search_persons` keyword or a
+  `resolve_entity` query with `type=person` that matches nobody returns up to
+  five authority names a typo away, in either name order and ignoring accents,
+  each with its typed id and `amira_url`, plus a one-line `hint`: "Rudigr Seeman"
+  now offers `Seesemann, Rüdiger`. Searches that match are unchanged.
+  `resolve_entity`'s output schema gains the optional `suggestions` and `hint`
+  (+60 tokens), so the `research` profile's surface gate rises from 10,000 to
+  10,100.
+
 ## 1.21.0 — 2026-10-08
 
 - **Apps:** filter fields offer their values. In the bibliography, Language is a

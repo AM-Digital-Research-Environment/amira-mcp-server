@@ -18,10 +18,11 @@ import type { Server } from "./_shared.js";
 /**
  * Register every AMIRA tool (33 on stdio; 35 with the HTTP-only OpenAI
  * `search`/`fetch`), then apply the shared policy: profile filtering, argument
- * trimming, error shaping and discovery hints. App resources follow the tools:
- * an app is served only when a tool that renders it is.
+ * trimming, error shaping, discovery hints and, with `guidance: false`, the
+ * removal of every title and description. App resources follow the tools: an
+ * app is served only when a tool that renders it is.
  */
-export function registerTools(server: Server, profile: ToolProfile = "full", opts: { openai?: boolean } = {}): ToolMap {
+export function registerTools(server: Server, profile: ToolProfile = "full", opts: { openai?: boolean; guidance?: boolean } = {}): ToolMap {
   const tools: ToolMap = {};
   registerOverviewTools(server, tools); // get_collection_overview
   registerResearchItemTools(server, tools); // search_research_items, get_research_item
@@ -36,7 +37,7 @@ export function registerTools(server: Server, profile: ToolProfile = "full", opt
   registerResearchTools(server, tools); // resolve_entity, get_entity_graph, get_text_passages, compare_collections, get_data_quality, get_snapshot_changes
   if (opts.openai) registerOpenAITools(server, tools); // search, fetch (HTTP only)
   const allowed = allowedTools(profile);
-  applyToolPolicy(tools, allowed);
-  registerAppResources(server, (name) => name in tools && (!allowed || allowed.has(name)));
+  applyToolPolicy(tools, allowed, { guidance: opts.guidance });
+  registerAppResources(server, (name) => name in tools && (!allowed || allowed.has(name)), { guidance: opts.guidance });
   return tools;
 }
