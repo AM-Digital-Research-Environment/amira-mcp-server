@@ -13,6 +13,7 @@ import {
   capOffset,
   capText,
   containsCI,
+  emptySearchHint,
   errorResult,
   exposureRestrictedResult,
   filtersEcho,
@@ -66,10 +67,11 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
 
       filtered.sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title) || a.o_id - b.o_id);
       const extra = { ...limitEcho(args.limit, maxLimit, limit), ...filtersEcho(filters) };
-      if (citation_format) return publicationExportPage(filtered, offset, limit, citation_format, extra);
+      const hint = emptySearchHint(filtered.length, filters);
+      if (citation_format) return publicationExportPage(filtered, offset, limit, citation_format, extra, hint);
 
-      return textResult(
-        pageOf(
+      return textResult({
+        ...pageOf(
           filtered,
           offset,
           limit,
@@ -79,7 +81,8 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
               : publicationSummary(p),
           extra,
         ),
-      );
+        ...hint,
+      });
     },
   );
 

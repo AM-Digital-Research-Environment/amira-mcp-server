@@ -25,6 +25,14 @@ force and what comes next.
   `resolve_entity`'s output schema gains the optional `suggestions` and `hint`
   (+60 tokens), so the `research` profile's surface gate rises from 10,000 to
   10,100.
+- **Empty-result guidance.** `resolve_entity` without a `type` also offers
+  person near misses when nothing resolves, and `get_person` lists them in
+  `available_values` after the partial matches when a full name is not found.
+  A filtered `search_*` call (research items, projects, publications, podcasts,
+  videos, persons) that finds nothing carries a one-line `hint` to drop or
+  broaden filters one at a time. Searches that match are unchanged, and no
+  surface tokens are added. With `AMIRA_GUIDANCE=off` these go, and so do
+  `search_research_items`' relaxation `suggestions` and place `did_you_mean`.
 
 ## 1.21.0 — 2026-10-08
 

@@ -9,6 +9,7 @@ import {
   anyContainsCI,
   capLimit,
   capOffset,
+  emptySearchHint,
   errorResult,
   exposureRestrictedResult,
   filtersEcho,
@@ -101,9 +102,11 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
 
       const page = pageOf(filtered, offset, limit, personSummary, { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) });
       // Suggest spellings only when the keyword itself matched nobody: when an
-      // affiliation filter removed the matches, the name was not the problem.
-      if (filtered.length || !args.keyword || store.persons.some((p) => keywordMatches(p, args.keyword!))) return textResult(page);
-      return textResult({ ...page, ...personSuggestions(store.persons.filter(affiliated), args.keyword) });
+      // affiliation filter removed the matches, the name was not the problem,
+      // and the generic advice to relax filters applies instead.
+      const spelling = filtered.length || !args.keyword || store.persons.some((p) => keywordMatches(p, args.keyword!))
+        ? {} : personSuggestions(store.persons.filter(affiliated), args.keyword);
+      return textResult({ ...page, ...("suggestions" in spelling ? spelling : emptySearchHint(filtered.length, args)) });
     },
   );
 
@@ -138,7 +141,11 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       // somewhere — a fragment ("Ba") is a search, not a person.
       const canonical = record?.name ?? creditedAnywhere(store, name!);
       if (!canonical) {
-        const close = resolveEntities(store, name!, "person").slice(0, 10).map((e) => `${e.label} (${e.id})`);
+        // Partial matches first, then names a typo away ("Rudigr Seeman").
+        const close = [...new Set([
+          ...resolveEntities(store, name!, "person").map((e) => `${e.label} (${e.id})`),
+          ...nearMissNames(store.persons, name!, SUGGESTION_CAP).map((p) => `${p.name} (person:${p.o_id})`),
+        ])].slice(0, 10);
         return errorResult("not_found", `No person named '${name}'. Names must be complete; use resolve_entity or search_persons for partial names.`, {
           suggested_tool: "resolve_entity", available_values: close, terse: `No person named '${name}'. Names must be complete.`,
         });
