@@ -34,6 +34,7 @@ const url = (id) => lib.itemUrl(id);
 const SEESEMANN = { id: "person:110", name: "Seesemann, Rüdiger", amira_url: url(110) };
 const SEEMANN = { id: "person:111", name: "Seemann, Jörg", amira_url: url(111) };
 const HINT = "No person has this name. These authority names are spelled similarly; confirm one is the person meant before using it.";
+const RELAX = "No record matches all these filters. Drop or broaden them one at a time to find the one that excludes everything.";
 const EMPTY = { count: 0, total_matches: 0, offset: 0, has_more: false, results: [] };
 
 // --- the matcher -------------------------------------------------------------------
@@ -88,20 +89,32 @@ test("search_persons: 'Rudigr Seeman' surfaces Seesemann, Rüdiger, in either or
   assert.deepEqual([prefix.results.map((p) => p.name), "suggestions" in prefix], [[SEEMANN.name], false]);
 });
 
-test("resolve_entity (type person): 'Rudigr Seeman' surfaces Seesemann, Rüdiger", async () => {
-  const found = await call("resolve_entity", { query: "Rudigr Seeman", type: "person" });
-  assert.deepEqual(found.results, []);
-  assert.deepEqual(found.suggestions, [SEESEMANN]);
-  assert.equal(found.hint, HINT);
-  // Suggestions are for person queries only.
-  for (const args of [{ query: "Rudigr Seeman" }, { query: "Rudigr Seeman", type: "project" }]) {
-    const other = await call("resolve_entity", args);
-    assert.equal(other.total_matches, 0);
-    assert.ok(!("suggestions" in other) && !("hint" in other), JSON.stringify(args));
+test("resolve_entity: 'Rudigr Seeman' surfaces Seesemann, Rüdiger, typed person or untyped", async () => {
+  for (const args of [{ query: "Rudigr Seeman", type: "person" }, { query: "Rudigr Seeman" }]) {
+    const found = await call("resolve_entity", args);
+    assert.deepEqual(found.results, [], JSON.stringify(args));
+    assert.deepEqual(found.suggestions, [SEESEMANN], JSON.stringify(args));
+    assert.equal(found.hint, HINT);
   }
+  // A query typed as something else gets no person suggestions.
+  const project = await call("resolve_entity", { query: "Rudigr Seeman", type: "project" });
+  assert.equal(project.total_matches, 0);
+  assert.ok(!("suggestions" in project) && !("hint" in project));
 });
 
-test("default mode: a search that finds someone is unchanged, and nothing is suggested without a near miss", async () => {
+test("get_person: a misspelt full name lists its near misses", async () => {
+  const miss = await call("get_person", { name: "Rudigr Seeman" });
+  assert.deepEqual(miss.error, {
+    code: "not_found",
+    message: "No person named 'Rudigr Seeman'. Names must be complete; use resolve_entity or search_persons for partial names.",
+    suggested_tool: "resolve_entity",
+    available_values: ["Seesemann, Rüdiger (person:110)"],
+  });
+  // Partial matches still come first, without duplicates.
+  assert.deepEqual((await call("get_person", { name: "Seesem" })).error.available_values, ["Seesemann, Rüdiger (person:110)"]);
+});
+
+test("default mode: a search that finds someone is unchanged; without a near miss, filters get the relax hint", async () => {
   const seesemann = { id: "110", omeka_id: 110, name: "Seesemann, Rüdiger", affiliations: ["University of Bayreuth"], amira_url: url(110) };
   assert.deepEqual(await call("search_persons", { keyword: "Rüdiger Seesemann" }),
     { filters: { keyword: "Rüdiger Seesemann" }, count: 1, total_matches: 1, offset: 0, has_more: false, results: [seesemann] });
@@ -111,14 +124,17 @@ test("default mode: a search that finds someone is unchanged, and nothing is sug
   for (const args of [
     { keyword: "Nobody Atall" }, // no near miss
     { keyword: "Seesemann", affiliation: "Lagos" }, // the name matched; the filter removed it
-    { keyword: "Seesemann", offset: 5 }, // a page past the end of a non-empty result
     { affiliation: "Nowhere" }, // no name to correct
     { keyword: "Rudigr Seeman", affiliation: "Lagos" }, // the affiliation rules out the near miss
   ]) {
     const page = await call("search_persons", args);
     assert.equal(page.count, 0, JSON.stringify(args));
-    assert.ok(!("suggestions" in page) && !("hint" in page), JSON.stringify(args));
+    assert.ok(!("suggestions" in page), JSON.stringify(args));
+    assert.equal(page.hint, RELAX, JSON.stringify(args));
   }
+  // A page past the end of a non-empty result is not an empty search.
+  const past = await call("search_persons", { keyword: "Seesemann", offset: 5 });
+  assert.deepEqual([past.total_matches, "hint" in past], [1, false]);
   assert.deepEqual((await call("search_persons", { keyword: "Rudigr Seeman", affiliation: "Bayreuth" })).suggestions, [SEESEMANN]);
 });
 
@@ -127,9 +143,15 @@ test("AMIRA_GUIDANCE=off: an empty person search stays empty", async () => {
   try {
     const off = await connectInMemory(lib, {}, { name: "suggestions-off" });
     try {
-      assert.deepEqual(await off.call("search_persons", { keyword: "Rudigr Seeman" }), { filters: { keyword: "Rudigr Seeman" }, ...EMPTY });
-      const resolved = await off.call("resolve_entity", { query: "Rudigr Seeman", type: "person" });
-      assert.ok(!("suggestions" in resolved) && !("hint" in resolved));
+      for (const keyword of ["Rudigr Seeman", "Nobody Atall"]) {
+        assert.deepEqual(await off.call("search_persons", { keyword }), { filters: { keyword }, ...EMPTY });
+      }
+      for (const args of [{ query: "Rudigr Seeman", type: "person" }, { query: "Rudigr Seeman" }]) {
+        const resolved = await off.call("resolve_entity", args);
+        assert.ok(!("suggestions" in resolved) && !("hint" in resolved), JSON.stringify(args));
+      }
+      assert.deepEqual((await off.call("get_person", { name: "Rudigr Seeman" })).error,
+        { code: "not_found", message: "No person named 'Rudigr Seeman'. Names must be complete." });
     } finally {
       await off.close();
     }

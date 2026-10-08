@@ -100,8 +100,10 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     const found = resolveEntities(store, args.query, args.type);
     const page = pageOf(found, capOffset(args.offset), limit, (e) => e,
       { ambiguous: found.length > 1, snapshot_id: snapshotId(store.manifest), ...limitEcho(args.limit, 50, limit) });
-    // A person name that resolves to nothing may be misspelt: offer near misses.
-    return textResult(found.length || args.type !== "person" ? page : { ...page, ...personSuggestions(store.persons, args.query) });
+    // A name that resolves to nothing may be a misspelt person: offer near
+    // misses, unless the query asked for another type.
+    const personQuery = !args.type || args.type === "person";
+    return textResult(found.length || !personQuery ? page : { ...page, ...personSuggestions(store.persons, args.query) });
   });
 
   tools.get_entity_graph = server.registerTool("get_entity_graph", {

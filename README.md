@@ -74,11 +74,11 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | Tool | Purpose |
 | --- | --- |
 | `get_collection_overview` | Counts and breakdowns across the whole collection + snapshot freshness |
-| `search_research_items` | Find items by keyword (every word must match; quote a phrase), **subject**, **location** (hierarchy-aware), **country** (exact, with aliases such as Côte d'Ivoire = Ivory Coast), contributor, project, section, university, resource type, format/genre, language, year, **`has_media`**, **`added_since` / `modified_since`**; `export=csv|jsonl` returns a file link instead of rows |
+| `search_research_items` | Find items by keyword (every word must match; quote a phrase), **subject**, **location** (hierarchy-aware), **country** (exact, with aliases such as Côte d'Ivoire = Ivory Coast), contributor, project, section, university, resource type, format/genre, language, year, **`has_media`**, **`added_since` / `modified_since`**; `export=csv|jsonl` returns a file link instead of rows. Like every `search_*` tool, a filtered search that finds nothing carries a `hint` to drop or broaden filters |
 | `get_research_item` | Full metadata for one item (by Omeka `id` or typed id): typed dates, roles with the **affiliation at the time**, places with their region/country chain, provenance as linked institutions, typed identifiers, collections, related items, **media files** and the **IIIF manifest** — plus a **generated citation** and a BibTeX/RIS/CSL-JSON export (`citation_format`) |
 | `search_projects` / `get_project` | Projects by keyword or acronym, university, section, PI, member, funder — detail with item breakdown, top subjects and sample items |
 | `list_research_sections` / `get_research_section` | Thematic sections with funding phases (AM 1.0 / AM 2.0), PIs, counts, projects; detail by name or id |
-| `search_persons` / `get_person` | People (either name order works) — profile with GND and other authority identifiers, projects, items, publications and top collaborators. A name that matches nobody returns near-miss `suggestions` ("Rudigr Seeman" → `Seesemann, Rüdiger`) |
+| `search_persons` / `get_person` | People (either name order works) — profile with GND and other authority identifiers, projects, items, publications and top collaborators. A name that matches nobody returns near-miss `suggestions` ("Rudigr Seeman" → `Seesemann, Rüdiger`); `get_person` lists them in its `not_found` error |
 | `list_institutions` / `get_institution` / `list_cluster_partners` / `list_groups` | Organisations (institutions, Africa Multiple partner categories, and research groups) by name, acronym or id, their projects, people and items |
 | `list_subjects` | Subject headings ranked by item frequency, each marked as a Library of Congress heading (with its id.loc.gov URI) or a free tag (`vocabulary=lcsh|tag`) |
 | `list_locations` | Every place — countries and cities in one flat list (hierarchy rolled up) — ranked by item count, with coordinates and Wikidata ids; filter by country, name, `near` (radius) or `bbox` |
@@ -91,7 +91,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications) |
 | `search_podcasts` / `get_podcast` | Cluster podcast episodes with searchable transcripts, filterable by language; detail gives the duration, audio file and the **model that generated the transcript**; transcript text is opt-in |
 | `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; thumbnail; transcript opt-in on detail) |
-| `resolve_entity` | Resolve names or typed IDs (either vocabulary: `item:7392` = `research_item:7392`); return separate candidates for homonyms and unreconciled literals. With `type=person`, a name that resolves to nothing returns near-miss `suggestions` |
+| `resolve_entity` | Resolve names or typed IDs (either vocabulary: `item:7392` = `research_item:7392`); return separate candidates for homonyms and unreconciled literals. A query that resolves to nothing, untyped or with `type=person`, returns near-miss person `suggestions` |
 | `get_entity_graph` | Bounded one-hop graph with distinct explicit links/co-occurrences and paginated cited evidence |
 | `get_text_passages` | Find passages in selected publication/video/podcast records, with exact original-text offsets |
 | `compare_collections` | Compare 2–4 projects or collections using common filters, denominators and missingness |
@@ -488,7 +488,7 @@ starting it and restart to change it.
 | Server instructions | sent on `initialize` | none |
 | Tools | name, title, description, schemas with parameter descriptions | same names, input and output schemas (types, enums, bounds, required fields), annotations and app `_meta`; no title, description or `.describe()` text; no `anthropic/alwaysLoad` hint |
 | Errors | `code`, message, `suggested_tool`, `available_values` | `code` and a terse message saying what was wrong; no pointer to another tool, no candidate values, no advice ("Answer from the metadata that remains exposed…") |
-| Results | data, plus `*_hint` paging hints, the export `note` and person `suggestions` | the same data without them |
+| Results | data, plus `*_hint` paging hints, the export `note`, the empty-search `hint`, person `suggestions`, and `search_research_items`' relaxation `suggestions` and `did_you_mean` | the same data without them |
 | Prompts, companion skill | registered and declared | neither |
 | Resources | titles and descriptions | URIs and MIME types only |
 

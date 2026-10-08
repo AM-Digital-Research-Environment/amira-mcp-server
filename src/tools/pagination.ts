@@ -1,4 +1,5 @@
 import { CHARACTER_LIMIT } from "./responses.js";
+import { guidanceEnabled } from "../guidance.js";
 // --- input capping (lenient clamp, not rejection) ---------------------------
 
 export function capLimit(v: number | undefined, def: number, max: number): number {
@@ -94,4 +95,15 @@ export function filtersEcho(filters: Record<string, unknown>): Record<string, un
     Object.entries(filters).filter(([k, v]) => v !== undefined && v !== null && v !== "" && k !== "limit" && k !== "offset"),
   );
   return Object.keys(set).length ? { filters: set } : {};
+}
+
+/**
+ * `{ hint }` for a filtered search that found nothing: a bare empty list reads
+ * as "the collection holds nothing", when one filter may be excluding
+ * everything. Guidance, so AMIRA_GUIDANCE=off withholds it; a search that
+ * matches, or one without filters, never carries it.
+ */
+export function emptySearchHint(total: number, filters: Record<string, unknown>): Record<string, unknown> {
+  if (total > 0 || !guidanceEnabled() || !("filters" in filtersEcho(filters))) return {};
+  return { hint: "No record matches all these filters. Drop or broaden them one at a time to find the one that excludes everything." };
 }

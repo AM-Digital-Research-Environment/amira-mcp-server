@@ -8,6 +8,7 @@ import {
   capLimit,
   capOffset,
   containsCI,
+  emptySearchHint,
   equalsCI,
   errorResult,
   exposureRestrictedResult,
@@ -74,12 +75,13 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
         return true;
       });
 
-      return textResult(
-        pageOf(filtered, offset, limit, (p) => projectSummary(p, store.itemsForProject(p.o_id).length), {
+      return textResult({
+        ...pageOf(filtered, offset, limit, (p) => projectSummary(p, store.itemsForProject(p.o_id).length), {
           ...limitEcho(args.limit, 100, limit),
           ...filtersEcho(args),
         }),
-      );
+        ...emptySearchHint(filtered.length, args),
+      });
     },
   );
 
