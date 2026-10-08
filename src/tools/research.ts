@@ -15,6 +15,7 @@ import { itemUrl, itemSetUrl } from "../urls.js";
 import { canonicalTypedId, parseTypedId, stripTypedId } from "../typedIds.js";
 import { READ_ONLY, capLimit, capOffset, limitEcho, queryErrorResult, textResult, errorResult, exposureRestrictedResult, pageOf, type Server } from "./_shared.js";
 import { refreshSchema } from "./outputSchemas.js";
+import { personSuggestions } from "./people.js";
 
 const offsetSchema = z.number().int().min(0).max(100_000).optional();
 const querySchema = z.string().trim().min(1).max(1000);
@@ -90,14 +91,17 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     description: "Resolve a label or typed ID to cited candidates. Returns ambiguity instead of merging names. Use a returned id with get_entity_graph or get_* tools.",
     inputSchema: z.strictObject({ query: querySchema, type: z.enum(entityTypes).optional(),
       limit: z.number().int().min(1).optional(), offset: offsetSchema }),
-    outputSchema: z.object({ ...pageShape, results: z.array(entitySchema), ambiguous: z.boolean(), snapshot_id: z.string() }),
+    outputSchema: z.object({ ...pageShape, results: z.array(entitySchema), ambiguous: z.boolean(), snapshot_id: z.string(),
+      suggestions: z.array(z.object({ id: z.string(), name: z.string(), amira_url: z.string() })).optional(), hint: z.string().optional() }),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "resolve_entity");
     const store = await ensureStore();
     const limit = capLimit(args.limit, 20, 50);
     const found = resolveEntities(store, args.query, args.type);
-    return textResult(pageOf(found, capOffset(args.offset), limit, (e) => e,
-      { ambiguous: found.length > 1, snapshot_id: snapshotId(store.manifest), ...limitEcho(args.limit, 50, limit) }));
+    const page = pageOf(found, capOffset(args.offset), limit, (e) => e,
+      { ambiguous: found.length > 1, snapshot_id: snapshotId(store.manifest), ...limitEcho(args.limit, 50, limit) });
+    // A person name that resolves to nothing may be misspelt: offer near misses.
+    return textResult(found.length || args.type !== "person" ? page : { ...page, ...personSuggestions(store.persons, args.query) });
   });
 
   tools.get_entity_graph = server.registerTool("get_entity_graph", {
@@ -116,10 +120,11 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_entity_graph");
     const store = await ensureStore();
     const id = snapshotId(store.manifest);
-    if (args.snapshot_id && args.snapshot_id !== id) return errorResult("snapshot_changed", "The snapshot changed. Reload the graph before paging evidence.");
+    if (args.snapshot_id && args.snapshot_id !== id) return errorResult("snapshot_changed", "The snapshot changed. Reload the graph before paging evidence.", { terse: "The snapshot changed." });
     // `item:` / `pub:` ids from search and fetch work as seeds too.
     const seed = canonicalTypedId(args.seed);
-    if (!graphIndex(store).entities.has(seed)) return errorResult("not_found", "Use a typed id returned by resolve_entity (e.g. person:123, research_item:7392).", { suggested_tool: "resolve_entity" });
+    if (!graphIndex(store).entities.has(seed)) return errorResult("not_found", "Use a typed id returned by resolve_entity (e.g. person:123, research_item:7392).", { suggested_tool: "resolve_entity",
+      terse: "Unknown seed; expected a typed id such as person:123 or research_item:7392." });
     if (args.edge_id) {
       const edge = entityEdges(store, seed).find((e) => e.edge.id === args.edge_id);
       if (!edge) return errorResult("not_found", "This edge is absent from the seed's current graph.");
@@ -267,7 +272,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     if (available.length < 2) return textResult({ status: "history_unavailable", snapshots: meta });
     const toId = args.to_id ?? available[0]!.id, fromId = args.from_id ?? available[1]!.id;
     const before = available.find((s) => s.id === fromId), after = available.find((s) => s.id === toId);
-    if (!before || !after) return errorResult("snapshot_unavailable", "One selected snapshot is no longer retained. Reload the snapshot list.");
+    if (!before || !after) return errorResult("snapshot_unavailable", "One selected snapshot is no longer retained. Reload the snapshot list.", { terse: "One selected snapshot is no longer retained." });
     const changes = snapshotDiff(before, after, args.corpus ? [args.corpus] : CORPORA);
     const limit = capLimit(args.limit, 30, 100);
     return textResult(pageOf(changes, capOffset(args.offset), limit, (c) => c,

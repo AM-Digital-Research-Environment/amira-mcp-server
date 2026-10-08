@@ -19,6 +19,8 @@
 // only the CONTENT is gated — a model should be able to say "there is a
 // transcript but access to it is disabled".
 
+import { guidanceEnabled } from "./guidance.js";
+
 export type ExposureLevel = "minimal" | "descriptive" | "structured" | "full";
 
 const LEVELS: ExposureLevel[] = ["minimal", "descriptive", "structured", "full"];
@@ -39,11 +41,14 @@ export const allowStructured = (): boolean => rank(exposureLevel()) >= rank("str
 /** Transcripts and publication full text are visible (full only). */
 export const allowFullText = (): boolean => exposureLevel() === "full";
 
-/** Human-readable reason for a refusal under the current level. */
+/** Human-readable reason for a refusal under the current level. The advice on
+ * how to answer is curatorial guidance, dropped with AMIRA_GUIDANCE=off. */
 export function exposureMessage(needs: "descriptive" | "structured" | "full"): string {
   return (
     `The server is running with AMIRA_EXPOSURE=${exposureLevel()}, which hides this metadata ` +
-    `(requires the '${needs}' level). Answer from the metadata that remains exposed, or state that ` +
-    `the available tools do not expose what the question needs.`
+    `(requires the '${needs}' level).` +
+    (guidanceEnabled()
+      ? ` Answer from the metadata that remains exposed, or state that the available tools do not expose what the question needs.`
+      : "")
   );
 }

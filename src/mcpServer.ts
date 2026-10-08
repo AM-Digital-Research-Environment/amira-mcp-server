@@ -9,6 +9,7 @@ import { registerTools } from "./tools/register.js";
 import { registerPrompts } from "./prompts.js";
 import { registerDataResources } from "./resources.js";
 import { SKILLS_CAPABILITY, registerSkills, skillsEnabled } from "./skills.js";
+import { guidanceEnabled } from "./guidance.js";
 
 export const VERSION = typeof __SERVER_VERSION__ !== "undefined" ? __SERVER_VERSION__ : "dev";
 
@@ -46,6 +47,8 @@ const PROTOCOL_VERSIONS = [MODERN_PROTOCOL_VERSION, ...SUPPORTED_PROTOCOL_VERSIO
  * server is unauthenticated and read-only, and AMIRA_EXPOSURE is a process-wide
  * experiment flag that gates the *content of tool results*, never which tools
  * are listed — so a shared cache can serve every client the same bytes.
+ * AMIRA_GUIDANCE=off changes the listed text, but for the whole process, never
+ * per caller.
  *
  * An hour is a freshness hint, not a contract: the surface changes only on
  * redeploy, which ends every connection anyway.
@@ -112,8 +115,15 @@ const FIXED_LISTS = {
   resources: { listChanged: false },
 } as const;
 
-/** Build a fully-configured AMIRA MCP server (tools registered, not yet connected). */
+/**
+ * Build a fully-configured AMIRA MCP server (tools registered, not yet connected).
+ * AMIRA_GUIDANCE is read here, once for the surface: with it off the server sends
+ * no instructions, registers and declares no prompts or skill, and its tools and
+ * resources lose their titles and descriptions (src/guidance.ts).
+ */
 export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
+  const guidance = guidanceEnabled();
+  const skills = guidance && skillsEnabled();
   const server = new McpServer(
     {
       name: "amira-mcp-server",
@@ -125,21 +135,21 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
       websiteUrl: "https://data.africamultiple.uni-bayreuth.de",
     },
     {
-      instructions: INSTRUCTIONS,
+      ...(guidance ? { instructions: INSTRUCTIONS } : {}),
       supportedProtocolVersions: PROTOCOL_VERSIONS,
       cacheHints: CACHE_HINTS,
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
       capabilities: {
-        ...FIXED_LISTS,
+        ...(guidance ? FIXED_LISTS : { tools: FIXED_LISTS.tools, resources: FIXED_LISTS.resources }),
         // SEP-2640. Declared only when a valid skill catalog was built, so
         // a host never sees the capability without `skills/list` behind it.
-        ...(skillsEnabled() ? { extensions: SKILLS_CAPABILITY } : {}),
+        ...(skills ? { extensions: SKILLS_CAPABILITY } : {}),
       },
     },
   );
-  const tools = registerTools(server, opts.profile ?? resolveToolProfile(), { openai: opts.openai });
-  registerPrompts(server);
-  registerDataResources(server, tools);
-  registerSkills(server);
+  const tools = registerTools(server, opts.profile ?? resolveToolProfile(), { openai: opts.openai, guidance });
+  if (guidance) registerPrompts(server);
+  registerDataResources(server, tools, { guidance });
+  if (skills) registerSkills(server);
   return server;
 }

@@ -67,15 +67,19 @@ const APPS: AppResource[] = [
   },
 ];
 
-export function registerAppResources(server: Server, toolEnabled: (name: string) => boolean = () => true): void {
+export function registerAppResources(
+  server: Server,
+  toolEnabled: (name: string) => boolean = () => true,
+  opts: { guidance?: boolean } = {},
+): void {
   for (const app of APPS) {
     if (!toolEnabled(app.tool)) continue;
     server.registerResource(
       app.name,
       app.uri,
       {
-        title: app.title,
-        description: app.description,
+        // AMIRA_GUIDANCE=off: no title or description (src/guidance.ts).
+        ...(opts.guidance ?? true ? { title: app.title, description: app.description } : {}),
         mimeType: APP_MIME,
         // No csp domains: every template inlines all of its CSS and JS and
         // loads nothing from the network, so it runs in the strictest sandbox.

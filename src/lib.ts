@@ -5,7 +5,7 @@ export * from "./omekaJSON.js";
 export * from "./transform.js";
 export * from "./types.js";
 export { LanguageIndex } from "./languages.js";
-export { nameTokens, nameKey, samePerson, nameMatchesQuery } from "./names.js";
+export { nameTokens, nameKey, samePerson, nameMatchesQuery, editDistance, nameNearMiss, nearMissNames } from "./names.js";
 export { fold, foldCached, foldedIndexOf, clearFoldCache } from "./text.js";
 export { ensureStore, currentStore, DataStore } from "./data.js";
 export { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshot, writeSnapshotAtomic } from "./snapshot.js";
@@ -13,6 +13,7 @@ export { itemUrl, itemUrlOrNull } from "./urls.js";
 export { generateItemCitation } from "./citation.js";
 export { createAmiraServer } from "./mcpServer.js";
 export { exposureLevel } from "./exposure.js";
+export { guidanceEnabled, stripSchemaText } from "./guidance.js";
 export { isTemplatePlaceholder, parseAllowedOriginHostnames, config } from "./config.js";
 
 export { publicationBibtex, publicationCitation } from "./publicationCitation.js";

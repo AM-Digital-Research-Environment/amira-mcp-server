@@ -16,6 +16,7 @@ import { ResourceNotFoundError, ResourceTemplate, type McpServer } from "@modelc
 import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS, type DataStore } from "./data.js";
 import { allowDescriptive, allowStructured } from "./exposure.js";
+import { guidanceEnabled } from "./guidance.js";
 import { API_BASE, SITE_BASE } from "./config.js";
 import { snapshotId } from "./snapshotIdentity.js";
 import { itemSetUrl, itemUrl } from "./urls.js";
@@ -51,7 +52,9 @@ export function exportLink(corpus: ExportCorpus, format: string, filters: Record
   const rows = Math.min(total, MAX_EXPORT_ROWS);
   const summary = {
     export: { uri, corpus, format, mime_type: MIME[format], rows, total_matches: total, truncated: total > MAX_EXPORT_ROWS || undefined },
-    note: "Read the resource (resources/read) to obtain the file; it is recomputed from the snapshot on every read.",
+    ...(guidanceEnabled()
+      ? { note: "Read the resource (resources/read) to obtain the file; it is recomputed from the snapshot on every read." }
+      : {}),
   };
   return {
     content: [
@@ -228,7 +231,9 @@ const json = (uri: string, value: unknown) => ({
   contents: [{ uri, mimeType: "application/json", text: JSON.stringify(value) }],
 });
 
-export function registerDataResources(server: McpServer, tools: ToolMap): void {
+export function registerDataResources(server: McpServer, tools: ToolMap, opts: { guidance?: boolean } = {}): void {
+  // AMIRA_GUIDANCE=off: no titles or descriptions (src/guidance.ts).
+  const described = (title: string, description: string) => (opts.guidance ?? true ? { title, description } : {});
   server.registerResource(
     "amira-record",
     new ResourceTemplate("amira://record/{kind}/{id}", {
@@ -237,8 +242,7 @@ export function registerDataResources(server: McpServer, tools: ToolMap): void {
         "subject", "collection", "journal", "podcast", "video", "playlist"].filter((k) => k.startsWith(value)) },
     }),
     {
-      title: "AMIRA record",
-      description: "Any AMIRA record as citable JSON, e.g. amira://record/research_item/7392. Kinds follow resolve_entity ids.",
+      ...described("AMIRA record", "Any AMIRA record as citable JSON, e.g. amira://record/research_item/7392. Kinds follow resolve_entity ids."),
       mimeType: "application/json",
     },
     async (uri, variables) => {
@@ -265,8 +269,7 @@ export function registerDataResources(server: McpServer, tools: ToolMap): void {
     "amira-dataset",
     "amira://dataset",
     {
-      title: "AMIRA dataset description",
-      description: "schema.org Dataset description of the served snapshot: counts, coverage, licence mix and how to cite it.",
+      ...described("AMIRA dataset description", "schema.org Dataset description of the served snapshot: counts, coverage, licence mix and how to cite it."),
       mimeType: "application/ld+json",
     },
     async (uri) => {
@@ -278,10 +281,8 @@ export function registerDataResources(server: McpServer, tools: ToolMap): void {
   server.registerResource(
     "amira-export",
     new ResourceTemplate("amira://export/{corpus}/{format}/{query}", { list: undefined }),
-    {
-      title: "AMIRA export",
-      description: "A filtered research-item or publication export (CSV, JSONL, BibTeX, RIS, CSL-JSON). Links come from search tools called with `export`.",
-    },
+    described("AMIRA export",
+      "A filtered research-item or publication export (CSV, JSONL, BibTeX, RIS, CSL-JSON). Links come from search tools called with `export`."),
     async (uri, variables) => {
       const { mimeType, text } = await renderExport(uri.href, String(variables.corpus), String(variables.format), String(variables.query));
       return { contents: [{ uri: uri.href, mimeType, text }] };

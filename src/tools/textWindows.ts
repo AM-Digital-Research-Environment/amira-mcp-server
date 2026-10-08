@@ -1,5 +1,6 @@
 import { CHARACTER_LIMIT } from "./responses.js";
 import { allowFullText } from "../exposure.js";
+import { guidanceEnabled } from "../guidance.js";
 // --- large-text windowing (transcripts, publication full text) ---------------
 //
 // One implementation behind get_podcast/get_video (`transcript`),
@@ -40,7 +41,8 @@ function windowSlice(text: string, opts: WindowOpts): { slice: string; offset: n
 /**
  * Detail-tool shape: `has_<field>` + `<field>_length` always; the windowed text
  * plus offset/returned/truncated when opted in; a paging hint (or an
- * access-disabled marker under restricted exposure) when not.
+ * access-disabled marker under restricted exposure) when not. The hints are
+ * guidance: AMIRA_GUIDANCE=off drops them, here and in textWindowAppend.
  */
 export function textWindowFields(field: WindowField, text: string | null, opts: WindowOpts): Record<string, unknown> {
   const total = text?.length ?? 0;
@@ -52,7 +54,7 @@ export function textWindowFields(field: WindowField, text: string | null, opts: 
     return {
       [`has_${field}`]: has,
       [`${field}_length`]: total,
-      ...(has
+      ...(has && guidanceEnabled()
         ? { [`${field}_hint`]: `Set include_${field}=true for the text (page long ones with ${field}_offset / ${field}_max_chars).` }
         : {}),
     };
@@ -86,16 +88,19 @@ export function textWindowAppend(
       meta: { [`has_${field}`]: has, [`${field}_included`]: false, [`${field}_length`]: total, ...(has ? { [`${field}_access`]: "disabled" } : {}) },
     };
   }
+  const guided = guidanceEnabled();
   if (!opts.include || !has) {
     return {
-      append: has
-        ? `\n[${label} omitted (${total} chars) — call fetch again with include_${field}=true to append it (page long ones with ${field}_offset / ${field}_max_chars).]`
-        : null,
+      append: !has
+        ? null
+        : guided
+          ? `\n[${label} omitted (${total} chars) — call fetch again with include_${field}=true to append it (page long ones with ${field}_offset / ${field}_max_chars).]`
+          : `\n[${label} omitted (${total} chars).]`,
       meta: {
         [`has_${field}`]: has,
         [`${field}_included`]: false,
         [`${field}_length`]: total,
-        ...(has
+        ...(has && guided
           ? { [`${field}_hint`]: `Set include_${field}=true to append the ${label.toLowerCase()} (page long ones with ${field}_offset / ${field}_max_chars).` }
           : {}),
       },
@@ -105,12 +110,14 @@ export function textWindowAppend(
   // Say so rather than appending a slice that capText would then trim.
   if (opts.budget !== undefined && opts.budget < MIN_WINDOW) {
     return {
-      append: `\n[${label} exists (${total} chars) but does not fit within max_chars — raise max_chars, or read it from the detail tool.]`,
+      append: guided
+        ? `\n[${label} exists (${total} chars) but does not fit within max_chars — raise max_chars, or read it from the detail tool.]`
+        : `\n[${label} exists (${total} chars) but does not fit within max_chars.]`,
       meta: {
         [`has_${field}`]: true,
         [`${field}_included`]: false,
         [`${field}_length`]: total,
-        [`${field}_hint`]: `Raise max_chars (the record's metadata alone filled it) to append the ${label.toLowerCase()}.`,
+        ...(guided ? { [`${field}_hint`]: `Raise max_chars (the record's metadata alone filled it) to append the ${label.toLowerCase()}.` } : {}),
       },
     };
   }

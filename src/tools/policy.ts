@@ -13,8 +13,12 @@
 //     error branch), and clients may validate it.
 //   - Discovery: hosts that defer tool loading (Claude Code's tool search) keep
 //     the entry tools loaded via `_meta["anthropic/alwaysLoad"]`.
+//   - Guidance (AMIRA_GUIDANCE=off): titles, descriptions and schema text go,
+//     and so does the entry-point hint, which only restates the instructions'
+//     workflow. Names, schemas and handlers stay (src/guidance.ts).
 import type { RegisteredTool } from "@modelcontextprotocol/server";
 import { errorResult } from "./responses.js";
+import { withoutSchemaText } from "../guidance.js";
 
 export type ToolMap = Record<string, RegisteredTool>;
 
@@ -69,7 +73,8 @@ function withoutStructuredError<T>(result: T): T {
 }
 
 /** Remove tools outside the profile and wrap the rest with the shared policy. */
-export function applyToolPolicy(tools: ToolMap, allowed: ReadonlySet<string> | null): void {
+export function applyToolPolicy(tools: ToolMap, allowed: ReadonlySet<string> | null, opts: { guidance?: boolean } = {}): void {
+  const guidance = opts.guidance ?? true;
   for (const [name, tool] of Object.entries(tools)) {
     if (allowed && !allowed.has(name)) {
       tool.remove();
@@ -85,7 +90,13 @@ export function applyToolPolicy(tools: ToolMap, allowed: ReadonlySet<string> | n
         }
         return withoutStructuredError(await handler(cleaned.args, ctx));
       }) as unknown as NonNullable<Parameters<RegisteredTool["update"]>[0]["callback"]>,
-      ...(ALWAYS_LOAD.has(name) ? { _meta: { ...tool._meta, "anthropic/alwaysLoad": true } } : {}),
+      ...(guidance && ALWAYS_LOAD.has(name) ? { _meta: { ...tool._meta, "anthropic/alwaysLoad": true } } : {}),
+      ...(guidance ? {} : { paramsSchema: withoutSchemaText(tool.inputSchema), outputSchema: withoutSchemaText(tool.outputSchema) }),
     });
+    if (!guidance) {
+      // `update()` skips undefined values, so clearing takes an assignment.
+      tool.title = undefined;
+      tool.description = undefined;
+    }
   }
 }

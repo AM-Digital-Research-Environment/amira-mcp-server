@@ -23,7 +23,7 @@ export function publicationExportPage(
   });
   const bytes = () => Buffer.byteLength(JSON.stringify({ ...envelope(), response_limited: true }), "utf8");
   if (bytes() > EXPORT_BYTE_LIMIT) {
-    return errorResult("export_too_large", "Export filters exceed the response budget. Shorten the filter text.");
+    return errorResult("export_too_large", "Export filters exceed the response budget. Shorten the filter text.", { terse: "Export filters exceed the response budget." });
   }
   let responseLimited = false;
   for (const p of records.slice(offset, offset + limit)) {
@@ -37,7 +37,7 @@ export function publicationExportPage(
       results.pop();
       if (!results.length) {
         return errorResult("export_too_large", `Publication ${p.o_id} exceeds the batch export budget. Read it individually with get_publication.`, {
-          suggested_tool: "get_publication",
+          suggested_tool: "get_publication", terse: `Publication ${p.o_id} exceeds the batch export budget.`,
         });
       }
       responseLimited = true;

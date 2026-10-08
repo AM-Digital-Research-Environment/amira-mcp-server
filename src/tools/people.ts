@@ -22,7 +22,8 @@ import {
   type Server,
 } from "./_shared.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
-import { nameKey, personMatches, samePerson } from "../names.js";
+import { nameKey, nearMissNames, personMatches, samePerson } from "../names.js";
+import { guidanceEnabled } from "../guidance.js";
 import { resolveEntities } from "../entityGraph.js";
 import { stripTypedId } from "../typedIds.js";
 import { fold } from "../text.js";
@@ -51,6 +52,25 @@ function creditedAnywhere(store: DataStore, name: string): string | null {
 
 const COLLABORATOR_CAP = 15;
 
+/** Near misses offered when a person search finds nobody. */
+const SUGGESTION_CAP = 5;
+
+/**
+ * `{ suggestions, hint }` for a person query that matched nobody: the authority
+ * records whose name is a typo away from it (src/names.ts), each with its typed
+ * id and citation. Empty when there are none, and always with AMIRA_GUIDANCE=off.
+ * Shared by search_persons and resolve_entity.
+ */
+export function personSuggestions(persons: readonly PersonRec[], query: string): Record<string, unknown> {
+  if (!guidanceEnabled()) return {};
+  const close = nearMissNames(persons, query, SUGGESTION_CAP);
+  if (!close.length) return {};
+  return {
+    suggestions: close.map((p) => ({ id: `person:${p.o_id}`, name: p.name, amira_url: itemUrl(p.o_id) })),
+    hint: "No person has this name. These authority names are spelled similarly; confirm one is the person meant before using it.",
+  };
+}
+
 export function registerPeopleTools(server: Server, tools: ToolMap): void {
   // === search_persons =======================================================
   tools.search_persons = server.registerTool(
@@ -72,23 +92,18 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       const limit = capLimit(args.limit, 25, 100);
       const offset = capOffset(args.offset);
 
-      const filtered = store.persons.filter((p) => {
-        if (
-          args.keyword &&
-          !(
-            personMatches(p.name, args.keyword) ||
-            (p.alt_names ?? []).some((alt) => personMatches(alt, args.keyword!)) ||
-            anyContainsCI(refLabels(p.affiliations), args.keyword)
-          )
-        )
-          return false;
-        if (args.affiliation && !anyContainsCI(refLabels(p.affiliations), args.affiliation)) return false;
-        return true;
-      });
+      const keywordMatches = (p: PersonRec, keyword: string) =>
+        personMatches(p.name, keyword) ||
+        (p.alt_names ?? []).some((alt) => personMatches(alt, keyword)) ||
+        anyContainsCI(refLabels(p.affiliations), keyword);
+      const affiliated = (p: PersonRec) => !args.affiliation || anyContainsCI(refLabels(p.affiliations), args.affiliation);
+      const filtered = store.persons.filter((p) => (!args.keyword || keywordMatches(p, args.keyword)) && affiliated(p));
 
-      return textResult(
-        pageOf(filtered, offset, limit, personSummary, { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) }),
-      );
+      const page = pageOf(filtered, offset, limit, personSummary, { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) });
+      // Suggest spellings only when the keyword itself matched nobody: when an
+      // affiliation filter removed the matches, the name was not the problem.
+      if (filtered.length || !args.keyword || store.persons.some((p) => keywordMatches(p, args.keyword!))) return textResult(page);
+      return textResult({ ...page, ...personSuggestions(store.persons.filter(affiliated), args.keyword) });
     },
   );
 
@@ -116,7 +131,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       if (oIdArg != null && !Number.isSafeInteger(oIdArg)) return errorResult("invalid_id", "Use a numeric person id or person:<id>.");
       const candidates = oIdArg != null ? store.persons.filter((p) => p.o_id === oIdArg) : store.persons.filter((p) => samePerson(p.name, name!));
       if (oIdArg != null && !candidates.length) return errorResult("not_found", "Unknown person id.", { suggested_tool: "resolve_entity" });
-      if (candidates.length > 1) return errorResult("ambiguous_entity", "Multiple people share this name; use an exact id from resolve_entity.", { suggested_tool: "resolve_entity", available_values: candidates.map((p) => String(p.o_id)) });
+      if (candidates.length > 1) return errorResult("ambiguous_entity", "Multiple people share this name; use an exact id from resolve_entity.", { suggested_tool: "resolve_entity", available_values: candidates.map((p) => String(p.o_id)), terse: "Multiple people share this name; use an exact id." });
 
       const record: PersonRec | undefined = candidates[0];
       // Without an authority record, the name must still be a full credit
@@ -125,7 +140,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       if (!canonical) {
         const close = resolveEntities(store, name!, "person").slice(0, 10).map((e) => `${e.label} (${e.id})`);
         return errorResult("not_found", `No person named '${name}'. Names must be complete; use resolve_entity or search_persons for partial names.`, {
-          suggested_tool: "resolve_entity", available_values: close,
+          suggested_tool: "resolve_entity", available_values: close, terse: `No person named '${name}'. Names must be complete.`,
         });
       }
       const oId = record?.o_id ?? null;

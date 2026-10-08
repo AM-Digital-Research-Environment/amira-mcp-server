@@ -78,7 +78,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `get_research_item` | Full metadata for one item (by Omeka `id` or typed id): typed dates, roles with the **affiliation at the time**, places with their region/country chain, provenance as linked institutions, typed identifiers, collections, related items, **media files** and the **IIIF manifest** — plus a **generated citation** and a BibTeX/RIS/CSL-JSON export (`citation_format`) |
 | `search_projects` / `get_project` | Projects by keyword or acronym, university, section, PI, member, funder — detail with item breakdown, top subjects and sample items |
 | `list_research_sections` / `get_research_section` | Thematic sections with funding phases (AM 1.0 / AM 2.0), PIs, counts, projects; detail by name or id |
-| `search_persons` / `get_person` | People (either name order works) — profile with GND and other authority identifiers, projects, items, publications and top collaborators |
+| `search_persons` / `get_person` | People (either name order works) — profile with GND and other authority identifiers, projects, items, publications and top collaborators. A name that matches nobody returns near-miss `suggestions` ("Rudigr Seeman" → `Seesemann, Rüdiger`) |
 | `list_institutions` / `get_institution` / `list_cluster_partners` / `list_groups` | Organisations (institutions, Africa Multiple partner categories, and research groups) by name, acronym or id, their projects, people and items |
 | `list_subjects` | Subject headings ranked by item frequency, each marked as a Library of Congress heading (with its id.loc.gov URI) or a free tag (`vocabulary=lcsh|tag`) |
 | `list_locations` | Every place — countries and cities in one flat list (hierarchy rolled up) — ranked by item count, with coordinates and Wikidata ids; filter by country, name, `near` (radius) or `bbox` |
@@ -91,7 +91,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications) |
 | `search_podcasts` / `get_podcast` | Cluster podcast episodes with searchable transcripts, filterable by language; detail gives the duration, audio file and the **model that generated the transcript**; transcript text is opt-in |
 | `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; thumbnail; transcript opt-in on detail) |
-| `resolve_entity` | Resolve names or typed IDs (either vocabulary: `item:7392` = `research_item:7392`); return separate candidates for homonyms and unreconciled literals |
+| `resolve_entity` | Resolve names or typed IDs (either vocabulary: `item:7392` = `research_item:7392`); return separate candidates for homonyms and unreconciled literals. With `type=person`, a name that resolves to nothing returns near-miss `suggestions` |
 | `get_entity_graph` | Bounded one-hop graph with distinct explicit links/co-occurrences and paginated cited evidence |
 | `get_text_passages` | Find passages in selected publication/video/podcast records, with exact original-text offsets |
 | `compare_collections` | Compare 2–4 projects or collections using common filters, denominators and missingness |
@@ -352,7 +352,9 @@ would otherwise sail under every ceiling.
 
 Version 1.18 deliberately raises the full-profile ceiling to 14,000 estimated
 tokens to accommodate six tools and useful output schemas. Smaller profile gates
-remain 10,000 (`research`), 6,500 (`discovery`) and 9,500 (`visualization`).
+are 10,100 (`research`, raised from 10,000 for `resolve_entity`'s near-miss
+fields), 6,500 (`discovery`) and 9,500 (`visualization`). The guidance-off
+surfaces of the evaluation ablation are measured and gated like the shipped ones.
 The committed [baseline](test/token-baseline.json) records the exact surface size,
 text bytes, serialized wire bytes (text and structured content both count) and the
 snapshot it was measured on. Every response must also stay under 45,000 characters:
@@ -428,6 +430,7 @@ workflows crawl the **public** API — no credentials):
 | `AMIRA_SITE_SLUG` | — | `amira` | Omeka site slug used in `amira_url` |
 | `AMIRA_DATA_DIR` | — | bundled `data/` | Override the bundled snapshot path (dev) |
 | `AMIRA_EXPOSURE` | — | `full` | **Benchmark experiments only**: restrict which metadata the tools expose (see below) |
+| `AMIRA_GUIDANCE` | — | `on` | **Benchmark experiments only**: `off` serves the same tools without the curatorial guidance — instructions, descriptions, error advice, prompts, skill (see below); restart to change |
 | `AMIRA_SKILLS` | — | on | Serve the companion skill over the finalized SEP-2640 extension. `0`/`false`/`off` withdraws the capability and the `skills/*` methods |
 | `PORT` | — | `8787` | Port for the remote HTTP transport (`server/http.js`); ignored by the `.mcpb` |
 | `HOST` | — | `127.0.0.1` | HTTP bind address; set `0.0.0.0` explicitly for remote access. The Docker image sets this itself |
@@ -471,6 +474,27 @@ it cannot answer rather than hallucinating.
 | `descriptive` | + descriptions, abstracts, tables of contents (searchable too) |
 | `structured` | + subjects, places, people, projects, sections, collections, venues — all filters and entity tools |
 | `full` | + transcripts and publication full text (default) |
+
+### Guidance ablation (benchmark experiments)
+
+`AMIRA_GUIDANCE=off` serves the same operations without the curatorial guidance,
+so an evaluation can measure what that guidance contributes. Like
+`AMIRA_EXPOSURE` it is an experiment flag; the default (`on`) changes nothing.
+The tool list is built when the server starts, so set the variable before
+starting it and restart to change it.
+
+| Channel | `on` (default) | `off` |
+| --- | --- | --- |
+| Server instructions | sent on `initialize` | none |
+| Tools | name, title, description, schemas with parameter descriptions | same names, input and output schemas (types, enums, bounds, required fields), annotations and app `_meta`; no title, description or `.describe()` text; no `anthropic/alwaysLoad` hint |
+| Errors | `code`, message, `suggested_tool`, `available_values` | `code` and a terse message saying what was wrong; no pointer to another tool, no candidate values, no advice ("Answer from the metadata that remains exposed…") |
+| Results | data, plus `*_hint` paging hints, the export `note` and person `suggestions` | the same data without them |
+| Prompts, companion skill | registered and declared | neither |
+| Resources | titles and descriptions | URIs and MIME types only |
+
+The tool list costs 12,040 estimated tokens per turn on stdio with guidance and
+8,485 without (HTTP: 12,981 and 9,044); the instructions add 448 once per
+session. `npm run weigh` measures both and the baseline records them.
 
 ## Architecture
 

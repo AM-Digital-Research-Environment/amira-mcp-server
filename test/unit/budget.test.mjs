@@ -28,20 +28,28 @@ const { measureSurface, checkSurface, readBaseline, SURFACE_TOKEN_BUDGET, SURFAC
 const baseline = await readBaseline();
 
 /** Measure one transport's surface through a real in-process client. */
-async function surfaceOf(opts) {
-  const conn = await connectInMemory(lib, opts, { name: "budget" });
+async function surfaceOf({ guidance, ...opts }) {
+  if (guidance) process.env.AMIRA_GUIDANCE = guidance;
   try {
-    return await measureSurface(conn.client);
+    const conn = await connectInMemory(lib, opts, { name: "budget" });
+    try {
+      return await measureSurface(conn.client);
+    } finally {
+      await conn.close();
+    }
   } finally {
-    await conn.close();
+    delete process.env.AMIRA_GUIDANCE;
   }
 }
 
 // stdio ships in the .mcpb; http adds the ChatGPT search/fetch pair. They are
-// billed to different clients, so each carries its own budget.
+// billed to different clients, so each carries its own budget. The
+// guidance-off pair is the evaluation's ablation (AMIRA_GUIDANCE=off).
 const VARIANTS = [
   ["stdio", {}],
   ["http", { openai: true }],
+  ["stdio_guidance_off", { guidance: "off" }],
+  ["http_guidance_off", { openai: true, guidance: "off" }],
 ];
 
 test("a token baseline is committed", () => {
@@ -91,7 +99,9 @@ for (const [label, opts] of VARIANTS) {
   });
 }
 
-for (const [profile, budget] of [["research", 10_000], ["discovery", 6_500], ["visualization", 9_500]]) {
+// research sat at 9,992 in 1.20.0; resolve_entity's optional near-miss
+// `suggestions`/`hint` output fields (+60) took it past 10,000.
+for (const [profile, budget] of [["research", 10_100], ["discovery", 6_500], ["visualization", 9_500]]) {
   test(`${profile} profile stays within its deliberate discovery budget`, async () => {
     const surface = await surfaceOf({ openai: true, profile });
     assert.ok(surface.total_tokens <= budget, `${profile}: ${surface.total_tokens} > ${budget}`);
