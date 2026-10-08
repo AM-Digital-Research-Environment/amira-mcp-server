@@ -8,7 +8,7 @@ let render: ((payload: Payload) => void) | undefined;
 let input: Payload = {};
 let ready: Promise<void> | undefined;
 const lifecycle = new AbortController();
-const tools = new Set(["get_entity_graph", "resolve_entity", "list_locations", "search_research_items", "list_years", "search_publications", "get_publication", "list_publication_facets"]);
+const tools = new Set(["get_entity_graph", "resolve_entity", "list_locations", "search_research_items", "list_years", "search_publications", "get_publication", "list_publication_facets", "search_projects", "list_subjects"]);
 
 function status(message: string) {
   const element = document.getElementById("app-status");
@@ -53,14 +53,16 @@ const bridge = {
     void ready.catch(() => status("The app could not connect. Reopen it in an MCP Apps host to use its controls."));
   },
   input: () => ({ ...input }),
-  async callTool(name: string, args: Payload) {
+  /** `quiet` calls (background option lists) leave the status line alone. */
+  async callTool(name: string, args: Payload, options: { quiet?: boolean } = {}) {
     if (!tools.has(name)) throw new Error("This tool is not available in the app.");
     await ready;
-    status("Loading…");
+    const say = options.quiet ? () => {} : status;
+    say("Loading…");
     try {
       const result = payload(await app.callServerTool({ name, arguments: args }, { timeout: 15_000, signal: lifecycle.signal }));
-      status(""); return result;
-    } catch (error) { status((error as Error).message); throw error; }
+      say(""); return result;
+    } catch (error) { say((error as Error).message); throw error; }
   },
   async openLink(url: string) {
     if (!/^https?:\/\//i.test(url)) return;

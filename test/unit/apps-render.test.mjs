@@ -121,6 +121,10 @@ const rows = (scope, selector = "tbody tr") =>
   [...scope.querySelectorAll(selector)].map((tr) => [...tr.querySelectorAll("th, td")].map(text));
 const citations = (scope) =>
   [...scope.querySelectorAll("a[data-citation]")].map((a) => ({ href: a.getAttribute("href"), title: text(a) }));
+/** A select's options as [value, text] pairs. */
+const options = (select) => [...select.options].map((o) => [o.value, text(o)]);
+/** The most recent call the page made to one tool, ignoring background option loads to others. */
+const lastCall = (app, name) => app.calls.findLast((c) => c.name === name);
 const AMIRA_URL = /^https:\/\/data\.africamultiple\.uni-bayreuth\.de\/s\/amira\/item\/\d+$/;
 
 /**
@@ -339,7 +343,7 @@ test("timeline: bars, table and counts match list_years; a year opens cited evid
   app.click(app.root.querySelector('button[data-year="2013"]'));
   await app.waitFor(() => app.root.querySelector("#timeline-evidence h2"), "2013 evidence");
   const evidence = await payload("search_research_items", { year_from: 2013, year_to: 2013, offset: 0, limit: 20 });
-  assert.deepEqual(app.calls.at(-1), { name: "search_research_items", args: { year_from: 2013, year_to: 2013, offset: 0, limit: 20 } });
+  assert.deepEqual(lastCall(app, "search_research_items"), { name: "search_research_items", args: { year_from: 2013, year_to: 2013, offset: 0, limit: 20 } });
   assert.equal(text(app.root.querySelector("#timeline-evidence h2")), `2013–2013 · ${evidence.total_matches} matching records`);
   assert.deepEqual(citations(app.root.querySelector("#timeline-evidence")), evidence.results.map((r) => ({ href: r.amira_url, title: r.title })));
   assert.ok(evidence.results.length > 0);
@@ -381,7 +385,30 @@ test("timeline: decade buckets, the subject filter form, and the empty range", a
   assert.equal(text(app.root.querySelector(".empty")), "No dated items in this range.");
   app.click(app.root.querySelector("#reset-range"));
   await app.waitFor(() => text(app.root.querySelector("h1")).endsWith("per decade") && app.root.querySelector("svg"), "reset to decades");
-  assert.deepEqual(app.calls.at(-1), { name: "list_years", args: { bucket: "decade", limit: 200 } });
+  assert.deepEqual(lastCall(app, "list_years"), { name: "list_years", args: { bucket: "decade", limit: 200 } });
+  assertHealthy(app);
+});
+
+test("timeline: projects are a dropdown and subjects are suggestions, both loaded by the app", async (t) => {
+  const app = await mount(t, "list_years");
+  const projects = (await payload("search_projects", { limit: 100, offset: 0 })).results.filter((p) => p.item_count);
+  assert.ok(projects.length > 0, "the fixture has projects with research items");
+  const [named] = projects;
+  // The model may pass a project by name; the dropdown resolves it to its id.
+  app.show(await payload("list_years", { bucket: "decade", filters: { project_id: named.name } }));
+  await app.waitFor(() => app.root.querySelector('select[name="project_id"]') && app.root.querySelector("#subject-options option"), "project and subject lists");
+  const select = app.root.querySelector('select[name="project_id"]');
+  assert.deepEqual(options(select), [["", "All projects"],
+    ...projects.sort((a, b) => a.name.localeCompare(b.name)).map((p) => [p.id, `${p.name} (${p.item_count})`])]);
+  assert.equal(select.value, named.id);
+  const subjects = await payload("list_subjects", { limit: 300, offset: 0 });
+  assert.equal(app.root.querySelector('input[name="subject"]').getAttribute("list"), "subject-options");
+  assert.deepEqual([...app.root.querySelectorAll("#subject-options option")].map((o) => o.value), subjects.results.map((r) => r.subject));
+
+  // Submitting filters by the chosen project's id.
+  app.submit(app.root.querySelector("#timeline-filter"));
+  await app.waitFor(() => lastCall(app, "list_years")?.args.filters?.project_id === named.id, "project filter");
+  await app.waitFor(() => app.root.querySelector('select[name="project_id"]')?.value === named.id, "re-rendered dropdown");
   assertHealthy(app);
 });
 
@@ -580,18 +607,23 @@ test("map: markers, table and evidence citations match list_locations", async (t
   app.click(app.root.querySelector(`button[data-place-id="${nigeria.omeka_id}"]`));
   await app.waitFor(() => app.root.querySelector("#map-evidence h2"), "place evidence");
   const args = { limit: 20, offset: 0, location_id: nigeria.omeka_id };
-  assert.deepEqual(app.calls.at(-1), { name: "search_research_items", args });
+  assert.deepEqual(lastCall(app, "search_research_items"), { name: "search_research_items", args });
   const evidence = await payload("search_research_items", args);
   assert.equal(text(app.root.querySelector("#map-evidence h2")), `Nigeria · ${evidence.total_matches} matching records`);
   assert.deepEqual(citations(app.root.querySelector("#map-evidence")), evidence.results.map((r) => ({ href: r.amira_url, title: r.title })));
   assert.equal(evidence.results.length, nigeria.item_count);
 
-  // Country filter form.
-  const form = app.root.querySelector("#map-filter");
-  form.querySelector('input[name="country"]').value = "Nigeria";
-  app.submit(form);
-  await app.waitFor(() => app.root.querySelector('input[name="country"]')?.value === "Nigeria" && app.calls.at(-1).name === "list_locations" && app.root.querySelectorAll("tbody tr").length !== d.results.length, "filtered places");
-  const filtered = await payload("list_locations", app.calls.at(-1).args);
+  // Country filter: a dropdown of the hierarchy roots, fetched by the app itself.
+  await app.waitFor(() => app.root.querySelector('select[name="country"]'), "country dropdown");
+  const all = await payload("list_locations", { limit: 300, offset: 0 });
+  const roots = all.results.filter((r) => r.coordinate_scope === "hierarchy_root").sort((a, b) => a.name.localeCompare(b.name));
+  assert.deepEqual(options(app.root.querySelector('select[name="country"]')),
+    [["", "All countries"], ...roots.map((r) => [r.name, `${r.name} (${r.item_count})`])]);
+  app.root.querySelector('select[name="country"]').value = "Nigeria";
+  app.submit(app.root.querySelector("#map-filter"));
+  await app.waitFor(() => app.root.querySelector('select[name="country"]')?.value === "Nigeria" && app.root.querySelectorAll("tbody tr").length !== d.results.length, "filtered places");
+  const filtered = await payload("list_locations", lastCall(app, "list_locations").args);
+  assert.equal(filtered.filters.country, "Nigeria");
   assert.deepEqual(rows(app.root.querySelector("table")).map((r) => r[0]), filtered.results.map((r) => r.name));
   assertHealthy(app);
 });
@@ -647,8 +679,8 @@ test("bibliography: rows and citations match search_publications; selection expo
   form.querySelector('input[name="keyword"]').value = "Migration";
   app.submit(form);
   await app.waitFor(() => app.calls.some((c) => c.name === "search_publications"), "keyword search");
-  assert.deepEqual(app.calls.at(-1), { name: "search_publications", args: { keyword: "Migration", offset: 0, limit: 20 } });
-  const found = await payload("search_publications", app.calls.at(-1).args);
+  assert.deepEqual(lastCall(app, "search_publications"), { name: "search_publications", args: { keyword: "Migration", offset: 0, limit: 20 } });
+  const found = await payload("search_publications", lastCall(app, "search_publications").args);
   await app.waitFor(() => text(app.root.querySelector(".sub")).startsWith(`${found.total_matches} matching`), "search render");
   assert.deepEqual(citations(app.root), found.results.map((p) => ({ href: p.amira_url, title: p.title })));
   assert.equal(text(app.doc.getElementById("selection-count")), "1 selected (maximum 25)");
@@ -664,4 +696,50 @@ test("bibliography: no matches renders a friendly empty message", async (t) => {
   assert.equal(text(app.root.querySelector(".sub")), "0 matching publications · no results");
   assert.equal(text(app.root.querySelector(".empty")), "No publications match these filters. Try removing a filter.");
   assert.equal(app.doc.getElementById("export-selected").disabled, true);
+});
+
+test("bibliography: languages are a dropdown counted for the current search; authors are suggestions", async (t) => {
+  const app = await mount(t, "search_publications");
+  app.show(await payload("search_publications"));
+  await app.waitFor(() => app.root.querySelector('select[name="language"]') && app.root.querySelector("#author-options option"), "language and author lists");
+  const languageOptions = (facet, current) => [["", "Any language"],
+    ...(current && !facet.results.some((r) => r.value === current) ? [[current, current]] : []),
+    ...facet.results.map((r) => [r.value, `${r.value} (${r.publication_count})`])];
+  const languages = await payload("list_publication_facets", { facet: "language", limit: 100, offset: 0 });
+  assert.deepEqual(options(app.root.querySelector('select[name="language"]')), languageOptions(languages));
+  const authors = await payload("list_publication_facets", { facet: "author", limit: 100, offset: 0 });
+  assert.equal(app.root.querySelector('input[name="author"]').getAttribute("list"), "author-options");
+  assert.deepEqual([...app.root.querySelectorAll("#author-options option")].map((o) => o.value), authors.results.map((r) => r.value));
+
+  // Choosing a language searches with it, and the other languages stay selectable.
+  const [{ value: language }] = languages.results;
+  app.root.querySelector('select[name="language"]').value = language;
+  app.submit(app.root.querySelector("#publication-search"));
+  await app.waitFor(() => app.root.querySelector('select[name="language"]')?.value === language, "language search");
+  assert.deepEqual(lastCall(app, "search_publications").args, { language, offset: 0, limit: 20 });
+  assert.deepEqual(options(app.root.querySelector('select[name="language"]')), languageOptions(languages, language));
+  assert.ok(!app.calls.some((c) => c.name === "list_publication_facets" && c.args.language), "the language list ignores its own filter");
+
+  // A keyword re-counts the languages within the search.
+  app.root.querySelector('input[name="keyword"]').value = "Migration";
+  app.submit(app.root.querySelector("#publication-search"));
+  const scoped = await payload("list_publication_facets", { facet: "language", keyword: "Migration", limit: 100, offset: 0 });
+  await app.waitFor(() => JSON.stringify(options(app.root.querySelector('select[name="language"]'))) === JSON.stringify(languageOptions(scoped, language)), "scoped language counts");
+  assertHealthy(app);
+});
+
+test("bibliography: pickers stay text fields when the host refuses their lists", async (t) => {
+  const app = await mount(t, "search_publications");
+  const callTool = app.win.__amiraHost.callTool;
+  app.win.__amiraHost.callTool = (name, args) => name === "list_publication_facets" ? Promise.reject(new Error("refused")) : callTool(name, args);
+  app.show(await payload("search_publications"));
+  await sleep(20);
+  assert.ok(app.root.querySelector('input[name="language"]'), "language stays a text field");
+  assert.equal(app.root.querySelectorAll("#author-options option").length, 0);
+
+  // Typing still filters.
+  app.root.querySelector('input[name="language"]').value = "English";
+  app.submit(app.root.querySelector("#publication-search"));
+  await app.waitFor(() => lastCall(app, "search_publications")?.args.language === "English", "typed language search");
+  assertHealthy(app);
 });

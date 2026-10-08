@@ -9,8 +9,8 @@ force and what comes next.
 
 - **Guidance switch.** `AMIRA_GUIDANCE=off` serves the same tools without the
   curatorial guidance, for an evaluation's guidance-ablation condition: no
-  server instructions, prompts or companion skill; no tool or
-  resource titles and descriptions, no parameter descriptions and no
+  server instructions, prompts or companion skill; no tool or resource titles
+  and descriptions, no parameter descriptions and no
   `anthropic/alwaysLoad` hint; errors keep their `code` and a terse message
   without `suggested_tool`, `available_values` or advice; results drop the
   `*_hint` fields, the export `note` and person suggestions. Names, schemas and
@@ -25,6 +25,16 @@ force and what comes next.
   `resolve_entity`'s output schema gains the optional `suggestions` and `hint`
   (+60 tokens), so the `research` profile's surface gate rises from 10,000 to
   10,100.
+
+## 1.21.0 — 2026-10-08
+
+- **Apps:** filter fields offer their values. In the bibliography, Language is a
+  dropdown counted for the current search and Author suggests every catalogued
+  name. In the timeline, Project ID becomes a Project dropdown by name and
+  Subject suggests headings. In the map, Country is a dropdown. The widgets load
+  these lists themselves through allowlisted tools (`search_projects` and
+  `list_subjects` are new to the allowlist), so they add no model tokens. A field
+  stays a text input until its list arrives or if the host refuses the call.
 
 ## 1.20.0 — 2026-10-07
 

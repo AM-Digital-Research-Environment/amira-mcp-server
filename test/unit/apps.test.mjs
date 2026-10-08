@@ -57,3 +57,26 @@ test("official Apps SDK does not acknowledge a rejected handshake", async (t) =>
   assert.ok(!h.sent.some((m) => m.method === "ui/notifications/initialized"));
   assert.match(h.status.textContent, /could not connect/);
 });
+
+test("quiet tool calls leave the status line alone", async (t) => {
+  const h = harness(); t.after(() => h.close());
+  h.window.amiraApp.onResult(() => {}); await tick();
+  h.emit(h.parent, reply(h)); await tick();
+  const refuse = (id) => h.emit(h.parent, { jsonrpc: "2.0", id, result: { isError: true, content: [], structuredContent: { error: { message: "Refused" } } } });
+  h.status.textContent = "Kept";
+  const quiet = h.window.amiraApp.callTool("list_subjects", { limit: 300 }, { quiet: true });
+  await tick(); await tick();
+  const call = h.sent.findLast((m) => m.method === "tools/call");
+  assert.equal(call.params.name, "list_subjects");
+  assert.equal(h.status.textContent, "Kept");
+  refuse(call.id);
+  await assert.rejects(quiet, /Refused/);
+  assert.equal(h.status.textContent, "Kept");
+
+  const loud = h.window.amiraApp.callTool("list_subjects", { limit: 300 });
+  await tick(); await tick();
+  assert.equal(h.status.textContent, "Loading…");
+  refuse(h.sent.findLast((m) => m.method === "tools/call").id);
+  await assert.rejects(loud, /Refused/);
+  assert.equal(h.status.textContent, "Refused");
+});

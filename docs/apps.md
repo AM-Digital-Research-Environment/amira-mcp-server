@@ -12,9 +12,9 @@ versions are negotiated separately.
 | `ui://amira/sections` | `list_research_sections` | Funding-phase timeline and table alternative |
 | `ui://amira/related` | `find_related` | Co-occurrence diagram with distinct corpus counts and publication-only results |
 | `ui://amira/graph` | `get_entity_graph` | Resolve a seed, follow typed nodes, page cited edge evidence |
-| `ui://amira/map` | `list_locations` | Country filter, place table, keyboard markers, exact-ID item evidence |
-| `ui://amira/timeline` | `list_years` | Year-range controls, shared filters, bucket evidence and paging |
-| `ui://amira/bibliography` | `search_publications` | Search, persistent selections across pages, export up to 25 records |
+| `ui://amira/map` | `list_locations` | Country dropdown, place table, keyboard markers, exact-ID item evidence |
+| `ui://amira/timeline` | `list_years` | Year-range controls, project dropdown, subject suggestions, shared filters, bucket evidence and paging |
+| `ui://amira/bibliography` | `search_publications` | Search with a language dropdown and author suggestions, persistent selections across pages, export up to 25 records |
 
 The bridge in `src/ui/bridge.ts` uses the official handshake, initializes within
 10 seconds, times out tool calls after 15 seconds, handles partial host context
@@ -24,6 +24,18 @@ status region. Links use `openLink`; citation files use `downloadFile` when the 
 advertises that capability (it is still a draft in the Apps specification), and are
 otherwise shown in a text box to copy. A host may decline either action. All evidence required for research remains in ordinary
 model-visible JSON; clients without Apps support retain the tools and citations.
+
+Filter dropdowns and suggestion lists come from the same allowlisted tools, called
+by the app itself: bibliography languages and authors from `list_publication_facets`,
+timeline projects from `search_projects` and subjects from `list_subjects`, map
+countries from `list_locations`. Their results go to the page, not the model, so
+they add no model tokens. These background calls leave the status line alone.
+Each list loads once per widget. The exception is the language list, which is
+recounted for the current search without its own filter, so the other languages
+stay selectable. Map countries follow the map's research filters. Until a list
+arrives, or if the host refuses the call, the field stays a text input. Countries
+are the place hierarchy's roots, the same ones the filter matches. A place catalogued
+without a parent therefore appears as its own country.
 
 Graph lines distinguish explicit catalogue relationships from co-occurrence;
 corpora and distinct record counts remain visible in the table. The diagram draws
@@ -49,7 +61,8 @@ Do not deploy the preview host.
 Automated checks cover initialization source validation, rejected handshakes,
 partial themes, error status, resource metadata and no external asset loads.
 Browser checks cover graph evidence, map filters, timeline evidence, bibliography
-selection/export requests and readable light/dark/mobile layouts. Production-host
+selection/export requests, filter pickers and their text-field fallback, and readable
+light/dark/mobile layouts. Production-host
 compatibility still depends on the host's supported Apps capabilities.
 
 ## Offline map provenance

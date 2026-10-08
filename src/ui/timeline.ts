@@ -5,7 +5,7 @@
 // Single series (one bar per year), so the accent carries no identity; colours,
 // bridge and page chassis all come from ./shell.
 
-import { page } from "./shell.js";
+import { PICKER_JS, page } from "./shell.js";
 
 export const TIMELINE_URI = "ui://amira/timeline";
 
@@ -17,6 +17,17 @@ const SCRIPT = String.raw`
 var esc = window.amiraApp.esc;
 var api = window.amiraApp;
 var W = 720, H = 240, PAD_L = 40, PAD_R = 8, PAD_T = 10, PAD_B = 26;
+
+// Projects with research items, by name; a project is chosen by id but a name
+// passed by the model still selects it. Subjects are suggestions, ranked by use.
+function projects() {
+  return pickerLoad("projects", "search_projects", { limit: 100 }, function (r) {
+    return r.item_count ? { value: String(r.id), alt: r.name, label: r.name + " (" + r.item_count + ")" } : null;
+  }, function (a, b) { return a.alt.localeCompare(b.alt); });
+}
+function subjects() {
+  return pickerLoad("subjects", "list_subjects", { limit: 300 }, function (r) { return { value: r.subject }; });
+}
 
 function render(payload) {
   var rows = (payload && payload.results) || [];
@@ -71,6 +82,11 @@ function render(payload) {
   });
   parts.push("</svg>");
 
+  var current = (payload.filters || {}).filters || {};
+  var subject = { name: "subject", kind: "suggest", current: current.subject };
+  var project = { name: "project_id", kind: "select", any: "All projects", maxlength: 256,
+    current: current.project_id == null ? "" : String(current.project_id).replace(/^project:/i, "") };
+  var subjectList = pickerNow("subjects"), projectList = pickerNow("projects");
   var range = payload.year_range ? " spanning " + payload.year_range.min + "–" + payload.year_range.max : "";
   root.innerHTML =
     "<h1>AMIRA — research items per " + unit + "</h1>" +
@@ -79,9 +95,10 @@ function render(payload) {
     '<div class="chart">' + parts.join("") + "</div>" +
     '<p class="note">An item whose content date is a range counts toward every ' + unit +
     " it spans, so the bars can sum to more than the item total. Showing " + rows.length + " of " + payload.total_matches + " buckets.</p>" +
-    '<form id="timeline-filter"><div class="controls"><label>Subject<input name="subject" maxlength="1000" value="' + esc(((payload.filters || {}).filters || {}).subject || '') + '"></label><label>Project ID<input name="project_id" maxlength="256" value="' + esc(((payload.filters || {}).filters || {}).project_id || '') + '"></label></div><div class="controls"><label for="brush-from">From year <output id="from-label"></output><input type="range" id="brush-from" name="from" min="' + data[0].key + '" max="' + (data[data.length-1].key+(isDecade?9:0)) + '" value="' + data[0].key + '"></label><label for="brush-to">To year <output id="to-label"></output><input type="range" id="brush-to" name="to" min="' + data[0].key + '" max="' + (data[data.length-1].key+(isDecade?9:0)) + '" value="' + (data[data.length-1].key+(isDecade?9:0)) + '"></label><button>Apply range</button></div></form>' +
+    '<form id="timeline-filter"><div class="controls"><label>Subject' + pickerField(subject, subjectList) + '</label><label>Project' + pickerField(project, projectList) + '</label></div><div class="controls"><label for="brush-from">From year <output id="from-label"></output><input type="range" id="brush-from" name="from" min="' + data[0].key + '" max="' + (data[data.length-1].key+(isDecade?9:0)) + '" value="' + data[0].key + '"></label><label for="brush-to">To year <output id="to-label"></output><input type="range" id="brush-to" name="to" min="' + data[0].key + '" max="' + (data[data.length-1].key+(isDecade?9:0)) + '" value="' + (data[data.length-1].key+(isDecade?9:0)) + '"></label><button>Apply range</button></div></form>' +
     '<button id="reset-range">Clear filters</button><details><summary>Counts by ' + unit + '</summary><table><thead><tr><th>Period</th><th>Items</th></tr></thead><tbody>' + data.map(function(r){return '<tr><td><button data-year="' + r.key + '">' + esc(r.label) + '</button></td><td>' + r.n + '</td></tr>';}).join('') + '</tbody></table></details>' +
     (payload.has_more ? '<button id="next-buckets">Next buckets</button>' : '') + '<section id="timeline-evidence" class="evidence" aria-live="polite"></section>';
+  pickerMount(subject, subjects(), subjectList); pickerMount(project, projects(), projectList);
   var from=document.getElementById('brush-from'),to=document.getElementById('brush-to');
   document.getElementById('reset-range').onclick=reset;
   function rangeLabels(){document.getElementById('from-label').textContent=from.value;document.getElementById('to-label').textContent=to.value;}
@@ -111,4 +128,4 @@ async function reset(){try{render(await api.callTool('list_years',{bucket:'decad
 window.amiraApp.onResult(render);
 `;
 
-export const TIMELINE_HTML = page("AMIRA — coverage over time", CSS, SCRIPT);
+export const TIMELINE_HTML = page("AMIRA — coverage over time", CSS, PICKER_JS + SCRIPT);

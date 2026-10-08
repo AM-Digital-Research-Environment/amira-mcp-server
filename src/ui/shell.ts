@@ -70,7 +70,8 @@ button:hover { border-color: var(--bar); }
 button:disabled { opacity: .55; cursor: default; }
 input { caret-color: var(--bar); min-width: 0; }
 .controls { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; margin: 14px 0; }
-.controls label { display: grid; gap: 4px; flex: 1; min-width: 110px; }
+.controls label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; flex: 1; min-width: 110px; }
+.controls label select { width: 100%; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 td, th { border-bottom: 1px solid var(--border); padding: 8px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 th { font-weight: 600; }
@@ -109,6 +110,80 @@ export function page(title: string, css: string, script: string): string {
 </html>
 `;
 }
+
+/**
+ * Filter pickers: dropdowns and suggestion lists whose options the app fetches
+ * itself through allowlisted tools, so the lists never enter the model's
+ * context. Until a list arrives, or when the host refuses the call, a field is
+ * the plain text input it replaces, so typing a value always works.
+ *
+ * A field is `{ name, kind, any, current, maxlength, placeholder }`: kind
+ * "select" becomes a dropdown (with `any` as its empty choice) once its list
+ * loads; kind "suggest" stays a text field with a datalist. An option is
+ * `{ value, label?, alt? }`; `current` matches value or alt, ignoring case, and
+ * a current value the list lacks is kept as its own option.
+ */
+export const PICKER_JS = String.raw`
+var pickerLists = {};
+/** Every page of a list tool, fetched once per key. Resolves null if the call fails. */
+function pickerLoad(key, tool, args, pick, order) {
+  if (!(key in pickerLists)) pickerLists[key] = (async function () {
+    var out = [], offset = 0, pages = 0, d;
+    do {
+      d = await window.amiraApp.callTool(tool, Object.assign({}, args, { offset: offset }), { quiet: true });
+      (d.results || []).forEach(function (r) { var o = pick(r); if (o) out.push(o); });
+      offset = d.next_offset;
+    } while (d.has_more && offset != null && ++pages < 10);
+    return order ? out.sort(order) : out;
+  })().then(function (list) { return pickerLists[key] = list; }, function () { return pickerLists[key] = null; });
+  return Promise.resolve(pickerLists[key]);
+}
+/** A loaded list, or null while it is pending or after it failed. */
+function pickerNow(key) { return Array.isArray(pickerLists[key]) ? pickerLists[key] : null; }
+function pickerOptions(list, hit) {
+  var esc = window.amiraApp.esc;
+  return list.map(function (o) {
+    return '<option value="' + esc(o.value) + '"' + (hit && hit(o) ? " selected" : "") + ">" + esc(o.label || o.value) + "</option>";
+  }).join("");
+}
+function pickerField(p, list) {
+  var esc = window.amiraApp.esc, cur = p.current == null ? "" : String(p.current), low = cur.toLowerCase();
+  if (p.kind === "select" && list) {
+    var hit = function (o) { return !!low && (o.value.toLowerCase() === low || (o.alt || "").toLowerCase() === low); };
+    return '<select name="' + p.name + '"><option value="">' + esc(p.any) + "</option>" +
+      (cur && !list.some(hit) ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + "</option>" : "") +
+      pickerOptions(list, hit) + "</select>";
+  }
+  var suggest = p.kind === "suggest";
+  return '<input name="' + p.name + '" maxlength="' + (p.maxlength || 1000) + '" value="' + esc(cur) + '"' +
+    (p.placeholder ? ' placeholder="' + esc(p.placeholder) + '"' : "") +
+    (suggest ? ' list="' + p.name + '-options" autocomplete="off"' : "") + ">" +
+    (suggest ? '<datalist id="' + p.name + '-options">' + pickerOptions(list || []) + "</datalist>" : "");
+}
+/** Choose the option marked selected explicitly: happy-dom, the DOM the renderer
+ * tests run in, misreads a parsed selected attribute. A no-op in browsers. */
+function pickerSettle(el) {
+  var marked = el && el.tagName === "SELECT" && el.querySelector("option[selected]");
+  if (marked) el.value = marked.value;
+  return el;
+}
+/** Upgrade a field rendered from list shown (null while pending) once load
+ * resolves. A field the page has since re-rendered, or a dropdown the reader is
+ * using, is left alone. */
+function pickerMount(p, load, shown) {
+  var el = pickerSettle(document.querySelector('[name="' + p.name + '"]'));
+  load.then(function (list) {
+    if (!list || list === shown || !el || !el.isConnected) return;
+    if (p.kind === "suggest") { var options = document.getElementById(p.name + "-options"); if (options) options.innerHTML = pickerOptions(list); return; }
+    if (el === document.activeElement) return;
+    var holder = document.createElement("div");
+    holder.innerHTML = pickerField(Object.assign({}, p, { current: el.value }), list);
+    var next = holder.firstChild;
+    el.replaceWith(next);
+    pickerSettle(next);
+  });
+}
+`;
 
 /**
  * A horizontal ranked-bar chart as an SVG string, drawn from `[label, value]`
