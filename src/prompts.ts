@@ -96,7 +96,7 @@ export function registerPrompts(server: McpServer): void {
       text(
         `Profile the researcher "${name}" from the AMIRA collection.\n\n` +
           `1. resolve_entity with query "${name}" and type person. If several candidates match, ask which one is meant.\n` +
-          "2. get_person with the chosen id — affiliations, authority identifiers, projects, publications, credited items and collaborators.\n" +
+          "2. get_person with the chosen id — affiliations, authority identifiers, project and research-section roles, publications, credited items, podcasts, videos and collaborators.\n" +
           "3. get_entity_graph with the person id — the subjects, places and projects around their work.\n" +
           "4. search_publications with author — the full publication list, newest first.\n" +
           "5. Summarise research themes, roles (PI, member, author, editor) and main collaborators.\n\n" +

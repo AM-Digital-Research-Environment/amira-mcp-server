@@ -2,7 +2,7 @@ import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore } from "../data.js";
 import type { DataStore } from "../data.js";
-import type { PersonRec, PublicationRec } from "../types.js";
+import type { Contributor, PersonRec, PodcastRec, ProjectRec, PublicationRec, SectionRec, VideoRec } from "../types.js";
 import { allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
@@ -13,6 +13,7 @@ import {
   errorResult,
   exposureRestrictedResult,
   filtersEcho,
+  fundingPhase,
   itemRef,
   limitEcho,
   pageOf,
@@ -40,13 +41,15 @@ function pubRole(p: PublicationRec, personOId: number | null, name: string): "au
   return null;
 }
 
-/** True when the name occurs as a full credit anywhere (contributor, author, editor). */
+/** True when the name occurs as a full credit anywhere (contributor, author, editor, podcast or video speaker). */
 function creditedAnywhere(store: DataStore, name: string): string | null {
   return store.cached(`credited-names`, () => {
     const names = new Map<string, string>();
     const add = (label: string) => { const key = nameKey(label); if (key && !names.has(key)) names.set(key, label); };
     for (const it of store.items) for (const c of it.contributors) add(c.name);
     for (const p of store.publications) for (const r of [...p.authors, ...p.editors]) add(r.label);
+    for (const p of store.podcasts) for (const c of p.people) add(c.name);
+    for (const v of store.videos) for (const c of v.speakers) add(c.name);
     return names;
   }).get(nameKey(name)) ?? null;
 }
@@ -115,7 +118,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
     "get_person",
     {
       title: "Get person profile",
-      description: "Person affiliations, authority identifiers, PI/member projects, credited items, publications and top collaborators. Lists cap at 50 with totals. Use id to disambiguate.",
+      description: "Person affiliations, identifiers, project and section roles, credited items, publications, podcasts, videos and collaborators. Lists cap at 50 with totals. Use id to disambiguate.",
       annotations: READ_ONLY,
       inputSchema: z.strictObject({
         name: z
@@ -156,18 +159,27 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
 
       const asPI = store.projects.filter((p) => p.pis.some((x) => isPerson(x.label, x.o_id)));
       const asMember = store.projects.filter((p) => p.members.some((x) => isPerson(x.label, x.o_id)));
+      // Sections credit PIs and members the way projects do. Leaving them out
+      // made a section PI who leads no project read as "PI on nothing".
+      const sectionsAsPI = store.sections.filter((s) => s.pis.some((x) => isPerson(x.label, x.o_id)));
+      const sectionsAsMember = store.sections.filter((s) => s.members.some((x) => isPerson(x.label, x.o_id)));
+      const projectRef = (p: ProjectRec) => ({ id: String(p.o_id), omeka_id: p.o_id, name: p.name, amira_url: itemUrl(p.o_id) });
+      const sectionRef = (s: SectionRec) =>
+        ({ id: String(s.o_id), omeka_id: s.o_id, name: s.name, funding_phase: fundingPhase(s), amira_url: itemUrl(s.o_id) });
 
-      // Collaborators: other people credited on the same items or publications,
-      // counted once per shared record.
-      const collaborators = new Map<string, { name: string; o_id: number | null; shared_items: number; shared_publications: number }>();
-      const tally = (refs: { label: string; o_id: number | null }[], field: "shared_items" | "shared_publications") => {
+      // Collaborators: other people credited on the same items, publications,
+      // podcast episodes or videos, counted once per shared record.
+      type Shared = "shared_items" | "shared_publications" | "shared_recordings";
+      const collaborators = new Map<string, { name: string; o_id: number | null } & Record<Shared, number>>();
+      const tally = (refs: { label: string; o_id: number | null }[], field: Shared) => {
         const seen = new Set<string>();
         for (const ref of refs) {
           if (isPerson(ref.label, ref.o_id)) continue;
           const key = ref.o_id != null ? `id:${ref.o_id}` : `name:${nameKey(ref.label) || fold(ref.label)}`;
           if (seen.has(key)) continue;
           seen.add(key);
-          const row = collaborators.get(key) ?? { name: ref.label, o_id: ref.o_id, shared_items: 0, shared_publications: 0 };
+          const row = collaborators.get(key) ??
+            { name: ref.label, o_id: ref.o_id, shared_items: 0, shared_publications: 0, shared_recordings: 0 };
           row[field]++;
           collaborators.set(key, row);
         }
@@ -188,8 +200,26 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         pubs.push({ p, role });
         tally([...p.authors, ...p.editors], "shared_publications");
       }
-      const topCollaborators = [...collaborators.values()]
-        .sort((a, b) => b.shared_items + b.shared_publications - (a.shared_items + a.shared_publications) || a.name.localeCompare(b.name));
+
+      // Podcast hosts/speakers and video speakers, with the credited role.
+      const recordingRef = (r: PodcastRec | VideoRec, role: string) =>
+        ({ role, id: String(r.o_id), omeka_id: r.o_id, title: r.title, date: r.date, amira_url: itemUrl(r.o_id) });
+      const recordings = <R extends PodcastRec | VideoRec>(records: R[], creditsOf: (r: R) => Contributor[]) => {
+        const found: Record<string, unknown>[] = [];
+        for (const r of records) {
+          const credits = creditsOf(r);
+          const credit = credits.find((c) => isPerson(c.name, c.o_id));
+          if (!credit) continue;
+          found.push(recordingRef(r, credit.role || "Speaker"));
+          tally(credits.map((c) => ({ label: c.name, o_id: c.o_id })), "shared_recordings");
+        }
+        return found;
+      };
+      const podcasts = recordings(store.podcasts, (p) => p.people);
+      const videos = recordings(store.videos, (v) => v.speakers);
+
+      const shared = (c: Record<Shared, number>) => c.shared_items + c.shared_publications + c.shared_recordings;
+      const topCollaborators = [...collaborators.values()].sort((a, b) => shared(b) - shared(a) || a.name.localeCompare(b.name));
 
       return textResult({
         name: canonical,
@@ -199,17 +229,26 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         affiliations: refLabels(record?.affiliations),
         identifiers: record?.identifiers ?? [],
         ...(record?.alt_names?.length ? { name_variants: record.alt_names } : {}),
-        as_principal_investigator: asPI.map((p) => ({ id: String(p.o_id), omeka_id: p.o_id, name: p.name, amira_url: itemUrl(p.o_id) })),
-        as_member: asMember.map((p) => ({ id: String(p.o_id), omeka_id: p.o_id, name: p.name, amira_url: itemUrl(p.o_id) })),
+        as_principal_investigator: asPI.map(projectRef),
+        as_member: asMember.map(projectRef),
+        as_section_principal_investigator: sectionsAsPI.map(sectionRef),
+        as_section_member: sectionsAsMember.map(sectionRef),
         contributed_item_count: contributed.length,
         contributed_items: contributed.slice(0, 50).map(({ ref, role }) => ({ role, ...ref })),
         contributed_items_truncated: contributed.length > 50 || undefined,
         publication_count: pubs.length,
         publications: pubs.slice(0, 50).map(({ p, role }) => ({ role, ...publicationSummary(p) })),
         publications_truncated: pubs.length > 50 || undefined,
+        podcast_count: podcasts.length,
+        podcasts: podcasts.slice(0, 50),
+        podcasts_truncated: podcasts.length > 50 || undefined,
+        video_count: videos.length,
+        videos: videos.slice(0, 50),
+        videos_truncated: videos.length > 50 || undefined,
         collaborator_count: topCollaborators.length,
         top_collaborators: topCollaborators.slice(0, COLLABORATOR_CAP).map((c) => ({
-          name: c.name, shared_items: c.shared_items, shared_publications: c.shared_publications, amira_url: itemUrlOrNull(c.o_id),
+          name: c.name, shared_items: c.shared_items, shared_publications: c.shared_publications,
+          shared_recordings: c.shared_recordings, amira_url: itemUrlOrNull(c.o_id),
         })),
         amira_url: itemUrlOrNull(oId),
       });

@@ -87,7 +87,7 @@
     },
     {
       "name": "get_person",
-      "description": "Profile of one person: affiliations, GND and other identifiers, projects, credited items, publications and top collaborators."
+      "description": "Profile of one person: affiliations, GND and other identifiers, project and research-section roles, credited items, publications, podcasts, videos and top collaborators."
     },
     {
       "name": "list_institutions",

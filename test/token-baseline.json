@@ -1,16 +1,16 @@
 {
   "_comment": "Token baseline for the AMIRA tool layer, in bytes/4 estimated tokens. Regenerate with `npm run weigh -- --update` and commit the diff: the cost of a schema or summary change belongs in code review. See scripts/weigh.mjs for the two budgets and why drift is fatal for the surface but only a warning for responses. `snapshot` names the data/ snapshot the responses were measured against.",
   "snapshot": {
-    "snapshot_id": "fda66e317903c04901f8bb4e",
-    "fetchedAt": "2026-10-07T08:06:00.652Z",
+    "snapshot_id": "1d4aa9e18e7aadd565fca276",
+    "fetchedAt": "2026-10-06T15:37:16.611Z",
     "maxModified": "2026-09-16T12:39:36+00:00",
     "schemaVersion": 5
   },
   "surface": {
     "stdio": {
       "tool_count": 33,
-      "total_chars": 48078,
-      "total_tokens": 12040,
+      "total_chars": 48089,
+      "total_tokens": 12042,
       "tools": {
         "get_entity_graph": 885,
         "list_years": 800,
@@ -33,7 +33,7 @@
         "get_video": 259,
         "list_categories": 228,
         "get_research_item": 219,
-        "get_person": 211,
+        "get_person": 213,
         "search_persons": 203,
         "list_subjects": 203,
         "list_collections": 172,
@@ -49,8 +49,8 @@
     },
     "http": {
       "tool_count": 35,
-      "total_chars": 51825,
-      "total_tokens": 12981,
+      "total_chars": 51836,
+      "total_tokens": 12983,
       "tools": {
         "get_entity_graph": 885,
         "list_years": 800,
@@ -75,7 +75,7 @@
         "get_video": 259,
         "list_categories": 228,
         "get_research_item": 219,
-        "get_person": 211,
+        "get_person": 213,
         "search_persons": 203,
         "list_subjects": 203,
         "list_collections": 172,
@@ -366,10 +366,10 @@
       "wire_bytes": 7444
     },
     "get_person": {
-      "tokens": 345,
-      "chars": 1374,
-      "text_bytes": 1378,
-      "wire_bytes": 2956
+      "tokens": 397,
+      "chars": 1584,
+      "text_bytes": 1588,
+      "wire_bytes": 3396
     },
     "get_project": {
       "tokens": 865,

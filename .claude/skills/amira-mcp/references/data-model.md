@@ -58,9 +58,11 @@ hardcode it.
 
 `search_persons` returns `{ name, affiliations[], amira_url }` (names stored 'Surname, Forename').
 `get_person` aggregates a complete name (or an id) across the graph: `identifiers[]` (`{ scheme, id,
-url }`, e.g. GND), `as_principal_investigator[]`, `as_member[]`, `contributed_items[]` (slim refs with the
-person's `role`; capped at 50, total reported), `publications[]` (author/editor) and
-`top_collaborators[]` (`shared_items`, `shared_publications`). Works for names absent from the authority
+url }`, e.g. GND), project roles `as_principal_investigator[]` and `as_member[]`, research-section roles
+`as_section_principal_investigator[]` and `as_section_member[]` (with `funding_phase`), `contributed_items[]` (slim refs with the
+person's `role`; capped at 50, total reported), `publications[]` (author/editor), `podcasts[]` and
+`videos[]` (episodes and videos with the person's `role`) and `top_collaborators[]` (`shared_items`,
+`shared_publications`, `shared_recordings`). Works for names absent from the authority
 list when they occur as a full credit; a fragment returns candidates.
 
 ## Institution / Group

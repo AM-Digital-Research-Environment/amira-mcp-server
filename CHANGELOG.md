@@ -5,6 +5,16 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+- **`get_person`** reports research-section roles in `as_section_principal_investigator`
+  and `as_section_member`, each with its funding phase. It used to read projects
+  only, so a section PI who leads no project came back as PI on nothing.
+- **`get_person`** lists podcast episodes and videos the person speaks in or
+  hosts (`podcasts`, `videos`, with role and totals). People who share them count
+  as collaborators (`shared_recordings`), and a name credited only on a podcast
+  or video now resolves.
+
 ## 1.22.0 — 2026-10-08
 
 - **Guidance switch.** `AMIRA_GUIDANCE=off` serves the same tools without the

@@ -9,7 +9,8 @@
 // stays untouched, so no other suite's counts move): a second AMRC institution
 // that is a partner by name only, a privileged partner linked by
 // dcterms:isPartOf, an AM 2.0 section, a project linked to a section by id
-// under a stale label, a group-credited item and a second podcast episode.
+// under a stale label, a group-credited item, a second podcast episode and a
+// video with three speakers.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
@@ -67,6 +68,13 @@ d.podcasts.push({
   url: "https://example.org/podcast/2", transcript: "Second episode transcript.", languages: [{ label: "French", o_id: 700 }],
   duration: "PT42M", transcript_generated_by: { label: "Whisper large-v3", o_id: 777 },
   media: [{ o_id: 9531, type: "audio/mpeg", url: "https://example.org/ep2.mp3", source: null, size: 4096 }],
+});
+// A video shared by two authority persons and one name-only speaker.
+d.videos.push({
+  o_id: 542, title: "Round Table on Sound", abstract: null, playlists: [], date: "2024-05-01", year: 2024,
+  speakers: [{ name: "Kaboré, Awa", role: "Speaker", o_id: 102 }, { name: "Fendler, Ute", role: "Speaker", o_id: 101 },
+    { name: "Diallo, Mariam", role: "Speaker", o_id: null }],
+  languages: [], url: "https://www.youtube.com/watch?v=fixture542", transcript: null,
 });
 fixture.manifest.counts = Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v.length]));
 await lib.writeSnapshot(dataDir, fixture);
@@ -466,10 +474,21 @@ test("get_person: id, typed id and either name order agree; credits, projects, c
     identifiers: [{ scheme: "orcid", id: "0000-0002-1825-0097", url: "https://orcid.org/0000-0002-1825-0097" }],
     name_variants: ["Awa Kabore-Ouédraogo"],
     as_principal_investigator: [{ id: "302", omeka_id: 302, name: "Ouaga Sound Archive", amira_url: url(302) }],
-    as_member: [], contributed_item_count: 1,
+    as_member: [], as_section_principal_investigator: [],
+    as_section_member: [{ id: "402", omeka_id: 402, name: "Knowledges", funding_phase: "AM 2.0 (2026–2032)", amira_url: url(402) }],
+    contributed_item_count: 1,
     contributed_items: [{ role: "Recordist", ...itemRef(504, "Ouagadougou Street Recording", "Sound", "2021") }],
-    publication_count: 0, publications: [], collaborator_count: 1,
-    top_collaborators: [{ name: "Test Research Group", shared_items: 1, shared_publications: 0, amira_url: url(201) }],
+    publication_count: 0, publications: [],
+    podcast_count: 1,
+    podcasts: [{ role: "Host", id: "531", omeka_id: 531, title: "Fixture Conversations Episode 2", date: "2099-01-01", amira_url: url(531) }],
+    video_count: 1,
+    videos: [{ role: "Speaker", id: "542", omeka_id: 542, title: "Round Table on Sound", date: "2024-05-01", amira_url: url(542) }],
+    collaborator_count: 3,
+    top_collaborators: [
+      { name: "Diallo, Mariam", shared_items: 0, shared_publications: 0, shared_recordings: 1, amira_url: null },
+      { name: "Fendler, Ute", shared_items: 0, shared_publications: 0, shared_recordings: 1, amira_url: url(101) },
+      { name: "Test Research Group", shared_items: 1, shared_publications: 0, shared_recordings: 0, amira_url: url(201) },
+    ],
     amira_url: url(102),
   };
   assert.deepEqual(await call("get_person", { id: 102 }), expected);
@@ -482,6 +501,33 @@ test("get_person: id, typed id and either name order agree; credits, projects, c
   const fragment = await errorOf("get_person", { name: "Kab" });
   assert.equal(fragment.code, "not_found");
   assert.ok(fragment.available_values.includes("Kaboré, Awa (person:102)"), JSON.stringify(fragment.available_values));
+});
+
+test("get_person: research-section roles are reported apart from project roles", async () => {
+  // Beier leads section 400 and project 300; section roles never leak into the project lists.
+  const beier = await call("get_person", { id: 100 });
+  assert.deepEqual(beier.as_section_principal_investigator,
+    [{ id: "400", omeka_id: 400, name: "Arts & Aesthetics", funding_phase: "AM 1.0 (2019–2025)", amira_url: url(400) }]);
+  assert.deepEqual(beier.as_section_member, []);
+  assert.deepEqual(beier.as_principal_investigator.map((p) => p.omeka_id), [300]);
+  assert.deepEqual(beier.as_member.map((p) => p.omeka_id), [302]);
+  // Fendler is credited on a project only.
+  const fendler = await call("get_person", { id: 101 });
+  assert.deepEqual([fendler.as_section_principal_investigator, fendler.as_section_member], [[], []]);
+});
+
+test("get_person: podcast and video appearances, by id or by name alone", async () => {
+  const beier = await call("get_person", { id: 100 });
+  assert.deepEqual([beier.podcast_count, beier.podcasts], [0, []]);
+  assert.deepEqual(beier.videos,
+    [{ role: "Speaker", id: "540", omeka_id: 540, title: "A Fixture Lecture", date: "2023-11-02", amira_url: url(540) }]);
+  const fendler = await call("get_person", { id: 101 });
+  assert.deepEqual([fendler.podcasts.map((p) => p.omeka_id), fendler.videos.map((v) => v.omeka_id)], [[530], [542]]);
+  // Credited only as a video speaker, with no authority record: still a person.
+  const diallo = await call("get_person", { name: "Mariam Diallo" });
+  assert.deepEqual([diallo.name, diallo.found_in_authority_list, diallo.amira_url], ["Diallo, Mariam", false, null]);
+  assert.deepEqual(diallo.videos.map((v) => v.omeka_id), [542]);
+  assert.deepEqual(diallo.top_collaborators.map((c) => [c.name, c.shared_recordings]), [["Fendler, Ute", 1], ["Kaboré, Awa", 1]]);
 });
 
 test("get_podcast: detail, every id form, transcript windowing, media, generated-by, schedule status", async () => {

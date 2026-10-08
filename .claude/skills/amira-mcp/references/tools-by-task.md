@@ -57,7 +57,7 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Task | Tool | Key params |
 | --- | --- | --- |
 | Search people | `search_persons` | `keyword` (either name order), `affiliation` |
-| Full person profile (PI/member/contributor/author) | `get_person` | `id` for exact identity, or a complete `name` (homonyms and fragments return candidates) — either order resolves to 'Surname, Forename'; adds `identifiers` (GND…) and `top_collaborators` |
+| Full person profile (project and section PI/member, contributor, author, podcast/video speaker) | `get_person` | `id` for exact identity, or a complete `name` (homonyms and fragments return candidates) — either order resolves to 'Surname, Forename'; adds `identifiers` (GND…) and `top_collaborators` |
 | List / detail institutions | `list_institutions` / `get_institution` | `keyword` / `name` or `id`; acronyms such as "UJKZ" resolve (get_institution also resolves groups) |
 | Africa Multiple partner institutions by category | `list_cluster_partners` | Optional `category` (`amrc`, `privileged`, `cooperation`, `global`) |
 | List research groups | `list_groups` | `keyword` |
