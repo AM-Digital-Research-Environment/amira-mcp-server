@@ -11,7 +11,7 @@ const EXPORT_BYTE_LIMIT = 44_000;
 
 export function publicationExportPage(
   records: PublicationRec[], offset: number, limit: number, format: CitationFormat,
-  extra: Record<string, unknown>,
+  extra: Record<string, unknown>, trailer: Record<string, unknown> = {},
 ) {
   const results: Record<string, unknown>[] = [];
   const envelope = () => ({
@@ -44,5 +44,5 @@ export function publicationExportPage(
       break;
     }
   }
-  return textResult({ ...envelope(), ...(responseLimited ? { response_limited: true } : {}) });
+  return textResult({ ...envelope(), ...(responseLimited ? { response_limited: true } : {}), ...trailer });
 }

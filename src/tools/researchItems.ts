@@ -7,6 +7,7 @@ import {
   capLimit,
   capOffset,
   capText,
+  emptySearchHint,
   errorResult,
   filtersEcho,
   itemSummary,
@@ -20,6 +21,7 @@ import {
 } from "./_shared.js";
 import { iiifManifestUrl, itemSetUrl, itemUrl, itemUrlOrNull } from "../urls.js";
 import { allowDescriptive, allowStructured } from "../exposure.js";
+import { guidanceEnabled } from "../guidance.js";
 import { generateItemCitation } from "../citation.js";
 import { stripTypedId } from "../typedIds.js";
 import { exportLink, EXPORT_FORMATS } from "../resources.js";
@@ -73,14 +75,17 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       const { filtered, suggestions, did_you_mean } = selectResearchItems(store, filters);
       if (format) return exportLink("research_items", format, filters, filtered.length);
 
-      return textResult(
-        pageOf(filtered, offset, limit, (it) => itemSummary(it, store), {
+      // Relaxation counts, spellings and the hint are guidance (AMIRA_GUIDANCE).
+      const guided = guidanceEnabled();
+      return textResult({
+        ...pageOf(filtered, offset, limit, (it) => itemSummary(it, store), {
           ...limitEcho(args.limit, 100, limit),
           ...filtersEcho(filters),
-          ...(suggestions ? { suggestions } : {}),
-          ...(did_you_mean ? { did_you_mean } : {}),
+          ...(suggestions && guided ? { suggestions } : {}),
+          ...(did_you_mean && guided ? { did_you_mean } : {}),
         }),
-      );
+        ...emptySearchHint(filtered.length, filters),
+      });
     },
   );
 

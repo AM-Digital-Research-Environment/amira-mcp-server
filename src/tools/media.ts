@@ -14,6 +14,7 @@ import {
   capOffset,
   containsCI,
   dateStatus,
+  emptySearchHint,
   errorResult,
   exposureRestrictedResult,
   filtersEcho,
@@ -116,13 +117,14 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
         (!args.person || p.people.some((c) => personMatches(c.name, args.person!))) &&
         (!args.language || store.languageIndex.matches(p.languages, args.language)));
 
-      return textResult(
-        pageOf(filtered, offset, limit,
+      return textResult({
+        ...pageOf(filtered, offset, limit,
           (p) => transcriptOnly.has(p.o_id)
             ? { ...podcastSummary(p), matched_in: "transcript", transcript_snippet: matchSnippet(p.transcript, args.keyword!) }
             : podcastSummary(p),
           { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) }),
-      );
+        ...emptySearchHint(filtered.length, args),
+      });
     },
   );
 
@@ -202,13 +204,14 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
         (!args.speaker || v.speakers.some((c) => personMatches(c.name, args.speaker!))) &&
         (!args.language || store.languageIndex.matches(v.languages, args.language)));
 
-      return textResult(
-        pageOf(filtered, offset, limit,
+      return textResult({
+        ...pageOf(filtered, offset, limit,
           (v) => transcriptOnly.has(v.o_id)
             ? { ...videoSummary(v), matched_in: "transcript", transcript_snippet: matchSnippet(v.transcript, args.keyword!) }
             : videoSummary(v),
           { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) }),
-      );
+        ...emptySearchHint(filtered.length, args),
+      });
     },
   );
 
