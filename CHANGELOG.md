@@ -5,6 +5,16 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+- **Apps:** filter fields offer their values. In the bibliography, Language is a
+  dropdown counted for the current search and Author suggests every catalogued
+  name. In the timeline, Project ID becomes a Project dropdown by name and
+  Subject suggests headings. In the map, Country is a dropdown. The widgets load
+  these lists themselves through allowlisted tools (`search_projects` and
+  `list_subjects` are new to the allowlist), so they add no model tokens. A field
+  stays a text input until its list arrives or if the host refuses the call.
+
 ## 1.20.0 — 2026-10-07
 
 - **Removed:** WissKI. `get_research_item` no longer returns `wisski_url`, and

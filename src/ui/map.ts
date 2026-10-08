@@ -1,4 +1,4 @@
-import { page } from "./shell.js";
+import { PICKER_JS, page } from "./shell.js";
 import land from "./land.json";
 export const MAP_URI = "ui://amira/map";
 // Natural Earth 1:110m land, public domain. Source and checksum: docs/apps.md.
@@ -19,6 +19,9 @@ th:nth-child(1) { width: 32%; } th:nth-child(2) { width: 30%; } th:nth-child(3) 
 `;
 const SCRIPT = String.raw`
 var api=window.amiraApp, esc=api.esc, active;
+// Countries are the hierarchy roots in the map's current scope, by name.
+function countryKey(scope){return 'countries:'+JSON.stringify(scope||{});}
+function countries(scope){return pickerLoad(countryKey(scope),'list_locations',Object.assign({limit:300},scope?{filters:scope}:{}),function(r){return r.coordinate_scope==='hierarchy_root'?{value:r.name,label:r.name+' ('+r.item_count+')'}:null;},function(a,b){return a.value.localeCompare(b.value);});}
 async function records(name, offset, id) {
   try {
     var args=Object.assign({}, (active.filters || {}).filters || {}, { limit:20, offset:offset || 0 }, id ? {location_id:Number(id)} : {location:name});
@@ -34,7 +37,8 @@ function render(d){
   var svg=['<svg viewBox="0 0 720 360" role="img" aria-label="Research locations on a world map"><path class="land" d="__OUTLINE__"/>'];
   mapped.forEach(function(r){var x=(r.longitude+180)*2,y=(90-r.latitude)*2;svg.push('<circle role="button" tabindex="0" class="place ' + (r.coordinate_scope==='hierarchy_root'?'root':'') + '" data-place-id="' + (r.omeka_id || '') + '" data-place="' + esc(r.name) + '" aria-label="Browse ' + esc(r.name) + '" cx="' + x + '" cy="' + y + '" r="' + Math.max(3,Math.min(10,Math.sqrt(r.item_count)/3)) + '"><title>' + esc(r.name) + ': ' + r.item_count + ' items</title></circle>');});
   svg.push('</svg>');
-  var filterForm='<form id="map-filter" class="controls"><label>Country<input name="country" maxlength="1000" value="' + esc((d.filters||{}).country || '') + '" placeholder="All countries"></label><button>Filter places</button></form>';
+  var scope=(d.filters||{}).filters, country={name:'country',kind:'select',any:'All countries',placeholder:'All countries',current:(d.filters||{}).country},countryList=pickerNow(countryKey(scope));
+  var filterForm='<form id="map-filter" class="controls"><label>Country' + pickerField(country,countryList) + '</label><button>Filter places</button></form>';
   if(!rows.length){
     // Empty state: say so and keep the filter, rather than an empty map and "Places 1–0 of 0".
     document.getElementById('root').innerHTML='<h1>Research places</h1>' + filterForm +
@@ -45,6 +49,7 @@ function render(d){
     '<p class="note">Hollow markers show hierarchy roots, which may represent whole countries. Coordinates are catalogue locations, not inferred item positions. Counts include descendants and overlap. Made with Natural Earth.</p>' +
     '<table><caption>All returned places, including missing coordinates</caption><thead><tr><th>Place</th><th>Within</th><th>Items</th><th>Coordinates</th></tr></thead><tbody>' + rows.map(function(r){return '<tr><td><button class="name-button" data-place-id="' + (r.omeka_id || '') + '" data-place="' + esc(r.name) + '">' + esc(r.name) + '</button></td><td>' + esc(r.country || 'Hierarchy root') + '</td><td>' + r.item_count + '</td><td>' + (Number.isFinite(r.latitude) && Number.isFinite(r.longitude) ? r.latitude.toFixed(2) + ', ' + r.longitude.toFixed(2) : 'Not recorded') + '</td></tr>';}).join('') + '</tbody></table>' +
     '<p class="note">Places ' + (d.offset+1) + '–' + (d.offset+rows.length) + ' of ' + d.total_matches + '</p>' + (d.has_more ? '<button id="more-places">Next places</button>' : '') + '<section id="map-evidence" class="evidence" aria-live="polite"></section>';
+  pickerMount(country,countries(scope),countryList);
   document.getElementById('root').onclick=function(event){var place=event.target.closest('[data-place]');if(place) records(place.dataset.place,0,place.dataset.placeId);};
   document.getElementById('root').onkeydown=function(event){if((event.key==='Enter'||event.key===' ')&&event.target.matches('circle[data-place]')){event.preventDefault();records(event.target.dataset.place,0,event.target.dataset.placeId);}};
   document.getElementById('map-filter').onsubmit=async function(event){event.preventDefault();try{render(await api.callTool('list_locations',{country:new FormData(event.target).get('country') || undefined,filters:(d.filters||{}).filters,limit:100}));}catch(_) {}};
@@ -52,4 +57,4 @@ function render(d){
 }
 api.onResult(render);
 `.replace("__OUTLINE__", outline);
-export const MAP_HTML = page("AMIRA — research places", CSS, SCRIPT);
+export const MAP_HTML = page("AMIRA — research places", CSS, PICKER_JS + SCRIPT);

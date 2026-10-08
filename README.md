@@ -504,14 +504,15 @@ it cannot answer rather than hallucinating.
   | `list_research_sections` | `ui://amira/sections` | Gantt of the sections across the AM 1.0 / AM 2.0 funding phases, with a "now" marker |
   | `find_related` | `ui://amira/related` | Radial co-occurrence hub: the seed at the centre, one labelled sector per relation type |
   | `get_entity_graph` | `ui://amira/graph` | Typed entity graph, keyboard navigation and paginated evidence |
-  | `list_locations` | `ui://amira/map` | Offline map, country filters, place table and item evidence |
-  | `search_publications` | `ui://amira/bibliography` | Filterable bibliography and selection export |
+  | `list_locations` | `ui://amira/map` | Offline map, country dropdown, place table and item evidence |
+  | `search_publications` | `ui://amira/bibliography` | Filterable bibliography (language dropdown, author suggestions) and selection export |
 
   The modules live in `src/ui/`: `shell.ts` holds the design tokens and shared
   bar-chart primitive; `bridge.ts` bundles the official Apps SDK. Each app supplies
   its own CSS and render function. The templates load **nothing** from the network — no
   scripts, styles, fonts or tiles — so they need no `_meta.ui.csp` grants and
-  run in the strictest sandbox. App controls call an allowlisted set of read-only tools through the host.
+  run in the strictest sandbox. App controls call an allowlisted set of read-only tools through the host;
+  filter dropdowns are filled the same way, so their option lists never reach the model.
   Citation links and file downloads also go through host APIs. Every visual has
   a table or text alternative. See [app development and provenance](docs/apps.md).
 
