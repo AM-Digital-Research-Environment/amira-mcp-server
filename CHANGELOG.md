@@ -5,7 +5,7 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.21.0 — 2026-10-08
 
 - **Apps:** filter fields offer their values. In the bibliography, Language is a
   dropdown counted for the current search and Author suggests every catalogued
