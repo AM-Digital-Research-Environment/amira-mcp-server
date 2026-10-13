@@ -4,7 +4,9 @@
 // a routine data refresh must not red the build, but a snapshot that lost a
 // corpus must. One constant per corpus, shared by both transports, so the two
 // smoke tests can never disagree about what "the full snapshot" means again.
-export const MIN_RESEARCH_ITEMS = 3975; // v0.2.0 parity
+// 3975 until October 2026, when the "Of Art Worlds" item set (~180 items) was
+// made private upstream; 3793 public after that.
+export const MIN_RESEARCH_ITEMS = 3750;
 export const MIN_PUBLICATIONS = 240;
 export const MIN_JOURNALS = 50;
 

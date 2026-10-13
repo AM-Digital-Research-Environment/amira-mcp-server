@@ -58,7 +58,7 @@ async function call(name, args, { expect = [] } = {}) {
 const AMIRA = "https://data.africamultiple.uni-bayreuth.de/s/amira/item/";
 
 const overview = await call("get_collection_overview", {}, { expect: ["podcasts", "youtube_videos"] });
-check(overview.counts?.research_items >= MIN_RESEARCH_ITEMS, `overview: >= ${MIN_RESEARCH_ITEMS} research items (v0.2.0 parity)`);
+check(overview.counts?.research_items >= MIN_RESEARCH_ITEMS, `overview: >= ${MIN_RESEARCH_ITEMS} research items`);
 check(overview.counts?.publications >= MIN_PUBLICATIONS, `overview: >= ${MIN_PUBLICATIONS} publications`);
 check(overview.counts?.publications_with_fulltext >= 1, "overview: publications with fulltext counted");
 check(overview.counts?.journals >= MIN_JOURNALS, `overview: >= ${MIN_JOURNALS} journals`);
@@ -94,9 +94,9 @@ check(badYearSearch.error?.code === "invalid_range", "search: inverted year rang
 const errItem = await call("get_research_item", { id: "NO_SUCH_ID" }, { expect: ["error"] });
 check(errItem.error?.code === "not_found" && !!errItem.error?.suggested_tool, "get_research_item: structured error");
 
-const item = await call("get_research_item", { id: 7392 }, { expect: [AMIRA, "sponsors"] });
-check(item.omeka_id === 7392 && item.id === "7392", "item: Omeka id exposed as id/omeka_id");
-check(item.contributors?.some((c) => c.name === "Beier, Ulli"), "item: contributor with role");
+const item = await call("get_research_item", { id: 9902 }, { expect: [AMIRA, "sponsors"] });
+check(item.omeka_id === 9902 && item.id === "9902", "item: Omeka id exposed as id/omeka_id");
+check(item.contributors?.some((c) => c.name === "Lawanson, Taibat"), "item: contributor with role");
 check("dates" in item, "item: dates exposed");
 check(Array.isArray(item.collections), "item: collections exposed");
 check("thumbnail" in item, "item: thumbnail exposed");
@@ -105,14 +105,14 @@ check("thumbnail" in item, "item: thumbnail exposed");
 // dcterms:bibliographicCitation, so the server builds one — and it must always
 // end on the citable amira_url (D3), whichever export format was asked for.
 check(
-  item.generated_citation?.includes("Beier, Ulli") && item.generated_citation.endsWith(`${AMIRA}7392.`),
+  item.generated_citation?.includes("Lawanson, Taibat") && item.generated_citation.endsWith(`${AMIRA}9902.`),
   "item: generated citation names the creator and cites the amira_url",
 );
-check(item.bibtex?.startsWith("@misc{amira-7392,") && item.bibtex.includes("title = {Volume 8"), "item: BibTeX export");
-const itemRis = await call("get_research_item", { id: 7392, citation_format: "ris" });
+check(item.bibtex?.startsWith("@misc{amira-9902,") && item.bibtex.includes("title = {Lagos Immigration Map"), "item: BibTeX export");
+const itemRis = await call("get_research_item", { id: 9902, citation_format: "ris" });
 check(itemRis.ris?.startsWith("TY  - FIGURE") && itemRis.ris.endsWith("ER  - "), "item: RIS export");
-const itemCsl = await call("get_research_item", { id: 7392, citation_format: "csl-json" });
-check(itemCsl.csl_json?.type === "graphic" && itemCsl.csl_json?.URL === `${AMIRA}7392`, "item: CSL-JSON export");
+const itemCsl = await call("get_research_item", { id: 9902, citation_format: "csl-json" });
+check(itemCsl.csl_json?.type === "graphic" && itemCsl.csl_json?.URL === `${AMIRA}9902`, "item: CSL-JSON export");
 
 await call("search_projects", { research_section: "Arts & Aesthetics", limit: 3 }, { expect: [AMIRA] });
 const proj = await call("get_project", { id: 37700 }, { expect: ["External"] });

@@ -6,6 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { hermeticEnv } from "../helpers/env.mjs";
+import { MIN_RESEARCH_ITEMS } from "../smoke/expectations.mjs";
 
 // AMIRA_SITE_BASE is the one deliberate input (test another Omeka instance);
 // everything else is cleared and the cache isolated before the bundle loads.
@@ -42,17 +43,17 @@ async function get(url) {
 test("API paginates with Omeka-S-Total-Results and matches the snapshot scale", async () => {
   const { body, headers } = await get(`${API}/items?resource_template_id=10&per_page=1`);
   const total = Number(headers.get("omeka-s-total-results"));
-  assert.ok(total >= 3975, `research items total ${total} >= 3975 (v0.2.0 parity)`);
+  assert.ok(total >= MIN_RESEARCH_ITEMS, `research items total ${total} >= ${MIN_RESEARCH_ITEMS}`);
   assert.equal(body.length, 1);
 });
 
 test("research item: live record transforms with dre:id, subjects, sponsor", async () => {
-  const { body } = await get(`${API}/items/7392`);
+  const { body } = await get(`${API}/items/9902`);
   const it = transformResearchItem(body, ctx, () => "ubt");
-  assert.equal(it.dre_id, "abg-99-0000");
+  assert.equal(it.dre_id, "aad-02-000d");
   assert.ok(it.subjects.length > 0 && it.subjects.every((s) => s.o_id != null));
   assert.ok(it.sponsors.length > 0);
-  assert.ok(it.contributors.some((c) => c.name === "Beier, Ulli"));
+  assert.ok(it.contributors.some((c) => c.name === "Lawanson, Taibat"));
 });
 
 test("project: live Ext_ILAM record carries the External section", async () => {
@@ -120,7 +121,7 @@ test("podcast: live records transform; absent transcripts stay null", async () =
 });
 
 test("citation pages resolve: /s/amira/item/<o:id> -> 200", async () => {
-  const res = await fetchLive(`${SITE}/s/amira/item/7392`);
+  const res = await fetchLive(`${SITE}/s/amira/item/9902`);
   assert.equal(res.status, 200);
 });
 

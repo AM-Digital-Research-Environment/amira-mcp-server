@@ -212,7 +212,7 @@ link.
 ## Citation rules (important)
 
 - ALWAYS render an entity's `amira_url` as a markdown link, e.g.
-  `[Volume 8: Yoruba Architecture…](https://data.africamultiple.uni-bayreuth.de/s/amira/item/7392)`.
+  `[Lagos Immigration Map](https://data.africamultiple.uni-bayreuth.de/s/amira/item/9902)`.
 - **Never** print legacy DRE identifiers. If an identifier is explicitly needed, use
   the Omeka `id` / `omeka_id` (the final number in the `amira_url`). Never collapse items into an id
   range. List each referenced item as its own full link — a bulleted list is the right shape when
