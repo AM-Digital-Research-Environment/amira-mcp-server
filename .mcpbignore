@@ -30,6 +30,11 @@ test/
 # Local caches
 .census-cache/
 
+# Scratch files the refresh-data workflow writes to the repo root before
+# the packaging test runs (the signature it publishes and the one it reads back).
+/snapshot-signature.txt
+/prev.txt
+
 # Dev metadata
 .gitignore
 .gitattributes
