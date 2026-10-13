@@ -31,7 +31,7 @@ String arguments are trimmed; a blank optional filter is ignored. Typed ids work
 | By media type / language / format | `search_research_items` | `resource_type`, `language` (name or any ISO code incl. legacy `fre`/`ger`), `genre` (format descriptors) |
 | By date | `search_research_items` | `year_from`, `year_to` (overlaps the item's derived content-date range; rights/admin dates are not used; inverted ranges return `invalid_range`) |
 | Free text | `search_research_items` | `keyword` (titles, description, abstract, ToC, identifiers); every word must match, `"quoted phrase"` matches literally |
-| Full record of one item | `get_research_item` | `id` / `omeka_id` (e.g. `7392`) or `research_item:7392` — includes typed `dates`, place hierarchy, affiliation at the time, provenance links, typed identifiers, `media[]`, `iiif_manifest`, related items |
+| Full record of one item | `get_research_item` | `id` / `omeka_id` (e.g. `9902`) or `research_item:9902` — includes typed `dates`, place hierarchy, affiliation at the time, provenance links, typed identifiers, `media[]`, `iiif_manifest`, related items |
 | Cite one item | `get_research_item` | Same call: `generated_citation` (ready to paste) + `bibtex`; `citation_format=ris` / `csl-json` swaps the export for `ris` / `csl_json`. The curated `citation[]` exists on only 31 items — prefer it verbatim when present |
 
 Filters are AND-combined and all optional. Default `limit` 20 (max 100).

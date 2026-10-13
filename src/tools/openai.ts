@@ -11,10 +11,10 @@ import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
 // in-memory store the rich tools use; they are registered only on the remote
 // HTTP transport (src/http.ts), so the stdio .mcpb keeps its 33-tool surface.
 //
-// `id` is typed as `<kind>:<omeka_o_id>` (item:7392, pub:30001, video:39218,
+// `id` is typed as `<kind>:<omeka_o_id>` (item:9902, pub:30001, video:39218,
 // podcast:39121, project:37700, section:218) so fetch can route back and a
 // human can reconstruct the Omeka URL from the final number. fetch also accepts
-// the research tools' vocabulary (research_item:7392, publication:30001).
+// the research tools' vocabulary (research_item:9902, publication:30001).
 import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import type { DataStore } from "../data.js";
@@ -385,7 +385,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
       outputSchema: z.object({
         results: z.array(
           z.object({
-            id: z.string().describe("Typed record id, e.g. 'item:7392'"),
+            id: z.string().describe("Typed record id, e.g. 'item:9902'"),
             title: z.string(),
             url: z.string().describe("The AMIRA/Omeka public record page"),
           }),
@@ -416,7 +416,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
       inputSchema: z.strictObject({
         id: z
           .string().max(1000)
-          .describe("A typed record id from search (item:7392, pub:30001, video:…, podcast:…, project:…, section:…) or resolve_entity"),
+          .describe("A typed record id from search (item:9902, pub:30001, video:…, podcast:…, project:…, section:…) or resolve_entity"),
         include_transcript: z.boolean().optional().describe("Default false — set true to append the video/podcast transcript"),
         transcript_offset: z.number().int().min(0).optional().describe("Start offset into the transcript (chars), with include_transcript"),
         transcript_max_chars: z.number().int().min(1).optional().describe("Max transcript characters to return (default/max 25000)"),

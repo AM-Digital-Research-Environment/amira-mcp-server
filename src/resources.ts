@@ -242,7 +242,7 @@ export function registerDataResources(server: McpServer, tools: ToolMap, opts: {
         "subject", "collection", "journal", "podcast", "video", "playlist"].filter((k) => k.startsWith(value)) },
     }),
     {
-      ...described("AMIRA record", "Any AMIRA record as citable JSON, e.g. amira://record/research_item/7392. Kinds follow resolve_entity ids."),
+      ...described("AMIRA record", "Any AMIRA record as citable JSON, e.g. amira://record/research_item/9902. Kinds follow resolve_entity ids."),
       mimeType: "application/json",
     },
     async (uri, variables) => {

@@ -109,7 +109,7 @@ test("guidance: unset and `on` return the same results; advice stays in errors a
     }
     // The advisory channels, verbatim as v1.20.0 wrote them.
     assert.deepEqual(errorOf(await unset.call("get_entity_graph", { seed: "person:999" })), {
-      code: "not_found", message: "Use a typed id returned by resolve_entity (e.g. person:123, research_item:7392).", suggested_tool: "resolve_entity",
+      code: "not_found", message: "Use a typed id returned by resolve_entity (e.g. person:123, research_item:9902).", suggested_tool: "resolve_entity",
     });
     const fragment = errorOf(await unset.call("get_person", { name: "Bei" }));
     assert.equal(fragment.message, "No person named 'Bei'. Names must be complete; use resolve_entity or search_persons for partial names.");
@@ -198,7 +198,7 @@ test("guidance off: calls behave the same; errors keep their code with a terse m
         }
         // Errors: the code and what was wrong, nothing about what to do next.
         assert.deepEqual(errorOf(await off.call("get_entity_graph", { seed: "person:999" })),
-          { code: "not_found", message: "Unknown seed; expected a typed id such as person:123 or research_item:7392." });
+          { code: "not_found", message: "Unknown seed; expected a typed id such as person:123 or research_item:9902." });
         assert.deepEqual(errorOf(await off.call("get_person", { name: "Bei" })),
           { code: "not_found", message: "No person named 'Bei'. Names must be complete." });
         assert.deepEqual(errorOf(await off.call("get_person", { id: 999999 })), { code: "not_found", message: "Unknown person id." });

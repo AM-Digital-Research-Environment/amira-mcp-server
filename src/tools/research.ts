@@ -125,8 +125,8 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     if (args.snapshot_id && args.snapshot_id !== id) return errorResult("snapshot_changed", "The snapshot changed. Reload the graph before paging evidence.", { terse: "The snapshot changed." });
     // `item:` / `pub:` ids from search and fetch work as seeds too.
     const seed = canonicalTypedId(args.seed);
-    if (!graphIndex(store).entities.has(seed)) return errorResult("not_found", "Use a typed id returned by resolve_entity (e.g. person:123, research_item:7392).", { suggested_tool: "resolve_entity",
-      terse: "Unknown seed; expected a typed id such as person:123 or research_item:7392." });
+    if (!graphIndex(store).entities.has(seed)) return errorResult("not_found", "Use a typed id returned by resolve_entity (e.g. person:123, research_item:9902).", { suggested_tool: "resolve_entity",
+      terse: "Unknown seed; expected a typed id such as person:123 or research_item:9902." });
     if (args.edge_id) {
       const edge = entityEdges(store, seed).find((e) => e.edge.id === args.edge_id);
       if (!edge) return errorResult("not_found", "This edge is absent from the seed's current graph.");

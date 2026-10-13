@@ -99,7 +99,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       inputSchema: z.strictObject({
         id: z
           .union([z.string().max(1000), z.number()])
-          .describe("Omeka id (the number ending its amira_url, e.g. 7392) or a typed id such as research_item:7392"),
+          .describe("Omeka id (the number ending its amira_url, e.g. 9902) or a typed id such as research_item:9902"),
         citation_format: z
           .enum(["bibtex", "ris", "csl-json"])
           .optional()

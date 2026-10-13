@@ -10,7 +10,7 @@ The central artefact (image, text, audio, moving image, …). Returned in full b
 
 | Field | Meaning |
 | --- | --- |
-| `id` / `omeka_id` | Omeka item id (e.g. `7392`), the final number in `amira_url` and the preferred key for `get_research_item`. Do not surface legacy DRE identifiers in final answers. |
+| `id` / `omeka_id` | Omeka item id (e.g. `9902`), the final number in `amira_url` and the preferred key for `get_research_item`. Do not surface legacy DRE identifiers in final answers. |
 | `title` / `alternative_titles[]` | Main title; translated titles, subtitles and variants. |
 | `type` | Text · Image · Audio · Moving image · Manuscript · Dataset · … |
 | `dates{}` / `date` | Typed dates keyed `created` / `collected` / `issued` / `copyrighted` / … Rights/admin dates (`copyrighted`, `available`, `valid`, `modified`) are exposed in `dates{}` but excluded from the derived content year range. `date` is the derived content year (range). |

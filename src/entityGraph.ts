@@ -109,7 +109,7 @@ export function resolveEntities(store: DataStore, query: string, type?: EntityTy
   const raw = query.trim();
   const q = fold(raw);
   if (!q) return [];
-  // Typed ids from either vocabulary (`item:7392` = `research_item:7392`).
+  // Typed ids from either vocabulary (`item:9902` = `research_item:9902`).
   const typed = canonicalTypedId(raw);
   const exact = all.filter(({ entity, label }) => entity.id === typed || String(entity.omeka_id) === raw || label === q).map(({ entity }) => entity);
   if (exact.length) return exact;

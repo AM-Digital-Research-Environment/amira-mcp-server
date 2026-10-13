@@ -1,7 +1,7 @@
 // Typed record IDs. Two vocabularies grew up separately: the ChatGPT adapter
-// (`search`/`fetch`) emits `item:7392` / `pub:29919`, while the v1.18 research
+// (`search`/`fetch`) emits `item:9902` / `pub:29919`, while the v1.18 research
 // tools (`resolve_entity`, `get_entity_graph`, `get_text_passages`) emit
-// `research_item:7392` / `publication:29919`. Each tool rejected the other's
+// `research_item:9902` / `publication:29919`. Each tool rejected the other's
 // IDs. Every tool now parses both, and the detail tools accept a typed ID too.
 
 export type RecordKind =
@@ -30,7 +30,7 @@ export function parseTypedId(raw: string): { kind: RecordKind; key: string } | n
   return kind ? { kind, key: value.slice(sep + 1).trim() } : null;
 }
 
-/** The canonical (entity-graph) form, e.g. `item:7392` → `research_item:7392`. */
+/** The canonical (entity-graph) form, e.g. `item:9902` → `research_item:9902`. */
 export function canonicalTypedId(raw: string): string {
   const parsed = parseTypedId(raw);
   return parsed ? `${parsed.kind}:${parsed.key}` : raw.trim();

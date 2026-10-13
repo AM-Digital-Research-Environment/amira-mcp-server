@@ -91,7 +91,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications) |
 | `search_podcasts` / `get_podcast` | Cluster podcast episodes with searchable transcripts, filterable by language; detail gives the duration, audio file and the **model that generated the transcript**; transcript text is opt-in |
 | `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; thumbnail; transcript opt-in on detail) |
-| `resolve_entity` | Resolve names or typed IDs (either vocabulary: `item:7392` = `research_item:7392`); return separate candidates for homonyms and unreconciled literals. A query that resolves to nothing, untyped or with `type=person`, returns near-miss person `suggestions` |
+| `resolve_entity` | Resolve names or typed IDs (either vocabulary: `item:9902` = `research_item:9902`); return separate candidates for homonyms and unreconciled literals. A query that resolves to nothing, untyped or with `type=person`, returns near-miss person `suggestions` |
 | `get_entity_graph` | Bounded one-hop graph with distinct explicit links/co-occurrences and paginated cited evidence |
 | `get_text_passages` | Find passages in selected publication/video/podcast records, with exact original-text offsets |
 | `compare_collections` | Compare 2–4 projects or collections using common filters, denominators and missingness |
