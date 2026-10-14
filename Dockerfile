@@ -11,7 +11,7 @@
 # never silently goes stale.
 
 ARG SNAPSHOT_STAGE=fetch
-FROM node:26-slim@sha256:930557a230abacbc3f4fd9b8648abf8f4bee1e17cb72195dcdfb2f709bc85b33 AS build
+FROM node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -33,7 +33,7 @@ RUN node --input-type=module -e "import {loadSnapshot} from './server/lib.js'; a
 
 FROM ${SNAPSHOT_STAGE} AS snapshot
 
-FROM node:26-slim@sha256:930557a230abacbc3f4fd9b8648abf8f4bee1e17cb72195dcdfb2f709bc85b33 AS run
+FROM node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0 AS run
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8787 \
