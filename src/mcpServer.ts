@@ -77,7 +77,8 @@ export const INSTRUCTIONS =
   "replace the AMIRA link.\n" +
   "• Never print legacy DRE identifiers. If an id is needed, use `omeka_id` (the final number of the amira_url).\n\n" +
   "NAMES: people are stored 'Surname, Forename' (e.g. `Baumann, Oliver`); display and cite that form. Person " +
-  "filters accept either order and ignore accents.\n\n" +
+  "filters accept either order and ignore accents. A person's records show what AMIRA catalogues, not their full " +
+  "work or standing: present them as records, never as an evaluation, and do not rank or judge people.\n\n" +
   "WORKFLOW: call get_collection_overview first, then search_* / list_* to find records and get_* for detail. " +
   "resolve_entity turns a name into a typed id for get_entity_graph; find_related pivots on a subject, place, " +
   "person or project. Multi-word keywords match records containing every word; quote a phrase to match it " +

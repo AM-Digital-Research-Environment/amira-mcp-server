@@ -180,6 +180,8 @@ test("prompts and argument completion", async () => {
   const prompt = await client.getPrompt({ name: "person_profile", arguments: { name: "Beier, Ulli" } });
   assert.match(prompt.messages[0].content.text, /resolve_entity/);
   assert.match(prompt.messages[0].content.text, /amira_url/);
+  assert.match(prompt.messages[0].content.text, /not an evaluation of the person/);
+  assert.match(prompt.messages[0].content.text, /absence of a record is not proof of absence/);
   const completion = await client.complete({ ref: { type: "ref/prompt", name: "person_profile" }, argument: { name: "name", value: "Fen" } });
   assert.deepEqual(completion.completion.values, ["Fendler, Ute"]);
   const place = await client.complete({ ref: { type: "ref/prompt", name: "place_report" }, argument: { name: "place", value: "lag" } });

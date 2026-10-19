@@ -91,7 +91,7 @@ test("argument policy trims strings, drops empty optionals and names empty requi
 test("instructions fit Claude Code's 2,048-character limit and lead with the citation rules", () => {
   assert.ok(lib.INSTRUCTIONS.length <= 2048, `${lib.INSTRUCTIONS.length} characters`);
   assert.match(lib.INSTRUCTIONS, /^CITATIONS/);
-  for (const rule of ["amira_url", "never invent", "legacy DRE identifiers", "Surname, Forename", "not proof of absence"]) {
+  for (const rule of ["amira_url", "never invent", "legacy DRE identifiers", "Surname, Forename", "never as an evaluation", "not proof of absence"]) {
     assert.ok(lib.INSTRUCTIONS.includes(rule), rule);
   }
 });

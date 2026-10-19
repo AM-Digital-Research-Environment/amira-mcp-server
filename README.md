@@ -109,7 +109,7 @@ add nothing to the per-turn tool payload.
 | --- | --- | --- |
 | `literature_review` | `topic`, `year_from?`, `year_to?` | Facets, publications, full-text passages and related research data on a topic |
 | `project_dossier` | `project` | Team, holdings, periods, places and connections of one project |
-| `person_profile` | `name` | Disambiguation, profile, graph and publication list of one person |
+| `person_profile` | `name` | Disambiguation, profile, graph and publication list of one person, presented as AMIRA's records rather than an assessment of the person |
 | `place_report` | `place` | Items, projects, subjects and periods for a country, city or region |
 | `transcript_evidence` | `query` | Quoted passages from transcripts and open-access full texts |
 

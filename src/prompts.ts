@@ -34,6 +34,15 @@ const projectNames = (store: DataStore): string[] => store.projects.map((p) => p
 const personNames = (store: DataStore): string[] => store.persons.map((p) => p.name);
 const placeNames = (store: DataStore): string[] => store.locations.map((l) => l.name);
 
+/** person_profile's caveat: a profile describes AMIRA's records, never the person. */
+const PROFILE_CAVEAT =
+  "This profile is compiled from the records AMIRA holds. It reflects what the platform catalogues, not the " +
+  "person's full work, role or standing, and it is not an evaluation of the person or their scholarship. Gaps " +
+  "come from cataloguing and harvesting: the bibliography is harvested from University of Bayreuth repositories " +
+  "(EPub, ERef), so publications from the partner research centres may be missing, and the absence of a record " +
+  "is not proof of absence. Present the result as records with their AMIRA links, open it with one sentence " +
+  "saying it is compiled from AMIRA records and is not an assessment, and do not rank, rate or judge the person.";
+
 const text = (body: string) => ({
   messages: [{ role: "user" as const, content: { type: "text" as const, text: body } }],
 });
@@ -100,6 +109,7 @@ export function registerPrompts(server: McpServer): void {
           "3. get_entity_graph with the person id — the subjects, places and projects around their work.\n" +
           "4. search_publications with author — the full publication list, newest first.\n" +
           "5. Summarise research themes, roles (PI, member, author, editor) and main collaborators.\n\n" +
+          PROFILE_CAVEAT + "\n\n" +
           CITE + " Display the name in its stored 'Surname, Forename' form.",
       ),
   );

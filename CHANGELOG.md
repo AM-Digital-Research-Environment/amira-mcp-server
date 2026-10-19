@@ -5,6 +5,21 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+- **Person profiles are records, not assessments.** The `person_profile` prompt
+  now states that a profile is compiled from the records AMIRA holds and
+  reflects what the platform catalogues, not the person's full work, role or
+  standing; that it is not an evaluation of the person or their scholarship;
+  that gaps come from cataloguing and harvesting (the bibliography is harvested
+  from University of Bayreuth repositories, so partner-centre publications may
+  be missing) and absence of a record is not proof of absence; and that the
+  answer should present records with their AMIRA links, open by saying it is
+  not an assessment, and not rank, rate or judge the person. The server
+  instructions carry a one-sentence version (1,943 of Claude Code's 2,048
+  characters). Both are guidance, so `AMIRA_GUIDANCE=off` drops them; the tool
+  list is unchanged.
+
 ## 1.23.0 — 2026-10-08
 
 - **`get_person`** reports research-section roles in `as_section_principal_investigator`
