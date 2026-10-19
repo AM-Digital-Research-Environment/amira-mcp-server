@@ -5,7 +5,7 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.24.0 — 2026-10-19
 
 - **Person profiles are records, not assessments.** The `person_profile` prompt
   now states that a profile is compiled from the records AMIRA holds and
