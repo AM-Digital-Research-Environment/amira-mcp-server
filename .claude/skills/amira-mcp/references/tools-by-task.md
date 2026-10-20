@@ -170,7 +170,7 @@ Arguments autocomplete from the snapshot's authority names in hosts that support
 | Task | Tool | Key params and bounds |
 | --- | --- | --- |
 | Disambiguate a label or resolve a typed ID | `resolve_entity` | `query`, optional `type`, `limit` ≤50, `offset`. Read `ambiguous`, `resolved`, `omeka_id`, `amira_url`; literals have no fabricated authority URL |
-| Follow one entity's relationships | `get_entity_graph` | `seed` from resolver (or `item:`/`pub:` ids); ≤100 nodes, ≤200 edges, 42,000 JSON bytes. Edges distinguish explicit links from per-corpus co-occurrence; one source sample each, `truncated` marks omitted edges |
+| Follow one entity's relationships | `get_entity_graph` | `seed` from resolver (or `item:`/`pub:` ids); optional `types` keeps only those neighbour types, applied before the bounds (`neighbour_types` counts all); ≤100 nodes, ≤200 edges, 42,000 JSON bytes. Edges distinguish explicit links from per-corpus co-occurrence; one source sample each, `truncated` marks omitted edges |
 | Read all evidence for an edge | `get_entity_graph` | Same `seed`, `edge_id`, returned `snapshot_id`, `offset`, `limit` ≤50. `snapshot_changed` means restart from a new graph |
 | Find cited passages in chosen documents | `get_text_passages` | `ids` (1–10 typed publication/video/podcast IDs; `pub:` works too), `keyword`, context `radius` ≤500, `limit` ≤20. Original UTF-16 offsets; every match reachable via `next_offset` (10,000 per document cap, flagged); requires full exposure |
 | Compare projects or item sets | `compare_collections` | `cohorts` (2–4 `{type: project/collection, id}` objects), common `filters`. Each cohort has total/matched items, missingness, date range and top type/language counts |

@@ -9,10 +9,10 @@
   "surface": {
     "stdio": {
       "tool_count": 33,
-      "total_chars": 48089,
-      "total_tokens": 12042,
+      "total_chars": 48549,
+      "total_tokens": 12157,
       "tools": {
-        "get_entity_graph": 885,
+        "get_entity_graph": 1000,
         "list_years": 800,
         "search_research_items": 780,
         "compare_collections": 741,
@@ -49,10 +49,10 @@
     },
     "http": {
       "tool_count": 35,
-      "total_chars": 51836,
-      "total_tokens": 12983,
+      "total_chars": 52296,
+      "total_tokens": 13098,
       "tools": {
-        "get_entity_graph": 885,
+        "get_entity_graph": 1000,
         "list_years": 800,
         "search_research_items": 780,
         "compare_collections": 741,
@@ -91,10 +91,10 @@
     },
     "stdio_guidance_off": {
       "tool_count": 33,
-      "total_chars": 33890,
-      "total_tokens": 8485,
+      "total_chars": 34306,
+      "total_tokens": 8589,
       "tools": {
-        "get_entity_graph": 792,
+        "get_entity_graph": 896,
         "compare_collections": 686,
         "list_years": 672,
         "get_collection_overview": 575,
@@ -131,10 +131,10 @@
     },
     "http_guidance_off": {
       "tool_count": 35,
-      "total_chars": 36122,
-      "total_tokens": 9044,
+      "total_chars": 36538,
+      "total_tokens": 9148,
       "tools": {
-        "get_entity_graph": 792,
+        "get_entity_graph": 896,
         "compare_collections": 686,
         "list_years": 672,
         "get_collection_overview": 575,
@@ -438,10 +438,10 @@
       "wire_bytes": 29208
     },
     "get_entity_graph@max": {
-      "tokens": 10189,
-      "chars": 40723,
-      "text_bytes": 40756,
-      "wire_bytes": 86026
+      "tokens": 10227,
+      "chars": 40872,
+      "text_bytes": 40905,
+      "wire_bytes": 86344
     },
     "get_text_passages@max": {
       "tokens": 6125,

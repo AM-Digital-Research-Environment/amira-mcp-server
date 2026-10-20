@@ -515,7 +515,20 @@ test("related: a location seed (no publication join) renders without a publicati
 
 // --- graph --------------------------------------------------------------------
 
-test("graph: neighbours, edges and evidence citations match get_entity_graph", async (t) => {
+/** The graph's spoke weights: a neighbour's strongest link and its edges, strongest first. */
+function graphWeights(d) {
+  const far = (e) => (e.source === d.seed ? e.target : e.source);
+  const weights = new Map();
+  for (const e of d.edges) {
+    const w = weights.get(far(e)) ?? { count: 0, edges: [] };
+    w.count = Math.max(w.count, e.count); w.edges.push(e);
+    weights.set(far(e), w);
+  }
+  return weights;
+}
+const clipLabel = (s) => (s.length <= 24 ? s : `${s.slice(0, 23).trimEnd()}…`);
+
+test("graph: sectors, edges and evidence citations match get_entity_graph", async (t) => {
   const app = await mount(t, "get_entity_graph");
   const resolved = await payload("resolve_entity", { query: "Beier" });
   const seed = resolved.results[0].id;
@@ -527,8 +540,17 @@ test("graph: neighbours, edges and evidence citations match get_entity_graph", a
   assert.equal(text(app.root.querySelector("h1")), nodes.get(seed).label);
   assert.equal(text(app.root.querySelector(".sub")),
     `One-hop relationships · ${d.edges.length} of ${d.total_edges} edges${d.truncated ? " · bounded view" : ""}`);
-  const neighbours = d.nodes.filter((n) => n.id !== seed).slice(0, 12);
-  assert.deepEqual([...app.root.querySelectorAll("g.node-link")].map((g) => g.getAttribute("data-node")), neighbours.map((n) => n.id));
+  // Every spoke is a returned neighbour, labelled with its strongest link's count.
+  const weights = graphWeights(d);
+  const spokes = [...app.root.querySelectorAll("g.node-link")];
+  assert.ok(spokes.length > 0 && spokes.length <= Math.min(16, weights.size));
+  for (const g of spokes) {
+    const node = nodes.get(g.getAttribute("data-pick"));
+    assert.ok(node && node.id !== seed, "a spoke is a neighbour");
+    assert.equal(text(g.querySelector("text.label")), `${clipLabel(node.label)} · ${weights.get(node.id).count}`);
+  }
+  assert.ok(app.root.querySelectorAll("text.sector").length >= 1, "sectors carry headings");
+  assert.match(text(app.root.querySelector(".graph + .note")), new RegExp(`^Showing ${spokes.length} of ${weights.size} returned neighbours`));
   const trs = [...app.root.querySelectorAll("tbody tr")];
   assert.equal(trs.length, d.edges.length);
   d.edges.forEach((e, i) => {
@@ -542,18 +564,34 @@ test("graph: neighbours, edges and evidence citations match get_entity_graph", a
 
   // Evidence for one edge is a real, cited page.
   const edge = d.edges.find((e) => e.count > 0);
-  app.click(app.root.querySelector(`button[data-edge="${edge.id}"]`));
+  app.click(app.root.querySelector(`tbody button[data-edge="${edge.id}"]`));
   await app.waitFor(() => app.root.querySelector("#evidence h2"), "edge evidence");
   const evidence = await payload("get_entity_graph", { seed, edge_id: edge.id, snapshot_id: d.snapshot_id, offset: 0 });
   assert.equal(text(app.root.querySelector("#evidence h2")), `Evidence · ${evidence.total_matches} records`);
   assert.deepEqual(citations(app.root.querySelector("#evidence")), evidence.results.map((r) => ({ href: r.amira_url, title: r.title })));
   assert.ok(evidence.results.length > 0);
 
-  // Clicking a neighbour re-seeds the graph on it.
-  const next = neighbours.find((n) => n.type === "person") ?? neighbours[0];
-  app.click(app.root.querySelector(`g.node-link[data-node="${next.id}"]`));
+  // Selecting a spoke keeps the graph, lists the neighbour's links and opens
+  // the records behind the strongest one.
+  const shown = spokes.map((g) => nodes.get(g.getAttribute("data-pick")));
+  const next = shown.find((n) => n.type === "person") ?? shown[0];
+  const strongest = weights.get(next.id).edges[0];
+  app.click(app.root.querySelector(`g.node-link[data-pick="${next.id}"] text.label`));
+  await app.waitFor(() => lastCall(app, "get_entity_graph").args.edge_id === strongest.id && app.root.querySelector("#evidence li"), "picked evidence");
+  assert.equal(text(app.root.querySelector("h1")), nodes.get(seed).label, "selecting does not re-seed");
+  assert.ok(app.root.querySelector(`g.node-link[data-pick="${next.id}"]`).classList.contains("picked"));
+  assert.equal(text(app.root.querySelector("#pick h2")), `${next.label} ${next.type}`);
+  assert.equal(app.root.querySelectorAll("#pick li").length, weights.get(next.id).edges.length);
+  const picked = await payload("get_entity_graph", { seed, edge_id: strongest.id, snapshot_id: d.snapshot_id, offset: 0 });
+  await app.waitFor(() => text(app.root.querySelector("#evidence h2")) === `Evidence · ${picked.total_matches} records`, "picked evidence heading");
+  assert.deepEqual(citations(app.root.querySelector("#evidence")), picked.results.map((r) => ({ href: r.amira_url, title: r.title })));
+  assertHealthy(app);
+
+  // Re-centring is its own action.
+  app.click(app.root.querySelector(`#pick button[data-node="${next.id}"]`));
   await app.waitFor(() => text(app.root.querySelector("h1")) === next.label, "re-seeded graph");
   assert.deepEqual(app.calls.at(-1), { name: "get_entity_graph", args: { seed: next.id } });
+  assert.equal(app.root.querySelector("#pick").innerHTML, "", "a new seed clears the selection");
   assertHealthy(app);
 
   // The resolve form lists candidates as re-seed buttons.
@@ -567,7 +605,44 @@ test("graph: neighbours, edges and evidence citations match get_entity_graph", a
   assertHealthy(app);
 });
 
-test("graph: an isolated entity and a bounded view render honestly", async (t) => {
+test("graph: type chips filter on the server and the filter survives re-seeding", async (t) => {
+  const app = await mount(t, "get_entity_graph");
+  const d = await payload("get_entity_graph", { seed: "person:100" });
+  app.show(d);
+  assertHealthy(app);
+  const total = Object.values(d.neighbour_types).reduce((a, b) => a + b, 0);
+  const chips = [...app.root.querySelectorAll(".chips button")];
+  assert.equal(text(chips[0]), `All · ${total}`);
+  assert.equal(chips[0].getAttribute("aria-pressed"), "true");
+  const people = app.root.querySelector('.chips button[data-types="person"]');
+  assert.equal(text(people), `People · ${d.neighbour_types.person}`);
+
+  app.click(people);
+  await app.waitFor(() => / · People only$/.test(text(app.root.querySelector(".sub"))), "people only");
+  assert.deepEqual(lastCall(app, "get_entity_graph").args, { seed: "person:100", types: ["person"] });
+  assert.equal(app.root.querySelector('.chips button[data-types="person"]').getAttribute("aria-pressed"), "true");
+  const filtered = await payload("get_entity_graph", { seed: "person:100", types: ["person"] });
+  const types = new Map(filtered.nodes.map((n) => [n.id, n.type]));
+  const spokes = [...app.root.querySelectorAll("g.node-link")];
+  assert.ok(spokes.length > 0);
+  assert.ok(spokes.every((g) => types.get(g.getAttribute("data-pick")) === "person"));
+  assert.deepEqual([...app.root.querySelectorAll("text.sector")].map(text), ["PEOPLE"]);
+  assertHealthy(app);
+
+  // Following a person keeps the people-only view.
+  const next = filtered.nodes.find((n) => n.id === spokes[0].getAttribute("data-pick"));
+  app.click(app.root.querySelector(`tbody button[data-node="${next.id}"]`));
+  await app.waitFor(() => text(app.root.querySelector("h1")) === next.label, "re-seeded");
+  assert.deepEqual(lastCall(app, "get_entity_graph").args, { seed: next.id, types: ["person"] });
+
+  // "All" drops the filter.
+  app.click(app.root.querySelector('.chips button[data-types=""]'));
+  await app.waitFor(() => !/ only$/.test(text(app.root.querySelector(".sub"))), "all types");
+  assert.deepEqual(lastCall(app, "get_entity_graph").args, { seed: next.id });
+  assertHealthy(app);
+});
+
+test("graph: an isolated entity, an empty filter and a bounded view render honestly", async (t) => {
   const app = await mount(t, "get_entity_graph");
   const lonely = await payload("get_entity_graph", { seed: "organisation:201" });
   assert.equal(lonely.edges.length, 0);
@@ -576,6 +651,14 @@ test("graph: an isolated entity and a bounded view render honestly", async (t) =
   assert.equal(text(app.root.querySelector("h1")), "Test Research Group");
   assert.equal(text(app.root.querySelector(".empty")), "No relationships are recorded for this entity.");
   assert.equal(app.root.querySelectorAll("tbody tr").length, 0);
+
+  const full = await payload("get_entity_graph", { seed: "person:100" });
+  const absent = ["playlist", "journal", "podcast", "video", "section", "collection"].find((type) => !(type in full.neighbour_types));
+  const none = await payload("get_entity_graph", { seed: "person:100", types: [absent] });
+  app.show(none);
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector(".empty")), "No neighbours of this type are recorded for this entity.");
+  assert.ok(app.root.querySelector(".chips"), "the chips stay, so the filter can be undone");
 
   const bounded = await payload("get_entity_graph", { seed: "person:100", max_nodes: 2 });
   assert.equal(bounded.truncated, true);

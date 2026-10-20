@@ -151,9 +151,25 @@ function computeEdges(store: DataStore, seed: string) {
   return [...edges.values()].sort((a, b) => b.edge.count - a.edge.count || a.edge.id.localeCompare(b.edge.id));
 }
 
-export function entityGraph(store: DataStore, seed: string, maxNodes: number, maxEdges: number) {
+/** The entity at the far end of one of the seed's edges. */
+const neighbourOf = (edge: Edge, seed: string) => edge.source === seed ? edge.target : edge.source;
+
+export function entityGraph(store: DataStore, seed: string, maxNodes: number, maxEdges: number, types?: readonly EntityType[]) {
   const index = graphIndex(store);
-  const all = entityEdges(store, seed);
+  const every = entityEdges(store, seed);
+  // Distinct neighbours per type over the whole neighbourhood, so a reader can
+  // see what a type filter leaves out.
+  const neighbours = new Map<string, EntityType>();
+  for (const { edge } of every) {
+    const id = neighbourOf(edge, seed);
+    neighbours.set(id, index.entities.get(id)!.type);
+  }
+  const typeCounts: Partial<Record<EntityType, number>> = {};
+  for (const type of neighbours.values()) typeCounts[type] = (typeCounts[type] ?? 0) + 1;
+  // The filter runs before the bounds: otherwise high-count languages and
+  // formats spend the node budget before the requested types are reached.
+  const wanted = types?.length ? new Set(types) : null;
+  const all = wanted ? every.filter(({ edge }) => wanted.has(neighbours.get(neighbourOf(edge, seed))!)) : every;
   const ids = new Set([seed]);
   const edges: Edge[] = [];
   // Bound both graph complexity and serialized text. Full evidence is pageable.
@@ -169,5 +185,6 @@ export function entityGraph(store: DataStore, seed: string, maxNodes: number, ma
     additions.forEach((id) => ids.add(id)); edges.push(edge);
   }
   return { snapshot_id: snapshotId(store.manifest), seed, nodes: [...ids].map((id) => index.entities.get(id)!), edges,
-    total_edges: all.length, truncated: edges.length < all.length, bounds: { max_nodes: maxNodes, max_edges: maxEdges, hops: 1 } };
+    total_edges: all.length, truncated: edges.length < all.length, bounds: { max_nodes: maxNodes, max_edges: maxEdges, hops: 1 },
+    neighbour_types: typeCounts, ...(wanted ? { types: [...wanted] } : {}) };
 }

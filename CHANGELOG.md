@@ -5,6 +5,23 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+- **`get_entity_graph`** takes `types`, a list of entity types to keep among the
+  neighbours, applied before the node and edge bounds: a people-only graph used to
+  lose its people to high-count languages, formats and subjects before the bounds
+  were reached. Every graph now reports `neighbour_types`, the number of distinct
+  neighbours of each type, so a filtered view says what it leaves out.
+- **Entity-graph app** redrawn on the co-occurrence hub's encoding: one labelled
+  sector per entity type, spoke length growing with the records behind a
+  neighbour's strongest link, and labels on a common ring, so they no longer
+  collide. Type chips filter through `types`. Selecting a spoke now lists that
+  neighbour's links and opens the records behind the strongest one directly under
+  the diagram; re-centring the graph is a separate button. The centre shows the
+  seed's name rather than its type.
+- **App preview** takes `seed`, `types` and `pseudonymise` URL parameters, for
+  reproducible and anonymised figures of the graph.
+
 ## 1.24.0 — 2026-10-19
 
 - **Person profiles are records, not assessments.** The `person_profile` prompt

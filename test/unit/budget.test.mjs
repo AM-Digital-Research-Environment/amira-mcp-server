@@ -100,8 +100,9 @@ for (const [label, opts] of VARIANTS) {
 }
 
 // research sat at 9,992 in 1.20.0; resolve_entity's optional near-miss
-// `suggestions`/`hint` output fields (+60) took it past 10,000.
-for (const [profile, budget] of [["research", 10_100], ["discovery", 6_500], ["visualization", 9_500]]) {
+// `suggestions`/`hint` output fields (+60) took it past 10,000. get_entity_graph's
+// `types` filter (+~115, mostly the entity-type enum) took it to 10,169 in 1.25.0.
+for (const [profile, budget] of [["research", 10_200], ["discovery", 6_500], ["visualization", 9_500]]) {
   test(`${profile} profile stays within its deliberate discovery budget`, async () => {
     const surface = await surfaceOf({ openai: true, profile });
     assert.ok(surface.total_tokens <= budget, `${profile}: ${surface.total_tokens} > ${budget}`);

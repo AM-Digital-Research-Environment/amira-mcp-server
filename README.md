@@ -139,7 +139,9 @@ the conversation. Error results carry the error as JSON text only.
 
 Use `resolve_entity` before graph traversal; pass its typed `id` unchanged to
 `get_entity_graph`. Graph edges count distinct source records, separate each
-corpus, and distinguish catalogue links from co-occurrence. Neither co-occurrence
+corpus, and distinguish catalogue links from co-occurrence. `types` (for example
+`["person"]`) keeps only neighbours of those types and applies before the bounds;
+`neighbour_types` counts every neighbour by type either way. Neither co-occurrence
 nor a shared subject establishes collaboration. Follow an edge with `edge_id`
 and the returned `snapshot_id` for stable evidence paging. Graphs cap at 100 nodes,
 200 edges and 42,000 JSON bytes, so check `truncated`.
@@ -527,7 +529,7 @@ session. `npm run weigh` measures both and the baseline records them.
   | `list_years` | `ui://amira/timeline` | Histogram of items per year or decade |
   | `list_research_sections` | `ui://amira/sections` | Gantt of the sections across the AM 1.0 / AM 2.0 funding phases, with a "now" marker |
   | `find_related` | `ui://amira/related` | Radial co-occurrence hub: the seed at the centre, one labelled sector per relation type |
-  | `get_entity_graph` | `ui://amira/graph` | Typed entity graph, keyboard navigation and paginated evidence |
+  | `get_entity_graph` | `ui://amira/graph` | Sector graph by entity type, type chips, selectable spokes with their evidence, keyboard navigation |
   | `list_locations` | `ui://amira/map` | Offline map, country dropdown, place table and item evidence |
   | `search_publications` | `ui://amira/bibliography` | Filterable bibliography (language dropdown, author suggestions) and selection export |
 

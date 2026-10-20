@@ -64,6 +64,38 @@ test("graph bounds, identity, provenance and paginated evidence agree", async ()
   assert.equal(empty.edges.length, 0);
 });
 
+test("graph types filter applies before the bounds and counts every neighbour type", async () => {
+  const full = await call("get_entity_graph", { seed: "person:100", max_nodes: 100, max_edges: 200 });
+  assert.equal(full.types, undefined);
+  const far = (e) => e.source === full.seed ? e.target : e.source;
+  const typeOf = new Map(full.nodes.map((n) => [n.id, n.type]));
+  const distinct = new Map(full.edges.map((e) => [far(e), typeOf.get(far(e))]));
+  const expected = {};
+  for (const type of distinct.values()) expected[type] = (expected[type] ?? 0) + 1;
+  assert.deepEqual(full.neighbour_types, expected);
+  assert.ok(expected.person > 0, "the fixture person has person neighbours");
+
+  const people = await call("get_entity_graph", { seed: "person:100", types: ["person"] });
+  assert.deepEqual(people.types, ["person"]);
+  assert.deepEqual(people.neighbour_types, full.neighbour_types, "counts describe the whole neighbourhood");
+  assert.ok(people.edges.length > 0);
+  assert.ok(people.nodes.every((n) => n.id === people.seed || n.type === "person"));
+  assert.equal(people.total_edges, full.edges.filter((e) => typeOf.get(far(e)) === "person").length);
+
+  // A budget of two nodes is spent on the strongest person, not on whatever
+  // type outranks people in the unfiltered graph.
+  const one = await call("get_entity_graph", { seed: "person:100", types: ["person"], max_nodes: 2 });
+  assert.equal(one.nodes.length, 2);
+  assert.equal(one.nodes[1].type, "person");
+
+  const absent = ["playlist", "journal", "podcast", "video", "section", "collection"].find((t) => !(t in full.neighbour_types));
+  assert.ok(absent, "some type has no neighbour");
+  const none = await call("get_entity_graph", { seed: "person:100", types: [absent] });
+  assert.equal(none.edges.length, 0);
+  assert.equal(none.total_edges, 0);
+  assert.equal(none.truncated, false);
+});
+
 test("passage offsets recover decomposed accents and retain exact original text", async () => {
   const text = fixture.data.publications[0].fulltext;
   const id = `publication:${fixture.data.publications[0].o_id}`;

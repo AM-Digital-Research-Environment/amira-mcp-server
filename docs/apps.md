@@ -11,7 +11,7 @@ versions are negotiated separately.
 | `ui://amira/overview` | `get_collection_overview` | Counts, ranked bars and table alternative |
 | `ui://amira/sections` | `list_research_sections` | Funding-phase timeline and table alternative |
 | `ui://amira/related` | `find_related` | Co-occurrence diagram with distinct corpus counts and publication-only results |
-| `ui://amira/graph` | `get_entity_graph` | Resolve a seed, follow typed nodes, page cited edge evidence |
+| `ui://amira/graph` | `get_entity_graph` | Resolve a seed, filter neighbours by type, select a spoke to read its cited evidence, re-centre |
 | `ui://amira/map` | `list_locations` | Country dropdown, place table, keyboard markers, exact-ID item evidence |
 | `ui://amira/timeline` | `list_years` | Year-range controls, project dropdown, subject suggestions, shared filters, bucket evidence and paging |
 | `ui://amira/bibliography` | `search_publications` | Search with a language dropdown and author suggestions, persistent selections across pages, export up to 25 records |
@@ -37,9 +37,15 @@ arrives, or if the host refuses the call, the field stays a text input. Countrie
 are the place hierarchy's roots, the same ones the filter matches. A place catalogued
 without a parent therefore appears as its own country.
 
-Graph lines distinguish explicit catalogue relationships from co-occurrence;
-corpora and distinct record counts remain visible in the table. The diagram draws
-up to 12 neighbours; the table includes all returned edges. It does not infer
+The graph uses the co-occurrence hub's encoding: each entity type owns a labelled
+sector, spoke length grows with the records behind a neighbour's strongest link
+(square-root scale, with the count printed), and labels share one ring, rotated
+along their spoke. Solid spokes include a catalogue link; dashed spokes are
+co-occurrence only. The diagram draws up to 16 neighbours, sharing the ring across
+types; the table includes all returned edges with their corpora and counts. Type
+chips call the tool again with `types`, which the server applies before its bounds.
+Selecting a spoke lists that neighbour's links and opens the records behind the
+strongest one under the diagram; re-centring is a separate button. It does not infer
 collaboration, causation or social ties. Map marker positions are source coordinates;
 hollow roots may denote entire countries. Missing coordinates remain in the table.
 Timeline ranges overlap, and a capped page is not the complete histogram.
@@ -56,6 +62,12 @@ snapshot. Use its app, 375 px/desktop width and light/dark controls for visual a
 keyboard checks. It simulates link/download success and shows the requested action;
 it does not save files or certify every production host. `AMIRA_PREVIEW_PORT` selects
 a different loopback port. It disables live refresh and uses the full tool profile.
+
+For figures, `?app=graph&seed=<typed id or name>&types=person` opens the graph on a
+chosen seed and filter (a name resolves to a person first). `&pseudonymise`
+replaces every person's name with R1, R2, … in order of first appearance, in
+labels and record titles. It changes the display only: `amira_url` links still
+identify the records.
 Do not deploy the preview host.
 
 Automated checks cover initialization source validation, rejected handshakes,

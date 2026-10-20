@@ -47,6 +47,7 @@ const CASES = {
   get_entity_graph: [
     { seed: "person:100" },
     { seed: "item:500", max_nodes: 2, max_edges: 1 },
+    { seed: "person:100", types: ["person", "subject"] },
     async (call) => {
       const graph = await call("get_entity_graph", { seed: "person:100" });
       const edge = graph.edges?.[0];

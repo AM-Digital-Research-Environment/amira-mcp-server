@@ -109,12 +109,15 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
   tools.get_entity_graph = server.registerTool("get_entity_graph", {
     title: "Explore an entity graph", annotations: READ_ONLY,
     _meta: GRAPH_UI_META,
-    description: "One-hop graph from a typed ID: explicit catalogue links and derived co-occurrence with distinct-record counts and cited evidence. Pass edge_id to page its evidence; pin snapshot_id across pages.",
+    description: "One-hop graph from a typed ID: explicit catalogue links and derived co-occurrence with distinct-record counts and cited evidence. types filters neighbours before the bounds. Pass edge_id to page its evidence; pin snapshot_id across pages.",
     inputSchema: z.strictObject({ seed: z.string().min(1).max(256), max_nodes: z.number().int().min(2).optional().describe("Default 40, max 100"),
-      max_edges: z.number().int().min(1).optional().describe("Default 50, max 200"), edge_id: z.string().max(64).optional(), snapshot_id: z.string().max(64).optional(), offset: offsetSchema,
+      max_edges: z.number().int().min(1).optional().describe("Default 50, max 200"),
+      types: z.array(z.enum(entityTypes)).min(1).max(entityTypes.length).optional(),
+      edge_id: z.string().max(64).optional(), snapshot_id: z.string().max(64).optional(), offset: offsetSchema,
       limit: z.number().int().min(1).optional().describe("Evidence page size, default 20, max 50") }),
     outputSchema: z.object({ snapshot_id: z.string(), seed: z.string(), nodes: z.array(entitySchema).optional(), edges: z.array(edgeSchema).optional(),
       total_edges: z.number().optional(), truncated: z.boolean().optional(), bounds: z.object({ max_nodes: z.number(), max_edges: z.number(), hops: z.number() }).optional(),
+      neighbour_types: z.record(z.string(), z.number()).optional(), types: z.array(z.string()).optional(),
       results: z.array(evidenceSchema).optional(), count: z.number().optional(), total_matches: z.number().optional(), offset: z.number().optional(),
       has_more: z.boolean().optional(), next_offset: z.number().optional(), requested_limit: z.number().optional(), effective_limit: z.number().optional(),
       response_limited: z.boolean().optional() }),
@@ -134,7 +137,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       return textResult(pageOf([...edge.evidence.values()], capOffset(args.offset), limit, (e) => e,
         { seed, snapshot_id: id, ...limitEcho(args.limit, 50, limit) }));
     }
-    return textResult(entityGraph(store, seed, capLimit(args.max_nodes, 40, 100), capLimit(args.max_edges, 50, 200)));
+    return textResult(entityGraph(store, seed, capLimit(args.max_nodes, 40, 100), capLimit(args.max_edges, 50, 200), args.types));
   });
 
   tools.get_text_passages = server.registerTool("get_text_passages", {
