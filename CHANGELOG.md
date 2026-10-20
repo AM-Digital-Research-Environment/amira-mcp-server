@@ -5,7 +5,7 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.25.0 — 2026-10-20
 
 - **`get_entity_graph`** takes `types`, a list of entity types to keep among the
   neighbours, applied before the node and edge bounds: a people-only graph used to
