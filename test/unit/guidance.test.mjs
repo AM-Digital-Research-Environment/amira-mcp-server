@@ -84,7 +84,8 @@ test("guidance: unset and `on` build the same surface, with all guidance present
     assert.equal(persons.inputSchema.properties.keyword.description, "Matches the name, a name variant or an affiliation");
     assert.deepEqual(s.tools.filter((t) => t._meta?.["anthropic/alwaysLoad"]).map((t) => t.name).sort(),
       ["get_collection_overview", "resolve_entity"]);
-    assert.ok(s.templates.every((t) => t.title && t.description));
+    // AMIRA's own templates; the Skills extension's `skill://{+path}` is the SDK's.
+    assert.ok(s.templates.filter((t) => !t.uriTemplate.startsWith("skill://")).every((t) => t.title && t.description));
   } finally {
     await unset.conn.close();
     await on.conn.close();

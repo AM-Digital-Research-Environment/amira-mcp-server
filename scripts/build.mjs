@@ -15,16 +15,17 @@ const bridge = await esbuild.build({ entryPoints: ["./src/ui/bridge.ts"], bundle
   platform: "browser", format: "iife", target: "es2022", minify: true, write: false, legalComments: "none",
   define: { __SERVER_VERSION__: JSON.stringify(pkg.version) } });
 
-// SEP-2640 skill catalog, validated and hashed here so the runtime needs no
-// filesystem and no YAML parser. `--strict` (prepack-mcpb, CI) fails the build
-// on an invalid skill; a plain `npm run build` drops it with a warning and
-// ships the rest — see scripts/skills.mjs.
+// SEP-2640 skill files, validated here through the SDK's own catalog loader so
+// the runtime needs no filesystem. `--strict` (prepack-mcpb, CI) fails the
+// build on an invalid skill; a plain `npm run build` drops it with a warning
+// and ships the rest — see scripts/skills.mjs.
 const strictSkills = process.argv.includes("--strict");
 const skills = await buildSkillsSnapshot({ strict: strictSkills });
 for (const warning of skills.warnings) console.warn(`⚠ ${warning}`);
 for (const error of skills.errors) console.error(`✖ skills: ${error} — omitted from the catalog`);
 console.log(
-  `skills: ${skills.snapshot.skills.length} skill(s), ${skills.snapshot.resources.length} file(s)` +
+  `skills: ${skills.skills.length} skill(s), ` +
+    `${Object.keys(skills.snapshot.text).length + Object.keys(skills.snapshot.base64).length} file(s)` +
     `${strictSkills ? " [strict]" : ""}`,
 );
 

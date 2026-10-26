@@ -12,6 +12,7 @@ export { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshot, write
 export { itemUrl, itemUrlOrNull } from "./urls.js";
 export { generateItemCitation } from "./citation.js";
 export { createAmiraServer } from "./mcpServer.js";
+export { loadSkillCatalog } from "./skills.js";
 export { exposureLevel } from "./exposure.js";
 export { guidanceEnabled, stripSchemaText } from "./guidance.js";
 export { isTemplatePlaceholder, parseAllowedOriginHostnames, config } from "./config.js";
