@@ -60,6 +60,17 @@ const COLLABORATOR_CAP = 15;
 const SUGGESTION_CAP = 5;
 
 /**
+ * How to read a profile's counts, sent with every get_person result. Until
+ * v1.26.0 only the person_profile prompt said this, and hosts rarely invoke
+ * prompts: a zero publication count reached answers without its reason.
+ * Curatorial guidance, so AMIRA_GUIDANCE=off drops it.
+ */
+const COVERAGE_NOTE =
+  "Counts describe the records AMIRA holds, not the person's full work. Publications are harvested from " +
+  "University of Bayreuth repositories (EPub, ERef), so a partner-centre researcher's publications appear " +
+  "only if deposited there; a count of zero is not evidence that none exist.";
+
+/**
  * `{ suggestions, hint }` for a person query that matched nobody: the authority
  * records whose name is a typo away from it (src/names.ts), each with its typed
  * id and citation. Empty when there are none, and always with AMIRA_GUIDANCE=off.
@@ -229,6 +240,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         affiliations: refLabels(record?.affiliations),
         identifiers: record?.identifiers ?? [],
         ...(record?.alt_names?.length ? { name_variants: record.alt_names } : {}),
+        ...(guidanceEnabled() ? { coverage_note: COVERAGE_NOTE } : {}),
         as_principal_investigator: asPI.map(projectRef),
         as_member: asMember.map(projectRef),
         as_section_principal_investigator: sectionsAsPI.map(sectionRef),

@@ -5,6 +5,18 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+- **`get_person`** returns a `coverage_note` saying how to read its counts: they
+  describe the records AMIRA holds, not the person's full work, and publications
+  are harvested from University of Bayreuth repositories (EPub, ERef), so a
+  partner-centre researcher's publications appear only if deposited there and a
+  zero is not evidence that none exist. Until now only the `person_profile`
+  prompt said this, and hosts rarely invoke prompts: in a traced answer about a
+  partner-centre researcher, the zero reached the answer without its reason. The
+  note is curatorial guidance, so `AMIRA_GUIDANCE=off` drops it; the tool list
+  and its token baseline are unchanged.
+
 ## 1.25.0 — 2026-10-20
 
 - **`get_entity_graph`** takes `types`, a list of entity types to keep among the
