@@ -16,6 +16,9 @@ force and what comes next.
   partner-centre researcher, the zero reached the answer without its reason. The
   note is curatorial guidance, so `AMIRA_GUIDANCE=off` drops it; the tool list
   and its token baseline are unchanged.
+- **Development:** happy-dom 21.0.4 replaces 20.x, closing a high-severity
+  advisory (GHSA-834v-8h66-3h79) that failed `npm audit` and with it the first
+  1.26.0 build. It only renders the MCP Apps in tests.
 
 ## 1.25.0 — 2026-10-20
 
