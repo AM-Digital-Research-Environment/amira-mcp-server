@@ -17,10 +17,10 @@
 //         the schemas, no `anthropic/alwaysLoad` entry-point hint. Errors keep
 //         their stable `code` and a terse message saying what was wrong; the
 //         pointer to another tool, the candidate values and the advice go.
-//         Results drop `*_hint` fields, the export note, the empty-search
-//         `hint`, person suggestions, and search_research_items' relaxation
-//         `suggestions` and `did_you_mean`. Prompts and the companion skill
-//         are not registered.
+//         Results drop `*_hint` fields, the export note, get_person's
+//         `coverage_note`, the empty-search `hint`, person suggestions, and
+//         search_research_items' relaxation `suggestions` and `did_you_mean`.
+//         Prompts and the companion skill are not registered.
 //
 // Any value other than `off` means on; an unrecognised one is reported on
 // stderr, because a typo would otherwise run the wrong condition silently.

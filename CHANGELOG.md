@@ -17,8 +17,8 @@ force and what comes next.
   `resources/read` against the published entry, pages directory reads and
   declares the capability when it attaches. The build validates the skill
   through the same SDK loader, so a catalog the build accepts is one the server
-  serves. The skill URIs (`skill://amira-mcp/…`), the four file digests and the
-  directory levels are unchanged, and the Inspector's
+  serves. For the same files, the skill URIs (`skill://amira-mcp/…`), the
+  digests and the directory levels are identical to 1.26.0's, and the Inspector's
   `skills/list --verify --require-digests` passes. `AMIRA_SKILLS=0` still
   withdraws the whole surface. A host may notice the following:
   - `resources/list` lists the skill's `SKILL.md` alone, named `amira-mcp`
@@ -34,6 +34,21 @@ force and what comes next.
   test now pins.
 - The skill tests and both smoke scripts read the skill through the client
   SDK's `SkillsClient`, which re-hashes every file against its digest.
+
+## 1.26.0 — 2026-10-26
+
+- **`get_person`** returns a `coverage_note` saying how to read its counts: they
+  describe the records AMIRA holds, not the person's full work, and publications
+  are harvested from University of Bayreuth repositories (EPub, ERef), so a
+  partner-centre researcher's publications appear only if deposited there and a
+  zero is not evidence that none exist. Until now only the `person_profile`
+  prompt said this, and hosts rarely invoke prompts: in a traced answer about a
+  partner-centre researcher, the zero reached the answer without its reason. The
+  note is curatorial guidance, so `AMIRA_GUIDANCE=off` drops it; the tool list
+  and its token baseline are unchanged.
+- **Development:** happy-dom 21.0.4 replaces 20.x, closing a high-severity
+  advisory (GHSA-834v-8h66-3h79) that failed `npm audit` and with it the first
+  1.26.0 build. It only renders the MCP Apps in tests.
 
 ## 1.25.0 — 2026-10-20
 

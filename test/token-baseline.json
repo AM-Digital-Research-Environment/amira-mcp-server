@@ -366,10 +366,10 @@
       "wire_bytes": 7444
     },
     "get_person": {
-      "tokens": 397,
-      "chars": 1584,
-      "text_bytes": 1588,
-      "wire_bytes": 3396
+      "tokens": 471,
+      "chars": 1880,
+      "text_bytes": 1884,
+      "wire_bytes": 3992
     },
     "get_project": {
       "tokens": 865,

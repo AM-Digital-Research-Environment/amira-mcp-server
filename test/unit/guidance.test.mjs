@@ -121,6 +121,7 @@ test("guidance: unset and `on` return the same results; advice stays in errors a
     assert.match(doc.text, /call fetch again with include_fulltext=true/);
     const exported = await unset.call("search_publications", { export: "csv" });
     assert.match(exported.note, /^Read the resource/);
+    assert.match((await unset.call("get_person", { id: 100 })).coverage_note, /^Counts describe the records AMIRA holds/);
     process.env.AMIRA_EXPOSURE = "minimal";
     try {
       assert.equal(errorOf(await unset.call("search_persons", {})).message,
@@ -194,7 +195,7 @@ test("guidance off: calls behave the same; errors keep their code with a terse m
       const off = await connectInMemory(lib, { openai: true }, { name: "off" });
       try {
         // Data is untouched: the same body for every call that has no advice in it.
-        for (const [tool, args] of SAME_EITHER_WAY.filter(([t, a]) => !(t === "get_publication" && !a.include_fulltext))) {
+        for (const [tool, args] of SAME_EITHER_WAY.filter(([t, a]) => !(t === "get_publication" && !a.include_fulltext) && t !== "get_person")) {
           assert.deepEqual(await off.call(tool, args), await on.call(tool, args), `${tool} ${JSON.stringify(args)}`);
         }
         // Errors: the code and what was wrong, nothing about what to do next.
@@ -210,10 +211,13 @@ test("guidance off: calls behave the same; errors keep their code with a terse m
         assert.deepEqual(errorOf(await off.call("fetch", { id: "item:999999999" })), { code: "not_found", message: "No record with id 'item:999999999'." });
         // Messages that only say what was wrong are the same in both modes.
         assert.deepEqual(errorOf(await off.call("get_person", {})), errorOf(await on.call("get_person", {})));
-        // Results: no paging hints, no export note.
+        // Results: no paging hints, no export note, no coverage note.
         const pub = await off.call("get_publication", { id: 510 });
         const { fulltext_hint: _hint, ...rest } = await on.call("get_publication", { id: 510 });
         assert.deepEqual(pub, rest);
+        const person = await off.call("get_person", { id: 100 });
+        const { coverage_note: _note, ...personRest } = await on.call("get_person", { id: 100 });
+        assert.deepEqual(person, personRest);
         const doc = await off.call("fetch", { id: "pub:510" });
         assert.match(doc.text, /\[Full text omitted \(\d+ chars\)\.\]$/);
         assert.equal(doc.metadata.fulltext_hint, undefined);
