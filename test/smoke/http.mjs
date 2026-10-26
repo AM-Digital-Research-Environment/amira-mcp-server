@@ -12,8 +12,7 @@
 // ~/.amira-mcp/cache. Floors shared with the stdio smoke test live in
 // ./expectations.mjs; the tool count comes from manifest.json (+ search/fetch).
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { createHash } from "node:crypto";
-import { z } from "zod";
+import { SkillsClient } from "@modelcontextprotocol/client/ext/skills";
 import { exitedCleanly, expectedToolNames, spawnHttpServer } from "../helpers/mcp.mjs";
 import {
   check, checkToolSurface, failureCount, MIN_JOURNALS, MIN_PUBLICATIONS, MIN_RESEARCH_ITEMS,
@@ -200,19 +199,16 @@ try {
   // skill folder, so this transport is the only way the companion skill reaches
   // them. The snapshot is embedded in the bundle, so it survives a container
   // that ships no .claude/ directory at all.
-  const caps = client.getServerCapabilities();
-  check(caps?.extensions?.["io.modelcontextprotocol/skills"]?.directoryRead === true, "HTTP: skills extension declared");
-  const skillList = await client.request({ method: "skills/list", params: {} }, z.looseObject({}));
-  check(skillList.skills?.[0]?.uri === "skill://amira-mcp/SKILL.md", "HTTP: skills/list serves the companion skill");
-  check(skillList.skills?.[0]?.resources?.length === 4, "HTTP: complete resource manifest");
-  const skillDoc = await client.readResource({ uri: "skill://amira-mcp/SKILL.md" });
-  const skillText = skillDoc.contents?.[0]?.text ?? "";
-  check(skillText.includes("amira_url"), "HTTP: SKILL.md body readable over resources/read");
-  check(
-    `sha256:${createHash("sha256").update(Buffer.from(skillText, "utf8")).digest("hex")}` ===
-      skillList.skills[0].resources.find((r) => r.uri === "skill://amira-mcp/SKILL.md")?.digest,
-    "HTTP: digest verifies against the manifest",
-  );
+  const skillsClient = new SkillsClient(client);
+  check(skillsClient.supported && skillsClient.directoryRead, "HTTP: skills extension declared");
+  const skillList = await skillsClient.list();
+  const skill = skillList.skills[0];
+  check(skill?.uri === "skill://amira-mcp/SKILL.md", "HTTP: skills/list serves the companion skill");
+  check(skill?.resources?.length === 4, "HTTP: complete resource manifest");
+  // SkillsClient re-hashes the body against the listed digest and size.
+  const skillDoc = await skillsClient.read(skill).catch((err) => err);
+  check(skillDoc?.verified === true, "HTTP: SKILL.md verifies against the manifest");
+  check(skillDoc?.body?.includes("amira_url"), "HTTP: SKILL.md body readable over resources/read");
 
   await client.close();
   client = undefined;

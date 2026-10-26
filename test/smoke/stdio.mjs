@@ -9,9 +9,9 @@
 // refresh off and a throwaway cache dir — so it measures data/ and never
 // reads or writes ~/.amira-mcp/cache. Floors shared with the HTTP smoke test
 // live in ./expectations.mjs; the tool count comes from manifest.json.
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/client";
+import { SkillsClient } from "@modelcontextprotocol/client/ext/skills";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { childEnv, SERVER_STDIO } from "../helpers/env.mjs";
 import { expectedToolNames } from "../helpers/mcp.mjs";
@@ -236,48 +236,47 @@ if (withTranscript) {
 }
 console.log(`\ntranscript-only hit found: ${transcriptHit ? "yes" : "no (keyword may appear in titles too)"}`);
 
-// --- Skills over MCP (draft SEP-2640) ---------------------------------------
+// --- Skills over MCP (SEP-2640) ---------------------------------------------
 // The companion skill has to survive the round trip a HOST makes: read the
 // catalog, fetch a file, re-hash it, compare. A digest that does not match what
 // resources/read returns is treated as tampering and the skill is discarded —
-// silently, from our side — so the match is asserted here rather than assumed.
+// silently, from our side — so SkillsClient, which does exactly that check, reads
+// every file here rather than trusting the listing.
 const caps = client.getServerCapabilities();
-check(caps?.extensions?.["io.modelcontextprotocol/skills"]?.directoryRead === true, "skills: extension declared with directoryRead");
+const skillsClient = new SkillsClient(client);
+check(skillsClient.supported && skillsClient.directoryRead, "skills: extension declared with directoryRead");
 check(!!caps?.tools && !!caps?.resources, "skills: declaring extensions does not drop the tools/resources capabilities");
 
-const skillList = await client.request({ method: "skills/list", params: {} }, ANY);
-check(skillList.skills?.length === 1, `skills/list: 1 skill, got ${skillList.skills?.length}`);
-const skill = skillList.skills?.[0];
+const skillList = await skillsClient.list();
+check(skillList.skills.length === 1 && skillList.invalid.length === 0, `skills/list: 1 valid skill, got ${skillList.skills.length}`);
+const skill = skillList.skills[0];
 check(skill?.uri === "skill://amira-mcp/SKILL.md", "skills/list: expected skill uri");
 check(skill?.frontmatter?.name === "amira-mcp", "skills/list: frontmatter name matches the directory");
 check(typeof skill?.frontmatter?.description === "string", "skills/list: frontmatter carries a description");
 check(skill?.resources?.length === 4, `skills/list: complete manifest (4 files), got ${skill?.resources?.length}`);
-check(skill?.resources?.every((r) => /^sha256:[0-9a-f]{64}$/.test(r.digest)), "skills/list: every file carries a sha256 digest");
-check(skillList.cacheScope === "public" && skillList.ttlMs > 0, "skills/list: carries a cache hint");
 
-const skillGet = await client.request({ method: "skills/get", params: { uri: skill.uri } }, ANY);
+const skillGet = await skillsClient.get(skill.uri);
 check(skillGet.skill?.uri === skill.uri, "skills/get: returns the requested skill");
 
-const skillRoot = await client.request({ method: "resources/directory/read", params: { uri: "skill://amira-mcp" } }, ANY);
-const rootNames = (skillRoot.resources ?? []).map((r) => `${r.name}:${r.mimeType}`);
+const skillRoot = await skillsClient.readDirectory("skill://amira-mcp");
+const rootNames = skillRoot.resources.map((r) => `${r.name}:${r.mimeType}`);
 check(rootNames.includes("SKILL.md:text/markdown"), "directory/read: SKILL.md listed at the skill root");
 check(rootNames.includes("references:inode/directory"), "directory/read: subdirectory listed as a directory resource");
-check(skillRoot.resources?.length === 2, "directory/read: direct children only, not recursive");
+check(skillRoot.resources.length === 2, "directory/read: direct children only, not recursive");
 
-const refDir = await client.request(
-  { method: "resources/directory/read", params: { uri: "skill://amira-mcp/references" } },
-  ANY,
-);
-check(refDir.resources?.length === 3, `directory/read: 3 reference files, got ${refDir.resources?.length}`);
+const refDir = await skillsClient.readDirectory("skill://amira-mcp/references");
+check(refDir.resources.length === 3, `directory/read: 3 reference files, got ${refDir.resources.length}`);
 
-const REF_URI = "skill://amira-mcp/references/data-model.md";
-const refRead = await client.readResource({ uri: REF_URI });
-const refText = refRead.contents?.[0]?.text ?? "";
-const rehashed = `sha256:${createHash("sha256").update(Buffer.from(refText, "utf8")).digest("hex")}`;
-check(rehashed === skill.resources.find((r) => r.uri === REF_URI)?.digest, "resources/read: digest verifies against the manifest");
+for (const resource of skill.resources) {
+  const label = resource.uri.replace("skill://amira-mcp/", "");
+  const file = await skillsClient.read(skill, label).catch((err) => err);
+  check(file?.verified === true, `resources/read: ${label} verifies against its size and digest`);
+}
+const manual = await skillsClient.read(skill);
+check(manual.body?.includes("amira_url") && manual.frontmatter?.name === "amira-mcp", "resources/read: SKILL.md frontmatter equals the entry");
 
 const listed = (await client.listResources()).resources.map((r) => r.uri);
-check(listed.filter((u) => u.startsWith("skill://")).length === 4, "resources/list: skill files are readable resources");
+check(listed.includes("skill://amira-mcp/SKILL.md"), "resources/list: the skill's SKILL.md is listed");
 check(listed.some((u) => u.startsWith("ui://")), "resources/list: the ui:// apps are still there");
 
 for (const [method, params, label] of [

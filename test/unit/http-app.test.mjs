@@ -167,6 +167,15 @@ test("unknown paths are 404 with the endpoint hint", async () => {
   }
 });
 
+test("the stateless endpoint answers every method but POST with 405 and Allow: POST", async () => {
+  const { base } = await serve();
+  for (const method of ["GET", "DELETE", "PUT"]) {
+    const res = await send(base, { method, path: "/mcp", headers: { Accept: "application/json, text/event-stream" } });
+    assert.equal(res.status, 405, method);
+    assert.equal(res.headers.allow, "POST", method);
+  }
+});
+
 // --- body size ----------------------------------------------------------------------------
 
 test("request bodies over 64 KiB are refused with 413, declared or chunked; 64 KiB exactly is not", async () => {

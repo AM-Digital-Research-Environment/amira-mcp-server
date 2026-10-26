@@ -8,7 +8,7 @@ import { resolveToolProfile, type ToolProfile } from "./toolProfiles.js";
 import { registerTools } from "./tools/register.js";
 import { registerPrompts } from "./prompts.js";
 import { registerDataResources } from "./resources.js";
-import { SKILLS_CAPABILITY, registerSkills, skillsEnabled } from "./skills.js";
+import { registerSkills, skillsEnabled } from "./skills.js";
 import { guidanceEnabled } from "./guidance.js";
 
 export const VERSION = typeof __SERVER_VERSION__ !== "undefined" ? __SERVER_VERSION__ : "dev";
@@ -142,15 +142,14 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
       capabilities: {
         ...(guidance ? FIXED_LISTS : { tools: FIXED_LISTS.tools, resources: FIXED_LISTS.resources }),
-        // SEP-2640. Declared only when a valid skill catalog was built, so
-        // a host never sees the capability without `skills/list` behind it.
-        ...(skills ? { extensions: SKILLS_CAPABILITY } : {}),
       },
     },
   );
   const tools = registerTools(server, opts.profile ?? resolveToolProfile(), { openai: opts.openai, guidance });
   if (guidance) registerPrompts(server);
   registerDataResources(server, tools, { guidance });
+  // SEP-2640: the SDK extension declares its capability as it attaches, so a
+  // host never sees the capability without `skills/list` behind it.
   if (skills) registerSkills(server);
   return server;
 }

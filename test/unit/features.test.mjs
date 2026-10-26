@@ -168,9 +168,10 @@ test("record and dataset resources", async () => {
   const ds = JSON.parse((await client.readResource({ uri: "amira://dataset" })).contents[0].text);
   assert.equal(ds["@type"], "Dataset");
   assert.ok(ds.variableMeasured.some((v) => v.name === "research_items" && v.value === 4));
+  // The SDK's Skills extension serves the skill files through the third.
   const templates = await client.listResourceTemplates();
   assert.deepEqual(templates.resourceTemplates.map((t) => t.uriTemplate).sort(),
-    ["amira://export/{corpus}/{format}/{query}", "amira://record/{kind}/{id}"]);
+    ["amira://export/{corpus}/{format}/{query}", "amira://record/{kind}/{id}", "skill://{+path}"]);
 });
 
 test("prompts and argument completion", async () => {

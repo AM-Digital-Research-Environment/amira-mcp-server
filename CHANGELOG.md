@@ -5,6 +5,36 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+- **MCP TypeScript SDK 2.4.0**: `@modelcontextprotocol/server` and `client`
+  2.4.0, `node` 2.1.2. `@hono/node-server` becomes a direct dependency pinned to
+  2.x (2.1.5); it was a transitive 1.19.17.
+- **The companion skill is served by the SDK's Skills extension**
+  (`@modelcontextprotocol/server/ext/skills`), which replaces our own
+  `skills/list`, `skills/get` and `resources/directory/read` handlers and the
+  hand-declared capability. The SDK computes digests and sizes, checks every
+  `resources/read` against the published entry, pages directory reads and
+  declares the capability when it attaches. The build validates the skill
+  through the same SDK loader, so a catalog the build accepts is one the server
+  serves. The skill URIs (`skill://amira-mcp/…`), the four file digests and the
+  directory levels are unchanged, and the Inspector's
+  `skills/list --verify --require-digests` passes. `AMIRA_SKILLS=0` still
+  withdraws the whole surface. A host may notice the following:
+  - `resources/list` lists the skill's `SKILL.md` alone, named `amira-mcp`
+    with its description. The reference files stay readable through the new
+    `skill://{+path}` resource template.
+  - Directory entries carry each file's `size`.
+  - `ttlMs` and `cacheScope` on skill results are sent on 2026-07-28
+    connections only, where those fields exist.
+  - A directory URI must be sent as listed, without a trailing slash.
+  - Errors for an unknown skill or directory keep `-32602`, with the SDK's
+    wording.
+- **HTTP:** every 405 from `/mcp` now carries `Allow: POST`, an SDK fix that a
+  test now pins.
+- The skill tests and both smoke scripts read the skill through the client
+  SDK's `SkillsClient`, which re-hashes every file against its digest.
+
 ## 1.25.0 — 2026-10-20
 
 - **`get_entity_graph`** takes `types`, a list of entity types to keep among the
