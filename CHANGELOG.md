@@ -5,7 +5,7 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.27.0 — 2026-10-26
 
 - **MCP TypeScript SDK 2.4.0**: `@modelcontextprotocol/server` and `client`
   2.4.0, `node` 2.1.2. `@hono/node-server` becomes a direct dependency pinned to
