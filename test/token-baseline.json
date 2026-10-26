@@ -9,7 +9,7 @@
   "surface": {
     "stdio": {
       "tool_count": 33,
-      "total_chars": 48549,
+      "total_chars": 48547,
       "total_tokens": 12157,
       "tools": {
         "get_entity_graph": 1000,
@@ -49,7 +49,7 @@
     },
     "http": {
       "tool_count": 35,
-      "total_chars": 52296,
+      "total_chars": 52294,
       "total_tokens": 13098,
       "tools": {
         "get_entity_graph": 1000,
@@ -366,28 +366,28 @@
       "wire_bytes": 7444
     },
     "get_person": {
-      "tokens": 471,
-      "chars": 1880,
-      "text_bytes": 1884,
-      "wire_bytes": 3992
+      "tokens": 338,
+      "chars": 1345,
+      "text_bytes": 1349,
+      "wire_bytes": 2880
     },
     "get_project": {
-      "tokens": 865,
-      "chars": 3438,
-      "text_bytes": 3458,
-      "wire_bytes": 7308
+      "tokens": 908,
+      "chars": 3612,
+      "text_bytes": 3632,
+      "wire_bytes": 7670
     },
     "get_research_section": {
-      "tokens": 2468,
-      "chars": 9863,
-      "text_bytes": 9870,
-      "wire_bytes": 20089
+      "tokens": 2960,
+      "chars": 11831,
+      "text_bytes": 11839,
+      "wire_bytes": 24191
     },
     "get_institution": {
-      "tokens": 2180,
-      "chars": 8619,
-      "text_bytes": 8719,
-      "wire_bytes": 18638
+      "tokens": 2187,
+      "chars": 8647,
+      "text_bytes": 8747,
+      "wire_bytes": 18696
     },
     "get_publication@fulltext": {
       "tokens": 7632,

@@ -7,13 +7,14 @@ import {
   READ_ONLY,
   containsCI,
   equalsCI,
+  errorResult,
   exposureRestrictedResult,
   itemRef,
   textResult,
   type Server,
 } from "./_shared.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
-import { personMatches } from "../names.js";
+import { personMatches, samePerson } from "../names.js";
 import { placeMatcher } from "../researchItemQuery.js";
 import { stripTypedId } from "../typedIds.js";
 import { RELATED_UI_META } from "./apps.js";
@@ -33,7 +34,8 @@ const MATCHING: Record<EntityType, string> = {
     "Items whose place matches the value exactly (or by a common alias) at ANY level of the city→country hierarchy, so 'Nigeria' " +
     "also matches Lagos items but 'Niger' does not match Nigeria. An unknown name falls back to word prefixes ('Ibad' → Ibadan).",
   person:
-    "Items crediting a contributor whose name matches the value in either order and accent-insensitively (e.g. 'Ulli Beier' = 'Beier, Ulli').",
+    "Items crediting one person: the authority record the value resolves to (a name in either order, accent-insensitive, " +
+    "e.g. 'Ulli Beier' = 'Beier, Ulli', or person:<id>). A value matching several people is refused with their ids.",
   project: "Items in the project whose Omeka id or legacy project key equals the value, or whose project label contains it.",
 };
 
@@ -81,7 +83,23 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
       const type = args.entity_type as EntityType;
       const value = type === "project" ? stripTypedId(args.value, ["project"]) : args.value;
 
-      const matchesPerson = (name: string): boolean => personMatches(name, value);
+      // A person pivot needs one person: "Vierke" used to pool Clarissa and Ulf
+      // Vierke into one set of counts. Several authority matches are named and
+      // refused; one is matched by id (by full name on unlinked credits); a name
+      // with no authority record keeps the old name match.
+      const personSeeds = type === "person" ? resolveEntities(store, value, "person") : [];
+      if (personSeeds.length > 1) {
+        return errorResult("ambiguous_entity", `${personSeeds.length} people match '${value}'; pass a full name or a person:<id>.`, {
+          suggested_tool: "resolve_entity",
+          available_values: personSeeds.slice(0, 10).map((e) => `${e.label} (${e.id})`),
+          terse: "Several people match; pass a full name or a person id.",
+        });
+      }
+      const seedPerson = personSeeds[0];
+      const matchesPerson = (name: string, oId: number | null = null): boolean =>
+        !seedPerson ? personMatches(name, value)
+          : oId != null && seedPerson.omeka_id != null ? oId === seedPerson.omeka_id
+            : samePerson(name, seedPerson.label);
       const matchesPlace = type === "location" ? placeMatcher(store, value, "any") : () => false;
 
       const matches = (it: ResearchItemRec): boolean => {
@@ -91,7 +109,7 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
           case "location":
             return it.places.some(matchesPlace);
           case "person":
-            return it.contributors.some((c) => matchesPerson(c.name));
+            return it.contributors.some((c) => matchesPerson(c.name, c.o_id));
           case "project":
             return equalsCI(String(store.projectOf(it)?.o_id), value) || equalsCI(store.projectOf(it)?.dre_id, value) || containsCI(it.project?.label, value);
         }
@@ -110,7 +128,7 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
         countRecord(projects, it.project ? [it.project] : [], "research_item_count");
         countRecord(sections, store.projectOf(it)?.sections ?? [], "research_item_count");
         countRecord(subjects, it.subjects.filter((s) => !(type === "subject" && containsCI(s.label, value))), "research_item_count");
-        countRecord(people, it.contributors.filter((c) => !(type === "person" && matchesPerson(c.name))).map((c) => ({ label: c.name, o_id: c.o_id })), "research_item_count");
+        countRecord(people, it.contributors.filter((c) => !(type === "person" && matchesPerson(c.name, c.o_id))).map((c) => ({ label: c.name, o_id: c.o_id })), "research_item_count");
         countRecord(countries, it.places.map((p) => store.placeChainRefs(p).at(-1)!), "research_item_count");
         countRecord(formats, it.formats, "research_item_count");
       }
@@ -122,15 +140,15 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
           ? store.publications.filter((p) => p.subjects.some((s) => containsCI(s.label, value)))
           : type === "person"
             ? store.publications.filter((p) =>
-                [...p.authors, ...p.editors].some((r) => matchesPerson(r.label)),
+                [...p.authors, ...p.editors].some((r) => matchesPerson(r.label, r.o_id)),
               )
             : [];
       for (const p of matchedPubs) {
         countRecord(subjects, p.subjects.filter((s) => !(type === "subject" && containsCI(s.label, value))), "publication_count");
-        countRecord(people, [...p.authors, ...p.editors].filter((s) => !(type === "person" && matchesPerson(s.label))), "publication_count");
+        countRecord(people, [...p.authors, ...p.editors].filter((s) => !(type === "person" && matchesPerson(s.label, s.o_id))), "publication_count");
       }
 
-      const candidates = resolveEntities(store, value, type);
+      const candidates = type === "person" ? personSeeds : resolveEntities(store, value, type);
       return textResult({
         entity_type: type,
         value,

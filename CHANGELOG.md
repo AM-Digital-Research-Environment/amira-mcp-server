@@ -5,6 +5,33 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+Fixes from a test pass through the installed 1.27.0 connector.
+
+- **`get_institution`** resolves a name made of whole words of one
+  institution's name or variant, so an acronym in parentheses ("LACC") now
+  finds the record `list_institutions` lists. When the words belong to several
+  names, it returns `ambiguous_entity` with up to ten candidates. A fragment
+  ("LAC") stays `not_found`.
+- **Citation links on team lists.** `get_project` and `get_research_section`
+  add `principal_investigator_refs` and `member_refs`, and `get_institution`
+  adds `affiliated_person_refs` and an `amira_url` on each project. Each ref is
+  `{label, omeka_id, amira_url}`, as `author_refs` on publications are. The name
+  arrays stay unchanged. `get_research_section` grows by about 20% on the
+  weigh sample.
+- **`find_related` pivots on one person.** A `person` value matching several
+  authority records ("Vierke") now returns `ambiguous_entity` with their ids,
+  where it used to pool everyone matched into one set of counts. A full name or
+  `person:<id>` pivots on that record, by id on linked credits. A name with no
+  authority record keeps the old name match.
+- **`get_person` collaborators are people.** Groups and institutions credited
+  on the same record ("Institute of African Studies") no longer appear in
+  `top_collaborators` or `collaborator_count`.
+- **`search_projects`**: the `principal_investigator` example names a PI
+  (`Alber, Erdmute`); `Baumann, Oliver` leads no project, so the old example
+  found nothing.
+
 ## 1.27.0 — 2026-10-26
 
 - **MCP TypeScript SDK 2.4.0**: `@modelcontextprotocol/server` and `client`

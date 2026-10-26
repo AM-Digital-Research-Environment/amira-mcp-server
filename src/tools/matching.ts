@@ -8,4 +8,5 @@ export {
   equalsCI,
   matchSnippet,
   refLabels,
+  refLinks,
 } from "../matching.js";

@@ -18,6 +18,7 @@ import {
   pageOf,
   projectSummary,
   refLabels,
+  refLinks,
   textResult,
   type Server,
 } from "./_shared.js";
@@ -42,7 +43,7 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
           .optional()
           .describe("ubt | unilag | ujkz | ufba | external — code or name. A data facet, not a full AMRC list"),
         research_section: z.string().max(1000).optional().describe("Name or id, e.g. 'Knowledges'"),
-        principal_investigator: z.string().max(1000).optional().describe("A PI name; either order works ('Oliver Baumann' finds 'Baumann, Oliver')"),
+        principal_investigator: z.string().max(1000).optional().describe("A PI name; either order works ('Erdmute Alber' finds 'Alber, Erdmute')"),
         member: z.string().max(1000).optional().describe("A project member's name; either order works"),
         institution: z.string().max(1000).optional().describe("Funding/affiliated institution name, partial"),
         limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
@@ -126,6 +127,8 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
         research_sections: refLabels(p.sections),
         principal_investigators: refLabels(p.pis),
         members: refLabels(p.members),
+        principal_investigator_refs: refLinks(p.pis),
+        member_refs: refLinks(p.members),
         funded_by: refLabels(p.funded_by),
         description: p.description,
         date: p.date,

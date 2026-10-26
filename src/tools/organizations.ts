@@ -164,6 +164,20 @@ function contributedItems(store: DataStore, org: OrganisationRec): ResearchItemR
 const orgMatches = (o: OrganisationRec, keyword: string): boolean =>
   containsCI(o.name, keyword) || anyContainsCI(o.alt_names, keyword);
 
+const words = (s: string): string[] => fold(s).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
+/** Every word of `query` is a whole word of the name or of one variant:
+ * "LACC" matches "University of Lagos African Cluster Centre (LACC)", but a
+ * fragment ("Lag") matches nothing, so get_institution never guesses. */
+function orgWordsMatch(o: OrganisationRec, query: string): boolean {
+  const q = words(query);
+  if (!q.length) return false;
+  return [o.name, ...(o.alt_names ?? [])].some((n) => {
+    const have = new Set(words(n));
+    return q.every((w) => have.has(w));
+  });
+}
+
 export function registerOrganizationTools(server: Server, tools: ToolMap): void {
   // === list_institutions ====================================================
   tools.list_institutions = server.registerTool(
@@ -225,9 +239,23 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_institution");
       if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
-      const record = id != null
+      let record = id != null
         ? store.getOrganisationByOId(Number(stripTypedId(String(id), ["organisation"])))
         : store.getOrganisation(name!);
+      // Not an exact name or recorded variant: accept whole words of one name,
+      // so an acronym in parentheses ("LACC") resolves the way list_institutions
+      // finds it. Several matches are named, never guessed between.
+      if (!record && id == null) {
+        const matches = store.organisations.filter((o) => orgWordsMatch(o, name!));
+        if (matches.length > 1) {
+          return errorResult("ambiguous_entity", `${matches.length} institutions or groups match '${name}'; use an exact name or id.`, {
+            suggested_tool: "list_institutions",
+            available_values: matches.slice(0, 10).map((o) => `${o.name} (organisation:${o.o_id})`),
+            terse: "Several institutions or groups match; use an exact name or id.",
+          });
+        }
+        record = matches[0];
+      }
       if (!record) {
         return errorResult("not_found", `No institution or group matching '${id ?? name}'.`, {
           suggested_tool: "list_institutions",
@@ -263,9 +291,10 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
         wikidata: record.wikidata,
         identifiers: record.identifiers ?? [],
         project_count: projects.length,
-        projects: projects.map((p) => ({ id: String(p.o_id), omeka_id: p.o_id, name: p.name })),
+        projects: projects.map((p) => ({ id: String(p.o_id), omeka_id: p.o_id, name: p.name, amira_url: itemUrl(p.o_id) })),
         affiliated_person_count: people.length,
         affiliated_persons: people.slice(0, 50).map((p) => p.name),
+        affiliated_person_refs: people.slice(0, 50).map((p) => ({ label: p.name, omeka_id: p.o_id, amira_url: itemUrl(p.o_id) })),
         affiliated_persons_truncated: people.length > 50 || undefined,
         contributed_item_count: items.length,
         contributed_items: items.slice(0, 50).map(itemRef),

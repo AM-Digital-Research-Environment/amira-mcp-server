@@ -97,6 +97,7 @@ async function errorOf(name, args) {
 }
 const omekaIds = (page) => page.results.map((r) => r.omeka_id);
 const itemRef = (id, title, type, date) => ({ id: String(id), omeka_id: id, title, type, date, amira_url: url(id) });
+const ref = (label, id) => ({ label, omeka_id: id, amira_url: url(id) });
 const AMRC = { key: "amrc", name: "Africa Multiple Research Centres", omeka_id: 37685, amira_url: url(37685) };
 
 // --- institutions and groups ---------------------------------------------------
@@ -105,8 +106,8 @@ const UBT = {
   id: "200", omeka_id: 200, name: "University of Bayreuth", name_variants: ["UBT"], kind: "institution",
   part_of: [{ id: "37685", omeka_id: 37685, name: "Africa Multiple Research Centres", amira_url: url(37685) }],
   partner_categories: [AMRC], latitude: 49.94, longitude: 11.58, wikidata: null, identifiers: [],
-  project_count: 1, projects: [{ id: "300", omeka_id: 300, name: "Fixture Art Worlds" }],
-  affiliated_person_count: 1, affiliated_persons: ["Beier, Ulli"],
+  project_count: 1, projects: [{ id: "300", omeka_id: 300, name: "Fixture Art Worlds", amira_url: url(300) }],
+  affiliated_person_count: 1, affiliated_persons: ["Beier, Ulli"], affiliated_person_refs: [ref("Beier, Ulli", 100)],
   contributed_item_count: 0, contributed_items: [], amira_url: url(200),
 };
 const UJKZ = {
@@ -114,8 +115,8 @@ const UJKZ = {
   part_of: [], partner_categories: [AMRC], latitude: 12.37, longitude: -1.5,
   wikidata: "http://www.wikidata.org/entity/Q3551690",
   identifiers: [{ scheme: "ror", id: "00t5e2y66", url: "https://ror.org/00t5e2y66" }],
-  project_count: 1, projects: [{ id: "302", omeka_id: 302, name: "Ouaga Sound Archive" }],
-  affiliated_person_count: 1, affiliated_persons: ["Kaboré, Awa"],
+  project_count: 1, projects: [{ id: "302", omeka_id: 302, name: "Ouaga Sound Archive", amira_url: url(302) }],
+  affiliated_person_count: 1, affiliated_persons: ["Kaboré, Awa"], affiliated_person_refs: [ref("Kaboré, Awa", 102)],
   contributed_item_count: 0, contributed_items: [], amira_url: url(202),
 };
 
@@ -129,6 +130,11 @@ test("get_institution: by name, acronym, folded spelling, id and every typed-id 
   }
   // id wins over name when both are given.
   assert.equal((await call("get_institution", { id: 202, name: "UBT" })).omeka_id, 202);
+  // Whole words of one name resolve, as list_institutions finds them ("LACC" in
+  // "University of Lagos African Cluster Centre (LACC)" used to be not_found).
+  for (const [name, oId] of [["Ki-Zerbo", 202], ["joseph ki zerbo", 202], ["Bayreuth", 200]]) {
+    assert.equal((await call("get_institution", { name })).omeka_id, oId, name);
+  }
 });
 
 test("get_institution: partner category from an isPartOf link; groups get item credits, no categories", async () => {
@@ -137,11 +143,12 @@ test("get_institution: partner category from an isPartOf link; groups get item c
     part_of: [{ id: "39073", omeka_id: 39073, name: "Privileged partner", amira_url: url(39073) }],
     partner_categories: [{ key: "privileged", name: "Privileged partner", omeka_id: 39073, amira_url: url(39073) }],
     wikidata: null, identifiers: [], project_count: 0, projects: [], affiliated_person_count: 0, affiliated_persons: [],
-    contributed_item_count: 0, contributed_items: [], amira_url: url(203),
+    affiliated_person_refs: [], contributed_item_count: 0, contributed_items: [], amira_url: url(203),
   });
   assert.deepEqual(await call("get_institution", { id: "group:201" }), {
     id: "201", omeka_id: 201, name: "Test Research Group", kind: "group", part_of: [], partner_categories: [],
     wikidata: null, identifiers: [], project_count: 0, projects: [], affiliated_person_count: 0, affiliated_persons: [],
+    affiliated_person_refs: [],
     contributed_item_count: 1, contributed_items: [itemRef(504, "Ouagadougou Street Recording", "Sound", "2021")],
     amira_url: url(201),
   });
@@ -353,6 +360,7 @@ test("get_project: detail, sample items, media count, every id form", async () =
   const p300 = {
     id: "300", omeka_id: 300, name: "Fixture Art Worlds", university: "University of Bayreuth",
     research_sections: ["Arts & Aesthetics"], principal_investigators: ["Beier, Ulli"], members: ["Fendler, Ute"],
+    principal_investigator_refs: [ref("Beier, Ulli", 100)], member_refs: [ref("Fendler, Ute", 101)],
     funded_by: ["University of Bayreuth"], description: "A fixture project about art worlds.",
     date: { start: "2019-06-01", end: "2022-05-31" }, website: null, item_count: 2, items_with_media: 1,
     items_by_resource_type: { Image: 2 },
@@ -366,7 +374,8 @@ test("get_project: detail, sample items, media count, every id form", async () =
   assert.deepEqual(await call("get_project", { id: "project:302" }), {
     id: "302", omeka_id: 302, name: "Ouaga Sound Archive", name_variants: ["OSA"], university: "Université Joseph Ki-Zerbo",
     research_sections: ["Arts and Aesthetics (renamed)", "Knowledges"], principal_investigators: ["Kaboré, Awa"],
-    members: ["Beier, Ulli"], funded_by: ["Université Joseph Ki-Zerbo"], description: "Urban soundscapes of Ouagadougou.",
+    members: ["Beier, Ulli"], principal_investigator_refs: [ref("Kaboré, Awa", 102)], member_refs: [ref("Beier, Ulli", 100)],
+    funded_by: ["Université Joseph Ki-Zerbo"], description: "Urban soundscapes of Ouagadougou.",
     date: { start: "2021-01-01", end: null }, website: "https://example.org/osa", item_count: 1, items_with_media: 1,
     items_by_resource_type: { Sound: 1 }, top_subjects: [{ subject: "Music", item_count: 1 }],
     sample_items: [itemRef(504, "Ouagadougou Street Recording", "Sound", "2021")], amira_url: url(302),
@@ -397,7 +406,8 @@ test("get_project: sample_items stop at ten while counts cover every item", asyn
 
 const S400 = {
   id: "400", omeka_id: 400, name: "Arts & Aesthetics", funding_phase: "AM 1.0 (2019–2025)", date: { start: "2019", end: "2025" },
-  description: "Fixture section on arts.", principal_investigators: ["Beier, Ulli"], members: [], spokesperson: null, website: null,
+  description: "Fixture section on arts.", principal_investigators: ["Beier, Ulli"], members: [],
+  principal_investigator_refs: [ref("Beier, Ulli", 100)], member_refs: [], spokesperson: null, website: null,
   // 302 links this section by id under a stale label and still counts.
   project_count: 2, item_count: 3, projects: [P300, P302], amira_url: url(400),
 };
@@ -409,7 +419,8 @@ test("get_research_section: by name or id, projects linked by id, funding phases
   }
   assert.deepEqual(await call("get_research_section", { name: "Knowledges" }), {
     id: "402", omeka_id: 402, name: "Knowledges", funding_phase: "AM 2.0 (2026–2032)", date: { start: "2026-01-01", end: "2032-12-31" },
-    description: KNOWLEDGES_DESCRIPTION, principal_investigators: [], members: ["Kaboré, Awa"], spokesperson: "Kaboré, Awa",
+    description: KNOWLEDGES_DESCRIPTION, principal_investigators: [], members: ["Kaboré, Awa"],
+    principal_investigator_refs: [], member_refs: [ref("Kaboré, Awa", 102)], spokesperson: "Kaboré, Awa",
     website: "https://example.org/knowledges", project_count: 1, item_count: 1, projects: [P302], amira_url: url(402),
   });
   const external = await call("get_research_section", { id: "section:401" });
@@ -486,11 +497,11 @@ test("get_person: id, typed id and either name order agree; credits, projects, c
     podcasts: [{ role: "Host", id: "531", omeka_id: 531, title: "Fixture Conversations Episode 2", date: "2099-01-01", amira_url: url(531) }],
     video_count: 1,
     videos: [{ role: "Speaker", id: "542", omeka_id: 542, title: "Round Table on Sound", date: "2024-05-01", amira_url: url(542) }],
-    collaborator_count: 3,
+    // Test Research Group, credited on item 504 too, is a group, not a collaborator.
+    collaborator_count: 2,
     top_collaborators: [
       { name: "Diallo, Mariam", shared_items: 0, shared_publications: 0, shared_recordings: 1, amira_url: null },
       { name: "Fendler, Ute", shared_items: 0, shared_publications: 0, shared_recordings: 1, amira_url: url(101) },
-      { name: "Test Research Group", shared_items: 1, shared_publications: 0, shared_recordings: 0, amira_url: url(201) },
     ],
     amira_url: url(102),
   };

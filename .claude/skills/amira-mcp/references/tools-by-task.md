@@ -122,7 +122,7 @@ re-run a search in a second spelling.
 
 | Task | Tool | Key params |
 | --- | --- | --- |
-| What connects to X? | `find_related` | `entity_type` (subject/location/person/project) + `value` |
+| What connects to X? | `find_related` | `entity_type` (subject/location/person/project) + `value`; a person is a full name or `person:<id>` (a surname shared by several people returns their ids) |
 
 Returns ranked related projects, sections, subjects, people, countries (rolled up to each place's
 top-level country), formats (with co-occurrence counts) plus slim sample items. For subject/person

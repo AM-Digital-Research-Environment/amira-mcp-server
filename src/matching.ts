@@ -7,6 +7,7 @@
 // d'Ivoire" in item titles, and a model cannot know which corpus stores which.
 import { fold, foldCached, foldedIndexOf } from "./text.js";
 import type { LinkedRef } from "./types.js";
+import { itemUrlOrNull } from "./urls.js";
 
 export function containsCI(haystack: string | null | undefined, needle: string): boolean {
   if (!haystack) return false;
@@ -24,6 +25,11 @@ export function equalsCI(a: string | null | undefined, b: string): boolean {
 }
 
 export const refLabels = (refs: LinkedRef[] | undefined): string[] => (refs ?? []).map((r) => r.label);
+
+/** Linked refs with their citation link: the instructions require an amira_url
+ * for every person or record a reader may mention, so name lists carry these. */
+export const refLinks = (refs: LinkedRef[] | undefined) =>
+  (refs ?? []).map((r) => ({ label: r.label, omeka_id: r.o_id, amira_url: itemUrlOrNull(r.o_id) }));
 
 /** Truncate free text to a short preview for list/summary views. */
 export function brief(text: string | null | undefined, n = 280): string | null {

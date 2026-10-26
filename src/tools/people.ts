@@ -185,7 +185,9 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       const tally = (refs: { label: string; o_id: number | null }[], field: Shared) => {
         const seen = new Set<string>();
         for (const ref of refs) {
-          if (isPerson(ref.label, ref.o_id)) continue;
+          // Collaborators are people: groups, companies and institutions
+          // credited on the same record ("Institute of African Studies") are not.
+          if (isPerson(ref.label, ref.o_id) || (ref.o_id != null && store.getOrganisationByOId(ref.o_id))) continue;
           const key = ref.o_id != null ? `id:${ref.o_id}` : `name:${nameKey(ref.label) || fold(ref.label)}`;
           if (seen.has(key)) continue;
           seen.add(key);
