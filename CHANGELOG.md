@@ -5,7 +5,7 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## 1.29.0 — unreleased
+## 1.29.0 — 2026-10-27
 
 Fixes from a review of 1.27.0 answers by the researchers they described.
 
