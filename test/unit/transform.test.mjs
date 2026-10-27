@@ -166,6 +166,31 @@ test("publication: class -> type, pageStart/End fallback, numeric volume", () =>
   assert.equal(out.urls.length, 2);
 });
 
+test("publication: linked ERef/EPub ids give the key and the repository urls", () => {
+  // MongoDB2OmekaS since 27 Oct 2026: each source id labels its permalink link.
+  const out = transformPublication(
+    {
+      "o:id": 30002,
+      "o:title": "A Book",
+      "dcterms:identifier": [
+        uri("https://eref.uni-bayreuth.de/id/eprint/70514/", "eref-70514"),
+        uri("https://epub.uni-bayreuth.de/id/eprint/5720/", "epub-5720"),
+        uri("http://www.wikidata.org/entity/Q141722498", "Q141722498"),
+      ],
+      "bibo:uri": [uri("https://nbn-resolving.org/urn:nbn:de:bvb:703-epub-5720-6", "urn:nbn:de:bvb:703-epub-5720-6")],
+    },
+    ctx,
+    444,
+  );
+  assert.equal(out.pub_id, "eref-70514");
+  assert.deepEqual(out.identifiers, ["eref-70514", "epub-5720", "Q141722498"]);
+  assert.deepEqual(out.urls, [
+    "https://eref.uni-bayreuth.de/id/eprint/70514/",
+    "https://epub.uni-bayreuth.de/id/eprint/5720/",
+    "https://nbn-resolving.org/urn:nbn:de:bvb:703-epub-5720-6",
+  ]);
+});
+
 test("podcast: customvocab speakers, missing transcript stays null", () => {
   const out = transformPodcast(
     {

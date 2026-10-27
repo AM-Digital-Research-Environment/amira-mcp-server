@@ -53,6 +53,9 @@ export interface TransformContext {
   classTerm(id: number | null): string | null;
 }
 
+/** An ERef/EPub eprint permalink. */
+const REPOSITORY_PERMALINK = /^https?:\/\/(eref|epub)\.uni-bayreuth\.de\/id\/eprint\/\d+/i;
+
 export function uniFromDreId(dreId: string | null | undefined): University {
   const id = dreId ?? "";
   if (id.startsWith("UBT_")) return "ubt";
@@ -407,7 +410,13 @@ export function transformPublication(item: OmekaItem, ctx: TransformContext, cla
     abstract: firstString(item, "bibo:abstract"),
     subjects: linkedRefs(item, "dcterms:subject"),
     language: firstString(item, "dcterms:language"),
-    urls: uriValues(item, "bibo:uri").map((u) => u.url),
+    // Repository permalinks first: each ERef/EPub id links its permalink on
+    // dcterms:identifier (MongoDB2OmekaS, 27 Oct 2026; bibo:uri before),
+    // then the URN. The Wikidata link is not a repository URL.
+    urls: [
+      ...uriValues(item, "dcterms:identifier").filter((u) => REPOSITORY_PERMALINK.test(u.url)),
+      ...uriValues(item, "bibo:uri"),
+    ].map((u) => u.url).filter((url, i, all) => all.indexOf(url) === i),
     status: firstString(item, "bibo:status"),
     funders: linkedRefs(item, "frapo:isFundedBy"),
     places_of_publication: linkedRefs(item, "marcrel:pup"),

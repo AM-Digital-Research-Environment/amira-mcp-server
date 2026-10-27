@@ -245,7 +245,7 @@ export interface PublicationRec {
   /** dcterms:subject labels. */
   subjects: LinkedRef[];
   language: string | null;
-  /** bibo:uri — ERef / EPub repository links, in source order. */
+  /** ERef / EPub permalinks (dcterms:identifier links), then the URN (bibo:uri). */
   urls: string[];
   /** bibo:status label, e.g. "Peer reviewed". */
   status: string | null;
