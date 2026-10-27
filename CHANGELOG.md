@@ -5,6 +5,26 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## 1.29.0 — unreleased
+
+Fixes from a review of 1.27.0 answers by the researchers they described.
+
+- **`get_person` collaborators share the work.** A record links two people
+  only when both hold a collaborative role on it. Production crew and
+  custodial or sponsoring credits (sound engineer, transcriber, repository,
+  sponsor, publisher, provider, copyright holder, owner, former owner, patron)
+  no longer make collaborators, in either direction: a podcast's sound
+  engineer had been listed among the speakers' collaborators. The records
+  themselves are still listed under the person's podcasts and items.
+- **The coverage note states the harvest's selection.** `coverage_note` now
+  says that only works from 2019 on filed under the Cluster (its repository
+  division or the EXC 2052 grant) are harvested, so a Bayreuth researcher's
+  other publications are absent too, and asks that the profile be presented as
+  a summary of the records. Told only the source, a researcher asked why the
+  answer had not completed the list from ERef. The `person_profile` caveat and
+  `docs/publications.md` say the same. `get_person` grows by about 50 tokens
+  (15%) on the weigh sample.
+
 ## 1.28.1 — 2026-10-26
 
 - **Dependencies:** `fast-uri` 3.1.9 (through `ajv`), for four moderate

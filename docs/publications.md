@@ -2,6 +2,10 @@
 
 The bibliography is harvested from ERef and EPub Bayreuth and published in
 [Omeka item set 29918](https://data.africamultiple.uni-bayreuth.de/s/amira/item-set/29918).
+The harvest takes works from 2019 on that are filed under the Cluster, in its
+repository division or under the EXC 2052 grant, plus a few curated records. A
+Bayreuth researcher's other publications are therefore absent, and `get_person`
+says so in its `coverage_note`.
 The MCP server reads that set without restricting publication templates, so new
 upstream types remain discoverable. It does not harvest the repositories directly.
 

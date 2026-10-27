@@ -38,9 +38,9 @@ const placeNames = (store: DataStore): string[] => store.locations.map((l) => l.
 const PROFILE_CAVEAT =
   "This profile is compiled from the records AMIRA holds. It reflects what the platform catalogues, not the " +
   "person's full work, role or standing, and it is not an evaluation of the person or their scholarship. Gaps " +
-  "come from cataloguing and harvesting: the bibliography is harvested from University of Bayreuth repositories " +
-  "(EPub, ERef), so publications from the partner research centres may be missing, and the absence of a record " +
-  "is not proof of absence. Present the result as records with their AMIRA links, open it with one sentence " +
+  "come from cataloguing and harvesting: the bibliography takes only works from 2019 on filed under the Cluster " +
+  "in University of Bayreuth repositories (EPub, ERef), so other publications are missing, those from the " +
+  "partner research centres especially, and the absence of a record is not proof of absence. Present the result as records with their AMIRA links, open it with one sentence " +
   "saying it is compiled from AMIRA records and is not an assessment, and do not rank, rate or judge the person.";
 
 const text = (body: string) => ({

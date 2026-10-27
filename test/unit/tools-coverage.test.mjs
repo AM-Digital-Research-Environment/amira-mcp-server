@@ -484,9 +484,11 @@ test("get_person: id, typed id and either name order agree; credits, projects, c
     name: "Kaboré, Awa", found_in_authority_list: true, id: "102", omeka_id: 102, affiliations: ["Université Joseph Ki-Zerbo"],
     identifiers: [{ scheme: "orcid", id: "0000-0002-1825-0097", url: "https://orcid.org/0000-0002-1825-0097" }],
     name_variants: ["Awa Kabore-Ouédraogo"],
-    coverage_note: "Counts describe the records AMIRA holds, not the person's full work. Publications are harvested from " +
-      "University of Bayreuth repositories (EPub, ERef), so a partner-centre researcher's publications appear " +
-      "only if deposited there; a count of zero is not evidence that none exist.",
+    coverage_note: "Counts describe the records AMIRA holds, not the person's full work; present the profile as a summary of " +
+      "these records. Publications come from University of Bayreuth repositories (EPub, ERef), and only works from " +
+      "2019 on filed under the Cluster (its repository division or the EXC 2052 grant) are harvested: a Bayreuth " +
+      "researcher's other publications are absent, and a partner-centre researcher's appear only if deposited " +
+      "there. A count of zero is not evidence that none exist.",
     as_principal_investigator: [{ id: "302", omeka_id: 302, name: "Ouaga Sound Archive", amira_url: url(302) }],
     as_member: [], as_section_principal_investigator: [],
     as_section_member: [{ id: "402", omeka_id: 402, name: "Knowledges", funding_phase: "AM 2.0 (2026–2032)", amira_url: url(402) }],

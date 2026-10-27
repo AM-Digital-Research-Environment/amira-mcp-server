@@ -56,6 +56,18 @@ function creditedAnywhere(store: DataStore, name: string): string | null {
 
 const COLLABORATOR_CAP = 15;
 
+/**
+ * Credits that place a person on a record without sharing its work: production
+ * crew and custodial or sponsoring roles. Until v1.29.0 a podcast's sound
+ * engineer was listed among the speakers' collaborators, and an answer passed
+ * that on to the researcher it described.
+ */
+const NON_COLLABORATIVE_ROLES = new Set([
+  "Sound engineer", "Transcriber", "Repository", "Sponsor", "Publisher", "Provider",
+  "Copyright holder", "Owner", "Former owner", "Patron",
+].map(fold));
+const collaborative = (role: string | null | undefined): boolean => !role || !NON_COLLABORATIVE_ROLES.has(fold(role));
+
 /** Near misses offered when a person search finds nobody. */
 const SUGGESTION_CAP = 5;
 
@@ -63,12 +75,16 @@ const SUGGESTION_CAP = 5;
  * How to read a profile's counts, sent with every get_person result. Until
  * v1.26.0 only the person_profile prompt said this, and hosts rarely invoke
  * prompts: a zero publication count reached answers without its reason.
- * Curatorial guidance, so AMIRA_GUIDANCE=off drops it.
+ * Curatorial guidance, so AMIRA_GUIDANCE=off drops it. Since v1.29.0 it states
+ * the harvest's selection too: told only the source, a Bayreuth researcher
+ * asked why their other ERef publications were missing.
  */
 const COVERAGE_NOTE =
-  "Counts describe the records AMIRA holds, not the person's full work. Publications are harvested from " +
-  "University of Bayreuth repositories (EPub, ERef), so a partner-centre researcher's publications appear " +
-  "only if deposited there; a count of zero is not evidence that none exist.";
+  "Counts describe the records AMIRA holds, not the person's full work; present the profile as a summary of " +
+  "these records. Publications come from University of Bayreuth repositories (EPub, ERef), and only works from " +
+  "2019 on filed under the Cluster (its repository division or the EXC 2052 grant) are harvested: a Bayreuth " +
+  "researcher's other publications are absent, and a partner-centre researcher's appear only if deposited " +
+  "there. A count of zero is not evidence that none exist.";
 
 /**
  * `{ suggestions, hint }` for a person query that matched nobody: the authority
@@ -179,15 +195,18 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         ({ id: String(s.o_id), omeka_id: s.o_id, name: s.name, funding_phase: fundingPhase(s), amira_url: itemUrl(s.o_id) });
 
       // Collaborators: other people credited on the same items, publications,
-      // podcast episodes or videos, counted once per shared record.
+      // podcast episodes or videos, counted once per shared record. A record
+      // counts only when both sides hold a collaborative role on it.
       type Shared = "shared_items" | "shared_publications" | "shared_recordings";
       const collaborators = new Map<string, { name: string; o_id: number | null } & Record<Shared, number>>();
-      const tally = (refs: { label: string; o_id: number | null }[], field: Shared) => {
+      const tally = (refs: { label: string; o_id: number | null; role?: string }[], field: Shared) => {
+        if (!refs.some((ref) => isPerson(ref.label, ref.o_id) && collaborative(ref.role))) return;
         const seen = new Set<string>();
         for (const ref of refs) {
           // Collaborators are people: groups, companies and institutions
           // credited on the same record ("Institute of African Studies") are not.
           if (isPerson(ref.label, ref.o_id) || (ref.o_id != null && store.getOrganisationByOId(ref.o_id))) continue;
+          if (!collaborative(ref.role)) continue;
           const key = ref.o_id != null ? `id:${ref.o_id}` : `name:${nameKey(ref.label) || fold(ref.label)}`;
           if (seen.has(key)) continue;
           seen.add(key);
@@ -203,7 +222,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         const credit = it.contributors.find((c) => isPerson(c.name, c.o_id));
         if (!credit) continue;
         contributed.push({ ref: itemRef(it), role: credit.role || "Contributor" });
-        tally(it.contributors.map((c) => ({ label: c.name, o_id: c.o_id })), "shared_items");
+        tally(it.contributors.map((c) => ({ label: c.name, o_id: c.o_id, role: c.role })), "shared_items");
       }
 
       const pubs: { p: PublicationRec; role: "author" | "editor" }[] = [];
@@ -224,7 +243,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
           const credit = credits.find((c) => isPerson(c.name, c.o_id));
           if (!credit) continue;
           found.push(recordingRef(r, credit.role || "Speaker"));
-          tally(credits.map((c) => ({ label: c.name, o_id: c.o_id })), "shared_recordings");
+          tally(credits.map((c) => ({ label: c.name, o_id: c.o_id, role: c.role })), "shared_recordings");
         }
         return found;
       };
