@@ -68,6 +68,33 @@ const NON_COLLABORATIVE_ROLES = new Set([
 ].map(fold));
 const collaborative = (role: string | null | undefined): boolean => !role || !NON_COLLABORATIVE_ROLES.has(fold(role));
 
+/**
+ * Publications with more authors than this are team works and add no
+ * collaborators: a 25-author position paper made 24 people a researcher's
+ * collaborators. get_person reports how many it left out.
+ */
+const LARGE_TEAM_AUTHORS = 10;
+
+/**
+ * The edited work behind a record that lists editors: the volume itself, or
+ * the volume a chapter appears in, by main title. Chapter records repeat
+ * their volume's editors, so co-editors are counted once per volume, not once
+ * per chapter. A journal issue keeps its volume and issue numbers.
+ */
+function editedWork(p: PublicationRec): string {
+  const volume = p.authors.length ? p.venue : p.title;
+  if (!volume) return `pub:${p.o_id}`;
+  const main = fold(volume.split(/\s*:\s+/)[0] ?? volume).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return p.type === "article" ? `work:${main}|${p.volume ?? ""}|${p.issue ?? ""}` : `work:${main}`;
+}
+
+/** How to read top_collaborators, sent with every get_person result while guidance is on. */
+const COLLABORATORS_NOTE =
+  "People credited with this person on the same records, not a measure of collaboration. shared_authorships " +
+  "and shared_editorships count co-written and co-edited works (a volume once); shared_recordings counts joint " +
+  `podcast or video appearances; works with more than ${LARGE_TEAM_AUTHORS} authors are left out. Report them ` +
+  "as shared credits.";
+
 /** Near misses offered when a person search finds nobody. */
 const SUGGESTION_CAP = 5;
 
@@ -195,11 +222,17 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         ({ id: String(s.o_id), omeka_id: s.o_id, name: s.name, funding_phase: fundingPhase(s), amira_url: itemUrl(s.o_id) });
 
       // Collaborators: other people credited on the same items, publications,
-      // podcast episodes or videos, counted once per shared record. A record
-      // counts only when both sides hold a collaborative role on it.
-      type Shared = "shared_items" | "shared_publications" | "shared_recordings";
-      const collaborators = new Map<string, { name: string; o_id: number | null } & Record<Shared, number>>();
-      const tally = (refs: { label: string; o_id: number | null; role?: string }[], field: Shared) => {
+      // podcast episodes or videos. A record counts only when both sides hold
+      // a collaborative role on it, and a publication only when both hold the
+      // same role: the editors of a volume are not its chapter authors'
+      // collaborators. Each relation is counted once per record, and
+      // co-editing once per edited volume (editedWork).
+      type Collaborator = {
+        name: string; o_id: number | null; shared_items: number; shared_recordings: number;
+        authored: Set<string>; edited: Set<string>;
+      };
+      const collaborators = new Map<string, Collaborator>();
+      const tally = (refs: { label: string; o_id: number | null; role?: string }[], count: (row: Collaborator) => void) => {
         if (!refs.some((ref) => isPerson(ref.label, ref.o_id) && collaborative(ref.role))) return;
         const seen = new Set<string>();
         for (const ref of refs) {
@@ -211,8 +244,8 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
           if (seen.has(key)) continue;
           seen.add(key);
           const row = collaborators.get(key) ??
-            { name: ref.label, o_id: ref.o_id, shared_items: 0, shared_publications: 0, shared_recordings: 0 };
-          row[field]++;
+            { name: ref.label, o_id: ref.o_id, shared_items: 0, shared_recordings: 0, authored: new Set<string>(), edited: new Set<string>() };
+          count(row);
           collaborators.set(key, row);
         }
       };
@@ -222,15 +255,19 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         const credit = it.contributors.find((c) => isPerson(c.name, c.o_id));
         if (!credit) continue;
         contributed.push({ ref: itemRef(it), role: credit.role || "Contributor" });
-        tally(it.contributors.map((c) => ({ label: c.name, o_id: c.o_id, role: c.role })), "shared_items");
+        tally(it.contributors.map((c) => ({ label: c.name, o_id: c.o_id, role: c.role })), (row) => row.shared_items++);
       }
 
       const pubs: { p: PublicationRec; role: "author" | "editor" }[] = [];
+      let largeTeamPublications = 0;
       for (const p of store.publications) {
         const role = pubRole(p, oId, canonical);
         if (!role) continue;
         pubs.push({ p, role });
-        tally([...p.authors, ...p.editors], "shared_publications");
+        if (p.authors.length > LARGE_TEAM_AUTHORS) { largeTeamPublications++; continue; }
+        tally(p.authors, (row) => row.authored.add(String(p.o_id)));
+        const work = editedWork(p);
+        tally(p.editors, (row) => row.edited.add(work));
       }
 
       // Podcast hosts/speakers and video speakers, with the credited role.
@@ -243,14 +280,14 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
           const credit = credits.find((c) => isPerson(c.name, c.o_id));
           if (!credit) continue;
           found.push(recordingRef(r, credit.role || "Speaker"));
-          tally(credits.map((c) => ({ label: c.name, o_id: c.o_id, role: c.role })), "shared_recordings");
+          tally(credits.map((c) => ({ label: c.name, o_id: c.o_id, role: c.role })), (row) => row.shared_recordings++);
         }
         return found;
       };
       const podcasts = recordings(store.podcasts, (p) => p.people);
       const videos = recordings(store.videos, (v) => v.speakers);
 
-      const shared = (c: Record<Shared, number>) => c.shared_items + c.shared_publications + c.shared_recordings;
+      const shared = (c: Collaborator) => c.shared_items + c.authored.size + c.edited.size + c.shared_recordings;
       const topCollaborators = [...collaborators.values()].sort((a, b) => shared(b) - shared(a) || a.name.localeCompare(b.name));
 
       return textResult({
@@ -278,11 +315,14 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         video_count: videos.length,
         videos: videos.slice(0, 50),
         videos_truncated: videos.length > 50 || undefined,
+        ...(guidanceEnabled() ? { collaborators_note: COLLABORATORS_NOTE } : {}),
         collaborator_count: topCollaborators.length,
         top_collaborators: topCollaborators.slice(0, COLLABORATOR_CAP).map((c) => ({
-          name: c.name, shared_items: c.shared_items, shared_publications: c.shared_publications,
+          name: c.name, shared_items: c.shared_items, shared_publications: c.authored.size + c.edited.size,
+          shared_authorships: c.authored.size, shared_editorships: c.edited.size,
           shared_recordings: c.shared_recordings, amira_url: itemUrlOrNull(c.o_id),
         })),
+        large_team_publication_count: largeTeamPublications || undefined,
         amira_url: itemUrlOrNull(oId),
       });
     },

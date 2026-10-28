@@ -62,9 +62,12 @@ url }`, e.g. GND), project roles `as_principal_investigator[]` and `as_member[]`
 `as_section_principal_investigator[]` and `as_section_member[]` (with `funding_phase`), `contributed_items[]` (slim refs with the
 person's `role`; capped at 50, total reported), `publications[]` (author/editor), `podcasts[]` and
 `videos[]` (episodes and videos with the person's `role`) and `top_collaborators[]` (`shared_items`,
-`shared_publications`, `shared_recordings`). A `coverage_note` says how to read the counts: they
-describe AMIRA's records, and publications come from University of Bayreuth repositories, so a zero
-does not mean the person has none. Works for names absent from the authority
+`shared_publications`, split into `shared_authorships` and `shared_editorships`, and
+`shared_recordings`). Publications pair people only in the same role, co-editing counts once per
+volume, and works with more than ten authors are left out (`large_team_publication_count`). These are
+shared credits, not a measure of collaboration, as `collaborators_note` says. A `coverage_note` says
+how to read the counts: they describe AMIRA's records, and publications come from University of
+Bayreuth repositories, so a zero does not mean the person has none. Works for names absent from the authority
 list when they occur as a full credit; a fragment returns candidates.
 
 ## Institution / Group

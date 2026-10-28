@@ -30,6 +30,24 @@ d.research_items.push({
   o_id: 505, dre_id: "ubt-fx-0505", title: "Interview Transcript",
   contributors: [{ name: "Fendler, Ute", role: "Interviewer", o_id: 101 }, { name: "Okafor, Chidi", role: "Transcriber", o_id: 103 }],
 });
+// An edited volume and two of its chapters, whose records repeat the volume's
+// editors, and an 11-author working paper.
+d.persons.push({ o_id: 104, name: "Mensah, Ama", affiliations: [], identifiers: [] },
+  { o_id: 105, name: "Bello, Tunde", affiliations: [], identifiers: [] },
+  { o_id: 106, name: "Chukwu, Ada", affiliations: [], identifiers: [] });
+const pub = (o_id, fields) => ({ ...structuredClone(d.publications[0]), o_id, pub_id: `eref-${o_id}`, doi: null, fulltext: null, ...fields });
+const volumeEditors = [{ label: "Fendler, Ute", o_id: 101 }, { label: "Mensah, Ama", o_id: 104 }];
+d.publications.push(
+  pub(560, { type: "book", title: "Shared Memory : Essays on Commemoration", authors: [], editors: volumeEditors,
+    venue: "Shared Memory", venue_ref: null }),
+  pub(561, { type: "chapter", title: "Monuments in Motion", authors: [{ label: "Beier, Ulli", o_id: 100 }],
+    editors: volumeEditors, venue: "Shared Memory : essays on commemoration", venue_ref: null }),
+  pub(562, { type: "chapter", title: "Introduction", authors: [{ label: "Fendler, Ute", o_id: 101 }, { label: "Bello, Tunde", o_id: 105 }],
+    editors: volumeEditors, venue: "Shared Memory : Essays on Commemoration", venue_ref: null }),
+  pub(563, { type: "working_paper", title: "A Position Paper", editors: [], venue: null, venue_ref: null,
+    authors: [{ label: "Beier, Ulli", o_id: 100 }, { label: "Chukwu, Ada", o_id: 106 },
+      ...Array.from({ length: 9 }, (_, i) => ({ label: `Member, Team ${i + 1}`, o_id: null }))] }),
+);
 fixture.manifest.counts = Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v.length]));
 await lib.writeSnapshot(dataDir, fixture);
 
@@ -52,6 +70,38 @@ test("get_person: crew credits still list the records, but give their holder no 
   assert.deepEqual(okafor.podcasts.map((p) => [p.omeka_id, p.role]), [[532, "Sound engineer"]]);
   assert.deepEqual(okafor.contributed_items.map((i) => [i.omeka_id, i.role]), [[505, "Transcriber"]]);
   assert.deepEqual([okafor.collaborator_count, okafor.top_collaborators], [0, []]);
+});
+
+const row = (person, name) => person.top_collaborators.find((c) => c.name === name);
+
+test("get_person: a chapter author and the volume's editors are not collaborators", async () => {
+  const beier = await call("get_person", { id: 100 });
+  assert.equal(row(beier, "Mensah, Ama"), undefined);
+  // Fendler shares a podcast episode with Beier, not the chapter.
+  assert.deepEqual([row(beier, "Fendler, Ute").shared_publications, row(beier, "Fendler, Ute").shared_recordings], [0, 1]);
+});
+
+test("get_person: co-editors count once per volume, co-authors once per record", async () => {
+  const fendler = await call("get_person", { id: 101 });
+  const mensah = row(fendler, "Mensah, Ama");
+  assert.deepEqual([mensah.shared_editorships, mensah.shared_authorships, mensah.shared_publications], [1, 0, 1]);
+  const bello = row(fendler, "Bello, Tunde");
+  assert.deepEqual([bello.shared_authorships, bello.shared_editorships, bello.shared_publications], [1, 0, 1]);
+  assert.equal(row(fendler, "Beier, Ulli").shared_publications, 0);
+});
+
+test("get_person: publications with more than ten authors add no collaborators and are counted apart", async () => {
+  const beier = await call("get_person", { id: 100 });
+  assert.equal(row(beier, "Chukwu, Ada"), undefined);
+  assert.ok(!beier.top_collaborators.some((c) => c.name.startsWith("Member, Team")), JSON.stringify(names(beier)));
+  assert.equal(beier.large_team_publication_count, 1);
+  assert.ok(beier.publications.some((p) => p.omeka_id === 563), "the paper itself stays listed");
+  assert.equal((await call("get_person", { id: 101 })).large_team_publication_count, undefined);
+});
+
+test("get_person: the collaborators note says what the list measures", async () => {
+  const { collaborators_note: note } = await call("get_person", { id: 101 });
+  assert.match(note, /^People credited with this person on the same records, not a measure of collaboration/);
 });
 
 test("get_person: the coverage note states the harvest's selection", async () => {

@@ -5,6 +5,27 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## 1.30.0 — unreleased
+
+The rest of the collaborator fix from the review of 1.27.0 answers. One
+researcher's profile listed 51 collaborators; on the same snapshot it now
+lists 7, the people the researcher recognised.
+
+- **Publications pair people in the same role.** Two people share a
+  publication only as co-authors or as co-editors. The editors of a volume are
+  no longer collaborators of its chapter authors, and co-editing counts once
+  per volume, although chapter records repeat the volume's editors.
+  `top_collaborators` adds `shared_authorships` and `shared_editorships`;
+  `shared_publications` is now their sum.
+- **Large-team works add no collaborators.** Publications with more than ten
+  authors stay listed but no longer feed `top_collaborators`;
+  `large_team_publication_count` reports how many there are. A 25-author
+  position paper had made 24 people one researcher's collaborators.
+- **`collaborators_note`** (guidance on) says the list shows shared credits,
+  not a measure of collaboration, and that `shared_recordings` counts joint
+  podcast or video appearances. With the two new fields, `get_person` grows by
+  about 100 tokens (25%) on the weigh sample.
+
 ## 1.29.0 — 2026-10-27
 
 Fixes from a review of 1.27.0 answers by the researchers they described.
