@@ -99,9 +99,9 @@ function share() {
   if (node) focus.push(entity(node, 'selected neighbour'));
   if (shown && shown.edge) focus.push({ title: relationText(shown.edge), id: shown.edge.id, type: 'link', count: shown.edge.count });
   api.shareSelection({ view: 'graph',
-    summary: 'Entity graph centred on the first focus entry; ' + active.edges.length + ' of ' + active.total_edges + ' edges shown' +
-      (filter ? ', neighbours limited to the types in filters' : '') + (node ? '; a neighbour is selected' : '') +
-      (shown ? '; ' + shown.data.results.length + ' of the ' + shown.data.total_matches + ' records behind the selected link are listed' : '') + '.',
+    summary: 'Entity graph centred on the first focus entry. Edges shown: ' + active.edges.length + ' of ' + active.total_edges + '.' +
+      (filter ? ' Neighbours are limited to the types in filters.' : '') + (node ? ' A neighbour is selected.' : '') +
+      (shown ? ' Records behind the selected link: ' + shown.data.total_matches + '; listed: ' + shown.data.results.length + '.' : ''),
     filters: { types: filter || undefined },
     counts: { edges_shown: active.edges.length, total_edges: active.total_edges },
     focus: focus,

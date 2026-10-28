@@ -518,29 +518,45 @@ session. `npm run weigh` measures both and the baseline records them.
   spelling the caller guessed. Folds of large texts are memoised and dropped when
   a refresh replaces the snapshot.
 - **Interactive results (MCP Apps).** Seven tools carry `_meta.ui.resourceUri`
-  pointing at a `text/html;profile=mcp-app` resource, so hosts implementing the
+  pointing at one `text/html;profile=mcp-app` resource, `ui://amira/app.html`, so
+  hosts implementing the
   [`io.modelcontextprotocol/ui`](https://modelcontextprotocol.io/docs/extensions/apps)
   extension (Claude, Claude Desktop) render the result inline. Every other
   client ignores the `_meta` and gets exactly the same JSON.
 
-  | Tool | Resource | Renders |
+  | Tool | View | Renders |
   | --- | --- | --- |
-  | `get_collection_overview` | `ui://amira/overview` | Stat tiles + ranked breakdowns by university, section, resource type and language |
-  | `list_years` | `ui://amira/timeline` | Histogram of items per year or decade |
-  | `list_research_sections` | `ui://amira/sections` | Gantt of the sections across the AM 1.0 / AM 2.0 funding phases, with a "now" marker |
-  | `find_related` | `ui://amira/related` | Radial co-occurrence hub: the seed at the centre, one labelled sector per relation type |
-  | `get_entity_graph` | `ui://amira/graph` | Sector graph by entity type, type chips, selectable spokes with their evidence, keyboard navigation |
-  | `list_locations` | `ui://amira/map` | Offline map, country dropdown, place table and item evidence |
-  | `search_publications` | `ui://amira/bibliography` | Filterable bibliography (language dropdown, author suggestions) and selection export |
+  | `get_collection_overview` | `overview` | Stat tiles + ranked breakdowns by university, section, resource type and language |
+  | `list_years` | `timeline` | Histogram of items per year or decade |
+  | `list_research_sections` | `sections` | Gantt of the sections across the AM 1.0 / AM 2.0 funding phases, with a "now" marker |
+  | `find_related` | `related` | Radial co-occurrence hub: the seed at the centre, one labelled sector per relation type |
+  | `get_entity_graph` | `graph` | Sector graph by entity type, type chips, selectable spokes with their evidence, keyboard navigation |
+  | `list_locations` | `map` | Offline map, country dropdown, place table and item evidence |
+  | `search_publications` | `bibliography` | Filterable bibliography (language dropdown, author suggestions) and selection export |
+
+  One page renders every view: it picks the view from the host's `toolInfo`, or
+  from the result's shape when a host sends none, so the Apps SDK ships once
+  rather than seven times. The page is 181 KB, its gzip-compressed script 471 KB
+  once decoded (it was 4.7 MB across seven pages), and a unit test holds it under
+  300 KB and 500 KB.
 
   The modules live in `src/ui/`: `shell.ts` holds the design tokens and shared
-  bar-chart primitive; `bridge.ts` bundles the official Apps SDK. Each app supplies
-  its own CSS and render function. The templates load **nothing** from the network — no
-  scripts, styles, fonts or tiles — so they need no `_meta.ui.csp` grants and
-  run in the strictest sandbox. App controls call an allowlisted set of read-only tools through the host;
-  filter dropdowns are filled the same way, so their option lists never reach the model.
-  Citation links and file downloads also go through host APIs. Every visual has
-  a table or text alternative. See [app development and provenance](docs/apps.md).
+  helpers, `bridge.ts` bundles the official Apps SDK, each view module supplies its
+  own CSS and render function, and `page.ts` assembles them at build time. The page
+  loads **nothing** from the network — no scripts, styles, fonts or tiles — so it
+  needs no `_meta.ui.csp` grants and runs in the strictest sandbox. App controls
+  call an allowlisted set of read-only tools through the host; filter dropdowns are
+  filled the same way, so their option lists never reach the model. Citation links
+  and file downloads also go through host APIs. Every visual has a table or text
+  alternative.
+
+  The bibliography, map and graph share their current selection with the model —
+  filters, selected records, the opened place, the graph's chips and spoke, each
+  record with its `amira_url` — on hosts that accept `ui/update-model-context`.
+  Updates are bounded, sent one at a time with the newest winning, and never start
+  a turn. On hosts that accept app messages, "Ask about this selection" sends a
+  question with its own snapshot. Record titles travel as data, never as
+  instructions. See [app development and provenance](docs/apps.md).
 
   Colours come from the [DREVisualizations](https://github.com/AM-Digital-Research-Environment)
   Omeka module's theme (`--primary` / the Africa Multiple brand palette), so a

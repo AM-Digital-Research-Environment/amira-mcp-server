@@ -33,7 +33,7 @@ function cite(p){return {id:String(p.omeka_id||p.id),title:p.title,year:p.year,t
 function share(){
   var picked=Array.from(selected.values()),page=(active.results||[]).map(cite);
   api.shareSelection({view:'bibliography',
-    summary:picked.length?picked.length+' publications selected for export, of '+active.total_matches+' matching the filters.':'No publication selected; '+active.total_matches+' match the filters and the '+page.length+' on the current page are listed.',
+    summary:picked.length?'Publications selected for export: '+picked.length+', of '+active.total_matches+' matching the filters.':'No publication selected. Publications matching the filters: '+active.total_matches+'; the current page is listed.',
     filters:filters,counts:{total_matches:active.total_matches,selected:picked.length,page_offset:active.offset||0},
     records:picked.length?picked:page,records_label:picked.length?'selected publications':'publications on the current page'});
 }

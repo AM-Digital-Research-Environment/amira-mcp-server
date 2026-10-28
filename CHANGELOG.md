@@ -5,6 +5,34 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+- **Apps: one page for all seven views.** Every app-rendering tool now points
+  `_meta.ui.resourceUri` at `ui://amira/app.html`, which picks the view from the
+  host's `toolInfo` (from the result's shape when a host sends none). The seven
+  `ui://amira/<view>` resources are gone. Each had embedded its own copy of the
+  Apps SDK and zod; together they weighed 4.7 MB (660–722 KB each). The one page
+  is 181 KB, 471 KB once its script is decoded: zod's non-English locales are
+  stubbed out of the browser bundle, the views script is minified, the map
+  outline is written as integer relative moves, and the script ships
+  gzip-compressed and is expanded by the browser's `DecompressionStream`. A unit
+  test fails above 300 KB for the page or 500 KB for the decoded script. View
+  CSS is scoped per view. The views, their table alternatives, keyboard use,
+  allowlisted tool calls and theming are unchanged, and the page still loads
+  nothing from the network. The resource is registered while any of the seven
+  tools survives `AMIRA_TOOL_PROFILE`. The tools/list surface grows by 5
+  characters.
+- **Apps: the selection reaches the model.** The bibliography (filters and
+  selected publications, or the page in view), the map (filters, the opened
+  place and its research items) and the graph (centre, type chips, selected
+  neighbour and the records behind its link) send a bounded summary through
+  `ui/update-model-context` on hosts that advertise it: one update at a time,
+  the newest winning, never a new turn, at most 25 records and 10,000 bytes,
+  with cuts named in `truncated_fields`. Every record keeps its `amira_url`.
+  Titles and filter values travel as JSON marked as research data, not
+  instructions. On hosts that accept app messages, "Ask about this selection"
+  sends a question carrying its own snapshot.
+
 ## 1.30.0 — 2026-10-28
 
 The rest of the collaborator fix from the review of 1.27.0 answers. One

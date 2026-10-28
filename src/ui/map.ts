@@ -56,7 +56,7 @@ function share(){
   var f=active.filters||{},rows=active.results||[];
   var place=picked&&(rows.find(function(r){return picked.id&&String(r.omeka_id)===String(picked.id);})||{name:picked.name});
   api.shareSelection({view:'map',
-    summary:picked?'One place is selected (the focus entry); '+picked.data.results.length+' of its '+picked.data.total_matches+' matching research items are listed.':'No place selected; '+active.total_matches+' places match the map filters.',
+    summary:picked?'One place is selected (the focus entry). Research items there: '+picked.data.total_matches+'; listed: '+picked.data.results.length+'.':'No place selected. Places matching the map filters: '+active.total_matches+'.',
     filters:Object.assign({},f.filters||{},{country:f.country}),
     counts:Object.assign({places:active.total_matches,places_listed:rows.length},picked?{matching_items:picked.data.total_matches,items_offset:picked.data.offset}:{}),
     focus:place?[{title:place.name,id:place.omeka_id,type:place.coordinate_scope==='hierarchy_root'?'hierarchy root':'place',count:place.item_count,amira_url:place.amira_url}]:[],

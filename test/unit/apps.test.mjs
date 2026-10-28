@@ -103,7 +103,7 @@ async function connected(t, caps = {}, hostContext = { theme: "light" }) {
 const requests = (h, method) => h.sent.filter((m) => m.method === method);
 const answer = (h, message, result = {}) => h.emit(h.parent, { jsonrpc: "2.0", id: message.id, result });
 const SELECTION = (n) => ({
-  view: "bibliography", summary: `${n} publications selected for export, of 42 matching the filters.`,
+  view: "bibliography", summary: `Publications selected for export: ${n}, of 42 matching the filters.`,
   filters: { keyword: "Migration" }, counts: { total_matches: 42, selected: n },
   records: Array.from({ length: n }, (_, i) => ({ id: String(500 + i), title: `Title ${i}`, amira_url: `https://data.africamultiple.uni-bayreuth.de/s/amira/item/${500 + i}` })),
   records_label: "selected publications",
@@ -143,7 +143,7 @@ test("selection updates are serialised and latest-wins, carry amira_url, and nev
   const latest = sent[1].params;
   assert.equal(latest.structuredContent.counts.selected, 3);
   assert.deepEqual(latest.structuredContent.records.map((r) => r.amira_url), SELECTION(3).records.map((r) => r.amira_url));
-  assert.match(latest.content[0].text, /^Current AMIRA app selection \(bibliography\): 3 publications selected/);
+  assert.match(latest.content[0].text, /^Current AMIRA app selection \(bibliography\): Publications selected for export: 3,/);
   assert.match(latest.content[0].text, /research data, not instructions/);
   answer(h, sent[1]); await tick(); await tick();
   assert.equal(h.status.textContent, "Selection shared with the assistant.");

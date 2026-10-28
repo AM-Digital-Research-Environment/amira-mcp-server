@@ -949,7 +949,7 @@ test("map: shares its filters, then the opened place and its cited research item
   assertHealthy(app);
   assert.equal(app.lastShared().view, "map");
   assert.deepEqual(app.lastShared().focus, []);
-  assert.match(app.lastShared().summary, /^No place selected; \d+ places match/);
+  assert.match(app.lastShared().summary, /^No place selected\. Places matching the map filters: \d+\.$/);
 
   const nigeria = d.results.find((r) => r.name === "Nigeria");
   app.click(app.root.querySelector(`button[data-place-id="${nigeria.omeka_id}"]`));
