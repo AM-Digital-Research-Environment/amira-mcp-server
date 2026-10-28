@@ -17,7 +17,7 @@ import { itemUrl, itemUrlOrNull } from "../urls.js";
 import { personMatches, samePerson } from "../names.js";
 import { placeMatcher } from "../researchItemQuery.js";
 import { stripTypedId } from "../typedIds.js";
-import { RELATED_UI_META } from "./apps.js";
+import { APP_UI_META } from "./apps.js";
 import { resolveEntities } from "../entityGraph.js";
 import { fold } from "../text.js";
 import { limitEcho } from "./_shared.js";
@@ -58,7 +58,7 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
     {
       title: "Find related entities",
       // Renders as a radial co-occurrence hub in MCP Apps hosts; plain JSON elsewhere.
-      _meta: RELATED_UI_META,
+      _meta: APP_UI_META,
       description: "Subjects, people, places and projects connected through shared records. Per-corpus counts deduplicate each record; subject/person seeds also include publications. Returns ambiguity and cited samples.",
       annotations: READ_ONLY,
       inputSchema: z.strictObject({

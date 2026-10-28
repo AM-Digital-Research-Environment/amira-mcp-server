@@ -1,5 +1,4 @@
-import { PICKER_JS, page } from "./shell.js";
-export const BIBLIOGRAPHY_URI = "ui://amira/bibliography";
+import type { AppView } from "./shell.js";
 const SCRIPT = String.raw`
 var api=window.amiraApp,esc=api.esc,active,selected=new Map(),filters={},lastLanguages=null;
 // Languages are counted for the current search without its own language filter,
@@ -26,7 +25,18 @@ async function exportSelection(){
     api.status(how==='shown' ? 'This host cannot save files: the ' + entries.length + ' citations are shown below to copy.' : 'Exported ' + entries.length + ' selected publications.');
   }catch(error){api.status(error.message);}finally{button.disabled=selected.size===0;}
 }
-function selection(){var count=document.getElementById('selection-count');count.textContent=selected.size + ' selected (maximum 25)';document.getElementById('export-selected').disabled=!selected.size;}
+function selection(){var count=document.getElementById('selection-count');count.textContent=selected.size + ' selected (maximum 25)';document.getElementById('export-selected').disabled=!selected.size;share();}
+// What the model is told the reader is working with: the filters, and the
+// selected publications or, with none selected, the page in view. Titles are
+// data; selectionContext.ts bounds and labels them.
+function cite(p){return {id:String(p.omeka_id||p.id),title:p.title,year:p.year,type:p.type,amira_url:p.amira_url};}
+function share(){
+  var picked=Array.from(selected.values()),page=(active.results||[]).map(cite);
+  api.shareSelection({view:'bibliography',
+    summary:picked.length?picked.length+' publications selected for export, of '+active.total_matches+' matching the filters.':'No publication selected; '+active.total_matches+' match the filters and the '+page.length+' on the current page are listed.',
+    filters:filters,counts:{total_matches:active.total_matches,selected:picked.length,page_offset:active.offset||0},
+    records:picked.length?picked:page,records_label:picked.length?'selected publications':'publications on the current page'});
+}
 function render(d){
   active=d;filters=Object.assign({},d.filters || {});delete filters.citation_format;
   var rows=d.results||[],scope={};
@@ -35,19 +45,19 @@ function render(d){
   var authorList=pickerNow('authors'),languageList=pickerNow(languageKey(scope))||lastLanguages;
   document.getElementById('root').innerHTML='<h1>Cluster bibliography</h1><p class="sub">' + d.total_matches + ' matching publications · ' + (rows.length ? 'showing ' + (d.offset+1) + '–' + (d.offset+rows.length) : 'no results') + '</p>' +
     '<form id="publication-search"><div class="controls"><label>Keyword<input name="keyword" maxlength="1000" value="' + esc(filters.keyword || '') + '"></label><label>Author' + pickerField(author,authorList) + '</label><label>Language' + pickerField(language,languageList) + '</label></div><div class="controls"><label>From year<input type="number" min="0" max="2200" name="year_from" value="' + esc(filters.year_from || '') + '"></label><label>To year<input type="number" min="0" max="2200" name="year_to" value="' + esc(filters.year_to || '') + '"></label><button>Search bibliography</button><button type="button" id="clear-filters">Clear filters</button></div></form>' +
-    '<div class="controls"><span id="selection-count"></span><label>Export format<select id="export-format"><option value="bibtex">BibTeX</option><option value="ris">RIS</option><option value="csl-json">CSL-JSON</option></select></label><button id="export-selected">Download selection</button><button id="clear-selection">Clear selection</button></div>' +
+    '<div class="controls"><span id="selection-count"></span><label>Export format<select id="export-format"><option value="bibtex">BibTeX</option><option value="ris">RIS</option><option value="csl-json">CSL-JSON</option></select></label><button id="export-selected">Download selection</button><button id="clear-selection">Clear selection</button></div>' + selectionControls() +
     (rows.length?'<table><thead><tr><th>Select</th><th>Publication</th><th>Year</th></tr></thead><tbody>' + rows.map(function(p){var id=String(p.omeka_id||p.id);return '<tr><td><input type="checkbox" data-id="' + esc(id) + '" aria-label="Select ' + esc(p.title) + '" ' + (selected.has(id)?'checked':'') + '></td><td><a data-citation href="' + esc(p.amira_url) + '">' + esc(p.title) + '</a><br><span class="note">' + esc((p.authors||[]).join('; ')) + (p.has_fulltext?' · Full text available':'') + '</span></td><td>' + esc(p.year || 'Undated') + '</td></tr>';}).join('')+'</tbody></table>':'<p class="empty">No publications match these filters. Try removing a filter.</p>')+
     '<div class="controls">' + (d.offset?'<button id="previous">Previous page</button>':'') + (d.has_more?'<button id="next">Next page</button>':'') + '</div><p class="note">Selections persist across pages. Citation exports contain the selected records; open a title to read its source catalogue entry.</p>';
   selection();
   pickerMount(author,authors(),authorList);pickerMount(language,languages(scope),languageList);
   document.getElementById('publication-search').onsubmit=function(event){event.preventDefault();var values=new FormData(event.target);var next=Object.assign({},filters);for(var entry of values){if(entry[1])next[entry[0]]=entry[0].startsWith('year_')?Number(entry[1]):entry[1];else delete next[entry[0]];}filters=next;search();};
   document.getElementById('clear-filters').onclick=function(){filters={};search();};
-  document.getElementById('root').onchange=function(event){var box=event.target;if(!box.dataset.id)return;if(box.checked){if(selected.size>=25){box.checked=false;api.status('Select up to 25 publications per export.');return;}selected.set(box.dataset.id,true);}else selected.delete(box.dataset.id);selection();};
+  document.getElementById('root').onchange=function(event){var box=event.target;if(!box.dataset.id)return;if(box.checked){if(selected.size>=25){box.checked=false;api.status('Select up to 25 publications per export.');return;}selected.set(box.dataset.id,cite(rows.find(function(p){return String(p.omeka_id||p.id)===box.dataset.id;})||{id:box.dataset.id}));}else selected.delete(box.dataset.id);selection();};
   document.getElementById('export-selected').onclick=exportSelection;
   document.getElementById('clear-selection').onclick=function(){selected.clear();render(active);};
   var next=document.getElementById('next');if(next)next.onclick=function(){search(d.next_offset);};
   var prev=document.getElementById('previous');if(prev)prev.onclick=function(){search(Math.max(0,d.offset-20));};
 }
-api.onResult(render);
 `;
-export const BIBLIOGRAPHY_HTML = page("AMIRA — cluster bibliography", "input[type=checkbox] { accent-color: var(--bar); min-height: 24px; width: 24px; } th:first-child { width: 50px; } th:last-child { width: 52px; } td:last-child, th { white-space: nowrap; }", PICKER_JS + SCRIPT);
+const CSS = "input[type=checkbox] { accent-color: var(--bar); min-height: 24px; width: 24px; } th:first-child { width: 50px; } th:last-child { width: 52px; } td:last-child, th { white-space: nowrap; }";
+export const BIBLIOGRAPHY_VIEW: AppView = { name: "bibliography", title: "AMIRA — cluster bibliography", css: CSS, script: SCRIPT };

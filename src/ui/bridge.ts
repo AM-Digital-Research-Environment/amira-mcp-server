@@ -1,5 +1,10 @@
+// The browser half of every AMIRA view: the official Apps SDK handshake plus
+// the small API the views script (src/ui/page.ts) calls as window.amiraApp.
+// Bundled once, gzip-compressed into the one ui://amira/app.html page.
 import { App, applyHostStyleVariables, type McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult } from "@modelcontextprotocol/client";
+import { ContextSync, type ContextSyncStatus } from "./contextSync.js";
+import { askText, buildSelectionContext, selectionText, type SelectionContext } from "./selectionContext.js";
 
 type Payload = Record<string, unknown>;
 declare const __SERVER_VERSION__: string;
@@ -7,6 +12,7 @@ const app = new App({ name: "amira-mcp-app", version: __SERVER_VERSION__ }, { av
 let render: ((payload: Payload) => void) | undefined;
 let input: Payload = {};
 let ready: Promise<void> | undefined;
+let connected = false;
 const lifecycle = new AbortController();
 const tools = new Set(["get_entity_graph", "resolve_entity", "list_locations", "search_research_items", "list_years", "search_publications", "get_publication", "list_publication_facets", "search_projects", "list_subjects"]);
 
@@ -42,17 +48,74 @@ app.ontoolresult = (result) => {
   catch (error) { status((error as Error).message); }
 };
 app.ontoolcancelled = () => status("Request cancelled. Run the tool again to continue.");
-app.onteardown = async () => { lifecycle.abort(); return {}; };
-window.addEventListener("pagehide", () => { lifecycle.abort(); void app.close(); }, { once: true });
+app.onteardown = async () => { connected = false; sync.stop(); lifecycle.abort(); return {}; };
+window.addEventListener("pagehide", () => { connected = false; sync.stop(); lifecycle.abort(); void app.close(); }, { once: true });
+
+// --- the selection, shared with the model ------------------------------------
+// Interactive views report their current selection (bibliography filters and
+// ticked records, the map's place, the graph's type filter and spoke) through
+// shareSelection. It is bounded by selectionContext.ts and sent only to hosts
+// that advertise ui/update-model-context, serialised and latest-wins
+// (contextSync.ts). An update never starts a turn: the host attaches it to the
+// next message. "Ask about this selection" is the explicit form, a ui/message
+// carrying the same bounded snapshot inline, offered only to hosts that accept
+// app messages.
+let latest: SelectionContext | undefined;
+let syncState: ContextSyncStatus | undefined;
+const sync = new ContextSync<SelectionContext>(async (snapshot, signal) => {
+  const caps = app.getHostCapabilities()?.updateModelContext;
+  // Only the modalities the host negotiated: a text-only host gets the data as
+  // JSON inside the text block, a richer host gets it once, structured.
+  await app.updateModelContext({
+    ...(caps?.text ? { content: caps.structuredContent ? snapshot.content : [{ type: "text" as const, text: selectionText(snapshot) }] } : {}),
+    ...(caps?.structuredContent ? { structuredContent: snapshot.structuredContent } : {}),
+  }, { timeout: 10_000, signal });
+}, (state) => { syncState = state; selectionStatus(); });
+function canShare(): boolean {
+  const caps = app.getHostCapabilities()?.updateModelContext;
+  return connected && Boolean(caps?.text || caps?.structuredContent);
+}
+/** The view's status line under its selection controls, when it has one. */
+function selectionStatus(): void {
+  const element = document.getElementById("selection-status");
+  if (!element || !canShare()) return;
+  element.textContent = syncState === "shared" ? "Selection shared with the assistant."
+    : syncState === "failed" ? "Could not share the selection with the assistant." : "Sharing the selection with the assistant…";
+}
 
 const bridge = {
   esc: (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!),
   onResult(callback: (value: Payload) => void) {
     render = callback;
-    ready ??= app.connect(undefined, { timeout: 10_000, signal: lifecycle.signal }).then(() => context(app.getHostContext()));
+    ready ??= app.connect(undefined, { timeout: 10_000, signal: lifecycle.signal }).then(() => { connected = true; context(app.getHostContext()); });
     void ready.catch(() => status("The app could not connect. Reopen it in an MCP Apps host to use its controls."));
   },
   input: () => ({ ...input }),
+  /** The tool whose result opened this app, when the host's toolInfo names it. */
+  toolName: (): string | undefined => app.getHostContext()?.toolInfo?.tool?.name,
+  /** Report the view's current selection; see the section above. */
+  shareSelection(selection: unknown) {
+    const snapshot = buildSelectionContext(selection);
+    latest = snapshot;
+    void ready?.then(() => {
+      if (!canShare()) return;
+      sync.publish(snapshot);
+      selectionStatus(); // a re-rendered view has a fresh, empty status line
+    }, () => {});
+  },
+  /** Whether the host takes automatic context updates from the app. */
+  canShare,
+  /** Whether the host takes an explicit message from the app. */
+  canAsk: () => connected && Boolean(app.getHostCapabilities()?.message?.text),
+  /** Send "Ask about this selection" with the selection as it is now. */
+  async ask() {
+    const snapshot = latest;
+    if (!snapshot) throw new Error("Nothing is selected yet.");
+    if (!bridge.canAsk()) throw new Error("This host cannot take questions from the app. Ask in the conversation instead.");
+    const reply = await app.sendMessage({ role: "user", content: [{ type: "text", text: askText(snapshot) }] },
+      { timeout: 10_000, signal: lifecycle.signal });
+    if (reply.isError) throw new Error("The host declined to send the question.");
+  },
   /** `quiet` calls (background option lists) leave the status line alone. */
   async callTool(name: string, args: Payload, options: { quiet?: boolean } = {}) {
     if (!tools.has(name)) throw new Error("This tool is not available in the app.");

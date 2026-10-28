@@ -12,9 +12,7 @@
 // Single series: the phase is a row group with its own heading, so it needs no
 // second hue and no legend.
 
-import { page } from "./shell.js";
-
-export const SECTIONS_URI = "ui://amira/sections";
+import type { AppView } from "./shell.js";
 
 const CSS = String.raw`
 .chart { width: 100%; overflow-x: auto; }
@@ -123,8 +121,6 @@ function render(payload) {
     "newly seeded, so a near-zero item count there is expected, not missing data.</p>" +
     '<details><summary>All returned section values</summary><table><thead><tr><th>Section</th><th>Dates</th><th>Projects</th><th>Items</th></tr></thead><tbody>' + (payload.results || []).map(function(r){return '<tr><td>' + esc(r.name) + '</td><td>' + esc((r.date || {}).start || 'Unknown') + ' – ' + esc((r.date || {}).end || 'Unknown') + '</td><td>' + (r.project_count || 0) + '</td><td>' + (r.item_count || 0) + '</td></tr>';}).join('') + '</tbody></table></details>';
 }
-
-window.amiraApp.onResult(render);
 `;
 
-export const SECTIONS_HTML = page("AMIRA — research sections by funding phase", CSS, SCRIPT);
+export const SECTIONS_VIEW: AppView = { name: "sections", title: "AMIRA — research sections by funding phase", css: CSS, script: SCRIPT };

@@ -16,7 +16,7 @@ import {
   type Server,
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
-import { SECTIONS_UI_META } from "./apps.js";
+import { APP_UI_META } from "./apps.js";
 import { stripTypedId } from "../typedIds.js";
 
 export function registerResearchSectionTools(server: Server, tools: ToolMap): void {
@@ -26,7 +26,7 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
     {
       title: "List research sections",
       // Renders as a funding-phase Gantt in MCP Apps hosts; plain JSON elsewhere.
-      _meta: SECTIONS_UI_META,
+      _meta: APP_UI_META,
       description: "Cluster research sections, funding phases, project/item counts and citation links. Includes the external-collection grouping.",
       annotations: READ_ONLY,
       inputSchema: z.strictObject({}),

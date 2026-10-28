@@ -11,9 +11,7 @@
 // relational breakdowns are absent from the payload, so the app renders the
 // tiles and whatever survives rather than erroring.
 
-import { BAR_CHART_JS, page } from "./shell.js";
-
-export const OVERVIEW_URI = "ui://amira/overview";
+import type { AppView } from "./shell.js";
 
 const CSS = String.raw`
 .tiles { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
@@ -31,9 +29,7 @@ const CSS = String.raw`
 .panel { min-width: 0; }
 `;
 
-const SCRIPT =
-  BAR_CHART_JS +
-  String.raw`
+const SCRIPT = String.raw`
 var esc = window.amiraApp.esc;
 
 /** Top-N of an object map, biggest first, with the tail folded into "Other". */
@@ -116,8 +112,6 @@ function render(d) {
     '<p class="note">Counts are of the curated collection, not of African research at large; ' +
     "coverage is uneven and skews toward a few large collections.</p>";
 }
-
-window.amiraApp.onResult(render);
 `;
 
-export const OVERVIEW_HTML = page("AMIRA — collection at a glance", CSS, SCRIPT);
+export const OVERVIEW_VIEW: AppView = { name: "overview", title: "AMIRA — collection at a glance", css: CSS, script: SCRIPT };

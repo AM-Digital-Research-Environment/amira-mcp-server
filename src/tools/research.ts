@@ -8,7 +8,7 @@ import { CORPORA, type CorpusName, type SnapshotData } from "../types.js";
 import { entityGraph, entityEdges, entitySchema, entityTypes, edgeSchema, evidenceSchema, graphIndex, resolveEntities } from "../entityGraph.js";
 import { researchFilterError, researchFilters, selectResearchItems } from "../researchItemQuery.js";
 import { foldCached, fold, foldedMatches } from "../text.js";
-import { GRAPH_UI_META } from "./apps.js";
+import { APP_UI_META } from "./apps.js";
 import { assertSnapshotSource, snapshotId } from "../snapshotIdentity.js";
 import { loadSnapshot, readSnapshotPointer } from "../snapshot.js";
 import { itemUrl, itemSetUrl } from "../urls.js";
@@ -108,7 +108,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
 
   tools.get_entity_graph = server.registerTool("get_entity_graph", {
     title: "Explore an entity graph", annotations: READ_ONLY,
-    _meta: GRAPH_UI_META,
+    _meta: APP_UI_META,
     description: "One-hop graph from a typed ID: explicit catalogue links and derived co-occurrence with distinct-record counts and cited evidence. types filters neighbours before the bounds. Pass edge_id to page its evidence; pin snapshot_id across pages.",
     inputSchema: z.strictObject({ seed: z.string().min(1).max(256), max_nodes: z.number().int().min(2).optional().describe("Default 40, max 100"),
       max_edges: z.number().int().min(1).optional().describe("Default 50, max 200"),

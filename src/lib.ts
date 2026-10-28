@@ -18,7 +18,12 @@ export { guidanceEnabled, stripSchemaText } from "./guidance.js";
 export { isTemplatePlaceholder, parseAllowedOriginHostnames, config } from "./config.js";
 
 export { publicationBibtex, publicationCitation } from "./publicationCitation.js";
-export { BRIDGE_JS } from "./ui/shell.js";
+export { BRIDGE_JS } from "./ui/assets.js";
+export { ContextSync } from "./ui/contextSync.js";
+export { SELECTION_LIMITS, askText, buildSelectionContext, selectionText } from "./ui/selectionContext.js";
+export { scopeCss } from "./ui/shell.js";
+export { APP_TOOLS, APP_URI, VIEW_OF_TOOL } from "./ui/viewContract.js";
+export { registerAppResources } from "./tools/apps.js";
 export * from "./snapshotIdentity.js";
 export { fetchJSON, readSnapshotPointer } from "./snapshot.js";
 export { foldedRanges } from "./text.js";

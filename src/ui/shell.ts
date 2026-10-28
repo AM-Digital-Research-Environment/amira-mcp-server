@@ -1,6 +1,6 @@
-// Shared chassis for every MCP App this server serves: the DRE design tokens,
-// the host bridge, and the page assembler. Each app supplies only its own CSS
-// and a render function.
+// Shared chassis for every AMIRA view: the DRE design tokens, the view
+// contract, and the helpers several views use. Each view supplies only its own
+// CSS and a render function; src/ui/page.ts assembles them into the one page.
 //
 // Extracted when the second app arrived — same reasoning as textWindowFields in
 // v1.6.0: two copies of a protocol handshake drift, and the drift is invisible
@@ -17,7 +17,9 @@
 // carries no identity and one accent is correct (a rainbow here would be the
 // classic single-series anti-pattern).
 
-/** DRE theme tokens + base typography, shared by every app. */
+import type { ViewName } from "./viewContract.js";
+
+/** DRE theme tokens + base typography, shared by every view. */
 export const SHELL_CSS = String.raw`
 :root {
   color-scheme: light;
@@ -84,32 +86,69 @@ summary { cursor: pointer; padding: 8px 0; }
 `;
 
 /**
- * Host bridge: the MCP Apps postMessage dialect, reduced to the one thing an
- * app here needs — "call me with the tool result". Handles ui/initialize, the
- * theme from hostContext, and hosts that forward only the content array.
+ * One view of the app. `script` is plain browser JavaScript that runs in its
+ * own function scope, after the bridge, and must define `function
+ * render(payload)`; it reaches the host only through `window.amiraApp`
+ * (src/ui/bridge.ts). `css` is scoped to the view by scopeCss, so one view's
+ * table widths cannot leak into another's.
  */
-declare const __APP_BRIDGE__: string;
-export const BRIDGE_JS = __APP_BRIDGE__;
-
-/** Assemble a complete, self-contained app page. */
-export function page(title: string, css: string, script: string): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${title}</title>
-<style>${SHELL_CSS}${css}</style>
-</head>
-<body>
-<div class="wrap" id="root"><p class="empty">Waiting for research data…</p></div>
-<p id="app-status" role="status" aria-live="polite"></p>
-<script>${BRIDGE_JS}</script>
-<script>${script}</script>
-</body>
-</html>
-`;
+export interface AppView {
+  name: ViewName;
+  /** Document title while the view is shown. */
+  title: string;
+  css: string;
+  script: string;
 }
+
+/**
+ * Prefix every selector in `css` with `scope`, recursing into @media blocks.
+ * The views' CSS is hand-written and simple (no nested parentheses holding
+ * commas, no strings with braces), which this deliberately relies on.
+ */
+export function scopeCss(scope: string, css: string): string {
+  const source = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  let out = "";
+  for (let i = 0; i < source.length;) {
+    const open = source.indexOf("{", i);
+    if (open < 0) break;
+    let depth = 1, close = open + 1;
+    for (; close < source.length && depth; close++) {
+      if (source[close] === "{") depth++;
+      else if (source[close] === "}") depth--;
+    }
+    const prelude = source.slice(i, open).trim(), body = source.slice(open + 1, close - 1);
+    out += prelude.startsWith("@")
+      ? `${prelude} { ${scopeCss(scope, body)} }\n`
+      : `${prelude.split(",").map((selector) => `${scope} ${selector.trim()}`).join(", ")} { ${body.trim()} }\n`;
+    i = close;
+  }
+  return out;
+}
+
+/**
+ * "Ask about this selection" and the sharing status line, for the views that
+ * keep a selection (bibliography, map, graph). The button appears only when
+ * the host accepts app messages, the status line only when it accepts context
+ * updates, and the row not at all on a host that takes neither. One delegated
+ * listener serves every render.
+ */
+export const SELECTION_JS = String.raw`
+function selectionControls() {
+  var api = window.amiraApp, ask = api.canAsk(), share = api.canShare();
+  if (!ask && !share) return "";
+  return '<div class="controls">' + (ask ? '<button type="button" id="ask-selection">Ask about this selection</button>' : "") +
+    (share ? '<span id="selection-status" class="note" role="status"></span>' : "") + "</div>";
+}
+document.addEventListener("click", function (event) {
+  var button = event.target && event.target.closest && event.target.closest("#ask-selection");
+  if (!button) return;
+  var api = window.amiraApp;
+  button.disabled = true;
+  api.ask().then(function () { api.status("Question sent to the conversation."); },
+    function (error) { api.status(error.message); })
+    .then(function () { if (button.isConnected) button.disabled = false; });
+});
+`;
 
 /**
  * Filter pickers: dropdowns and suggestion lists whose options the app fetches

@@ -18,7 +18,7 @@ import {
   type Server,
 } from "./_shared.js";
 import { iiifCollectionUrl, itemSetUrl, itemUrlOrNull } from "../urls.js";
-import { MAP_UI_META, TIMELINE_UI_META } from "./apps.js";
+import { APP_UI_META } from "./apps.js";
 import { researchFilterError, researchFilters, selectResearchItems } from "../researchItemQuery.js";
 import { placeAliases } from "../matching.js";
 import { fold } from "../text.js";
@@ -110,7 +110,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       title: "List locations",
       description: "Research places with coordinates and ancestor rollups. One item can count under both city and country. Feed a name into search_research_items.location.",
       annotations: READ_ONLY,
-      _meta: MAP_UI_META,
+      _meta: APP_UI_META,
       inputSchema: z.strictObject({
         filters: researchFilters.optional().describe("Research-item filters applied before place counts"),
         country: z.string().max(1000).optional().describe("One country, exact name or alias, plus its cities"),
@@ -325,7 +325,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       title: "List years",
       // Renders through the MCP Apps timeline when the host supports the
       // extension; ignored (plain JSON) everywhere else.
-      _meta: TIMELINE_UI_META,
+      _meta: APP_UI_META,
       description: "Research-item year/decade histogram with dated and undated counts. A date range counts in each spanned bucket. Supports shared item filters and pagination.",
       annotations: READ_ONLY,
       outputSchema: timelineSchema,

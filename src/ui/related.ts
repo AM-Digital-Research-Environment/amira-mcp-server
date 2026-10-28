@@ -13,9 +13,7 @@
 // accent. Spoke length encodes co-occurrence count. No legend is needed, and
 // the encoding survives greyscale, print and forced-colors.
 
-import { page } from "./shell.js";
-
-export const RELATED_URI = "ui://amira/related";
+import type { AppView } from "./shell.js";
 
 const CSS = String.raw`
 .hub { width: 100%; max-width: 620px; margin: 0 auto; }
@@ -147,8 +145,6 @@ function render(d) {
     SECTORS.map(function (s) { return (d[s[0]] || []).map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td>' + (r.research_item_count || 0) + '</td><td>' + (r.publication_count || 0) + '</td></tr>'; }).join(''); }).join('') + '</tbody></table></details>' +
     ((d.related_publications || []).length ? '<h2>Publication evidence</h2><ul>' + d.related_publications.map(function (p) { return '<li><a data-citation href="' + esc(p.amira_url) + '">' + esc(p.title) + '</a></li>'; }).join('') + '</ul>' : '');
 }
-
-window.amiraApp.onResult(render);
 `;
 
-export const RELATED_HTML = page("AMIRA — co-occurrence hub", CSS, SCRIPT);
+export const RELATED_VIEW: AppView = { name: "related", title: "AMIRA — co-occurrence hub", css: CSS, script: SCRIPT };

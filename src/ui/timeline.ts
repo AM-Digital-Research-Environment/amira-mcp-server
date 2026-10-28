@@ -5,9 +5,7 @@
 // Single series (one bar per year), so the accent carries no identity; colours,
 // bridge and page chassis all come from ./shell.
 
-import { PICKER_JS, page } from "./shell.js";
-
-export const TIMELINE_URI = "ui://amira/timeline";
+import type { AppView } from "./shell.js";
 
 const CSS = String.raw`
 .chart { width: 100%; overflow-x: auto; }
@@ -124,8 +122,6 @@ function render(payload) {
 }
 
 async function reset(){try{render(await api.callTool('list_years',{bucket:'decade',limit:200}));}catch(_) {}}
-
-window.amiraApp.onResult(render);
 `;
 
-export const TIMELINE_HTML = page("AMIRA — coverage over time", CSS, PICKER_JS + SCRIPT);
+export const TIMELINE_VIEW: AppView = { name: "timeline", title: "AMIRA — coverage over time", css: CSS, script: SCRIPT };

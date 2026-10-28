@@ -35,7 +35,7 @@ import { queryErrorResult } from "./responses.js";
 import { exportLink, EXPORT_FORMATS } from "../resources.js";
 import { stripTypedId } from "../typedIds.js";
 import { fold } from "../text.js";
-import { BIBLIOGRAPHY_UI_META } from "./apps.js";
+import { APP_UI_META } from "./apps.js";
 
 export function registerPublicationTools(server: Server, tools: ToolMap): void {
   // === search_publications ==================================================
@@ -45,7 +45,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       title: "Search publications",
       description: "AND-filtered bibliography, newest first. Keyword includes PDF text and returns match snippets. citation_format returns citations per page; export links every match as one file. Cite amira_url.",
       annotations: READ_ONLY,
-      _meta: BIBLIOGRAPHY_UI_META,
+      _meta: APP_UI_META,
       inputSchema: z.strictObject({
         ...publicationFilters,
         citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Omit for summaries; pages carry bibtex, ris or csl_json"),

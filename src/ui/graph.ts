@@ -12,8 +12,7 @@
 // call the tool again with `types`, which the server applies before its
 // bounds: a client-side filter would come too late, after languages and
 // formats had spent the node budget.
-import { page } from "./shell.js";
-export const GRAPH_URI = "ui://amira/graph";
+import type { AppView } from "./shell.js";
 const CSS = String.raw`
 .graph { max-width: 720px; margin: 0 auto; }
 .graph .spoke { stroke: var(--bar); stroke-width: 5; stroke-linecap: round; }
@@ -41,7 +40,7 @@ button[data-edge] { white-space: nowrap; }
 @media (max-width: 480px) { .graph { overflow-x: auto; } .graph svg { min-width: 560px; } }
 `;
 const SCRIPT = String.raw`
-var api = window.amiraApp, esc = api.esc, active, picked, filter = null;
+var api = window.amiraApp, esc = api.esc, active, picked, filter = null, shown = null;
 // Sectors, clockwise from twelve o'clock. Every entity type belongs to one.
 var GROUPS = [
   { key: "people", label: "People", heading: "PEOPLE", types: ["person"] },
@@ -86,13 +85,35 @@ async function evidence(id, offset) {
     target.querySelector('h2').focus();
     var more = document.getElementById('more-evidence');
     if (more) more.onclick = function () { evidence(id, data.next_offset); };
+    shown = { edge: active.edges.find(function (e) { return e.id === id; }), data: data };
+    share();
   } catch (_) {}
+}
+// What the model is told: the graph's centre and type filter, the selected
+// neighbour, and the link whose records are listed, with that page of records.
+// Labels and titles are data; selectionContext.ts bounds and labels them.
+function entity(n, role) { return { title: n.label, id: n.id, type: n.type, relation: role, amira_url: n.amira_url }; }
+function share() {
+  var nodes = new Map(active.nodes.map(function (n) { return [n.id, n]; })), node = picked && nodes.get(picked);
+  var focus = [entity(nodes.get(active.seed), 'graph centre')];
+  if (node) focus.push(entity(node, 'selected neighbour'));
+  if (shown && shown.edge) focus.push({ title: relationText(shown.edge), id: shown.edge.id, type: 'link', count: shown.edge.count });
+  api.shareSelection({ view: 'graph',
+    summary: 'Entity graph centred on the first focus entry; ' + active.edges.length + ' of ' + active.total_edges + ' edges shown' +
+      (filter ? ', neighbours limited to the types in filters' : '') + (node ? '; a neighbour is selected' : '') +
+      (shown ? '; ' + shown.data.results.length + ' of the ' + shown.data.total_matches + ' records behind the selected link are listed' : '') + '.',
+    filters: { types: filter || undefined },
+    counts: { edges_shown: active.edges.length, total_edges: active.total_edges },
+    focus: focus,
+    records: shown ? shown.data.results.map(function (r) { return { title: r.title || r.label, id: r.id, corpus: r.corpus, amira_url: r.amira_url }; }) : [],
+    records_label: 'records behind the selected link' });
 }
 /** A neighbour's links, strongest first, and the records behind the first. */
 function pick(id) {
   var node = active.nodes.find(function (n) { return n.id === id; });
   if (!node) return;
   picked = id;
+  share();
   document.querySelectorAll('g.node-link').forEach(function (g) { g.classList.toggle('picked', g.dataset.pick === id); });
   var links = active.edges.filter(function (e) { return other(e) === id; });
   document.getElementById('pick').innerHTML = '<h2>' + esc(node.label) + ' <span class="note">' + esc(node.type) + '</span></h2><ul>' +
@@ -170,6 +191,7 @@ function render(d) {
   if (!d.nodes) return;
   if (!active || active.seed !== d.seed) picked = null;
   active = d;
+  shown = null;
   filter = d.types && d.types.length ? d.types : null;
   var nodes = new Map(d.nodes.map(function (n) { return [n.id, n]; })), seed = nodes.get(d.seed);
   var shownGroup = filter ? GROUPS.find(function (g) { return g.types.join(',') === filter.join(','); }) : null;
@@ -181,12 +203,13 @@ function render(d) {
   document.getElementById('root').innerHTML = '<h1>' + esc(seed.label) + '</h1><p class="sub">One-hop relationships · ' + d.edges.length + ' of ' + d.total_edges + ' edges' + (d.truncated ? ' · bounded view' : '') +
     (filter ? ' · ' + esc(shownGroup ? shownGroup.label : filter.join(', ')) + ' only' : '') + '</p>' +
     '<form id="resolve" class="controls"><label>Find an entity<input name="query" maxlength="1000" required placeholder="Person, place, project or subject"></label><button>Find</button></form><div id="candidates"></div>' +
-    chips(d) +
+    chips(d) + selectionControls() +
     (view ? '<div class="graph">' + view.svg + '</div><p class="note">Showing ' + view.shown + ' of ' + view.of + ' returned neighbours, grouped by type. Spoke length grows with the records behind each neighbour’s strongest link (square-root scale; the number is the count); solid spokes include a catalogue link, dashed spokes are co-occurrence only. Select a neighbour to read its records. All returned edges appear in the table.</p>'
       : '<p class="empty">' + (filter ? 'No neighbours of this type are recorded for this entity.' : 'No relationships are recorded for this entity.') + '</p>') +
     '<section class="pick" id="pick" aria-live="polite"></section><section class="evidence" id="evidence" aria-live="polite"></section>' +
     '<div class="scroll"><table><caption>Relationships and source records</caption><thead><tr><th>Entity</th><th>Relationship</th><th>Evidence</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   if (picked) pick(picked);
+  else share();
   var root = document.getElementById('root');
   root.onclick = function (event) {
     var types = event.target.closest('[data-types]'), at = event.target.closest('[data-pick]'),
@@ -207,6 +230,5 @@ function render(d) {
     } catch (_) {}
   };
 }
-api.onResult(render);
 `;
-export const GRAPH_HTML = page("AMIRA — entity graph", CSS, SCRIPT);
+export const GRAPH_VIEW: AppView = { name: "graph", title: "AMIRA — entity graph", css: CSS, script: SCRIPT };
