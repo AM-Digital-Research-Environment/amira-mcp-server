@@ -25,7 +25,10 @@ progress log) remains in Git at the same tag.
    multi-word keywords. Do this before BM25 or semantic search. The fixture tests
    and dated evaluation sets cover deterministic contracts, not real-world recall.
 3. **Apps in real hosts.** The local preview emulates host RPC; it certifies no
-   host. Check the seven apps in Claude, ChatGPT and VS Code. In ChatGPT, measure
+   host. Check the seven views of `ui://amira/app.html` in Claude, ChatGPT and
+   VS Code: that each host sends `toolInfo` (or that shape routing holds), runs
+   the gzip bootstrap, and handles the shared selection (`ui/update-model-context`,
+   "Ask about this selection"). In ChatGPT, measure
    whether apps attached to data tools (`search_publications`, `list_locations`,
    `find_related`) re-render too often before deciding on render-only tools, which
    would add discovery tokens. Follow with a UI audit in a real host (narrow

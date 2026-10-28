@@ -53,7 +53,7 @@ window.addEventListener("pagehide", () => { connected = false; sync.stop(); life
 
 // --- the selection, shared with the model ------------------------------------
 // Interactive views report their current selection (bibliography filters and
-// ticked records, the map's place, the graph's type filter and spoke) through
+// selected records, the map's place, the graph's type filter and spoke) through
 // shareSelection. It is bounded by selectionContext.ts and sent only to hosts
 // that advertise ui/update-model-context, serialised and latest-wins
 // (contextSync.ts). An update never starts a turn: the host attaches it to the
