@@ -2,6 +2,11 @@
 // against the bundled data/ snapshot: the environment is made hermetic before
 // the bundle loads (no AMIRA_* from the shell, live refresh off, a throwaway
 // cache dir), so the preview never reads or writes ~/.amira-mcp/cache.
+//
+// Every view is the same page, ui://amira/app.html; the host names the tool in
+// hostContext.toolInfo, as Claude does, and the page picks the view. The host
+// also accepts context updates and app messages, so the selection controls
+// show; the latest context and any question appear under the frame.
 import { createServer } from "node:http";
 import { hermeticEnv } from "../test/helpers/env.mjs";
 import { connectInMemory } from "../test/helpers/mcp.mjs";
@@ -19,8 +24,8 @@ const apps = {
 const resolved = await client.callTool({ name: "resolve_entity", arguments: { query: "Katharina Greven", type: "person" } });
 apps.graph.args = { seed: resolved.structuredContent.results[0]?.id ?? "person:1" };
 const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>AMIRA app preview</title>
-<style>body{font:14px system-ui;background:#eceae4;margin:20px;color:#33291f}nav{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}iframe{display:block;border:1px solid #aaa;background:#fdfcfa;max-width:100%;min-height:800px}select,button{font:inherit;padding:6px}#state{margin:12px 0}</style></head><body>
-<nav><label>App <select id="app">${Object.keys(apps).map((key) => `<option>${key}</option>`).join("")}</select></label><label>Width <select id="width"><option value="960">Desktop</option><option value="375">Mobile</option></select></label><label>Theme <select id="theme"><option>light</option><option>dark</option></select></label></nav><p id="state" role="status"></p><iframe id="frame" title="AMIRA research app"></iframe>
+<style>body{font:14px system-ui;background:#eceae4;margin:20px;color:#33291f}nav{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}iframe{display:block;border:1px solid #aaa;background:#fdfcfa;max-width:100%;min-height:800px}pre{white-space:pre-wrap;font-size:12px;max-width:960px}select,button{font:inherit;padding:6px}#state{margin:12px 0}</style></head><body>
+<nav><label>App <select id="app">${Object.keys(apps).map((key) => `<option>${key}</option>`).join("")}</select></label><label>Width <select id="width"><option value="960">Desktop</option><option value="375">Mobile</option></select></label><label>Theme <select id="theme"><option>light</option><option>dark</option></select></label></nav><p id="state" role="status"></p><iframe id="frame" title="AMIRA research app"></iframe><pre id="context"></pre><pre id="asked"></pre>
 <script>
 const configurations=${JSON.stringify(apps)}, frame=document.getElementById('frame');
 const initial=new URL(location.href).searchParams;
@@ -39,10 +44,11 @@ function load(){frame.style.width=document.getElementById('width').value+'px';fr
 document.getElementById('app').onchange=load;document.getElementById('width').onchange=load;document.getElementById('theme').onchange=()=>send({method:'ui/notifications/host-context-changed',params:{theme:theme()}});
 window.addEventListener('message',async(event)=>{
  if(event.source!==frame.contentWindow||event.origin!==location.origin)return;const m=event.data;
- if(m.method==='ui/initialize')send({id:m.id,result:{protocolVersion:'2026-01-26',hostInfo:{name:'AMIRA preview',version:'1'},hostCapabilities:{serverTools:{},openLinks:{},downloadFile:{}},hostContext:{theme:theme(),displayMode:'inline',containerDimensions:{maxWidth:Number(document.getElementById('width').value)}}}});
+ if(m.method==='ui/initialize'){const c=configurations[document.getElementById('app').value];send({id:m.id,result:{protocolVersion:'2026-01-26',hostInfo:{name:'AMIRA preview',version:'1'},hostCapabilities:{serverTools:{},openLinks:{},downloadFile:{},updateModelContext:{text:{},structuredContent:{}},message:{text:{}}},hostContext:{theme:theme(),displayMode:'inline',toolInfo:{tool:{name:c.tool,inputSchema:{type:'object'}}},containerDimensions:{maxWidth:Number(document.getElementById('width').value)}}}});}
  else if(m.method==='ui/notifications/initialized'){const app=document.getElementById('app').value,c=configurations[app],args=await argsFor(app);send({method:'ui/notifications/tool-input',params:{arguments:args}});send({method:'ui/notifications/tool-result',params:await call(c.tool,args)});}
  else if(m.method==='tools/call')send({id:m.id,result:await call(m.params.name,m.params.arguments)});
  else if(m.method==='ui/notifications/size-changed')frame.style.height=Math.min(6000,m.params.height||800)+'px';
+ else if(m.method==='ui/update-model-context'||m.method==='ui/message'){document.getElementById(m.method==='ui/message'?'asked':'context').textContent=m.method+' '+JSON.stringify(m.params,null,1);send({id:m.id,result:{}});}
  else if(m.id!==undefined){document.getElementById('state').textContent=m.method==='ui/download-file'?'Download requested':m.method;window.lastHostRequest=m;send({id:m.id,result:{}});}
 });load();
 </script></body></html>`;
@@ -77,7 +83,7 @@ const http = createServer(async (req, res) => {
     else if (req.method === "GET" && url.pathname === "/frame") {
       const name = url.searchParams.get("app");
       if (!Object.hasOwn(apps, name)) { res.writeHead(404).end(); return; }
-      const result = await client.readResource({ uri: `ui://amira/${name}` });
+      const result = await client.readResource({ uri: "ui://amira/app.html" });
       res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end(result.contents[0].text);
     } else if (req.method === "POST" && url.pathname === "/call") {
       let body = "";

@@ -1,12 +1,13 @@
-// Execute the seven MCP App renderers for real. Each app is an HTML page whose
-// render code lives in a template string (src/ui/*.ts), so no coverage tool
-// and no other test ever ran it. Here every page is read over MCP
-// (resources/read of its ui:// URI), its host bridge is swapped for a stub with
-// the same API, and the page is loaded into happy-dom with script execution on.
-// The captured onResult callback is then fed REAL tool payloads from the
-// in-process server over the fixture snapshot, and the stub's callTool answers
-// from the same server, so the interactive paths (evidence lists, filters,
-// exports) run end to end too.
+// Execute the seven MCP App views for real. They share one page,
+// ui://amira/app.html, whose script (the bridge, then the views and their
+// router) ships gzip-compressed inside it, so no coverage tool and no other
+// test ever ran the views. Here the page is read over MCP (resources/read),
+// its script decoded, the bridge swapped for a stub with the same API, and the
+// page loaded into happy-dom with script execution on. The router's onResult
+// callback is then fed REAL tool payloads from the in-process server over the
+// fixture snapshot, and the stub's callTool answers from the same server, so
+// the interactive paths (evidence lists, filters, exports, the selection the
+// views share with the model) run end to end too.
 //
 // The fixture gets two extra publications, each the only record carrying its
 // subject: find_related on such a subject matches publications and no
@@ -14,6 +15,7 @@
 // co-occurs".
 import test from "node:test";
 import assert from "node:assert/strict";
+import { gunzipSync } from "node:zlib";
 import { Window } from "happy-dom";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
 import { hermeticEnv } from "../helpers/env.mjs";
@@ -62,20 +64,30 @@ await lib.writeSnapshot(dataDir, fixture);
 const conn = await connectInMemory(lib, {}, { name: "apps-render" });
 test.after(() => conn.close());
 
-// --- the pages, read the way a host reads them -------------------------------
+// --- the page, read the way a host reads it ----------------------------------
 
 const APP_MIME = "text/html;profile=mcp-app";
 const { resources } = await conn.client.listResources();
-const APP_HTML = new Map();
+const APP_PAGES = new Map();
 for (const r of resources.filter((r) => r.mimeType === APP_MIME)) {
   const read = await conn.client.readResource({ uri: r.uri });
   assert.equal(read.contents.length, 1, r.uri);
-  APP_HTML.set(r.uri, read.contents[0].text);
+  APP_PAGES.set(r.uri, read.contents[0].text);
 }
+const PAGE = APP_PAGES.get(lib.APP_URI);
+assert.ok(PAGE, `${lib.APP_URI} is served`);
 
 /** tool name -> ui:// URI, from the tool's own `_meta.ui.resourceUri`. */
 const { tools } = await conn.client.listTools();
 const APP_OF = new Map(tools.filter((t) => t._meta?.ui?.resourceUri).map((t) => [t.name, t._meta.ui.resourceUri]));
+
+/** The page's two scripts: the gzip data element and the bootstrap that expands it. */
+const BUNDLE = /<script id="amira-app-bundle" type="application\/gzip">([A-Za-z0-9+/=]+)<\/script>\n<script>([\s\S]*?)<\/script>/.exec(PAGE);
+assert.ok(BUNDLE, "the page carries a gzip bundle and its bootstrap");
+const DECODED = gunzipSync(Buffer.from(BUNDLE[1], "base64")).toString("utf8");
+assert.ok(DECODED.startsWith(`${lib.BRIDGE_JS}\n`), "the decoded script starts with the bridge");
+/** Everything after the bridge: shared helpers, the seven views, the router. */
+const VIEWS_JS = DECODED.slice(lib.BRIDGE_JS.length + 1);
 
 /** The bridge's callTool allowlist, read from the shipped bundle so the stub
  * refuses exactly what the real bridge refuses. */
@@ -85,7 +97,6 @@ const BRIDGE_TOOLS = new Set(JSON.parse(`[${allowlist[1]}]`));
 
 // --- the bridge stub ----------------------------------------------------------
 
-const BRIDGE_TAG = `<script>${lib.BRIDGE_JS}</script>`;
 /** Same surface as src/ui/bridge.ts; every host-facing call goes to the test. */
 const STUB_JS = String.raw`(function () {
   var host = window.__amiraHost;
@@ -94,13 +105,18 @@ const STUB_JS = String.raw`(function () {
     esc: function (value) { return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) { return map[c]; }); },
     onResult: function (callback) { host.onResult(callback); },
     input: function () { return {}; },
+    toolName: function () { return host.toolName; },
+    shareSelection: function (selection) { host.share(JSON.stringify(selection)); },
+    canShare: function () { return !!host.canShare; },
+    canAsk: function () { return !!host.canAsk; },
+    ask: function () { return host.ask(); },
     callTool: function (name, args) { return host.callTool(name, args); },
     openLink: function (url) { return host.openLink(url); },
     download: function (text, extension) { return host.download(text, extension); },
     status: function (message) { var el = document.getElementById("app-status"); if (el) el.textContent = message; },
   };
 })();`;
-const STUB_API = ["callTool", "download", "esc", "input", "onResult", "openLink", "status"];
+const STUB_API = ["ask", "callTool", "canAsk", "canShare", "download", "esc", "input", "onResult", "openLink", "shareSelection", "status", "toolName"];
 
 /** The bridge's own result unwrapping (src/ui/bridge.ts `payload`). */
 function payloadOf(result) {
@@ -128,17 +144,17 @@ const lastCall = (app, name) => app.calls.findLast((c) => c.name === name);
 const AMIRA_URL = /^https:\/\/data\.africamultiple\.uni-bayreuth\.de\/s\/amira\/item\/\d+$/;
 
 /**
- * Load one app page with the stub in place of the bridge. Returns the window,
- * the captured render callback (as `show`), and logs of everything the page
- * asked of its host. `show` hands the app a structured clone, as postMessage
- * would, and throws if the renderer throws.
+ * Load the app page with the stub in place of the bridge, as `tool`'s result
+ * would open it (`host.toolName` stands in for the host's toolInfo; pass
+ * `toolInfo: false` for a host that sends none). Returns the window, the
+ * router's render callback (as `show`), and logs of everything the page asked
+ * of its host, the selections it shared included. `show` hands the app a
+ * structured clone, as postMessage would.
  */
-async function mount(t, tool) {
+async function mount(t, tool, { toolInfo = true, canAsk = false, canShare = false } = {}) {
   const uri = APP_OF.get(tool);
-  assert.ok(uri, `${tool} declares an app`);
-  const html = APP_HTML.get(uri);
-  assert.ok(html, `${uri} is served`);
-  assert.equal(html.split(BRIDGE_TAG).length, 2, `${uri} inlines the bridge exactly once`);
+  assert.equal(uri, lib.APP_URI, `${tool} declares the app`);
+  const html = PAGE.slice(0, BUNDLE.index) + `<script>${STUB_JS}</script>\n<script>${VIEWS_JS}</script>\n</body>\n</html>\n`;
 
   const requests = [];
   const win = new Window({
@@ -156,8 +172,13 @@ async function mount(t, tool) {
       },
     },
   });
-  const app = { win, uri, requests, errors: [], calls: [], downloads: [], render: null };
+  const app = { win, uri, requests, errors: [], calls: [], downloads: [], shared: [], asked: 0, render: null };
   win.__amiraHost = {
+    toolName: toolInfo ? tool : undefined,
+    canAsk,
+    canShare,
+    // Parsed on the test's side, so its arrays compare with deepStrictEqual.
+    share: (json) => { app.shared.push(JSON.parse(json)); },
     onResult: (callback) => { app.render = callback; },
     async callTool(name, args) {
       const plain = JSON.parse(JSON.stringify(args ?? {})); // postMessage drops undefined
@@ -165,21 +186,23 @@ async function mount(t, tool) {
       if (!BRIDGE_TOOLS.has(name)) throw new Error("This tool is not available in the app.");
       return structuredClone(await payload(name, plain));
     },
+    async ask() { app.asked++; },
     openLink: async () => {},
     download: async (contents, extension) => { app.downloads.push({ text: contents, extension }); },
   };
   win.addEventListener("error", (event) => app.errors.push(event.error ?? event.message));
   t.after(() => win.happyDOM.close());
 
-  win.document.write(html.split(BRIDGE_TAG).join(`<script>${STUB_JS}</script>`));
+  win.document.write(html);
   await win.happyDOM.waitUntilComplete();
-  assert.deepEqual(app.errors, [], `${uri} loads without errors`);
-  assert.equal(typeof app.render, "function", `${uri} registers onResult`);
+  assert.deepEqual(app.errors, [], `${tool}: the page loads without errors`);
+  assert.equal(typeof app.render, "function", `${tool}: the router registers onResult`);
 
   app.doc = win.document;
   app.root = win.document.getElementById("root");
   app.status = () => text(win.document.getElementById("app-status"));
   app.show = (value) => app.render(structuredClone(value));
+  app.lastShared = () => app.shared.at(-1);
   app.waitFor = async (predicate, what, ms = 2_000) => {
     for (const deadline = Date.now() + ms; Date.now() < deadline; await sleep(5)) {
       if (predicate()) return;
@@ -201,38 +224,45 @@ function assertHealthy(app) {
   for (const link of citations(app.root)) assert.match(link.href, AMIRA_URL);
 }
 
-// --- the page set -------------------------------------------------------------
+// --- the page -----------------------------------------------------------------
 
-test("seven MCP App pages are served, each linked from the tool it renders", () => {
-  assert.deepEqual([...APP_HTML.keys()].sort(), [
-    "ui://amira/bibliography", "ui://amira/graph", "ui://amira/map", "ui://amira/overview",
-    "ui://amira/related", "ui://amira/sections", "ui://amira/timeline",
-  ]);
-  assert.deepEqual(Object.fromEntries([...APP_OF].sort()), {
-    find_related: "ui://amira/related",
-    get_collection_overview: "ui://amira/overview",
-    get_entity_graph: "ui://amira/graph",
-    list_locations: "ui://amira/map",
-    list_research_sections: "ui://amira/sections",
-    list_years: "ui://amira/timeline",
-    search_publications: "ui://amira/bibliography",
-  });
+test("one MCP App page is served, and every app-rendering tool links to it", () => {
+  assert.deepEqual([...APP_PAGES.keys()], [lib.APP_URI]);
+  assert.deepEqual(Object.fromEntries([...APP_OF].sort()),
+    Object.fromEntries(Object.keys(lib.VIEW_OF_TOOL).sort().map((tool) => [tool, lib.APP_URI])));
 });
 
-test("every app page is self-contained: no external script, stylesheet or other fetched resource", async (t) => {
-  for (const [uri, html] of APP_HTML) {
-    const win = new Window(); // JS evaluation stays off: static markup only
-    t.after(() => win.happyDOM.close());
-    win.document.write(html);
-    const doc = win.document;
-    assert.deepEqual([...doc.querySelectorAll("script[src], link[href], img[src], iframe, object, embed, source[src]")]
-      .map((el) => el.outerHTML.slice(0, 80)), [], uri);
-    assert.equal(doc.querySelectorAll("script").length, 2, `${uri}: bridge + app script`);
-    for (const style of doc.querySelectorAll("style")) {
-      assert.doesNotMatch(style.textContent, /@import|url\(/i, `${uri}: CSS loads nothing`);
-    }
-    assert.doesNotMatch(html, /<(?:script|link|img|iframe)\b[^>]*\b(?:src|href)\s*=\s*["']?(?:https?:)?\/\//i, uri);
+test("the app page is self-contained: no external script, stylesheet or other fetched resource", async (t) => {
+  const win = new Window(); // JS evaluation stays off: static markup only
+  t.after(() => win.happyDOM.close());
+  win.document.write(PAGE);
+  const doc = win.document;
+  assert.deepEqual([...doc.querySelectorAll("script[src], link[href], img[src], iframe, object, embed, source[src]")]
+    .map((el) => el.outerHTML.slice(0, 80)), []);
+  const scripts = [...doc.querySelectorAll("script")];
+  assert.deepEqual(scripts.map((s) => s.getAttribute("type")), ["application/gzip", null], "inert gzip data, then the bootstrap");
+  assert.doesNotMatch(scripts[1].textContent, /\b(?:fetch|import|eval|Function|XMLHttpRequest)\s*\(|createObjectURL/,
+    "the bootstrap fetches and evaluates nothing");
+  for (const style of doc.querySelectorAll("style")) {
+    assert.doesNotMatch(style.textContent, /@import|url\(/i, "CSS loads nothing");
   }
+  assert.doesNotMatch(PAGE, /<(?:script|link|img|iframe)\b[^>]*\b(?:src|href)\s*=\s*["']?(?:https?:)?\/\//i);
+});
+
+test("view CSS is scoped to its view, so one view's table widths cannot reach another's", () => {
+  const css = /<style>([\s\S]*?)<\/style>/.exec(PAGE)[1];
+  for (const scoped of ['[data-view="map"] table { table-layout: fixed; }', '[data-view="map"] th:nth-child(1) { width: 32%; }',
+    '[data-view="bibliography"] th:first-child { width: 50px; }', '[data-view="graph"] th:last-child { width: 100px; }',
+    '@media (max-width: 480px) { [data-view="graph"] .graph { overflow-x: auto; }']) {
+    assert.ok(css.includes(scoped), scoped);
+  }
+  // Every rule after the shared theme belongs to one view.
+  const views = css.slice(css.indexOf('[data-view="'));
+  for (const prelude of views.split("}").map((r) => r.split("{")[0].trim()).filter((p) => p && !p.startsWith("@"))) {
+    for (const selector of prelude.split(",")) assert.match(selector.trim(), /^\[data-view="[a-z]+"\] /, prelude);
+  }
+  assert.equal(lib.scopeCss('[data-view="x"]', "/* note */ a, b:hover { c: d; } @media (x) { e { f: g; } }"),
+    '[data-view="x"] a, [data-view="x"] b:hover { c: d; }\n@media (x) { [data-view="x"] e { f: g; }\n }\n');
 });
 
 test("the stub exposes exactly the real bridge's API, with the same escaping", async (t) => {
@@ -240,7 +270,7 @@ test("the stub exposes exactly the real bridge's API, with the same escaping", a
   t.after(() => win.happyDOM.close());
   const errors = [];
   win.addEventListener("error", (event) => errors.push(event.error ?? event.message));
-  win.document.write(`<!doctype html><html><body><p id="app-status"></p>${BRIDGE_TAG}</body></html>`);
+  win.document.write(`<!doctype html><html><body><p id="app-status"></p><script>${lib.BRIDGE_JS}</script></body></html>`);
   await win.happyDOM.waitUntilComplete();
   assert.deepEqual(errors, []);
   assert.deepEqual(Object.keys(win.amiraApp).sort(), STUB_API);
@@ -255,13 +285,40 @@ test("the stub exposes exactly the real bridge's API, with the same escaping", a
     assert.equal(stubWin.amiraApp.esc(sample), win.amiraApp.esc(sample));
   }
 
-  // Every bridge member an app script touches exists on the stub.
-  for (const [uri, html] of APP_HTML) {
-    const script = html.split(BRIDGE_TAG)[1];
-    for (const [, member] of script.matchAll(/\b(?:api|amiraApp)\.(\w+)/g)) {
-      assert.ok(STUB_API.includes(member), `${uri} uses amiraApp.${member}`);
+  // Every bridge member the views script touches exists on the stub.
+  const used = new Set([...VIEWS_JS.matchAll(/\b(?:api|amiraApp)\.(\w+)/g)].map((m) => m[1]));
+  for (const member of used) assert.ok(STUB_API.includes(member), `the views use amiraApp.${member}`);
+  for (const member of ["shareSelection", "canAsk", "canShare", "toolName", "callTool"]) assert.ok(used.has(member), member);
+});
+
+test("the router picks each view from toolInfo, and from the result's shape when a host sends none", async (t) => {
+  const samples = {
+    get_collection_overview: {}, list_years: {}, list_research_sections: {}, find_related: { entity_type: "subject", value: "Architecture" },
+    get_entity_graph: { seed: "person:100" }, list_locations: {}, search_publications: {},
+  };
+  for (const toolInfo of [true, false]) {
+    for (const [tool, args] of Object.entries(samples)) {
+      const app = await mount(t, tool, { toolInfo });
+      app.show(await payload(tool, args));
+      assertHealthy(app);
+      assert.equal(app.root.dataset.view, lib.VIEW_OF_TOOL[tool], `${tool} (toolInfo ${toolInfo})`);
+      assert.match(app.doc.title, /^AMIRA — /);
     }
   }
+  // Empty results keep their shape too.
+  for (const [tool, args, view] of [["search_publications", { keyword: "zzz-none" }, "bibliography"],
+    ["list_locations", { country: "Atlantis" }, "map"], ["list_years", { from: 1800, to: 1801 }, "timeline"],
+    ["list_research_sections", {}, "sections"]]) {
+    const app = await mount(t, tool, { toolInfo: false });
+    const d = await payload(tool, args);
+    app.show(tool === "list_research_sections" ? { ...d, results: [], count: 0 } : d);
+    assert.equal(app.root.dataset.view, view, `empty ${tool}`);
+  }
+  const app = await mount(t, "list_years", { toolInfo: false });
+  app.show({ something: "else" });
+  assert.equal(text(app.root.querySelector(".empty")),
+    "This result has no AMIRA view. Update the AMIRA extension to see it here; the answer in the conversation is unaffected.");
+  assert.equal(app.root.dataset.view, undefined);
 });
 
 // --- overview -----------------------------------------------------------------
@@ -824,5 +881,122 @@ test("bibliography: pickers stay text fields when the host refuses their lists",
   app.root.querySelector('input[name="language"]').value = "English";
   app.submit(app.root.querySelector("#publication-search"));
   await app.waitFor(() => lastCall(app, "search_publications")?.args.language === "English", "typed language search");
+  assertHealthy(app);
+});
+
+// --- the selection the interactive views share with the model -----------------
+// The views hand the bridge their raw selection; src/ui/selectionContext.ts
+// bounds it and the bridge sends it (test/unit/apps.test.mjs drives that half
+// over the real protocol). Here: that each view reports what the reader sees,
+// with every record's amira_url, and that the controls follow the host's
+// capabilities.
+
+/** The shared selection as the model would receive it. */
+const contextOf = (selection) => lib.buildSelectionContext(selection).structuredContent;
+
+test("bibliography: shares its filters and the page in view, then the selected publications", async (t) => {
+  const app = await mount(t, "search_publications", { canShare: true, canAsk: true });
+  const d = await payload("search_publications");
+  app.show(d);
+  assertHealthy(app);
+  let shared = app.lastShared();
+  assert.equal(shared.view, "bibliography");
+  assert.equal(shared.records_label, "publications on the current page");
+  assert.deepEqual(shared.records.map((r) => r.amira_url), d.results.map((p) => p.amira_url));
+  assert.deepEqual(shared.counts, { total_matches: d.total_matches, selected: 0, page_offset: 0 });
+
+  const first = d.results[0];
+  const box = app.root.querySelector(`input[data-id="${first.omeka_id}"]`);
+  box.checked = true;
+  box.dispatchEvent(new app.win.Event("change", { bubbles: true }));
+  shared = app.lastShared();
+  assert.equal(shared.records_label, "selected publications");
+  assert.deepEqual(shared.records, [{ id: String(first.omeka_id), title: first.title, year: first.year, type: first.type, amira_url: first.amira_url }]);
+  assert.equal(shared.counts.selected, 1);
+  const context = contextOf(shared);
+  assert.equal(context.records[0].amira_url, first.amira_url);
+  assert.equal(context.truncated, false);
+
+  // A keyword search shares the new filters; the selection persists.
+  app.root.querySelector('input[name="keyword"]').value = "Migration";
+  app.submit(app.root.querySelector("#publication-search"));
+  await app.waitFor(() => app.lastShared().filters?.keyword === "Migration", "filters shared");
+  assert.deepEqual(app.lastShared().records.map((r) => r.amira_url), [first.amira_url]);
+
+  // "Ask about this selection" goes through the bridge, which sends its own snapshot.
+  app.click(app.root.querySelector("#ask-selection"));
+  await app.waitFor(() => app.status() === "Question sent to the conversation.", "question sent");
+  assert.equal(app.asked, 1);
+  assert.ok(app.root.querySelector("#selection-status"), "a status line for the automatic updates");
+  assertHealthy(app);
+});
+
+test("selection controls follow the host: no Ask button or status line on a host without either capability", async (t) => {
+  for (const [canAsk, canShare] of [[false, false], [true, false], [false, true]]) {
+    const app = await mount(t, "search_publications", { canAsk, canShare });
+    app.show(await payload("search_publications"));
+    assert.equal(!!app.root.querySelector("#ask-selection"), canAsk, `ask ${canAsk}`);
+    assert.equal(!!app.root.querySelector("#selection-status"), canShare, `status ${canShare}`);
+    // The view still reports its selection; the bridge decides whether to send it.
+    assert.equal(app.lastShared().view, "bibliography");
+  }
+});
+
+test("map: shares its filters, then the opened place and its cited research items", async (t) => {
+  const app = await mount(t, "list_locations", { canShare: true, canAsk: true });
+  const d = await payload("list_locations");
+  app.show(d);
+  assertHealthy(app);
+  assert.equal(app.lastShared().view, "map");
+  assert.deepEqual(app.lastShared().focus, []);
+  assert.match(app.lastShared().summary, /^No place selected; \d+ places match/);
+
+  const nigeria = d.results.find((r) => r.name === "Nigeria");
+  app.click(app.root.querySelector(`button[data-place-id="${nigeria.omeka_id}"]`));
+  await app.waitFor(() => app.lastShared().focus?.length === 1, "place shared");
+  const evidence = await payload("search_research_items", { limit: 20, offset: 0, location_id: nigeria.omeka_id });
+  const shared = app.lastShared();
+  assert.deepEqual(shared.focus, [{ title: "Nigeria", id: nigeria.omeka_id, type: nigeria.coordinate_scope === "hierarchy_root" ? "hierarchy root" : "place",
+    count: nigeria.item_count, amira_url: nigeria.amira_url }]);
+  assert.deepEqual(shared.records.map((r) => r.amira_url), evidence.results.map((r) => r.amira_url));
+  assert.equal(shared.counts.matching_items, evidence.total_matches);
+  for (const record of contextOf(shared).records) assert.match(record.amira_url, AMIRA_URL);
+  assert.ok(app.root.querySelector("#ask-selection"));
+
+  // A new filter clears the place.
+  await app.waitFor(() => app.root.querySelector('select[name="country"]'), "country dropdown");
+  app.root.querySelector('select[name="country"]').value = "Nigeria";
+  app.submit(app.root.querySelector("#map-filter"));
+  await app.waitFor(() => app.lastShared().filters?.country === "Nigeria", "country shared");
+  assert.deepEqual(app.lastShared().focus, []);
+  assertHealthy(app);
+});
+
+test("graph: shares its centre, type chips, selected spoke and the records behind the link", async (t) => {
+  const app = await mount(t, "get_entity_graph", { canShare: true });
+  const d = await payload("get_entity_graph", { seed: "person:100" });
+  app.show(d);
+  assertHealthy(app);
+  const seed = d.nodes.find((n) => n.id === "person:100");
+  assert.deepEqual(app.lastShared().focus, [{ title: seed.label, id: seed.id, type: seed.type, relation: "graph centre", amira_url: seed.amira_url }]);
+  assert.deepEqual(app.lastShared().filters, {});
+
+  app.click(app.root.querySelector('.chips button[data-types="person"]'));
+  await app.waitFor(() => app.lastShared().filters?.types?.[0] === "person", "type filter shared");
+  const filtered = await payload("get_entity_graph", { seed: "person:100", types: ["person"] });
+
+  const spoke = app.root.querySelector("g.node-link");
+  const neighbour = filtered.nodes.find((n) => n.id === spoke.getAttribute("data-pick"));
+  app.click(spoke.querySelector("text.label"));
+  await app.waitFor(() => app.lastShared().records?.length > 0, "evidence shared");
+  const shared = app.lastShared();
+  assert.deepEqual(shared.focus.slice(0, 2).map((f) => [f.id, f.relation]), [["person:100", "graph centre"], [neighbour.id, "selected neighbour"]]);
+  assert.equal(shared.focus[1].amira_url, neighbour.amira_url);
+  assert.equal(shared.focus[2].type, "link");
+  const edge = filtered.edges.find((e) => e.id === shared.focus[2].id);
+  assert.ok(edge, "the link is one of the returned edges");
+  const evidence = await payload("get_entity_graph", { seed: "person:100", edge_id: edge.id, snapshot_id: filtered.snapshot_id, offset: 0 });
+  assert.deepEqual(shared.records.map((r) => r.amira_url), evidence.results.map((r) => r.amira_url));
+  assert.equal(app.root.querySelector("#ask-selection"), null, "no Ask button without the message capability");
   assertHealthy(app);
 });

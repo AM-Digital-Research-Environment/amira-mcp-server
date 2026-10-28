@@ -213,7 +213,8 @@ test("profiles remove tools and the apps that render them", async () => {
     const listed = (await discovery.client.listTools()).tools.map((t) => t.name).sort();
     assert.deepEqual(listed, [...lib.TOOL_PROFILES.discovery].sort());
     const apps = (await discovery.client.listResources()).resources.filter((r) => r.uri.startsWith("ui://")).map((r) => r.uri).sort();
-    assert.deepEqual(apps, ["ui://amira/graph", "ui://amira/map", "ui://amira/overview", "ui://amira/related"]);
+    // discovery keeps four of the seven app tools, so the one app page stays.
+    assert.deepEqual(apps, ["ui://amira/app.html"]);
     await assert.rejects(discovery.client.callTool({ name: "list_years", arguments: {} }));
   } finally {
     await discovery.close();

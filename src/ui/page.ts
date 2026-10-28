@@ -42,9 +42,6 @@ export const VIEWS: readonly AppView[] = [
   OVERVIEW_VIEW, TIMELINE_VIEW, SECTIONS_VIEW, RELATED_VIEW, GRAPH_VIEW, MAP_VIEW, BIBLIOGRAPHY_VIEW,
 ];
 
-/** First line of the views script: tests split the decoded bundle on it. */
-export const VIEWS_MARKER = "/* AMIRA views (src/ui/page.ts) */";
-
 const ROUTER_JS = String.raw`
 var amiraRoot = document.getElementById("root");
 /** The view for a result: the host's toolInfo first, else the result's shape. */
@@ -80,7 +77,6 @@ window.amiraApp.onResult(function (payload) {
 /** Shared helpers, then each view in its own scope, then the router. */
 export function viewsScript(): string {
   return [
-    VIEWS_MARKER,
     PICKER_JS,
     BAR_CHART_JS,
     SELECTION_JS,

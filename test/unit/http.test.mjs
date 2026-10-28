@@ -49,7 +49,7 @@ test("HTTP health recovers after an initially unavailable snapshot becomes reada
   assert.equal(modernResult.isError, undefined);
   assert.equal(modernResult.structuredContent.counts.publications, 2);
   const modernResources = await modern.listResources();
-  assert.ok(modernResources.resources.some((r) => r.uri === "ui://amira/overview"));
+  assert.ok(modernResources.resources.some((r) => r.uri === "ui://amira/app.html"));
   assert.equal(body.refresh.enabled, false);
   const toolCall = captured.find((request) => request.headers["mcp-name"] === "get_collection_overview");
   assert.ok(toolCall, "modern SDK sent routing headers");

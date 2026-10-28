@@ -277,7 +277,8 @@ check(manual.body?.includes("amira_url") && manual.frontmatter?.name === "amira-
 
 const listed = (await client.listResources()).resources.map((r) => r.uri);
 check(listed.includes("skill://amira-mcp/SKILL.md"), "resources/list: the skill's SKILL.md is listed");
-check(listed.some((u) => u.startsWith("ui://")), "resources/list: the ui:// apps are still there");
+check(JSON.stringify(listed.filter((u) => u.startsWith("ui://"))) === JSON.stringify(["ui://amira/app.html"]),
+  "resources/list: the one ui:// app page is still there");
 
 for (const [method, params, label] of [
   ["skills/get", { uri: "skill://absent/SKILL.md" }, "unknown skill"],

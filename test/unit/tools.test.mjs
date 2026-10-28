@@ -11,6 +11,7 @@
 // silently run against live data instead.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { gunzipSync } from "node:zlib";
 import { z } from "zod";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
 import { childEnv, hermeticEnv, SERVER_STDIO } from "../helpers/env.mjs";
@@ -647,47 +648,45 @@ test("search types filter restricts the result set to the named kinds", async ()
   assert.ok(all.results.length >= two.results.length);
 });
 
-const APPS = [
-  { tool: "list_years", uri: "ui://amira/timeline" },
-  { tool: "get_collection_overview", uri: "ui://amira/overview" },
-  { tool: "list_research_sections", uri: "ui://amira/sections" },
-  { tool: "find_related", uri: "ui://amira/related" },
-  { tool: "get_entity_graph", uri: "ui://amira/graph" },
-  { tool: "list_locations", uri: "ui://amira/map" },
-  { tool: "search_publications", uri: "ui://amira/bibliography" },
-];
+const APP_TOOLS = ["list_years", "get_collection_overview", "list_research_sections", "find_related",
+  "get_entity_graph", "list_locations", "search_publications"];
+const APP_URI = "ui://amira/app.html";
 
-test("MCP Apps: each opted-in tool links to a self-contained ui:// resource", async () => {
+test("MCP Apps: every opted-in tool links to the one self-contained ui:// resource", async () => {
   const { tools } = await client.listTools();
   const { resources } = await client.listResources();
 
-  for (const { tool, uri } of APPS) {
-    // The extension contract: the tool points at a ui:// resource via _meta.ui.
+  // The extension contract: each tool points at a ui:// resource via _meta.ui,
+  // here all at the same one, which picks the view itself.
+  assert.deepEqual(tools.filter((t) => t._meta?.ui).map((t) => t.name).sort(), [...APP_TOOLS].sort());
+  for (const tool of APP_TOOLS) {
     const t = tools.find((x) => x.name === tool);
-    assert.equal(t._meta?.ui?.resourceUri, uri, tool);
+    assert.equal(t._meta?.ui?.resourceUri, APP_URI, tool);
     assert.deepEqual(t._meta.ui.visibility, ["model", "app"], tool);
-
-    const listed = resources.find((r) => r.uri === uri);
-    assert.ok(listed, `${uri} is actually served`);
-    assert.equal(listed.mimeType, "text/html;profile=mcp-app", uri);
-
-    const read = await client.readResource({ uri });
-    const html = read.contents[0].text;
-    assert.equal(read.contents[0].mimeType, "text/html;profile=mcp-app", uri);
-    assert.equal(read.contents[0]._meta.ui.prefersBorder, false, uri);
-    assert.ok(html.startsWith("<!doctype html>"), uri);
-    // It must speak the MCP Apps dialect...
-    assert.ok(html.includes("ui/initialize"), uri);
-    assert.ok(html.includes("ui/notifications/tool-result"), uri);
-    assert.ok(html.includes("ui/notifications/initialized"), uri);
-    // ...and be self-contained, so no csp domains are needed to render it.
-    assert.ok(!/<script[^>]+src=/i.test(html), `${uri}: no external scripts`);
-    assert.ok(!/<link[^>]+href=/i.test(html), `${uri}: no external stylesheets`);
-    // The bundled SDK contains JSON Schema URLs; those are identifiers, not fetches.
-    assert.ok(!/<(?:img|iframe|script|link)[^>]+(?:src|href)=["']https?:/i.test(html), `${uri}: no external assets`);
-    // Colours come from the DRE theme and were validated against its surfaces.
-    assert.ok(html.includes("#007a50") && html.includes("#35a87d"), `${uri}: DRE accent in both modes`);
   }
+
+  assert.deepEqual(resources.filter((r) => r.uri.startsWith("ui://")).map((r) => r.uri), [APP_URI], "one app resource");
+  const listed = resources.find((r) => r.uri === APP_URI);
+  assert.equal(listed.mimeType, "text/html;profile=mcp-app");
+  const read = await client.readResource({ uri: APP_URI });
+  const html = read.contents[0].text;
+  assert.equal(read.contents[0].mimeType, "text/html;profile=mcp-app");
+  assert.equal(read.contents[0]._meta.ui.prefersBorder, false);
+  assert.ok(html.startsWith("<!doctype html>"));
+  // It must speak the MCP Apps dialect (inside the gzip-compressed script)...
+  const bundle = /<script id="amira-app-bundle" type="application\/gzip">([A-Za-z0-9+/=]+)<\/script>/.exec(html);
+  assert.ok(bundle, "the script ships gzip-compressed");
+  const script = gunzipSync(Buffer.from(bundle[1], "base64")).toString("utf8");
+  for (const method of ["ui/initialize", "ui/notifications/tool-result", "ui/notifications/initialized", "ui/update-model-context", "ui/message"]) {
+    assert.ok(script.includes(method), method);
+  }
+  // ...and be self-contained, so no csp domains are needed to render it.
+  assert.ok(!/<script[^>]+src=/i.test(html), "no external scripts");
+  assert.ok(!/<link[^>]+href=/i.test(html), "no external stylesheets");
+  // The bundled SDK contains JSON Schema URLs; those are identifiers, not fetches.
+  assert.ok(!/<(?:img|iframe|script|link)[^>]+(?:src|href)=["']https?:/i.test(html), "no external assets");
+  // Colours come from the DRE theme and were validated against its surfaces.
+  assert.ok(html.includes("#007a50") && html.includes("#35a87d"), "DRE accent in both modes");
 
   // Hosts without the extension must still get the plain result, unchanged.
   const years = await call("list_years", { bucket: "decade" });
