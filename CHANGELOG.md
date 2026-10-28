@@ -5,7 +5,7 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## 1.30.0 — unreleased
+## 1.30.0 — 2026-10-28
 
 The rest of the collaborator fix from the review of 1.27.0 answers. One
 researcher's profile listed 51 collaborators; on the same snapshot it now
@@ -25,6 +25,12 @@ lists 7, the people the researcher recognised.
   not a measure of collaboration, and that `shared_recordings` counts joint
   podcast or video appearances. With the two new fields, `get_person` grows by
   about 100 tokens (25%) on the weigh sample.
+- **Publication repository links** come from the linked identifiers.
+  MongoDB2OmekaS now writes each ERef/EPub id as a `dcterms:identifier` link
+  (label `eref-N`, the permalink as its target) and keeps only the URN in
+  `bibo:uri`. `urls` takes the permalinks from there (from `bibo:uri` on older
+  records) and then the URN, so citation and repository links keep the
+  ERef/EPub page.
 
 ## 1.29.0 — 2026-10-27
 
