@@ -1,4 +1,4 @@
-// MCP App: the cluster's research sections as a funding-phase Gantt — the
+// MCP App view: the cluster's research sections as a funding-phase Gantt — the
 // visual form of list_research_sections. Mirrors the "Gantt (project spans)"
 // chart the DREVisualizations module renders on the AMIRA site.
 //

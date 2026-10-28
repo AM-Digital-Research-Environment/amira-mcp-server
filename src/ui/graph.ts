@@ -1,4 +1,4 @@
-// MCP App: the one-hop entity graph. It borrows the co-occurrence hub's
+// MCP App view: the one-hop entity graph. It borrows the co-occurrence hub's
 // encoding (src/ui/related.ts) rather than inventing a second one: entity
 // types own angular sectors, spoke length is a distinct-record count, and
 // labels sit on a common ring, rotated along their spoke, so neighbours never

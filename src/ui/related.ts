@@ -1,4 +1,4 @@
-// MCP App: the co-occurrence hub — the visual form of find_related, and the
+// MCP App view: the co-occurrence hub — the visual form of find_related, and the
 // one chart that shows the cluster's core analytic rather than describing it.
 // "Relationality" means an entity is constituted by what it connects to; a hub
 // puts the seed at the centre and radiates its connections, which a stack of

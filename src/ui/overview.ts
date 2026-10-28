@@ -1,4 +1,4 @@
-// MCP App: the collection at a glance — the visual form of
+// MCP App view: the collection at a glance — the visual form of
 // get_collection_overview, the tool everyone calls first.
 //
 // Form follows the data's job (dataviz procedure step 1): the headline counts
