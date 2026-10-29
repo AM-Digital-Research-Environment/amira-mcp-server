@@ -182,7 +182,8 @@ export function entityGraph(store: DataStore, seed: string, maxNodes: number, ma
     // Claude Code moves a tool result out of the conversation into a file.
     if (bytes + cost > 42_000) continue;
     bytes += cost;
-    additions.forEach((id) => ids.add(id)); edges.push(edge);
+    for (const id of additions) ids.add(id);
+    edges.push(edge);
   }
   return { snapshot_id: snapshotId(store.manifest), seed, nodes: [...ids].map((id) => index.entities.get(id)!), edges,
     total_edges: all.length, truncated: edges.length < all.length, bounds: { max_nodes: maxNodes, max_edges: maxEdges, hops: 1 },

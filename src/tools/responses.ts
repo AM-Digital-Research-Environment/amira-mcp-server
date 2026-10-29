@@ -21,15 +21,37 @@ export const READ_ONLY = {
   openWorldHint: false,
 } as const;
 
+/**
+ * Characters that never reach a client: C0 controls and DEL (tab, newline and
+ * carriage return excepted, since transcripts and full texts use them) and
+ * every Private-Use code point. A stray one inside an Omeka field silently
+ * breaks a link or a citation key, so the server scrubs its own output instead
+ * of trusting every future snapshot; the IWAC server does the same.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is this regex's purpose
+const STRIP_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/gu;
+
+/** A copy of `value` with STRIP_CHARS removed from every string it holds. */
+export function scrub<T>(value: T): T {
+  if (typeof value === "string") return value.replace(STRIP_CHARS, "") as T;
+  if (Array.isArray(value)) return value.map(scrub) as T;
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, scrub(item)])) as T;
+  }
+  return value;
+}
+
 /** Standard tool result: COMPACT JSON text (pretty-printing cost ~24% of every
- * response pre-1.0) plus structuredContent for structured-data clients. */
+ * response pre-1.0) plus structuredContent for structured-data clients (the
+ * policy keeps it only on tools with an output schema or an app). */
 export function textResult(payload: Record<string, unknown>): {
   content: { type: "text"; text: string }[];
   structuredContent: Record<string, unknown>;
 } {
+  const clean = scrub(payload);
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(payload) }],
-    structuredContent: payload,
+    content: [{ type: "text" as const, text: JSON.stringify(clean) }],
+    structuredContent: clean,
   };
 }
 
@@ -51,7 +73,7 @@ export function errorResult(
   if (!guidanceEnabled()) return { ...textResult({ error: { code, message: extra.terse ?? message } }), isError: true };
   const error: Record<string, unknown> = { code, message };
   if (extra.suggested_tool) error.suggested_tool = extra.suggested_tool;
-  if (extra.available_values && extra.available_values.length) error.available_values = extra.available_values;
+  if (extra.available_values?.length) error.available_values = extra.available_values;
   return { ...textResult({ error }), isError: true };
 }
 

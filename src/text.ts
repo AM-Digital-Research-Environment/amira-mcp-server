@@ -66,6 +66,7 @@ function originalStart(text: string, index: number): number {
   if (!shifts) {
     shifts = [];
     let delta = 0;
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: the range is "every non-ASCII character", not a control match
     for (const match of text.matchAll(/[^\u0000-\u007f]/gu)) {
       const char = match[0];
       const width = stripMarks(char).length;

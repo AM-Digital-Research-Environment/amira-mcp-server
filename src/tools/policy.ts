@@ -16,9 +16,39 @@
 //   - Guidance (AMIRA_GUIDANCE=off): titles, descriptions and schema text go,
 //     and so does the entry-point hint, which only restates the instructions'
 //     workflow. Names, schemas and handlers stay (src/guidance.ts).
+//   - Schemas: the safe-integer bounds zod writes on every `.int()` are left out
+//     of tools/list (~250 tokens per turn); validation keeps them.
+//   - Structured content travels only where a client reads it: tools with an
+//     output schema (the SDK requires it there) and tools that render an app
+//     (the page reads it). Everywhere else it repeated the text block byte for
+//     byte, doubling the wire size of the result. The IWAC server does the same.
+//   - Deadline: a call that has not answered after CALL_DEADLINE_MS returns a
+//     `deadline_exceeded` error instead of holding the client open.
 import type { RegisteredTool } from "@modelcontextprotocol/server";
 import { errorResult } from "./responses.js";
-import { withoutSchemaText } from "../guidance.js";
+import { dropSafeIntegerBounds, withJsonSchema, withoutSchemaText } from "../guidance.js";
+
+/** How long one tool call may run before the client gets an error. Every
+ * query runs on the in-memory snapshot; the slowest measured calls (text
+ * passages over every full text, the largest graph) finish in under 2 s. */
+export const CALL_DEADLINE_MS = 60_000;
+
+function withDeadline<T>(work: Promise<T>, ms: number, onTimeout: () => T): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(onTimeout()), ms);
+    timer.unref();
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
+function withoutStructured<T>(result: T): T {
+  if (result && typeof result === "object" && "structuredContent" in result) {
+    const { structuredContent: _omit, ...rest } = result as Record<string, unknown>;
+    return rest as T;
+  }
+  return result;
+}
 
 export type ToolMap = Record<string, RegisteredTool>;
 
@@ -82,16 +112,24 @@ export function applyToolPolicy(tools: ToolMap, allowed: ReadonlySet<string> | n
     }
     const handler = tool.handler as (args: unknown, ctx: unknown) => unknown;
     const shape = (tool.inputSchema as unknown as { shape?: Shape } | undefined)?.shape;
+    const keepStructured = Boolean(tool.outputSchema) || Boolean((tool._meta as { ui?: unknown } | undefined)?.ui);
+    const advertised = <S>(schema: S): S => withJsonSchema(guidance ? schema : withoutSchemaText(schema), dropSafeIntegerBounds);
     tool.update({
       callback: (async (args: unknown, ctx: unknown) => {
         const cleaned = cleanArgs(args, shape);
         if ("emptyRequired" in cleaned) {
           return withoutStructuredError(errorResult("invalid_argument", `\`${cleaned.emptyRequired}\` must not be empty.`));
         }
-        return withoutStructuredError(await handler(cleaned.args, ctx));
+        const result = withoutStructuredError(
+          await withDeadline(Promise.resolve(handler(cleaned.args, ctx)), CALL_DEADLINE_MS, () =>
+            errorResult("deadline_exceeded", `${name} did not answer within ${CALL_DEADLINE_MS / 1000} s; narrow the call and retry.`),
+          ),
+        );
+        return keepStructured ? result : withoutStructured(result);
       }) as unknown as NonNullable<Parameters<RegisteredTool["update"]>[0]["callback"]>,
       ...(guidance && ALWAYS_LOAD.has(name) ? { _meta: { ...tool._meta, "anthropic/alwaysLoad": true } } : {}),
-      ...(guidance ? {} : { paramsSchema: withoutSchemaText(tool.inputSchema), outputSchema: withoutSchemaText(tool.outputSchema) }),
+      paramsSchema: advertised(tool.inputSchema),
+      ...(tool.outputSchema ? { outputSchema: advertised(tool.outputSchema) } : {}),
     });
     if (!guidance) {
       // `update()` skips undefined values, so clearing takes an assignment.

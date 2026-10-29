@@ -42,7 +42,7 @@ test("existing v4 snapshots without optional publication fields remain usable", 
   assert.equal(store.getPublication("eref-510").o_id, 510);
   assert.match(publicationBibtex(store.getPublication("510")), /^@article/);
   assert.equal(publicationCitation(store.getPublication("510"), "csl-json").export.type, "article-journal");
-  assert.match(publicationCitation(store.getPublication("510"), "ris").export, /^TY  - JOUR/);
+  assert.match(publicationCitation(store.getPublication("510"), "ris").export, /^TY {2}- JOUR/);
 });
 
 test("rich publication fields preserve labels, links and page extent separately", () => {
@@ -98,17 +98,17 @@ test("RIS entries preserve page ranges, editors, aliases and literal corporate a
     title: "A title\r\nER  - \nTY  - BOOK", identifiers: ["epub-123"],
   };
   const ris = publicationCitation(p, "ris").export;
-  assert.match(ris, /^TY  - JOUR\n/);
-  assert.match(ris, /\nSP  - 1\nEP  - 10\n/);
-  assert.match(ris, /\nA2  - Institute of African and Diaspora Studies\n/);
+  assert.match(ris, /^TY {2}- JOUR\n/);
+  assert.match(ris, /\nSP {2}- 1\nEP {2}- 10\n/);
+  assert.match(ris, /\nA2 {2}- Institute of African and Diaspora Studies\n/);
   assert.match(ris, /Repository identifiers: eref-510; epub-123/);
-  assert.match(ris, /\nER  - $/);
+  assert.match(ris, /\nER {2}- $/);
   assert.equal(ris.split("\n").filter((line) => line.startsWith("TY  - ")).length, 1);
   assert.equal(ris.split("\n").filter((line) => line.startsWith("ER  - ")).length, 1);
   assert.doesNotMatch(ris, /zanzibar-fulltext-token/);
   const locator = publicationCitation({ ...p, pages: "e70110" }, "ris").export;
-  assert.match(locator, /SP  - e70110/);
-  assert.doesNotMatch(locator, /\nEP  - /);
+  assert.match(locator, /SP {2}- e70110/);
+  assert.doesNotMatch(locator, /\nEP {2}- /);
 });
 
 test("exports keep thesis qualifications, unknown types and date uncertainty", () => {
@@ -117,7 +117,7 @@ test("exports keep thesis qualifications, unknown types and date uncertainty", (
     const csl = publicationCitation({ ...p, type }, "csl-json").export;
     assert.equal(csl.type, "thesis");
     assert.equal(csl.genre, type);
-    assert.match(publicationCitation({ ...p, type }, "ris").export, /^TY  - THES/);
+    assert.match(publicationCitation({ ...p, type }, "ris").export, /^TY {2}- THES/);
   }
   assert.equal(publicationCitation({ ...p, type: "unknown" }, "csl-json").export.type, "document");
   assert.equal(publicationCitation({ ...p, date: null, year: null }, "csl-json").export.issued, undefined);

@@ -5,7 +5,13 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.31.0 — 2026-10-29
+
+What the IWAC server does well, carried over after a comparison of the two
+servers on 28 October: one small app page, the selection shared with the model,
+immutable and attested releases with a published image, and a leaner tool
+surface. Tool names, arguments and result fields are unchanged; structured
+content now travels only where a client reads it.
 
 - **Apps: one page for all seven views.** Every app-rendering tool now points
   `_meta.ui.resourceUri` at `ui://amira/app.html`, which picks the view from the
@@ -32,6 +38,42 @@ force and what comes next.
   Titles and filter values travel as JSON marked as research data, not
   instructions. On hosts that accept app messages, "Ask about this selection"
   sends a question carrying its own snapshot.
+- **Leaner tool surface.** tools/list no longer carries the
+  `±9007199254740991` bounds zod writes on every unbounded `.int()`:
+  12,158 → 11,916 estimated tokens per turn on stdio (13,099 → 12,809 over
+  HTTP). Validation is unchanged.
+- **Structured content where it is read.** Tools with an output schema or an
+  app keep `structuredContent`; the others return their compact JSON text
+  alone, instead of the same bytes twice.
+- **Clean output.** Control and private-use characters are scrubbed from every
+  result, so a stray one in an Omeka field cannot break a link or a citation key.
+- **Call deadline.** A tool call that has not answered within 60 seconds returns
+  a `deadline_exceeded` error instead of holding the client.
+- **The skill's references are visible without the extension.**
+  `resources/list` names all four skill files with a title and a one-line
+  summary, and the instructions (2,005 characters) point at
+  `skill://amira-mcp/SKILL.md`; hosts without the Skills extension can now find
+  and read the workflow and its references.
+- **Prompts budget their calls.** Each prompt asks to batch independent calls
+  (hosts stop after roughly 20 rounds) and to open with an evidence ledger.
+- **HTTP: `/metrics` and an optional bearer token.** `/metrics` reports the
+  request count and p50/p95 latency of recent `/mcp` requests, rate-limit
+  buckets and refresh state. `AMIRA_MCP_BEARER_TOKEN` (or
+  `AMIRA_MCP_TOKEN_FILE`) makes `/mcp` and `/metrics` require a token, for a
+  reverse proxy that adds the header; `/healthz` stays open.
+- **Immutable, attested releases and a published image.** A release guard
+  refuses a version already published on GitHub or the MCP Registry; the
+  release is created as a draft with this changelog section as its notes,
+  filled with bytes whose SHA-256 the build job recorded, and only then made
+  public. The tested image goes to
+  `ghcr.io/am-digital-research-environment/amira-mcp-server` with build
+  provenance, and the Registry publisher is pinned and checksum-verified.
+- **CI.** Biome lint (rules only), `@types/node` held to the Node 22 floor, a
+  Node 22.0.0 lane, and the packed `.mcpb` unpacked and smoke-tested on Windows
+  and macOS (`scripts/mcpb.mjs unpack`). Agent worktrees under
+  `.claude/worktrees/` stay out of local packs and the image build context.
+- **Retrieval evaluation.** `npm run evaluate-retrieval` scores search tools
+  against researcher-authored judgments (precision, recall, nDCG and MRR at k).
 
 ## 1.30.0 — 2026-10-28
 

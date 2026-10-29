@@ -11,10 +11,22 @@ import { z } from "zod";
 import { ensureStore, type DataStore } from "./data.js";
 import { fold } from "./text.js";
 
+/**
+ * How to spend tool calls, restated in every prompt as the IWAC prompts do.
+ * Hosts stop a turn after roughly 20 tool calls and count turns of the tool
+ * loop, not the calls within one, so batching is what keeps a workflow whole.
+ * The ledger tells the reader how much of the answer rests on full reads.
+ */
+const METHOD =
+  "Issue independent tool calls together in one turn (hosts stop after roughly 20 rounds) and sequence only calls " +
+  "that need an earlier answer, such as an id. Open the answer with a one-line evidence ledger: how many records " +
+  "you read in full, how many you cite from search metadata, and which figures come from facets or counts.";
+
 const CITE =
   "Cite every record you mention with its `amira_url` as a markdown link, one link per record; use only URLs the " +
   "tools return and never print legacy DRE identifiers. State what the collection does not cover rather than " +
-  "implying absence.";
+  "implying absence. " +
+  METHOD;
 
 /** Up to 20 stored names that start with (then contain) the typed prefix. */
 function suggest(key: string, pick: (store: DataStore) => string[]) {

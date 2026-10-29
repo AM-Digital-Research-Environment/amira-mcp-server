@@ -322,3 +322,25 @@ test("a modern (2026-07-28) client completes an exchange in-process, with the HT
   assert.equal(JSON.parse(missing.content[0].text).error.code, "not_found");
   assert.equal(app.limiter.size, 1, "MCP traffic went through the limiter");
 });
+
+test("/metrics reports /mcp request counts and latency percentiles", async () => {
+  const { base } = await serve({ rateLimitPerMinute: 0 });
+  const before = (await send(base, { path: "/metrics" })).json;
+  assert.equal(before.requests.completed, 0);
+  await send(base, { method: "POST", path: "/mcp", headers: JSON_POST, body: "{}" });
+  const after = (await send(base, { path: "/metrics" })).json;
+  assert.equal(after.requests.completed, 1);
+  assert.ok(after.requests.p95_ms >= after.requests.p50_ms);
+  assert.equal(typeof after.refresh.enabled, "boolean");
+});
+
+test("a configured bearer token gates /mcp and /metrics but never /healthz", async () => {
+  const { base } = await serve({ bearerToken: "proxy-secret", rateLimitPerMinute: 0 });
+  assert.equal((await send(base, { path: "/metrics" })).status, 401);
+  const refused = await send(base, { method: "POST", path: "/mcp", headers: JSON_POST, body: "{}" });
+  assert.equal(refused.status, 401);
+  assert.equal(refused.headers["www-authenticate"], "Bearer");
+  assert.equal((await send(base, { path: "/metrics", headers: { Authorization: "Bearer wrong" } })).status, 401);
+  assert.equal((await send(base, { path: "/metrics", headers: { Authorization: "Bearer proxy-secret" } })).status, 200);
+  assert.notEqual((await send(base, { path: "/healthz" })).status, 401);
+});

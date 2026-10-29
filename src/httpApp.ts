@@ -5,11 +5,17 @@
 //
 //   POST /mcp      — JSON-RPC over Streamable HTTP (the MCP endpoint)
 //   GET  /healthz  — liveness probe (also served at /)
+//   GET  /metrics  — request counts and p50/p95 latency of /mcp over the last
+//                    256 requests, rate-limit buckets and refresh state
+//
+// With a bearer token configured (AMIRA_MCP_BEARER_TOKEN / AMIRA_MCP_TOKEN_FILE)
+// /mcp and /metrics require it; /healthz stays open for the container check.
 //
 // Stateless: a fresh server instance per request, so concurrent clients can
 // never collide on JSON-RPC ids. The data lives in a process-wide singleton, so
 // per-request setup is just cheap handler wiring, not a data reload. Since
 // 2026-07-28 (SEP-2567) that is also what the protocol itself prescribes.
+import { createHash, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createMcpHandler } from "@modelcontextprotocol/server";
@@ -30,6 +36,34 @@ export interface HttpAppOptions {
   host?: string;
   /** Reported by /healthz while the snapshot is unavailable. */
   startupError?: () => string | null;
+  /** Require this bearer token on /mcp and /metrics (default: config.bearerToken). */
+  bearerToken?: string;
+}
+
+/** Latency of the most recent /mcp requests, for /metrics. */
+export function createRequestMetrics(window = 256) {
+  const latencies: number[] = [];
+  let completed = 0;
+  return {
+    record(ms: number): void {
+      completed += 1;
+      latencies.push(ms);
+      if (latencies.length > window) latencies.shift();
+    },
+    snapshot() {
+      const sorted = [...latencies].sort((a, b) => a - b);
+      const at = (p: number) => Math.round(sorted[Math.max(0, Math.ceil(sorted.length * p) - 1)] ?? 0);
+      return { completed, window: sorted.length, p50_ms: at(0.5), p95_ms: at(0.95) };
+    },
+  };
+}
+
+/** A constant-time `Authorization` check for one token; `null` means open. */
+function bearerCheck(token: string | undefined): ((header: string | undefined) => boolean) | null {
+  if (!token) return null;
+  // Compare digests: timingSafeEqual needs equal lengths, whatever was sent.
+  const expected = createHash("sha256").update(`Bearer ${token}`).digest();
+  return (header) => typeof header === "string" && timingSafeEqual(createHash("sha256").update(header).digest(), expected);
 }
 
 /** "a:b::c" → eight hextets; null for anything else. */
@@ -183,6 +217,8 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
   // When bound to loopback, also apply the SDK's Host-header guard.
   const validateOrigin = originValidation(opts.allowedOriginHostnames ?? config.allowedOriginHostnames);
   const validateHost = ["127.0.0.1", "localhost", "::1", "[::1]"].includes(host) ? localhostHostValidation() : null;
+  const authorized = bearerCheck(opts.bearerToken ?? config.bearerToken);
+  const metrics = createRequestMetrics();
   const mcpEntry = createMcpHandler(() => createAmiraServer({ openai: true }), { maxRequestBodySize: MAX_REQUEST_BYTES });
   const mcpHandler = toNodeHandler(mcpEntry, {
     maxRequestBodySize: MAX_REQUEST_BYTES,
@@ -203,6 +239,15 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
       sendJson(res, currentStore() ? 200 : 503, healthBody(opts.startupError?.() ?? null));
       return;
     }
+    if ((path === MCP_PATH || path === "/metrics") && authorized && !authorized(req.headers.authorization)) {
+      res.setHeader("WWW-Authenticate", "Bearer");
+      sendJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    if (path === "/metrics") {
+      sendJson(res, 200, { requests: metrics.snapshot(), rate_limit_buckets: limiter.size, refresh: refreshStatus() });
+      return;
+    }
     if (path === MCP_PATH) {
       const retryAfter = limiter.check(req);
       if (retryAfter) {
@@ -213,6 +258,8 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
         });
         return;
       }
+      const started = performance.now();
+      res.once("finish", () => metrics.record(performance.now() - started));
       void Promise.resolve(mcpHandler(req, res)).catch((err) => {
         console.error("[amira] http request error:", err);
         if (!res.headersSent) sendJson(res, 500, { error: "internal error" });
@@ -222,5 +269,5 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
     sendJson(res, 404, { error: "not found", mcp_endpoint: MCP_PATH });
   };
 
-  return { listener, close: () => mcpEntry.close(), limiter };
+  return { listener, close: () => mcpEntry.close(), limiter, metrics };
 }

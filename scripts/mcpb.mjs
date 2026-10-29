@@ -22,6 +22,7 @@ const alwaysExcluded = ignore().add([
 ]);
 
 function bundlePath(name) {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: a NUL in an archive path is exactly what this refuses
   if (typeof name !== "string" || /[\\:\x00]/.test(name)
     || name.split("/").some((part) => !part || part === "." || part === "..")) {
     throw new Error(`Unsafe bundle path: ${name}`);
@@ -122,6 +123,23 @@ export function listBundle(filename) {
   return names.sort();
 }
 
+// Extract a packed archive into a new directory, refusing any entry name that
+// pack would refuse. CI unpacks the release bundle this way on Windows and
+// macOS and runs the stdio smoke against the extracted server, so it tests the
+// bytes users install (no platform `unzip` needed).
+export function unpackBundle(filename, destination) {
+  const target = path.resolve(destination);
+  if (existsSync(target) && readdirSync(target).length) throw new Error(`Destination is not empty: ${destination}`);
+  const entries = unzipSync(readFileSync(path.resolve(filename)));
+  for (const [name, bytes] of Object.entries(entries)) {
+    if (name.endsWith("/")) continue;
+    const file = path.join(target, ...bundlePath(name).split("/"));
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, bytes, { flag: "wx" });
+  }
+  return Object.keys(entries).length;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   try {
     const [command, input, output] = process.argv.slice(2);
@@ -133,8 +151,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       console.log(`Packed ${result.files.length} files (${result.bytes.toLocaleString("en-US")} bytes) into ${output}`);
     } else if (command === "list" && input && !output) {
       for (const name of listBundle(input)) console.log(name);
+    } else if (command === "unpack" && input && output && process.argv.length === 5) {
+      console.log(`Unpacked ${unpackBundle(input, output)} entries into ${output}`);
     } else {
-      throw new Error("Usage: node scripts/mcpb.mjs validate manifest.json | pack DIRECTORY OUTPUT.mcpb | list BUNDLE.mcpb");
+      throw new Error(
+        "Usage: node scripts/mcpb.mjs validate manifest.json | pack DIRECTORY OUTPUT.mcpb | list BUNDLE.mcpb | unpack BUNDLE.mcpb DIRECTORY",
+      );
     }
   } catch (error) {
     console.error(`mcpb: ${error.message}`);

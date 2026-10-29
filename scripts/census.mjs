@@ -136,7 +136,8 @@ function censusOf(items) {
     for (const [k, v] of Object.entries(it)) {
       if (k.startsWith("@") || k.startsWith("o:") || k === "thumbnail_display_urls") continue;
       if (!Array.isArray(v) || v.length === 0) continue;
-      const rec = (props[k] ??= { n: 0, maxValues: 0, types: {}, sample: null });
+      props[k] ??= { n: 0, maxValues: 0, types: {}, sample: null };
+      const rec = props[k];
       rec.n++;
       rec.maxValues = Math.max(rec.maxValues, v.length);
       for (const val of v) {

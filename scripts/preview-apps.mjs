@@ -37,7 +37,7 @@ async function call(name,args){const r=await fetch('/call'+(initial.has('pseudon
 // ?seed= (a typed id or a name to resolve) and ?types= (comma-separated) set the graph's first call.
 async function argsFor(app){const a=Object.assign({},configurations[app].args);if(app!=='graph')return a;const s=initial.get('seed');
  const first=async(args)=>((await call('resolve_entity',Object.assign({query:s,limit:1},args))).structuredContent||{}).results?.[0]?.id;
- if(s){if(/^[a-z_]+:\d+$/.test(s))a.seed=s;else{const id=(await first({type:'person'}))||(await first({}));if(id)a.seed=id;}}
+ if(s){if(/^[a-z_]+:\\d+$/.test(s))a.seed=s;else{const id=(await first({type:'person'}))||(await first({}));if(id)a.seed=id;}}
  const t=initial.get('types');if(t)a.types=t.split(',');return a;}
 function theme(){const value=document.getElementById('theme').value;frame.style.background=value==='dark'?'#1b211e':'#fdfcfa';return value;}
 function load(){frame.style.width=document.getElementById('width').value+'px';frame.src='/frame?app='+document.getElementById('app').value;theme();}

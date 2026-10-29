@@ -16,19 +16,33 @@
 // the connection, the skill is pinned to the build that answers the tool calls.
 //
 // COST TO A HOST THAT IGNORES IT: nothing. Skill text is never injected into
-// `instructions` or tool descriptions — hosts discover the catalog, then decide
-// what to disclose and when. A host that does not implement the extension never
-// calls these methods.
+// tool descriptions, and the instructions only name the SKILL.md URI — hosts
+// discover the catalog, then decide what to disclose and when. A host that does
+// not implement the extension never calls these methods.
 //
 // WHAT THE SDK DOES. `SkillsExtension.load` computes every digest and size and
 // checks the frontmatter rules; `attach` registers the `skill://{+path}`
 // resource template, `skills/list`, `skills/get` and `resources/directory/read`
-// (paged), checks every `resources/read` against the published entry, and
-// declares the capability. `attach` is @experimental — its wiring may change in
-// a minor SDK release — so test/unit/skills.test.mjs and both smoke scripts
-// cover the served surface rather than trusting the upgrade.
-import type { McpServer } from "@modelcontextprotocol/server";
-import { SkillsExtension, memorySkillFiles, type SkillCatalog } from "@modelcontextprotocol/server/ext/skills";
+// (paged), and declares the capability. `attach` is @experimental — its wiring
+// may change in a minor SDK release — so test/unit/skills.test.mjs and both
+// smoke scripts cover the served surface rather than trusting the upgrade.
+//
+// WHAT IT DOES NOT. The SDK's own catalog lists one entry per skill in
+// `resources/list`. Hosts without the extension (Claude Desktop, Claude Code)
+// find files there, and SKILL.md names its references by relative path, so the
+// three reference files were invisible to them. The extension is therefore
+// served through a small `SkillSource` over the SDK-built entries, whose
+// `listResources()` lists every file with a title and a one-line summary — the
+// approach the IWAC server took for the same reason.
+import type { McpServer, Resource } from "@modelcontextprotocol/server";
+import {
+  DIRECTORY_MIME_TYPE,
+  SkillsExtension,
+  memorySkillFiles,
+  type Skill,
+  type SkillCatalog,
+  type SkillSource,
+} from "@modelcontextprotocol/server/ext/skills";
 
 /**
  * Skill files are immutable for the life of a build, so every skill result is
@@ -66,17 +80,120 @@ export function loadSkillCatalog(snapshot: SkillsSnapshot): Promise<SkillCatalog
   return SkillsExtension.load(memorySkillFiles(files), { cacheHint: SKILLS_CACHE_HINT, strict: true });
 }
 
+const BASE = "skill://";
+
+/** Media types for the binary files a skill may carry; text files are markdown or their extension's type. */
+const MIME_TYPES: Record<string, string> = {
+  md: "text/markdown", txt: "text/plain", json: "application/json", yaml: "application/yaml", yml: "application/yaml",
+  csv: "text/csv", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", svg: "image/svg+xml",
+  webp: "image/webp", pdf: "application/pdf",
+};
+const mimeTypeOf = (path: string) => MIME_TYPES[path.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream";
+
+/** A markdown file's first heading and the first prose line after it, for `resources/list`. */
+export function describeMarkdown(text: string): { title?: string; summary?: string } {
+  const lines = text.replace(/^---\n[\s\S]*?\n---\n/, "").split("\n").map((line) => line.trim());
+  const heading = lines.findIndex((line) => /^#{1,3} /.test(line));
+  const title = heading >= 0 ? lines[heading]?.replace(/^#+ /, "") : undefined;
+  const prose = lines.slice(heading + 1).find((line) => line && !/^(#|[-*|>]|```)/.test(line));
+  const summary = prose ? (prose.length > 160 ? `${prose.slice(0, 157)}…` : prose) : undefined;
+  return { ...(title ? { title } : {}), ...(summary ? { summary } : {}) };
+}
+
+/** A skill's root directory URI: its SKILL.md URI without the file name. */
+const rootOf = (skill: Skill) => skill.uri.slice(0, -"/SKILL.md".length);
+
+/** The files an entry's manifest names. Ours are never `"dynamic"`. */
+const manifestOf = (skill: Skill) => (Array.isArray(skill.resources) ? skill.resources : []);
+
 /**
- * The embedded catalog, built once when the module loads, before any server
+ * Serve the SDK-built entries from the snapshot. Reads need no re-verification:
+ * the entries were computed from these very strings, constants of the bundle.
+ * Anything outside a manifest is answered as absent, so a typo cannot resolve
+ * to something plausible-looking.
+ */
+export function snapshotSource(entries: readonly Skill[], snapshot: SkillsSnapshot): SkillSource {
+  const byUri = new Map(entries.map((skill) => [skill.uri, skill]));
+  const served = new Map<string, string>();
+  const directories = new Map<string, Resource[]>();
+  const listed: Resource[] = [];
+
+  for (const skill of entries) {
+    const name = skill.frontmatter.name;
+    for (const { uri, size } of manifestOf(skill)) {
+      const path = uri.slice(BASE.length);
+      const mimeType = mimeTypeOf(path);
+      served.set(uri, path);
+
+      // Every directory from the skill's root down to the file gains a child.
+      const segments = uri.slice(rootOf(skill).length + 1).split("/");
+      let dir = rootOf(skill);
+      segments.forEach((segment, i) => {
+        const child = `${dir}/${segment}`;
+        const children = directories.get(dir) ?? [];
+        directories.set(dir, children);
+        if (!children.some((c) => c.uri === child)) {
+          const isFile = i === segments.length - 1;
+          children.push(
+            isFile ? { uri: child, name: segment, mimeType, size } : { uri: child, name: segment, mimeType: DIRECTORY_MIME_TYPE },
+          );
+        }
+        dir = child;
+      });
+
+      // The entry point is described by its own frontmatter, the text a host
+      // matches a task against; references by their heading and first line.
+      const isEntry = uri === skill.uri;
+      const { title, summary } = path in snapshot.text ? describeMarkdown(snapshot.text[path] ?? "") : {};
+      listed.push({
+        uri,
+        name: isEntry ? name : path,
+        title: isEntry ? `${name} (SKILL.md)` : title || path,
+        description: isEntry ? skill.frontmatter.description : `${name} reference: ${summary || title || path}`,
+        mimeType,
+        size,
+      });
+    }
+  }
+  // Code-point order, as the SDK's own catalog lists a directory.
+  for (const children of directories.values()) children.sort((a, b) => (a.uri < b.uri ? -1 : a.uri > b.uri ? 1 : 0));
+
+  return {
+    list: async () => ({ skills: [...entries] }),
+    get: async (uri) => byUri.get(uri),
+    read: async (uri) => {
+      const path = served.get(uri);
+      if (path === undefined) return undefined;
+      const text = snapshot.text[path];
+      if (text !== undefined) return { text, mimeType: mimeTypeOf(path) };
+      const base64 = snapshot.base64[path];
+      return base64 === undefined ? undefined : { bytes: new Uint8Array(Buffer.from(base64, "base64")), mimeType: mimeTypeOf(path) };
+    },
+    readDirectory: async (uri) => {
+      const children = directories.get(uri);
+      return children === undefined ? undefined : { resources: children };
+    },
+    listResources: async () => listed,
+  };
+}
+
+/** The extension that serves a snapshot: the SDK's validated entries, our listing. */
+export async function loadSkillsExtension(snapshot: SkillsSnapshot): Promise<SkillsExtension | undefined> {
+  const catalog = await loadSkillCatalog(snapshot);
+  if (catalog.entries.length === 0) return undefined;
+  return new SkillsExtension({ source: snapshotSource(catalog.entries, snapshot), cacheHint: SKILLS_CACHE_HINT, strict: true });
+}
+
+/**
+ * The embedded extension, built once when the module loads, before any server
  * exists: `createAmiraServer` stays synchronous and every server — stdio, and
  * each per-request server under `createMcpHandler` — attaches the same
  * instance. A catalog that fails to load costs the skill, never the tools.
  */
-const CATALOG: SkillCatalog | undefined = await (async () => {
+const EXTENSION: SkillsExtension | undefined = await (async () => {
   if (Object.keys(SNAPSHOT.text).length + Object.keys(SNAPSHOT.base64).length === 0) return undefined;
   try {
-    const catalog = await loadSkillCatalog(SNAPSHOT);
-    return catalog.entries.length > 0 ? catalog : undefined;
+    return await loadSkillsExtension(SNAPSHOT);
   } catch (err) {
     console.error(`[amira] skills catalog rejected, serving none: ${(err as Error).message}`);
     return undefined;
@@ -91,7 +208,7 @@ const CATALOG: SkillCatalog | undefined = await (async () => {
 export function skillsEnabled(): boolean {
   const raw = process.env.AMIRA_SKILLS?.trim().toLowerCase();
   if (raw === "0" || raw === "false" || raw === "off" || raw === "no") return false;
-  return CATALOG !== undefined;
+  return EXTENSION !== undefined;
 }
 
 /**
@@ -100,5 +217,5 @@ export function skillsEnabled(): boolean {
  */
 export function registerSkills(server: McpServer): void {
   if (!skillsEnabled()) return;
-  CATALOG?.attach(server);
+  EXTENSION?.attach(server);
 }

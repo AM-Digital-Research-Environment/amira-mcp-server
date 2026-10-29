@@ -156,7 +156,7 @@ test("publication export byte bounds preserve whole records and advance without 
         assert.ok(page.count > 0 && page.count < 3);
         ids.push(...page.results.map((r) => r.omeka_id));
         for (const record of page.results) {
-          if (format === "ris") assert.match(record.ris, /\nER  - $/);
+          if (format === "ris") assert.match(record.ris, /\nER {2}- $/);
           else if (format === "bibtex") assert.match(record.bibtex, /\n}$/);
           else assert.equal(record.csl_json.title.length, 15_002);
         }

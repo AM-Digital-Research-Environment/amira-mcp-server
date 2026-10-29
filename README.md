@@ -135,7 +135,12 @@ Typed ids work everywhere in either vocabulary (`item:` / `research_item:`,
 `video:`, `podcast:`), including the `id` of every `get_*` tool. Paged results
 stop early, with `response_limited: true` and a correct `next_offset`, when a page
 would exceed 40,000 characters — Claude Code moves larger tool results out of
-the conversation. Error results carry the error as JSON text only.
+the conversation. Error results carry the error as JSON text only. Structured
+content travels only where a client reads it: on the tools with an output schema
+and on those that render an app; elsewhere the result is its compact JSON text
+alone, instead of the same bytes twice. Control and private-use characters are
+scrubbed from every result, and a call that has not answered within 60 seconds
+returns a `deadline_exceeded` error.
 
 Use `resolve_entity` before graph traversal; pass its typed `id` unchanged to
 `get_entity_graph`. Graph edges count distinct source records, separate each
@@ -210,10 +215,13 @@ local skills directory.
 | `resources/read` | Any single file — `SKILL.md` or a reference — read on demand |
 | `resources/directory/read` | One directory level at a time (`skill://amira-mcp`, `skill://amira-mcp/references`) |
 
-**Cost when unused: zero.** Skill text is never injected into the server `instructions` or into any
-tool description, so the `tools/list` payload — the part re-sent every turn — is byte-identical
-whether or not a host supports the extension. Disclosure timing stays a host decision; the three
-reference files load only when something actually reads them.
+**Cost when unused: near zero.** Skill text is never injected into any tool description, so the
+`tools/list` payload — the part re-sent every turn — is byte-identical whether or not a host
+supports the extension. The instructions add one sentence naming `skill://amira-mcp/SKILL.md`, and
+`resources/list` names every skill file with a title and a one-line summary, so a host without the
+extension (Claude Desktop, Claude Code) can still find the workflow and its three references and
+read them with `resources/read`. Disclosure timing stays a host decision; the reference files load
+only when something actually reads them.
 
 Set `AMIRA_SKILLS=0` to drop the capability and the three methods entirely.
 
@@ -260,8 +268,12 @@ npm run build && npm run start:http     # → http://localhost:8787/mcp
 docker build -t amira-mcp . && docker run -p 8787:8787 amira-mcp
 ```
 
-Endpoints: `POST /mcp` (the MCP endpoint) and `GET /healthz`. Bind with `PORT` /
-`HOST`.
+Endpoints: `POST /mcp` (the MCP endpoint), `GET /healthz` and `GET /metrics`
+(request count and p50/p95 latency of the last 256 `/mcp` requests, rate-limit
+buckets, refresh state). Bind with `PORT` / `HOST`. Every release also publishes
+the tested image, with build provenance, as
+`ghcr.io/am-digital-research-environment/amira-mcp-server:<version>` (and
+`:latest`), so a deployment updates by pulling a tag.
 
 - **ChatGPT** → enable Developer mode under **Settings → Security and login**,
   then add your server URL from ChatGPT Plugins. Research integrations use
@@ -329,6 +341,9 @@ npm run smoke:http    # test/smoke/http.mjs: spawn the HTTP server on a free por
                       # parity, CORS preflight for both protocol revisions, the rate limiter
 npm run weigh         # token budget report (needs ./data — run fetch-data first)
 npm run benchmark     # offline latency baseline against ./data (30 warm samples per query)
+npm run lint          # Biome, lint rules only (biome.json)
+npm run evaluate-retrieval -- --judgments judgments.json --output report.json
+                      # precision, recall, nDCG and MRR at k against researcher-authored judgments
 ```
 
 ### Token budgets
@@ -392,21 +407,29 @@ Three GitHub Actions cover pull requests and distribution (the two distribution
 workflows crawl the **public** API — no credentials):
 
 - **CI** (`.github/workflows/ci.yml`) — on pull requests and pushes to `main`:
-  type-checks once, then runs the offline unit suite (including the tool-surface
-  token budget) on Node.js 22, 24 and 26 on Linux and Node.js 24 on Windows, then
-  exercises both MCP transports, weighs every tool's response at its maximum
-  limit, and validates the MCPB manifest. The complete dependency audit fails on high or critical advisories.
-  A separate container job builds an offline fixture image and checks health.
-  Windows CI also packs a fixture extension and checks its file list. A
-  non-blocking job runs the official MCP conformance suite against the HTTP server.
-  Actions are pinned to commit SHAs; every job has a timeout.
+  type-checks and lints once, then runs the offline unit suite (including the
+  tool-surface token budget) on Node.js 22.0.0, 22, 24 and 26 on Linux and
+  Node.js 24 on Windows, then exercises both MCP transports, weighs every tool's
+  response at its maximum limit, and validates the MCPB manifest. The complete
+  dependency audit fails on high or critical advisories. The packed `.mcpb` is
+  then unpacked on Windows and macOS and smoke-tested there, so CI runs the bytes
+  users install. A separate container job builds an offline fixture image and
+  checks health. Windows CI also packs a fixture extension and checks its file
+  list. A non-blocking job runs the official MCP conformance suite against the
+  HTTP server. Actions are pinned to commit SHAs; every job has a timeout.
 
-- **Release** (`.github/workflows/release.yml`) — on a pushed `v*` tag: checks the
-  tag against `package.json`, crawls a fresh snapshot, runs unit, live and smoke
-  tests, packs the `.mcpb` and zips the companion skill (`amira-mcp-skill.zip`) in a
-  read-only job; a separate publish job attaches both to the GitHub Release with
-  build-provenance attestations. A non-blocking job publishes `server.json` to the
-  [MCP Registry](https://registry.modelcontextprotocol.io).
+- **Release** (`.github/workflows/release.yml`) — on a pushed `v*` tag: refuses a
+  version already published on GitHub or the MCP Registry (released bytes are
+  never replaced; fix a release with a new version), checks the tag against
+  `package.json`, crawls a fresh snapshot, runs unit, live and smoke tests, packs
+  the `.mcpb`, zips the companion skill (`amira-mcp-skill.zip`) and builds the
+  image in a read-only job that records the SHA-256 of each. The publish job
+  verifies those bytes, repeats the guard, attests their build provenance, and
+  creates the release as a draft with the version's `CHANGELOG.md` section as its
+  notes before making it public. Non-blocking jobs push the tested image to GHCR
+  with an attestation and publish `server.json` to the
+  [MCP Registry](https://registry.modelcontextprotocol.io) with a pinned,
+  checksum-verified publisher.
 - **Refresh data snapshot** (`.github/workflows/refresh-data.yml`) — weekly and
   on demand; rebuilds **only when the transformed snapshot content hash changes**, including
   item-set and vocabulary changes, updating the rolling
@@ -440,6 +463,8 @@ workflows crawl the **public** API — no credentials):
 | `AMIRA_RATE_LIMIT` | — | `120` | Requests/minute per client on `/mcp` (`0` disables). A courtesy cap — queries operate on the in-memory snapshot — not a security control; `/healthz` is exempt |
 | `AMIRA_TRUST_PROXY` | — | `false` | Attribute requests to the address the reverse proxy observed: `X-Real-IP`, otherwise the `X-Forwarded-For` entry `AMIRA_PROXY_HOPS` from the right (never the client-supplied leftmost one). Enable it behind a proxy — otherwise every request comes from the proxy and all clients share one bucket — and never when clients connect directly |
 | `AMIRA_PROXY_HOPS` | — | `1` | Number of trusted proxies in front of the server, for reading `X-Forwarded-For` when `X-Real-IP` is absent. IPv6 clients are bucketed by /64 |
+| `AMIRA_MCP_BEARER_TOKEN` | — | unset | HTTP only: require `Authorization: Bearer <token>` on `/mcp` and `/metrics` (`/healthz` stays open). Set it when the reverse proxy adds the header, so the container is never reachable unauthenticated if the proxy is bypassed |
+| `AMIRA_MCP_TOKEN_FILE` | — | unset | HTTP only: read that token from a mounted secret file instead |
 
 ### Snapshot layout and recovery
 
@@ -494,8 +519,8 @@ starting it and restart to change it.
 | Prompts, companion skill | registered and declared | neither |
 | Resources | titles and descriptions | URIs and MIME types only |
 
-The tool list costs 12,040 estimated tokens per turn on stdio with guidance and
-8,485 without (HTTP: 12,981 and 9,044); the instructions add 448 once per
+The tool list costs 11,916 estimated tokens per turn on stdio with guidance and
+8,347 without (HTTP: 12,809 and 8,858); the instructions add ~500 once per
 session. `npm run weigh` measures both and the baseline records them.
 
 ## Architecture

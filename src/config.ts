@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -125,6 +126,26 @@ export function parseAllowedOriginHostnames(raw: string | undefined): string[] {
   return [...allowed];
 }
 
+/**
+ * Optional bearer token for the HTTP transport, read from a mounted secret file
+ * (AMIRA_MCP_TOKEN_FILE) or AMIRA_MCP_BEARER_TOKEN. Unset by default: the data
+ * is public. Set it when a reverse proxy adds the header, so the container is
+ * never reachable unauthenticated even if the proxy is bypassed — the IWAC
+ * server's deployment model.
+ */
+function readBearerToken(): string | undefined {
+  const file = envValue("AMIRA_MCP_TOKEN_FILE");
+  if (file) {
+    try {
+      const token = fs.readFileSync(file, "utf8").trim();
+      if (token) return token;
+    } catch {
+      console.error(`[amira] AMIRA_MCP_TOKEN_FILE ${JSON.stringify(file)} is unreadable; falling back to AMIRA_MCP_BEARER_TOKEN`);
+    }
+  }
+  return envValue("AMIRA_MCP_BEARER_TOKEN");
+}
+
 export const config = {
   siteBase: SITE_BASE,
   siteSlug: SITE_SLUG,
@@ -155,6 +176,8 @@ export const config = {
   trustProxy: parseBool(envValue("AMIRA_TRUST_PROXY"), false),
   /** Trusted proxies in front of the server (1 = a single nginx). */
   proxyHops: Math.max(1, Math.floor(parseNonNegativeNumber(envValue("AMIRA_PROXY_HOPS"), 1))),
+  /** When set, /mcp and /metrics require `Authorization: Bearer <token>`. */
+  bearerToken: readBearerToken(),
 };
 
 export type Config = typeof config;

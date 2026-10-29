@@ -3,7 +3,7 @@
 // filter through `selectResearchItems`, so a filter can never mean different
 // things in different tools. Returns data and typed errors; tools render them.
 import { z } from "zod";
-import { DataStore, UNIVERSITY_LABELS } from "./data.js";
+import { type DataStore, UNIVERSITY_LABELS } from "./data.js";
 import type { LinkedRef, ResearchItemRec, University } from "./types.js";
 import {
   anyContainsCI, containsCI, emptyKeyword, equalsCI, keywordMatchesFolded, parseKeyword, placeAliases, refLabels, wordPrefixMatch,
@@ -93,7 +93,10 @@ export function placeMatcher(store: DataStore, query: string, level: "any" | "co
   const chainOf = (ref: LinkedRef): string[] => {
     const key = ref.o_id != null ? `id:${ref.o_id}` : `label:${ref.label}`;
     let chain = chains.get(key);
-    if (!chain) chains.set(key, chain = store.placeChain(ref).map(fold));
+    if (!chain) {
+      chain = store.placeChain(ref).map(fold);
+      chains.set(key, chain);
+    }
     return chain;
   };
   if (level === "country") return (ref) => names.has(chainOf(ref).at(-1)!);

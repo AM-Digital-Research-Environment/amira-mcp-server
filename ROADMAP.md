@@ -12,15 +12,20 @@ progress log) remains in Git at the same tag.
 
 ## Next priorities
 
-1. **Deploy 1.30.0.** On 7 October the public endpoint still answered 1.17.0,
-   while the MCP Registry already listed a newer release with that endpoint. In
-   `omeka-s-docker`, commit the `compose.amira.yml` change with its default pin
-   raised from v1.19.0 to v1.30.0 (it also sets `AMIRA_TRUST_PROXY=true` and
-   `AMIRA_PROXY_HOPS=1`). Run `deploy/amira/update-amira-mcp.sh v1.30.0` and
-   check `serverInfo.version` with a raw `initialize` request. Then reconnect
-   the ChatGPT connector, which caches tool schemas.
+1. **Deploy 1.31.0 from the published image.** On 7 October the public endpoint
+   still answered 1.17.0, while the MCP Registry already listed a newer release
+   with that endpoint. From 1.31.0 every release pushes the tested image to
+   `ghcr.io/am-digital-research-environment/amira-mcp-server:<version>`. In
+   `omeka-s-docker`, point `compose.amira.yml` at that image (it also sets
+   `AMIRA_TRUST_PROXY=true` and `AMIRA_PROXY_HOPS=1`; consider
+   `AMIRA_MCP_BEARER_TOKEN` with nginx adding the header), pull the tag instead
+   of rebuilding on the host, and check `serverInfo.version` with a raw
+   `initialize` request. Then reconnect the ChatGPT connector, which caches tool
+   schemas.
 2. **Retrieval effectiveness.** Build a blind multilingual query set with judged
-   answers and citations. Use it to measure the 1.19 ranker (word-start matching,
+   answers and citations, and score it with `npm run evaluate-retrieval`
+   (precision, recall, nDCG and MRR at k, per query and on average, with the
+   snapshot recorded). Use it to measure the 1.19 ranker (word-start matching,
    IDF, corpus interleaving, German/Portuguese stopwords) and the AND semantics of
    multi-word keywords. Do this before BM25 or semantic search. The fixture tests
    and dated evaluation sets cover deterministic contracts, not real-world recall.

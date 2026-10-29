@@ -10,7 +10,7 @@ import { fold } from "./text.js";
 /** Lowercase, accent-stripped, comma/dot/hyphen-split tokens of a name. */
 export function nameTokens(name: string): string[] {
   return fold(name) // shared with every other keyword comparison (src/text.ts)
-    .replace(/[.,;'\-]/g, " ") // commas, dots, hyphens, apostrophes -> space
+    .replace(/[.,;'-]/g, " ") // commas, dots, hyphens, apostrophes -> space
     .split(/\s+/)
     .map((t) => t.trim())
     .filter(Boolean);

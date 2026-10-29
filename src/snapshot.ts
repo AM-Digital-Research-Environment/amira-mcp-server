@@ -342,7 +342,7 @@ export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, sig
   signal?.throwIfAborted();
   await fs.mkdir(path.join(destDir, "generations"), { recursive: true });
   const lockPath = path.join(destDir, "writer.lock");
-  let lock;
+  let lock: Awaited<ReturnType<typeof fs.open>> | undefined;
   const deadline = Date.now() + 30_000;
   for (;;) {
     signal?.throwIfAborted();

@@ -19,8 +19,13 @@ import { fileURLToPath } from "node:url";
 
 /** Absolute repository root, independent of the caller's cwd. */
 export const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
-/** The stdio entry point the .mcpb runs (manifest `server.entry_point`). */
-export const SERVER_STDIO = path.join(REPO_ROOT, "server", "index.js");
+/** The stdio entry point the .mcpb runs (manifest `server.entry_point`).
+ * AMIRA_SMOKE_SERVER points the stdio smoke at an unpacked release bundle
+ * instead, so CI runs the bytes users install (the IWAC server's
+ * desktop-native job does the same). */
+export const SERVER_STDIO = process.env.AMIRA_SMOKE_SERVER
+  ? path.resolve(process.env.AMIRA_SMOKE_SERVER)
+  : path.join(REPO_ROOT, "server", "index.js");
 /** The Streamable HTTP entry point (container / remote connector). */
 export const SERVER_HTTP = path.join(REPO_ROOT, "server", "http.js");
 /** The test library bundle, as an import specifier usable from anywhere. */

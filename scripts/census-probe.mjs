@@ -33,7 +33,7 @@ out.organisation_types = orgTypes;
 // 2. Research items: dcterms:format split by value type; top labels each kind
 const items = await load("research_item");
 const fmtRes = {}, fmtLit = {};
-let provSamples = new Set(), arSamples = new Set();
+const provSamples = new Set(), arSamples = new Set();
 const typeLabels = {};
 for (const it of items) {
   for (const v of it["dcterms:format"] ?? []) {

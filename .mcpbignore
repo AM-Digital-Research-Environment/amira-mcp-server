@@ -46,6 +46,10 @@ test/
 .env
 .env.*
 .claude/settings.local.json
+biome.json
+# Agent worktrees are whole checkouts of this repository; a local pack would
+# otherwise ship each one, companion skill and all.
+.claude/worktrees/
 
 # Repo-process docs — they describe contributing to the repo, not using the
 # extension. CITATION.cff stays: citation metadata belongs with the artifact.

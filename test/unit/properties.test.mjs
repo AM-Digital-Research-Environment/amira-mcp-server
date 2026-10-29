@@ -63,12 +63,6 @@ const isLow = (u) => u >= 0xdc00 && u <= 0xdfff;
 /** A character whose fold is longer than one unit (œ → oe, ß → ss, 한 → 3 jamo). */
 const expands = (ch) => lib.fold(ch).length > 1;
 const COMBINING = /^[\u0300-\u036f]$/;
-/** An expanding character carrying a combining mark ("œ\u0301"): the one shape
- * on which foldedRanges and foldedMatches disagree (todo test below). */
-const markedExpansion = (text) => {
-  const chars = [...text];
-  return chars.some((ch, i) => expands(ch) && COMBINING.test(chars[i + 1] ?? ""));
-};
 
 test("property: foldedMatches and foldedRanges agree, and every range folds back to the needle", () => {
   fc.assert(fc.property(textAndNeedle, ({ text, needle }) => {

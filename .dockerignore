@@ -16,6 +16,7 @@ server
 .agents
 .census-cache
 .claude/settings.local.json
+.claude/worktrees
 .editorconfig
 
 # Docs, tests and repo-process files the image never reads

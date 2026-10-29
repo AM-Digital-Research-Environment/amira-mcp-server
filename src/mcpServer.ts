@@ -67,7 +67,14 @@ const CACHE_HINTS = {
  * rules therefore come FIRST and the whole text stays under the limit (a unit
  * test enforces it); institutional background lives in the companion skill and
  * in get_collection_overview.
+ *
+ * The one sentence about the skill names its SKILL.md, so a host without the
+ * Skills extension still learns where the workflow lives (it reads it with
+ * resources/read; the IWAC server does the same). It is dropped when the skill
+ * is not served (AMIRA_SKILLS=0), and INSTRUCTIONS is the longer text.
  */
+const SKILL_POINTER = " Before substantial research, read skill://amira-mcp/SKILL.md.";
+
 export const INSTRUCTIONS =
   "CITATIONS — follow exactly:\n" +
   "• Every record carries an `amira_url`, its public AMIRA page. Whenever you mention an item, person, project, " +
@@ -83,7 +90,9 @@ export const INSTRUCTIONS =
   "resolve_entity turns a name into a typed id for get_entity_graph; find_related pivots on a subject, place, " +
   "person or project. Multi-word keywords match records containing every word; quote a phrase to match it " +
   "exactly. Transcripts and publication full text are opt-in on the detail tools (include_transcript / " +
-  "include_fulltext, paged by offset).\n\n" +
+  "include_fulltext, paged by offset)." +
+  SKILL_POINTER +
+  "\n\n" +
   "ABOUT: AMIRA (Africa Multiple Interactive Research Atlas) is the research-data platform of the Africa Multiple " +
   "Cluster of Excellence, University of Bayreuth, built by its Digital Research Environment and curated with the " +
   "Africa Multiple Research Centres at Université Joseph Ki-Zerbo, Rhodes University, the University of Lagos and " +
@@ -136,7 +145,7 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
       websiteUrl: "https://data.africamultiple.uni-bayreuth.de",
     },
     {
-      ...(guidance ? { instructions: INSTRUCTIONS } : {}),
+      ...(guidance ? { instructions: skills ? INSTRUCTIONS : INSTRUCTIONS.replace(SKILL_POINTER, "") } : {}),
       supportedProtocolVersions: PROTOCOL_VERSIONS,
       cacheHints: CACHE_HINTS,
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,

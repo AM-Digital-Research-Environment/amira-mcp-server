@@ -9,119 +9,119 @@
   "surface": {
     "stdio": {
       "tool_count": 33,
-      "total_chars": 48552,
-      "total_tokens": 12158,
+      "total_chars": 47580,
+      "total_tokens": 11916,
       "tools": {
-        "get_entity_graph": 1001,
-        "list_years": 800,
-        "search_research_items": 780,
-        "compare_collections": 741,
-        "list_publication_facets": 642,
+        "get_entity_graph": 980,
+        "list_years": 779,
+        "search_research_items": 766,
+        "compare_collections": 727,
+        "list_publication_facets": 635,
         "get_collection_overview": 623,
-        "list_locations": 597,
-        "resolve_entity": 552,
-        "get_snapshot_changes": 513,
-        "get_text_passages": 503,
-        "search_publications": 498,
+        "list_locations": 577,
+        "resolve_entity": 545,
+        "get_snapshot_changes": 507,
+        "get_text_passages": 497,
+        "search_publications": 492,
         "get_data_quality": 366,
-        "search_projects": 332,
-        "find_related": 320,
-        "search_podcasts": 313,
-        "search_videos": 305,
-        "get_publication": 296,
-        "get_podcast": 262,
-        "get_video": 259,
-        "list_categories": 228,
+        "search_projects": 325,
+        "find_related": 313,
+        "search_podcasts": 306,
+        "search_videos": 298,
+        "get_publication": 283,
+        "get_podcast": 249,
+        "get_video": 245,
+        "list_categories": 222,
         "get_research_item": 219,
-        "get_person": 213,
-        "search_persons": 203,
-        "list_subjects": 203,
-        "list_collections": 172,
-        "list_institutions": 165,
-        "list_journals": 162,
+        "get_person": 207,
+        "search_persons": 196,
+        "list_subjects": 196,
+        "list_collections": 165,
         "get_institution": 161,
         "get_research_section": 159,
-        "list_groups": 153,
+        "list_institutions": 158,
+        "list_journals": 156,
         "get_project": 149,
+        "list_groups": 147,
         "list_cluster_partners": 136,
         "list_research_sections": 132
       }
     },
     "http": {
       "tool_count": 35,
-      "total_chars": 52299,
-      "total_tokens": 13099,
+      "total_chars": 51137,
+      "total_tokens": 12809,
       "tools": {
-        "get_entity_graph": 1001,
-        "list_years": 800,
-        "search_research_items": 780,
-        "compare_collections": 741,
-        "list_publication_facets": 642,
+        "get_entity_graph": 980,
+        "list_years": 779,
+        "search_research_items": 766,
+        "compare_collections": 727,
+        "list_publication_facets": 635,
         "get_collection_overview": 623,
-        "list_locations": 597,
-        "fetch": 567,
-        "resolve_entity": 552,
-        "get_snapshot_changes": 513,
-        "get_text_passages": 503,
-        "search_publications": 498,
-        "search": 374,
+        "list_locations": 577,
+        "resolve_entity": 545,
+        "fetch": 526,
+        "get_snapshot_changes": 507,
+        "get_text_passages": 497,
+        "search_publications": 492,
+        "search": 367,
         "get_data_quality": 366,
-        "search_projects": 332,
-        "find_related": 320,
-        "search_podcasts": 313,
-        "search_videos": 305,
-        "get_publication": 296,
-        "get_podcast": 262,
-        "get_video": 259,
-        "list_categories": 228,
+        "search_projects": 325,
+        "find_related": 313,
+        "search_podcasts": 306,
+        "search_videos": 298,
+        "get_publication": 283,
+        "get_podcast": 249,
+        "get_video": 245,
+        "list_categories": 222,
         "get_research_item": 219,
-        "get_person": 213,
-        "search_persons": 203,
-        "list_subjects": 203,
-        "list_collections": 172,
-        "list_institutions": 165,
-        "list_journals": 162,
+        "get_person": 207,
+        "search_persons": 196,
+        "list_subjects": 196,
+        "list_collections": 165,
         "get_institution": 161,
         "get_research_section": 159,
-        "list_groups": 153,
+        "list_institutions": 158,
+        "list_journals": 156,
         "get_project": 149,
+        "list_groups": 147,
         "list_cluster_partners": 136,
         "list_research_sections": 132
       }
     },
     "stdio_guidance_off": {
       "tool_count": 33,
-      "total_chars": 34311,
-      "total_tokens": 8590,
+      "total_chars": 33339,
+      "total_tokens": 8347,
       "tools": {
-        "get_entity_graph": 897,
-        "compare_collections": 686,
-        "list_years": 672,
+        "get_entity_graph": 876,
+        "compare_collections": 672,
+        "list_years": 652,
         "get_collection_overview": 575,
-        "resolve_entity": 494,
-        "list_locations": 472,
-        "list_publication_facets": 472,
-        "get_snapshot_changes": 436,
-        "get_text_passages": 419,
-        "search_research_items": 341,
+        "resolve_entity": 487,
+        "list_publication_facets": 466,
+        "list_locations": 452,
+        "get_snapshot_changes": 430,
+        "get_text_passages": 412,
+        "search_research_items": 328,
         "get_data_quality": 311,
-        "search_publications": 270,
-        "search_projects": 172,
-        "search_podcasts": 170,
-        "search_videos": 170,
-        "get_publication": 154,
-        "find_related": 142,
-        "get_podcast": 137,
-        "list_categories": 136,
-        "get_video": 136,
-        "list_subjects": 121,
-        "search_persons": 120,
-        "list_institutions": 109,
-        "list_collections": 108,
-        "list_journals": 108,
-        "list_groups": 107,
+        "search_publications": 263,
+        "search_projects": 165,
+        "search_videos": 164,
+        "search_podcasts": 163,
+        "get_publication": 141,
+        "find_related": 135,
+        "list_categories": 129,
+        "get_podcast": 123,
+        "get_video": 123,
+        "list_subjects": 114,
+        "search_persons": 113,
         "get_research_item": 106,
-        "get_person": 105,
+        "list_institutions": 102,
+        "list_collections": 102,
+        "list_journals": 101,
+        "list_groups": 100,
+        "get_person": 98,
         "get_research_section": 95,
         "get_institution": 94,
         "list_research_sections": 89,
@@ -131,39 +131,39 @@
     },
     "http_guidance_off": {
       "tool_count": 35,
-      "total_chars": 36543,
-      "total_tokens": 9149,
+      "total_chars": 35381,
+      "total_tokens": 8858,
       "tools": {
-        "get_entity_graph": 897,
-        "compare_collections": 686,
-        "list_years": 672,
+        "get_entity_graph": 876,
+        "compare_collections": 672,
+        "list_years": 652,
         "get_collection_overview": 575,
-        "resolve_entity": 494,
-        "list_locations": 472,
-        "list_publication_facets": 472,
-        "get_snapshot_changes": 436,
-        "get_text_passages": 419,
-        "search_research_items": 341,
-        "fetch": 325,
+        "resolve_entity": 487,
+        "list_publication_facets": 466,
+        "list_locations": 452,
+        "get_snapshot_changes": 430,
+        "get_text_passages": 412,
+        "search_research_items": 328,
         "get_data_quality": 311,
-        "search_publications": 270,
-        "search": 234,
-        "search_projects": 172,
-        "search_podcasts": 170,
-        "search_videos": 170,
-        "get_publication": 154,
-        "find_related": 142,
-        "get_podcast": 137,
-        "list_categories": 136,
-        "get_video": 136,
-        "list_subjects": 121,
-        "search_persons": 120,
-        "list_institutions": 109,
-        "list_collections": 108,
-        "list_journals": 108,
-        "list_groups": 107,
+        "fetch": 284,
+        "search_publications": 263,
+        "search": 227,
+        "search_projects": 165,
+        "search_videos": 164,
+        "search_podcasts": 163,
+        "get_publication": 141,
+        "find_related": 135,
+        "list_categories": 129,
+        "get_podcast": 123,
+        "get_video": 123,
+        "list_subjects": 114,
+        "search_persons": 113,
         "get_research_item": 106,
-        "get_person": 105,
+        "list_institutions": 102,
+        "list_collections": 102,
+        "list_journals": 101,
+        "list_groups": 100,
+        "get_person": 98,
         "get_research_section": 95,
         "get_institution": 94,
         "list_research_sections": 89,
@@ -180,16 +180,16 @@
       "wire_bytes": 4602
     },
     "search_research_items@max": {
-      "tokens": 10013,
-      "chars": 39968,
-      "text_bytes": 40050,
-      "wire_bytes": 84002
+      "tokens": 10010,
+      "chars": 39958,
+      "text_bytes": 40040,
+      "wire_bytes": 43921
     },
     "search_projects@max": {
-      "tokens": 8021,
-      "chars": 32034,
-      "text_bytes": 32084,
-      "wire_bytes": 66902
+      "tokens": 8019,
+      "chars": 32024,
+      "text_bytes": 32074,
+      "wire_bytes": 34787
     },
     "list_research_sections": {
       "tokens": 2308,
@@ -198,148 +198,148 @@
       "wire_bytes": 19142
     },
     "search_persons@max": {
-      "tokens": 4429,
-      "chars": 17690,
-      "text_bytes": 17715,
-      "wire_bytes": 37248
+      "tokens": 4427,
+      "chars": 17680,
+      "text_bytes": 17705,
+      "wire_bytes": 19502
     },
     "list_institutions@max": {
-      "tokens": 8406,
-      "chars": 33605,
-      "text_bytes": 33622,
-      "wire_bytes": 70576
+      "tokens": 8403,
+      "chars": 33595,
+      "text_bytes": 33612,
+      "wire_bytes": 36923
     },
     "list_cluster_partners": {
       "tokens": 1866,
       "chars": 7456,
       "text_bytes": 7464,
-      "wire_bytes": 15648
+      "wire_bytes": 8163
     },
     "list_groups@max": {
-      "tokens": 3471,
-      "chars": 13882,
-      "text_bytes": 13882,
-      "wire_bytes": 29182
+      "tokens": 3468,
+      "chars": 13872,
+      "text_bytes": 13872,
+      "wire_bytes": 15269
     },
     "list_subjects@max": {
-      "tokens": 10042,
-      "chars": 40165,
-      "text_bytes": 40167,
-      "wire_bytes": 84750
+      "tokens": 10040,
+      "chars": 40155,
+      "text_bytes": 40157,
+      "wire_bytes": 44552
     },
     "list_locations@max": {
-      "tokens": 10034,
-      "chars": 40124,
-      "text_bytes": 40136,
-      "wire_bytes": 84786
+      "tokens": 10032,
+      "chars": 40114,
+      "text_bytes": 40126,
+      "wire_bytes": 84766
     },
     "list_collections@max": {
-      "tokens": 3152,
-      "chars": 12592,
-      "text_bytes": 12606,
-      "wire_bytes": 26076
+      "tokens": 3149,
+      "chars": 12582,
+      "text_bytes": 12596,
+      "wire_bytes": 13439
     },
     "list_categories@formats": {
-      "tokens": 9853,
-      "chars": 39399,
-      "text_bytes": 39409,
-      "wire_bytes": 82329
+      "tokens": 9850,
+      "chars": 39389,
+      "text_bytes": 39399,
+      "wire_bytes": 42889
     },
     "list_categories@languages": {
-      "tokens": 911,
-      "chars": 3642,
-      "text_bytes": 3642,
-      "wire_bytes": 7756
+      "tokens": 908,
+      "chars": 3632,
+      "text_bytes": 3632,
+      "wire_bytes": 4083
     },
     "list_categories@resource_types": {
-      "tokens": 196,
-      "chars": 781,
-      "text_bytes": 781,
-      "wire_bytes": 1730
+      "tokens": 193,
+      "chars": 771,
+      "text_bytes": 771,
+      "wire_bytes": 918
     },
     "list_years@max": {
-      "tokens": 3823,
-      "chars": 15292,
-      "text_bytes": 15292,
-      "wire_bytes": 32680
+      "tokens": 3821,
+      "chars": 15282,
+      "text_bytes": 15282,
+      "wire_bytes": 32660
     },
     "search_publications@max": {
-      "tokens": 9993,
-      "chars": 39921,
-      "text_bytes": 39972,
-      "wire_bytes": 83570
+      "tokens": 9991,
+      "chars": 39911,
+      "text_bytes": 39962,
+      "wire_bytes": 83550
     },
     "search_publications@bibtex": {
-      "tokens": 4516,
-      "chars": 18021,
-      "text_bytes": 18062,
-      "wire_bytes": 36921
+      "tokens": 4513,
+      "chars": 18011,
+      "text_bytes": 18052,
+      "wire_bytes": 36901
     },
     "search_publications@ris": {
-      "tokens": 5075,
-      "chars": 20253,
-      "text_bytes": 20299,
-      "wire_bytes": 41636
+      "tokens": 5073,
+      "chars": 20243,
+      "text_bytes": 20289,
+      "wire_bytes": 41616
     },
     "search_publications@csl-json": {
-      "tokens": 5920,
-      "chars": 23631,
-      "text_bytes": 23677,
-      "wire_bytes": 49919
+      "tokens": 5917,
+      "chars": 23621,
+      "text_bytes": 23667,
+      "wire_bytes": 49899
     },
     "list_publication_facets@type": {
-      "tokens": 189,
-      "chars": 754,
-      "text_bytes": 754,
-      "wire_bytes": 1662
+      "tokens": 186,
+      "chars": 744,
+      "text_bytes": 744,
+      "wire_bytes": 1642
     },
     "list_publication_facets@year": {
-      "tokens": 127,
-      "chars": 505,
-      "text_bytes": 505,
-      "wire_bytes": 1140
+      "tokens": 124,
+      "chars": 495,
+      "text_bytes": 495,
+      "wire_bytes": 1120
     },
     "list_publication_facets@language": {
-      "tokens": 90,
-      "chars": 360,
-      "text_bytes": 360,
-      "wire_bytes": 826
+      "tokens": 88,
+      "chars": 350,
+      "text_bytes": 350,
+      "wire_bytes": 806
     },
     "list_publication_facets@subject": {
-      "tokens": 3125,
-      "chars": 12494,
-      "text_bytes": 12498,
-      "wire_bytes": 26080
+      "tokens": 3122,
+      "chars": 12484,
+      "text_bytes": 12488,
+      "wire_bytes": 26060
     },
     "list_publication_facets@author": {
-      "tokens": 2985,
-      "chars": 11925,
-      "text_bytes": 11940,
-      "wire_bytes": 24908
+      "tokens": 2983,
+      "chars": 11915,
+      "text_bytes": 11930,
+      "wire_bytes": 24888
     },
     "list_publication_facets@venue": {
-      "tokens": 2594,
-      "chars": 10367,
-      "text_bytes": 10376,
-      "wire_bytes": 21654
+      "tokens": 2592,
+      "chars": 10357,
+      "text_bytes": 10366,
+      "wire_bytes": 21634
     },
     "list_journals@max": {
-      "tokens": 7064,
-      "chars": 28241,
-      "text_bytes": 28256,
-      "wire_bytes": 59212
+      "tokens": 7062,
+      "chars": 28231,
+      "text_bytes": 28246,
+      "wire_bytes": 30925
     },
     "search_podcasts@max": {
-      "tokens": 6095,
-      "chars": 24360,
-      "text_bytes": 24378,
-      "wire_bytes": 50778
+      "tokens": 6092,
+      "chars": 24350,
+      "text_bytes": 24368,
+      "wire_bytes": 26369
     },
     "search_videos@max": {
-      "tokens": 9036,
-      "chars": 36098,
-      "text_bytes": 36141,
-      "wire_bytes": 75834
+      "tokens": 9033,
+      "chars": 36088,
+      "text_bytes": 36131,
+      "wire_bytes": 39662
     },
     "get_data_quality": {
       "tokens": 175,
@@ -354,76 +354,76 @@
       "wire_bytes": 314
     },
     "search@max": {
-      "tokens": 2484,
-      "chars": 9916,
-      "text_bytes": 9933,
-      "wire_bytes": 20564
+      "tokens": 2481,
+      "chars": 9906,
+      "text_bytes": 9923,
+      "wire_bytes": 20544
     },
     "get_research_item": {
       "tokens": 891,
       "chars": 3558,
       "text_bytes": 3562,
-      "wire_bytes": 7444
+      "wire_bytes": 3861
     },
     "get_person": {
       "tokens": 485,
       "chars": 1934,
       "text_bytes": 1938,
-      "wire_bytes": 4066
+      "wire_bytes": 2107
     },
     "get_project": {
       "tokens": 908,
       "chars": 3612,
       "text_bytes": 3632,
-      "wire_bytes": 7670
+      "wire_bytes": 4017
     },
     "get_research_section": {
       "tokens": 2960,
       "chars": 11831,
       "text_bytes": 11839,
-      "wire_bytes": 24191
+      "wire_bytes": 12331
     },
     "get_institution": {
       "tokens": 2187,
       "chars": 8647,
       "text_bytes": 8747,
-      "wire_bytes": 18696
+      "wire_bytes": 9928
     },
     "get_publication@fulltext": {
-      "tokens": 7632,
-      "chars": 30326,
-      "text_bytes": 30528,
-      "wire_bytes": 61842
+      "tokens": 7622,
+      "chars": 30284,
+      "text_bytes": 30486,
+      "wire_bytes": 31244
     },
     "get_publication@ris": {
       "tokens": 1264,
       "chars": 5050,
       "text_bytes": 5054,
-      "wire_bytes": 10514
+      "wire_bytes": 5439
     },
     "get_publication@csl-json": {
       "tokens": 1327,
       "chars": 5302,
       "text_bytes": 5306,
-      "wire_bytes": 11140
+      "wire_bytes": 5813
     },
     "get_podcast@transcript": {
       "tokens": 6490,
       "chars": 25945,
       "text_bytes": 25960,
-      "wire_bytes": 52144
+      "wire_bytes": 26163
     },
     "get_video@transcript": {
       "tokens": 6760,
       "chars": 26628,
       "text_bytes": 27039,
-      "wire_bytes": 54211
+      "wire_bytes": 27151
     },
     "fetch@fulltext": {
-      "tokens": 6668,
-      "chars": 26484,
-      "text_bytes": 26670,
-      "wire_bytes": 53879
+      "tokens": 6657,
+      "chars": 26442,
+      "text_bytes": 26628,
+      "wire_bytes": 53788
     },
     "find_related@max": {
       "tokens": 5568,
@@ -444,10 +444,10 @@
       "wire_bytes": 86344
     },
     "get_text_passages@max": {
-      "tokens": 6125,
-      "chars": 24286,
-      "text_bytes": 24500,
-      "wire_bytes": 49904
+      "tokens": 6119,
+      "chars": 24262,
+      "text_bytes": 24476,
+      "wire_bytes": 49852
     },
     "compare_collections@max": {
       "tokens": 481,

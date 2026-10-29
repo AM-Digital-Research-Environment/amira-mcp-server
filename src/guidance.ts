@@ -96,3 +96,39 @@ export function withoutSchemaText<T>(schema: T): T {
     },
   } as unknown as T;
 }
+
+/**
+ * Drop the `minimum: -2^53+1` / `maximum: 2^53-1` zod writes on every `.int()`
+ * that has no explicit bound. They tell a model nothing and cost ~7 tokens each
+ * on every turn (36 of them in the full surface); the IWAC server drops them the
+ * same way. Validation is unchanged: the SDK still parses with the zod schema,
+ * which enforces safe integers. Real bounds (`.min(1)`, `.max(100)`) stay.
+ */
+export function dropSafeIntegerBounds(json: unknown): unknown {
+  if (Array.isArray(json)) return json.map(dropSafeIntegerBounds);
+  if (!json || typeof json !== "object") return json;
+  const out: Json = {};
+  for (const [key, value] of Object.entries(json as Json)) {
+    if (key === "minimum" && value === Number.MIN_SAFE_INTEGER) continue;
+    if (key === "maximum" && value === Number.MAX_SAFE_INTEGER) continue;
+    out[key] = dropSafeIntegerBounds(value);
+  }
+  return out;
+}
+
+/** The same Standard Schema advertising `transform(jsonSchema)`; validation is
+ * the original schema's (see withoutSchemaText). */
+export function withJsonSchema<T>(schema: T, transform: (json: unknown) => unknown): T {
+  const std = (schema as unknown as StandardWithJson | undefined)?.["~standard"];
+  if (!std?.jsonSchema) return schema;
+  const { input, output } = std.jsonSchema;
+  return {
+    "~standard": {
+      ...std,
+      jsonSchema: {
+        input: (opts: { target: string }) => transform(input(opts)) as Json,
+        output: (opts: { target: string }) => transform(output(opts)) as Json,
+      },
+    },
+  } as unknown as T;
+}

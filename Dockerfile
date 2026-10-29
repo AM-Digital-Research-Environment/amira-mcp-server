@@ -34,6 +34,9 @@ RUN node --input-type=module -e "import {loadSnapshot} from './server/lib.js'; a
 FROM ${SNAPSHOT_STAGE} AS snapshot
 
 FROM node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0 AS run
+# Releases push this image to ghcr.io (.github/workflows/release.yml).
+LABEL org.opencontainers.image.source="https://github.com/AM-Digital-Research-Environment/amira-mcp-server" \
+      io.modelcontextprotocol.server.name="io.github.AM-Digital-Research-Environment/amira-mcp-server"
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8787 \

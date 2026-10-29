@@ -145,7 +145,11 @@ test("export links resolve to complete files", async () => {
   const result = await raw("search_research_items", { country: "Nigeria", export: "csv" });
   const link = result.content.find((c) => c.type === "resource_link");
   assert.match(link.uri, /^amira:\/\/export\/research_items\/csv\//);
-  assert.equal(result.structuredContent.export.total_matches, 2);
+  // search_research_items has no output schema and no app, so the summary
+  // travels as text only (src/tools/policy.ts).
+  assert.equal(result.structuredContent, undefined);
+  const summary = JSON.parse(result.content.find((c) => c.type === "text").text);
+  assert.equal(summary.export.total_matches, 2);
   const csv = (await client.readResource({ uri: link.uri })).contents[0];
   assert.equal(csv.mimeType, "text/csv");
   const lines = csv.text.trim().split("\r\n");

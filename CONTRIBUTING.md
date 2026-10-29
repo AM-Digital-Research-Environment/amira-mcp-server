@@ -88,9 +88,18 @@ generation-based fixture on Windows.
 ## Versioning and releases
 
 Version lives in both `package.json` and `manifest.json` — bump both, and add
-an entry to `CHANGELOG.md` in the same commit. Releases are tag-driven: pushing
-`v*` builds a fresh snapshot, packs the `.mcpb` and the companion skill, and
-publishes the GitHub Release.
+an entry to `CHANGELOG.md` in the same commit: its `## X.Y.Z` section becomes the
+release notes (`scripts/release-notes.mjs`), and a tag without one fails before
+anything is published. Releases are tag-driven: pushing `v*` builds a fresh
+snapshot, packs the `.mcpb` and the companion skill, builds the image, and
+publishes the GitHub Release and the GHCR image. Released versions are
+immutable: `scripts/release-guard.mjs` refuses a version that already exists on
+GitHub or the MCP Registry, so fix a release with a new version, never by
+moving its tag.
+
+Run `npm run lint` (Biome, rules only) before committing; CI runs it. On
+Windows ARM64 the native Biome binary can crash; the x64 build under emulation
+works.
 
 `CITATION.cff` is **not** a third file to bump. The release workflow stamps its
 `version` and `date-released` from the tag — into the packed `.mcpb`, then back

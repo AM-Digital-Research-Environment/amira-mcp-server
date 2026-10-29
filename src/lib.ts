@@ -40,3 +40,5 @@ export { TOOL_PROFILES, allowedTools } from "./toolProfiles.js";
 export { exportUri } from "./resources.js";
 export { escBibtex } from "./citation.js";
 export { authorityIds } from "./omekaJSON.js";
+export { scrub } from "./tools/responses.js";
+export { describeMarkdown } from "./skills.js";

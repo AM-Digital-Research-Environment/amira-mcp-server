@@ -1,14 +1,23 @@
 name: Release
 
 # Build a fresh, self-contained .mcpb (snapshot crawled from the public Omeka S
-# API) and attach it to a GitHub Release. Triggered by pushing a version tag
-# (e.g. `git tag v1.0.0 && git push --tags`); also runs on demand for a build
-# sanity check (artifact only, no release).
+# API) and attach it to a GitHub Release, and publish the matching container
+# image. Triggered by pushing a version tag (e.g. `git tag v1.0.0 && git push
+# --tags`); also runs on demand for a build sanity check (artifacts only, no
+# release).
+#
+# Releases are immutable. A read-only guard refuses a version that already
+# exists on GitHub or the MCP Registry, before the build and again right
+# before publication; a broken release is fixed with a new version, never by
+# moving its tag. The bytes published are the bytes the build job tested: it
+# records their SHA-256, and the publishing jobs verify them before use. The
+# release is created as a draft, filled, and only then made public. (These
+# guards come from the IWAC server's release workflow.)
 #
 # Least privilege: the workflow token is read-only by default. Only `publish`
-# (release upload, provenance, CITATION.cff bump) can write, and only
-# `publish-registry` can mint an OIDC token for the MCP Registry. The build job
-# that runs `npm ci`, the crawl and the tests never sees a write token.
+# (release upload, provenance, CITATION.cff bump), `publish-image` (GHCR) and
+# `publish-registry` (OIDC) can write; the build job that runs `npm ci`, the
+# crawl and the tests never sees a write token.
 #
 # Every action is pinned to a full commit SHA; the trailing comment names the
 # release. Dependabot (github-actions ecosystem) bumps both together.
@@ -29,7 +38,7 @@ jobs:
   build:
     name: Build, test and pack
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,8 +57,15 @@ jobs:
         with:
           node-version: "26"
           cache: npm
+      - name: Refuse already-published versions before building
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-guard.mjs
       - run: npm ci
       - run: npm run audit
+      - run: npm run lint
       # CITATION.cff ships inside the .mcpb, so stamp it before anything is
       # packed. On a tag this takes the version from the tag; on a manual run
       # there is no tag, so it falls back to package.json and the file is
@@ -65,6 +81,13 @@ jobs:
             node scripts/stamp-citation.mjs --check || \
               echo "::warning::CITATION.cff is out of step with package.json; a tagged release would fix it."
           fi
+      # The release body is the version's CHANGELOG.md section; a tag without
+      # one fails here, before anything is published.
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version=$(node -p "require('./package.json').version")
+          node scripts/release-notes.mjs "$version" > release-notes.md
+          cat release-notes.md
       - name: Build data snapshot from the public Omeka S API
         run: npm run fetch-data
       # The single release gate: clean, typecheck, skills check, build + unit
@@ -82,6 +105,24 @@ jobs:
         # Zip the skill with `amira-mcp/` at the archive root, so end users can
         # unzip it straight into their Claude skills dir (~/.claude/skills/).
         run: (cd .claude/skills && zip -r "$GITHUB_WORKSPACE/amira-mcp-skill.zip" amira-mcp)
+      # The image the publish-image job pushes, built from the snapshot this
+      # job crawled and tested, and checked for health before it is saved.
+      - name: Build and check the release image
+        run: |
+          docker build --build-arg SNAPSHOT_STAGE=bundled -t amira-mcp-release:ci .
+          docker run -d --name amira-release -p 8787:8787 -e AMIRA_LIVE_REFRESH=0 amira-mcp-release:ci
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:8787/healthz; then break; fi
+            if [ "$attempt" = 30 ]; then docker logs amira-release; exit 1; fi
+            sleep 1
+          done
+          docker rm -f amira-release
+          docker save -o amira-mcp-image.tar amira-mcp-release:ci
+      - name: Record artifact digests
+        run: |
+          sha256sum amira-mcp-server.mcpb amira-mcp-skill.zip release-notes.md > release-checksums.sha256
+          sha256sum amira-mcp-image.tar > image.sha256
+          cat release-checksums.sha256 image.sha256
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -89,7 +130,19 @@ jobs:
           path: |
             amira-mcp-server.mcpb
             amira-mcp-skill.zip
+            release-notes.md
+            release-checksums.sha256
           if-no-files-found: error
+      - name: Upload the tested image
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: amira-mcp-image
+          path: |
+            amira-mcp-image.tar
+            image.sha256
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
 
   publish:
     name: Publish GitHub release
@@ -102,11 +155,26 @@ jobs:
       id-token: write # Sigstore signing certificate for the attestation
       attestations: write # store the build-provenance attestation
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+      # No npm install, build, or package scripts run in this privileged job.
       - name: Download build artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: amira-mcp-server-mcpb
           path: dist
+      - name: Verify the bytes the build job tested
+        working-directory: dist
+        run: sha256sum -c release-checksums.sha256
+      - name: Repeat the release guard immediately before publication
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-guard.mjs
       # SLSA build provenance for both release assets. Replaces MCPB signing,
       # which was dropped with the vulnerable node-forge stack. Verify with:
       #   gh attestation verify amira-mcp-server.mcpb -R AM-Digital-Research-Environment/amira-mcp-server
@@ -118,6 +186,9 @@ jobs:
           subject-path: |
             dist/amira-mcp-server.mcpb
             dist/amira-mcp-skill.zip
+      # Draft first, public last: a run that fails between the two leaves a
+      # draft to delete, never a half-filled public release. No --clobber: the
+      # guard has just proved the tag carries no release.
       - name: Publish release
         env:
           # Uses a PAT/App secret if present, else the default token (which needs
@@ -125,14 +196,11 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/amira-mcp-server.mcpb dist/amira-mcp-skill.zip --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" dist/amira-mcp-server.mcpb dist/amira-mcp-skill.zip \
-              --verify-tag \
-              --title "$GITHUB_REF_NAME — AMIRA MCP server" \
-              --generate-notes
-          fi
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+            --title "$GITHUB_REF_NAME — AMIRA MCP server" \
+            --notes-file dist/release-notes.md
+          gh release upload "$GITHUB_REF_NAME" dist/amira-mcp-server.mcpb dist/amira-mcp-skill.zip dist/release-checksums.sha256
+          gh release edit "$GITHUB_REF_NAME" --draft=false
 
       # The stamp in `build` only reached the packed artifact; that checkout
       # was detached at the tag. GitHub's "Cite this repository" button reads
@@ -146,9 +214,6 @@ jobs:
           ref: main
           path: main-checkout
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "26"
       - name: Commit CITATION.cff to main
         working-directory: main-checkout
         run: |
@@ -171,6 +236,54 @@ jobs:
             exit 0
           }
 
+  # The tested image, pushed unchanged to GHCR with build provenance, so a
+  # deployment updates by pulling a version tag instead of rebuilding on the
+  # host. Non-blocking: an organization policy against package writes must not
+  # red a release whose assets already shipped.
+  publish-image:
+    name: Publish the container image (non-blocking)
+    needs: publish
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io
+      id-token: write # Sigstore certificate for the attestation
+      attestations: write # store the build-provenance attestation
+    steps:
+      - name: Download the tested image
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: amira-mcp-image
+      - name: Verify the bytes the build job tested
+        run: sha256sum -c image.sha256
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push the image unchanged
+        id: push
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version="${GITHUB_REF_NAME#v}"
+          docker load -i amira-mcp-image.tar
+          for tag in "$version" latest; do
+            docker tag amira-mcp-release:ci "$image:$tag"
+            docker push "$image:$tag"
+          done
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$image:$version" | cut -d@ -f2)
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Attest build provenance of the image
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.push.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
   # MCP Registry listing (https://registry.modelcontextprotocol.io, preview).
   # Non-blocking: the registry is in preview and a failure here must not red a
   # release whose assets already shipped. GitHub OIDC grants the
@@ -186,6 +299,11 @@ jobs:
     permissions:
       contents: read
       id-token: write # mcp-publisher login github-oidc
+    env:
+      # Official v1.8.1 linux_amd64 artifact digest from the upstream release,
+      # verified before it runs (as the IWAC server does) instead of `latest`.
+      MCP_PUBLISHER_VERSION: v1.8.1
+      MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -195,6 +313,9 @@ jobs:
         with:
           name: amira-mcp-server-mcpb
           path: dist
+      - name: Verify the bytes the build job tested
+        working-directory: dist
+        run: sha256sum -c release-checksums.sha256
       # server.json in git describes the last release; point it at this one:
       # version from the tag, the .mcpb release-asset URL and its SHA-256
       # (clients verify the hash before installing).
@@ -209,10 +330,11 @@ jobs:
           ' server.json > server.json.tmp
           mv server.json.tmp server.json
           cat server.json
-      - name: Install mcp-publisher
+      - name: Install the pinned, verified Registry publisher
         run: |
-          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
-            | tar xz mcp-publisher
+          curl -fL --retry 3 "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz" -o mcp-publisher.tar.gz
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum -c -
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
           ./mcp-publisher --version || true
       - name: Validate server.json
         run: ./mcp-publisher validate
