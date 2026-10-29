@@ -12,9 +12,9 @@ progress log) remains in Git at the same tag.
 
 ## Next priorities
 
-1. **Deploy 1.31.0 from the published image.** On 7 October the public endpoint
+1. **Deploy 1.31.1 from the published image.** On 7 October the public endpoint
    still answered 1.17.0, while the MCP Registry already listed a newer release
-   with that endpoint. From 1.31.0 every release pushes the tested image to
+   with that endpoint. From 1.31.1 every release pushes the tested image to
    `ghcr.io/am-digital-research-environment/amira-mcp-server:<version>`. In
    `omeka-s-docker`, point `compose.amira.yml` at that image (it also sets
    `AMIRA_TRUST_PROXY=true` and `AMIRA_PROXY_HOPS=1`; consider

@@ -53,10 +53,31 @@ test("snapshots reject missing counts and duplicate identifiers", async (t) => {
   await assert.rejects(loadSnapshot(dir), /duplicate Omeka ids/);
 });
 
+const originalFetch = new WeakMap();
+
+/**
+ * Replace globalThis.fetch for the rest of test `t`, restoring the original
+ * when it ends. Not t.mock.method: on Node 22.0.0 (the declared floor) `fetch`
+ * is an accessor on globalThis, which mock.method refuses ("must be a
+ * method"). Later calls in the same test swap the implementation again; the
+ * original is captured once, so the restore never lands on an earlier mock.
+ */
+function mockFetch(t, impl) {
+  if (!originalFetch.has(t)) {
+    originalFetch.set(t, Object.getOwnPropertyDescriptor(globalThis, "fetch"));
+    t.after(() => {
+      const descriptor = originalFetch.get(t);
+      if (descriptor) Object.defineProperty(globalThis, "fetch", descriptor);
+      else delete globalThis.fetch;
+    });
+  }
+  Object.defineProperty(globalThis, "fetch", { value: impl, writable: true, configurable: true, enumerable: true });
+}
+
 function mockCrawl(t, { changes = false, duplicates = false, missingTotal = false } = {}) {
   let probes = 0;
   const requests = [];
-  t.mock.method(globalThis, "fetch", async (url) => {
+  mockFetch(t, async (url) => {
     const u = new URL(url);
     requests.push(u);
     const isProbe = u.searchParams.get("sort_by") === "modified" && u.pathname.endsWith("/items");
@@ -199,14 +220,14 @@ test("failed promotion leaves the prior generation readable, and concurrent writ
 
 test("refresh retries transient errors, rejects permanent errors and accepts cancellation", async (t) => {
   let requests = 0;
-  t.mock.method(globalThis, "fetch", async () => { requests++; return new Response("{}", { status: 404 }); });
+  mockFetch(t, async () => { requests++; return new Response("{}", { status: 404 }); });
   await assert.rejects(fetchJSON("https://example.test/api"), /HTTP 404/);
   assert.equal(requests, 1);
-  t.mock.method(globalThis, "fetch", async () => { requests++; return requests === 2
+  mockFetch(t, async () => { requests++; return requests === 2
     ? new Response("{}", { status: 429, headers: { "retry-after": "0" } }) : new Response("[]"); });
   assert.deepEqual((await fetchJSON("https://example.test/api")).body, []);
   const ctrl = new AbortController();
-  t.mock.method(globalThis, "fetch", async () => { ctrl.abort(); throw new TypeError("network failed"); });
+  mockFetch(t, async () => { ctrl.abort(); throw new TypeError("network failed"); });
   await assert.rejects(fetchJSON("https://example.test/api", ctrl.signal), /abort/i);
   assert.equal(isStale(buildFixture(SNAPSHOT_SCHEMA_VERSION).manifest,
     { maxModified: null, totalItems: 25, itemSetsSignature: "changed" }), true);

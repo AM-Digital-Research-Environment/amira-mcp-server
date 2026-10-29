@@ -5,7 +5,28 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## 1.31.0 — 2026-10-29
+## 1.31.1 — 2026-10-29
+
+The first published release of the 1.31 line. The v1.31.0 tag was never
+published: its release build wrote `release-notes.md` into the checkout before
+packing, and the packaging allowlist test stopped it, as it should. Under the
+new immutability rule the fix ships as a new version rather than a moved tag.
+Everything listed under 1.31.0 is in this release: one 181 KB app page for all
+seven views with the selection shared with the model, a 242-token leaner tool
+surface, structured content only where it is read, scrubbed output, a call
+deadline, the skill's references visible without the Skills extension,
+`/metrics` and an optional bearer token, immutable attested releases with a
+published GHCR image, Biome lint, the Node 22.0.0 lane and the installed-bundle
+check on Windows and macOS.
+
+- **Release files stay out of the bundle.** `.mcpbignore` excludes
+  `release-notes.md`, `*.sha256` and `*.tar`, which the release workflow writes
+  into the checkout.
+- **Tests run on the declared floor.** On Node 22.0.0 `fetch` is an accessor on
+  `globalThis`, which `t.mock.method` refuses; the snapshot tests now replace it
+  with a small restoring helper. The whole unit suite passes on Node 22.0.0.
+
+## 1.31.0 — 2026-10-29 (tagged, not published)
 
 What the IWAC server does well, carried over after a comparison of the two
 servers on 28 October: one small app page, the selection shared with the model,

@@ -47,6 +47,11 @@ test/
 .env.*
 .claude/settings.local.json
 biome.json
+# Release-workflow files written into the checkout before the pack (the v1.31.0
+# build packed release-notes.md and stopped at the allowlist test).
+release-notes.md
+*.sha256
+*.tar
 # Agent worktrees are whole checkouts of this repository; a local pack would
 # otherwise ship each one, companion skill and all.
 .claude/worktrees/
