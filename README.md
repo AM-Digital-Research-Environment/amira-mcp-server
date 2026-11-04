@@ -205,6 +205,9 @@ separate decision, with ILAM and Rhodes University, and is not offered.
 | "Which items come from **Nigeria**?" | `search_research_items location=Nigeria` (Lagos items count too — `location` walks the place hierarchy) or `country=Nigeria` (exact: Niger stays out) |
 | "What does AMIRA hold from **Côte d'Ivoire**?" | `search_research_items country="Côte d'Ivoire"` (the authority stores "Ivory Coast"; common aliases resolve) |
 | "What has been **added since September**?" | `search_research_items added_since=2026-09-01` (or `search_publications added_since=…`) |
+| "Which *African Music* articles write about **Ghana**, and when?" | `search_research_items mentions_country=Ghana` → `list_years filters={mentions_country: "Ghana"}` |
+| "How did *African Music* use the word **kwaito** over time?" | `get_fulltext_map words=["kwaito"]` (rates per 10,000 words; `sparse` years flagged) |
+| "Which articles are closest in content to this ILAM article?" | `get_research_item` (`closest_in_content`) or `find_related entity_type=research_item` |
 | "Which Lagos items have **digitised images**?" | `search_research_items location=Lagos has_media=true` → `get_research_item` for the files and IIIF manifest |
 | "Give me all Islam-related items as a spreadsheet" | `search_research_items subject=Islam export=csv` → read the returned `amira://export/…` link |
 | "What audio recordings are in the ILAM collection?" | `search_research_items project_id=37700 resource_type=Audio` |
@@ -511,7 +514,11 @@ Unreferenced generations have a 24-hour cleanup grace period. Existing flat
 snapshots and a same-source legacy `cache/current` remain readable; the first new
 publication migrates a flat destination into generation history. `npm run fetch-data`
 also writes the generation layout to `data/`; scripts must use `loadSnapshot`
-rather than assuming `data/manifest.json` is active.
+rather than assuming `data/manifest.json` is active. A generation holds one JSON
+file per corpus, `manifest.json` (written last), and, when the crawl reached
+GitHub, `fulltext_maps.json` with the ILAM full-text map; the manifest's
+`fulltextMaps` entry names its tag and article count, and a load fails if the
+two disagree.
 
 A crashed writer can leave `writer.lock`. Stop **all processes using that cache**,
 confirm no writer is running, then remove that one lock file and restart. The
@@ -556,8 +563,8 @@ starting it and restart to change it.
 | Prompts, companion skill | registered and declared | neither |
 | Resources | titles and descriptions | URIs and MIME types only |
 
-The tool list costs 11,916 estimated tokens per turn on stdio with guidance and
-8,347 without (HTTP: 12,809 and 8,858); the instructions add ~500 once per
+The tool list costs 12,223 estimated tokens per turn on stdio with guidance and
+8,535 without (HTTP: 13,116 and 9,046); the instructions add ~500 once per
 session. `npm run weigh` measures both and the baseline records them.
 
 ## Architecture

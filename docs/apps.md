@@ -10,7 +10,7 @@ Server transport protocol versions are negotiated separately.
 | --- | --- | --- |
 | `overview` | `get_collection_overview` | Counts, ranked bars and table alternative |
 | `sections` | `list_research_sections` | Funding-phase timeline and table alternative |
-| `related` | `find_related` | Co-occurrence diagram with distinct corpus counts and publication-only results |
+| `related` | `find_related` | Co-occurrence diagram with distinct corpus counts and publication-only results; for an ILAM article (`entity_type=research_item`) the hub is named by its title and spans its closest articles by full text |
 | `graph` | `get_entity_graph` | Resolve a seed, filter neighbours by type, select a spoke to read its cited evidence, re-centre; shares its selection |
 | `map` | `list_locations` | Country dropdown, place table, keyboard markers, exact-ID item evidence; shares its selection |
 | `timeline` | `list_years` | Year-range controls, project dropdown, subject suggestions, shared filters, bucket evidence and paging |
