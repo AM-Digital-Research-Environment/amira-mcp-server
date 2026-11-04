@@ -5,7 +5,7 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## [Unreleased]
+## 1.32.0 — 2026-11-04
 
 The ILAM journal *African Music* (item set 27724) beyond its metadata. Its full
 text is private in Omeka, so the public API never carries it and nothing here
