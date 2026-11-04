@@ -408,6 +408,8 @@ export interface SnapshotManifest {
   itemSetsSignature?: string;
   /** Per-corpus record counts — integrity check at load and promote time. */
   counts: Record<CorpusName, number>;
+  /** Present when the snapshot carries DRE Visualizations' ILAM full-text map files (`fulltext_maps.json`). */
+  fulltextMaps?: import("./fulltextMaps.js").FulltextManifestEntry;
 }
 
 /** v5: subjects corpus, media records, record timestamps, authority identifiers,

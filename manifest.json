@@ -184,6 +184,10 @@
     {
       "name": "get_snapshot_changes",
       "description": "Page additions, updates and deletions between retained snapshots."
+    },
+    {
+      "name": "get_fulltext_map",
+      "description": "Content groups, countries named and word trends for the ILAM journal African Music, derived from its private full text."
     }
   ],
   "prompts": [

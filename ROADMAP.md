@@ -61,6 +61,11 @@ progress log) remains in Git at the same tag.
 - A live mode on the References API for fresh aggregations. Deferred: it
   conflicts with D2. Revisit only if snapshot staleness becomes a real complaint.
 - MCPB `screenshots` for the extension directory.
+- **ILAM full-text map:** move `FULLTEXT_SOURCE.tag` when DRE Visualizations
+  releases a new map (a snapshot from the old pin then counts as stale).
+  Passage search over ILAM's full text is a rights decision with ILAM and
+  Rhodes University, not a code change; the server serves only derived numbers
+  until it is taken.
 
 ## Known limitations
 

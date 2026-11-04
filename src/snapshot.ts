@@ -28,6 +28,7 @@ import {
   type TransformContext,
 } from "./transform.js";
 import { classId, oid, systemDate, type OmekaItem } from "./omekaJSON.js";
+import { FULLTEXT_SOURCE, fulltextManifestEntry, parseFulltextMaps, type FulltextMaps } from "./fulltextMaps.js";
 import {
   CORPORA,
   MIN_SNAPSHOT_SCHEMA_VERSION,
@@ -144,10 +145,33 @@ const CORPUS_QUERIES: Record<Exclude<CorpusName, "item_sets">, string> = {
 export interface CrawlOutput {
   data: SnapshotData;
   manifest: SnapshotManifest;
+  /** Public derived files of DRE Visualizations' ILAM full-text map (src/fulltextMaps.ts); optional. */
+  fulltext?: FulltextMaps | null;
+}
+
+/** File holding the validated full-text map products inside a snapshot directory. */
+const FULLTEXT_FILE = "fulltext_maps.json";
+
+/** Fetch the pinned full-text map files from the public repository (raw.githubusercontent.com). */
+export async function fetchFulltextMaps(signal?: AbortSignal): Promise<FulltextMaps> {
+  const { repository, tag, map, words } = FULLTEXT_SOURCE;
+  const base = `https://raw.githubusercontent.com/${repository}/${tag}/`;
+  const [mapRes, wordsRes] = await Promise.all([fetchJSON<unknown>(base + map, signal), fetchJSON<unknown>(base + words, signal)]);
+  return parseFulltextMaps({ source: { repository, tag, map, words }, map: mapRes.body, words: wordsRes.body });
 }
 
 /** Crawl everything and transform to snapshot records. Throws on ANY shortfall. */
 export async function crawlSnapshot(apiBase: string, log: (msg: string) => void = () => {}, signal?: AbortSignal): Promise<CrawlOutput> {
+  // The full-text map is an optional enrichment from another repository: a
+  // failure there must never block an AMIRA refresh, so the snapshot ships without it.
+  // Fetched before the first probe, so it cannot widen the Omeka consistency window.
+  const fulltext = await fetchFulltextMaps(signal).catch((err: Error) => {
+    signal?.throwIfAborted();
+    log(`full-text map skipped: ${err.message}`);
+    return null;
+  });
+  if (fulltext) log(`fetched full-text map ${fulltext.source.tag}: ${fulltext.map.items.length} articles`);
+
   const before = await probeRemote(apiBase, signal);
   const labels = await fetchPropertyLabels(apiBase, signal);
   const classTerms = new Map<number, string>();
@@ -246,8 +270,9 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     totalItemsOnInstance: probe.totalItems,
     itemSetsSignature: probe.itemSetsSignature,
     counts: Object.fromEntries(CORPORA.map((c) => [c, data[c].length])) as Record<CorpusName, number>,
+    ...(fulltext ? { fulltextMaps: fulltextManifestEntry(fulltext) } : {}),
   };
-  return { data, manifest };
+  return { data, manifest, fulltext };
 }
 
 /** One-request freshness probe: max o:modified + unfiltered item total (D11). */
@@ -274,6 +299,8 @@ export function isStale(local: SnapshotManifest, probe: RemoteProbe): boolean {
   if (probe.itemSetsSignature !== undefined && local.itemSetsSignature !== probe.itemSetsSignature) return true;
   if (probe.maxModified && (!local.maxModified || probe.maxModified > local.maxModified)) return true;
   if (local.totalItemsOnInstance != null && probe.totalItems !== local.totalItemsOnInstance) return true;
+  // A full-text map from an older pin: the release moved the pin, so fetch the new files.
+  if (local.fulltextMaps && local.fulltextMaps.tag !== FULLTEXT_SOURCE.tag) return true;
   return false;
 }
 
@@ -285,7 +312,11 @@ export async function writeSnapshot(dir: string, out: CrawlOutput): Promise<void
   for (const corpus of CORPORA) {
     await fs.writeFile(path.join(dir, `${corpus}.json`), JSON.stringify(out.data[corpus]));
   }
-  await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify(out.manifest, null, 2));
+  // The manifest entry is derived from the files actually written, never trusted from the caller.
+  const { fulltextMaps: _stale, ...manifest } = out.manifest;
+  if (out.fulltext) await fs.writeFile(path.join(dir, FULLTEXT_FILE), JSON.stringify(out.fulltext));
+  await fs.writeFile(path.join(dir, "manifest.json"),
+    JSON.stringify(out.fulltext ? { ...manifest, fulltextMaps: fulltextManifestEntry(out.fulltext) } : manifest, null, 2));
 }
 
 /** Load + validate a snapshot dir. Throws on schema/count mismatch. */
@@ -315,7 +346,15 @@ export async function loadSnapshot(dir: string): Promise<CrawlOutput> {
     }
     (data as unknown as Record<string, unknown[]>)[corpus] = arr;
   }
-  return { data, manifest };
+  let fulltext: FulltextMaps | null = null;
+  if (manifest.fulltextMaps) {
+    fulltext = parseFulltextMaps(JSON.parse(await fs.readFile(path.join(dir, FULLTEXT_FILE), "utf8")));
+    const entry = fulltextManifestEntry(fulltext);
+    if (entry.tag !== manifest.fulltextMaps.tag || entry.articles !== manifest.fulltextMaps.articles) {
+      throw new Error(`snapshot ${FULLTEXT_FILE}: ${entry.tag} with ${entry.articles} articles, manifest says ${manifest.fulltextMaps.tag} with ${manifest.fulltextMaps.articles}`);
+    }
+  }
+  return { data, manifest, fulltext };
 }
 
 /**
@@ -377,7 +416,7 @@ export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, sig
       }
     }
     // Flush data before publishing the only mutable reference.
-    for (const name of [...CORPORA.map((c) => `${c}.json`), "manifest.json"]) {
+    for (const name of [...CORPORA.map((c) => `${c}.json`), ...(out.fulltext ? [FULLTEXT_FILE] : []), "manifest.json"]) {
       const file = await fs.open(path.join(dir, name), "r+");
       try { await file.sync(); } finally { await file.close(); }
     }

@@ -124,7 +124,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
     async (args) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_locations");
-      const refused = researchFilterError(args.filters ?? {});
+      const refused = researchFilterError(args.filters ?? {}, store);
       if (refused) return queryErrorResult(refused);
       const limit = capLimit(args.limit, 50, 300);
       const offset = capOffset(args.offset);
@@ -348,7 +348,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       const { from, to } = args;
       // The same gate as search_research_items: keyword and year filters stay
       // available below `structured`, relational ones are refused.
-      const refused = researchFilterError(args.filters ?? {});
+      const refused = researchFilterError(args.filters ?? {}, store);
       if (refused) return queryErrorResult(refused);
       if (from !== undefined && to !== undefined && from > to) {
         return errorResult("invalid_range", "`from` must be less than or equal to `to`.");

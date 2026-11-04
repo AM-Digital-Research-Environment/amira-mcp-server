@@ -94,7 +94,7 @@ Every entity is an Omeka item with a stable public page: its **`amira_url`**
 number in that URL; use that when an identifier is needed.
 
 See [references/data-model.md](references/data-model.md) for field-level detail, and
-[references/tools-by-task.md](references/tools-by-task.md) for the full 33-tool catalogue (35 over HTTP),
+[references/tools-by-task.md](references/tools-by-task.md) for the full 34-tool catalogue (36 over HTTP),
 the five prompts and the resources.
 
 ## Workflow
@@ -173,6 +173,14 @@ either order (person), an exact place name or alias at any level of the hierarch
 unknown name falls back to word prefixes) or id/label (project); the response echoes the rule in
 `matching`. `matched_items` counts *items*, so it can legitimately differ from a
 `list_subjects` heading count.
+
+For ILAM's journal *African Music*, whose full text is private, DRE Visualizations' offline
+full-text map adds content-based links: `find_related entity_type=research_item` (and
+`get_research_item`'s `closest_in_content`) give an article's closest articles by full text,
+`search_research_items mentions_country=…` finds articles whose text names a country, and
+`get_fulltext_map` gives content groups, countries named and word trends per year. Group names are
+AI-generated and experimental: say so whenever you show one. None of these returns text; never
+claim to have read an ILAM article.
 
 Prefer `resolve_entity` when a name could be ambiguous. It returns typed IDs,
 separate homonym candidates and unresolved literal nodes; do not silently pick
@@ -275,6 +283,6 @@ link.
 
 13. **Exact place identity.** `location` is a label search and may match homonyms.
     Use `location_id` from `list_locations` for one authority and its descendants.
-14. **Profiles.** Full mode has 33 core tools (35 over HTTP). Some deployments expose
+14. **Profiles.** Full mode has 34 core tools (36 over HTTP). Some deployments expose
     `research`, `discovery` or `visualization` subsets. Use the advertised catalogue;
     do not assume an omitted tool exists.

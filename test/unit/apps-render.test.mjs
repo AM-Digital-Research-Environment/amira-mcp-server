@@ -525,6 +525,15 @@ test("related: hub, counts, value table and publication citations match find_rel
   assert.ok(!app.root.querySelector(".empty"), "no empty message");
 });
 
+test("related: a research-item seed (full-text pivot) is named by its title, not its id", async (t) => {
+  const app = await mount(t, "find_related");
+  const d = await payload("find_related", { entity_type: "subject", value: "Architecture" });
+  app.show({ ...d, entity_type: "research_item", value: "500", seed_label: "Mbira tunings in Zimbabwe" });
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector("h1")), "What co-occurs with Mbira tunings in Zimbabwe");
+  assert.equal([...app.root.querySelectorAll("text.seedlab")].map(text).join(" "), "Mbira tunings in Zimbabwe");
+});
+
 test("related: a seed that matches nothing gets the friendly empty message", async (t) => {
   const app = await mount(t, "find_related");
   const d = await payload("find_related", { entity_type: "subject", value: "zzz-no-such-subject" });

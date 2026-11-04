@@ -12,6 +12,7 @@ import { personMatches } from "./names.js";
 import { allowDescriptive, allowStructured } from "./exposure.js";
 import { fold } from "./text.js";
 import { stripTypedId } from "./typedIds.js";
+import { countryNames, countrySuggestions, fulltextIndex } from "./fulltextMaps.js";
 
 const query = z.string().max(1000).optional();
 /** An ISO date or date-time ("2026-09-01"). Checked at run time by
@@ -24,7 +25,7 @@ export const researchFilters = z.strictObject({
   location_id: z.number().int().positive().optional(),
   project_id: z.union([z.string().max(256), z.number().int().positive()]).optional(),
   research_section: query, university: query, resource_type: query, genre: query,
-  collection: query, language: query,
+  collection: query, language: query, mentions_country: query,
   year_from: z.number().int().min(0).max(2200).optional(),
   year_to: z.number().int().min(0).max(2200).optional(),
   has_media: z.boolean().optional(),
@@ -44,7 +45,7 @@ export interface QueryError { code: string; message: string; needs?: "structured
  * 1.19 list_years refused any `filters` object below `structured` while
  * search_research_items allowed keyword and year filters at the same level.
  */
-export function researchFilterError(args: ResearchFilters): QueryError | null {
+export function researchFilterError(args: ResearchFilters, store?: DataStore): QueryError | null {
   if (invalidYearRange(args.year_from, args.year_to)) {
     return { code: "invalid_range", message: "`year_from` must be less than or equal to `year_to`." };
   }
@@ -56,6 +57,13 @@ export function researchFilterError(args: ResearchFilters): QueryError | null {
     if (used.length) {
       return { code: "exposure_restricted", needs: "structured",
         message: `The ${used.map((u) => `\`${u}\``).join(", ")} filter${used.length > 1 ? "s are" : " is"} not available` };
+    }
+  }
+  if (args.mentions_country != null) {
+    // Derived from article text, so it sits with the descriptive fields.
+    if (!allowDescriptive()) return { code: "exposure_restricted", needs: "descriptive", message: "The `mentions_country` filter is not available" };
+    if (store && !fulltextIndex(store)) {
+      return { code: "fulltext_map_unavailable", message: "This snapshot carries no full-text map, so `mentions_country` cannot be applied." };
     }
   }
   return null;
@@ -194,6 +202,11 @@ export function selectResearchItems(store: DataStore, args: ResearchFilters) {
     preds.collection = (it) => it.item_sets.some((id) => id === asId || containsCI(store.getItemSet(id)?.title, q));
   }
   if (args.language) preds.language = (it) => store.languageIndex.matches(it.languages, args.language!);
+  if (args.mentions_country) {
+    const index = fulltextIndex(store);
+    const names = index ? countryNames(index, placeAliases(args.mentions_country)) : new Set<string>();
+    preds.mentions_country = (it) => !!index?.articles.get(it.o_id)?.countries.some((c) => names.has(c.country));
+  }
   if (args.year_from !== undefined || args.year_to !== undefined)
     preds.year = (it) => yearsOverlap(it, args.year_from, args.year_to);
   if (args.has_media !== undefined) preds.has_media = (it) => it.has_media === args.has_media;
@@ -228,6 +241,11 @@ export function selectResearchItems(store: DataStore, args: ResearchFilters) {
         const values = placeSuggestions(store, value, level);
         if (values.length) didYouMean.push({ filter, values });
       }
+    }
+    const index = args.mentions_country ? fulltextIndex(store) : null;
+    if (index && !countryNames(index, placeAliases(args.mentions_country!)).size) {
+      const values = countrySuggestions(index, args.mentions_country!);
+      if (values.length) didYouMean.push({ filter: "mentions_country", values });
     }
   }
   return {

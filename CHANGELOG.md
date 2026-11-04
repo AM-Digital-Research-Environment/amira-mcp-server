@@ -5,6 +5,56 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## [Unreleased]
+
+The ILAM journal *African Music* (item set 27724) beyond its metadata. Its full
+text is private in Omeka, so the public API never carries it and nothing here
+reads or quotes it. DRE Visualizations v2.48.0 computed a full-text map from it
+offline and committed only derived, public files; the server now serves them.
+
+- **The map travels with the snapshot.** The crawl fetches two public files of
+  DRE Visualizations at the pinned tag `v2.48.0` (`FULLTEXT_SOURCE` in
+  `src/fulltextMaps.ts`): the map (ids, groups with AI-generated labels, the 8
+  nearest neighbours by full-text embedding with cosine scores, and per-article
+  country counts) and the word counts per year. Both are validated against
+  their expected shape and stored, declared fields only, as
+  `fulltext_maps.json` beside the snapshot; the manifest records the tag and
+  article count, and a load fails if the two disagree. A failed fetch never
+  blocks a refresh: the snapshot ships without the map, a live refresh keeps
+  the files already served, and the surfaces below answer
+  `fulltext_map_unavailable`. A snapshot from an older pin is stale. Every
+  result is filtered to research items present in the snapshot and filed in
+  the item set, and cites them by `amira_url`.
+- **`get_research_item`** adds, for an article on the map,
+  `closest_in_content` (its closest articles by full text, with titles, scores
+  and `amira_url`s) and `full_text_map` (its content group, marked
+  `label_ai_generated`, and the countries its text names, each with a note on
+  method and limits). An ILAM article off the map says so.
+- **`find_related entity_type=research_item`** pivots from an article to its
+  closest articles by full text, with the subjects, people, countries and
+  formats they share; the hub view names the seed by its title.
+- **`mentions_country`**, a new research-item filter, keeps articles whose
+  full text names a country at least three times (gazetteer counts, journal
+  addresses excluded; country aliases apply), with `country_mentions` on each
+  row. It is part of the shared selector, so `list_years`, `list_locations`,
+  `compare_collections` and exports take it too.
+- **`get_fulltext_map`**, a new tool: the content groups with sample articles
+  and a caveat that their names are AI-generated (Claude Opus 5.5, from
+  article titles) and experimental, the countries named across the journal,
+  one group's articles (`group`), or the rate per 10,000 words per year of up
+  to six words (`words`), with years under 12,000 words marked `sparse` and
+  near forms suggested for words not counted (only words in 10 or more
+  articles are). 34 core tools on stdio, 36 over HTTP; it joins the
+  `research` profile.
+- **Limits are stated where the data is served:** neighbour scores sit in a
+  narrow band (compare ranks), a country mention is not a subject, and 657 of
+  about 1,000 articles are on the map. Every surface needs the `descriptive`
+  exposure level. Passage search over the text itself is a separate rights
+  decision with ILAM and Rhodes University and is not offered.
+- **Surface:** stdio `tools/list` 11,916 → 12,223 estimated tokens (+2.6%);
+  the `research` profile's ceiling moves from 10,200 to 10,450 for its new
+  tool. The token baseline is re-measured on the 4 November snapshot.
+
 ## 1.31.1 — 2026-10-29
 
 The first published release of the 1.31 line. The v1.31.0 tag was never

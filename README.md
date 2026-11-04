@@ -31,7 +31,7 @@ digitised **research items**, **people**, **institutions**, **groups**,
 **collections**, the cluster **bibliography with searchable full text** (extracted
 from the open-access PDFs) and its **journals**, **podcast episodes with
 transcripts**, and the cluster's **YouTube videos with searchable transcripts** —
-as 33 core tools an LLM can query, five research-workflow prompts, and resources
+as 34 core tools an LLM can query, five research-workflow prompts, and resources
 for citable records and bulk exports. From one MCP interface, clients can move
 across records and the places, languages, and subjects that connect them.
 
@@ -74,8 +74,8 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | Tool | Purpose |
 | --- | --- |
 | `get_collection_overview` | Counts and breakdowns across the whole collection + snapshot freshness |
-| `search_research_items` | Find items by keyword (every word must match; quote a phrase), **subject**, **location** (hierarchy-aware), **country** (exact, with aliases such as Côte d'Ivoire = Ivory Coast), contributor, project, section, university, resource type, format/genre, language, year, **`has_media`**, **`added_since` / `modified_since`**; `export=csv|jsonl` returns a file link instead of rows. Like every `search_*` tool, a filtered search that finds nothing carries a `hint` to drop or broaden filters |
-| `get_research_item` | Full metadata for one item (by Omeka `id` or typed id): typed dates, roles with the **affiliation at the time**, places with their region/country chain, provenance as linked institutions, typed identifiers, collections, related items, **media files** and the **IIIF manifest** — plus a **generated citation** and a BibTeX/RIS/CSL-JSON export (`citation_format`) |
+| `search_research_items` | Find items by keyword (every word must match; quote a phrase), **subject**, **location** (hierarchy-aware), **country** (exact, with aliases such as Côte d'Ivoire = Ivory Coast), contributor, project, section, university, resource type, format/genre, language, year, **`has_media`**, **`added_since` / `modified_since`**, **`mentions_country`** (ILAM articles whose full text names a country; see below); `export=csv|jsonl` returns a file link instead of rows. Like every `search_*` tool, a filtered search that finds nothing carries a `hint` to drop or broaden filters |
+| `get_research_item` | Full metadata for one item (by Omeka `id` or typed id): typed dates, roles with the **affiliation at the time**, places with their region/country chain, provenance as linked institutions, typed identifiers, collections, related items, **media files** and the **IIIF manifest** — plus a **generated citation** and a BibTeX/RIS/CSL-JSON export (`citation_format`). ILAM *African Music* articles add `closest_in_content` and `full_text_map` (see below) |
 | `search_projects` / `get_project` | Projects by keyword or acronym, university, section, PI, member, funder — detail with item breakdown, top subjects and sample items |
 | `list_research_sections` / `get_research_section` | Thematic sections with funding phases (AM 1.0 / AM 2.0), PIs, counts, projects; detail by name or id |
 | `search_persons` / `get_person` | People (either name order works) — profile with GND and other authority identifiers, project and research-section roles, items, publications, podcasts, videos and top collaborators, with a `coverage_note` on how to read the counts. A name that matches nobody returns near-miss `suggestions` ("Rudigr Seeman" → `Seesemann, Rüdiger`); `get_person` lists them in its `not_found` error |
@@ -88,7 +88,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `search_publications` / `get_publication` | Filter the bibliography by author, subject, language, type, venue, year, date added and full-text availability; search abstracts in every language and extracted PDF text. Detail adds every abstract with its language, linked authorities, conference/extent/access/thesis metadata. `citation_format` selects BibTeX/RIS/CSL-JSON per page; `export` links the whole result as one file |
 | `list_publication_facets` | Counts by type, year, language, subject, author/editor or venue across the complete filtered bibliography; ranked and paginated |
 | `list_journals` | The journals the cluster publishes in, ranked by publication count, with ISSN and country — pair with the `venue` filter |
-| `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications) |
+| `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications), or from an ILAM *African Music* article (`entity_type=research_item`) to its closest articles by full text |
 | `search_podcasts` / `get_podcast` | Cluster podcast episodes with searchable transcripts, filterable by language; detail gives the duration, audio file and the **model that generated the transcript**; transcript text is opt-in |
 | `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; thumbnail; transcript opt-in on detail) |
 | `resolve_entity` | Resolve names or typed IDs (either vocabulary: `item:9902` = `research_item:9902`); return separate candidates for homonyms and unreconciled literals. A query that resolves to nothing, untyped or with `type=person`, returns near-miss person `suggestions` |
@@ -97,6 +97,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `compare_collections` | Compare 2–4 projects or collections using common filters, denominators and missingness |
 | `get_data_quality` | Snapshot coverage, missing metadata and unresolved-reference counts |
 | `get_snapshot_changes` | Page added, updated or deleted records across retained snapshots from the same instance |
+| `get_fulltext_map` | The ILAM journal *African Music* read through its private full text, from public derived counts: content groups (AI-labelled) with their articles, the countries articles name, and word rates per year for up to six words |
 
 ### Prompts and resources
 
@@ -123,9 +124,9 @@ add nothing to the per-turn tool payload.
 
 ### Profiles and research workflows
 
-`AMIRA_TOOL_PROFILE=full` is the default: 33 core tools, or 35 over HTTP.
+`AMIRA_TOOL_PROFILE=full` is the default: 34 core tools, or 36 over HTTP.
 `research`, `discovery` and `visualization` expose smaller documented subsets
-(22/12/14 core tools respectively; HTTP adds `search` and `fetch`). Profiles are
+(23/12/14 core tools respectively; HTTP adds `search` and `fetch`). Profiles are
 fixed at startup; they reduce discovery cost, not access permissions. Tools
 outside a profile are removed, and so are the apps that render them. See
 [`src/toolProfiles.ts`](src/toolProfiles.ts) for the exact lists.
@@ -157,6 +158,42 @@ offsets and source citations; every match is reachable through `next_offset`
 (`scanned_matches_capped` reports a document with more than 10,000 matches). These are extracted-text offsets, not
 PDF page numbers or audio timestamps. `get_snapshot_changes` requires two local
 same-source generations; it reports available history instead of inventing a diff.
+
+### The ILAM full-text map
+
+The full text of ILAM's journal *African Music* (item set 27724, about 1,000
+articles from 1954 on) is private in Omeka, so the public API this server
+crawls never carries it, and nothing here reads or quotes it.
+[DRE Visualizations](https://github.com/AM-Digital-Research-Environment/DRE-Visualizations)
+computed a map from it offline and committed only derived, public files: ids,
+map coordinates, content groups, nearest-neighbour scores, per-article country
+counts and aggregate word counts per year. The crawl fetches two of them at a
+pinned release tag (`v2.48.0`, `FULLTEXT_SOURCE` in
+[`src/fulltextMaps.ts`](src/fulltextMaps.ts)), validates their shape, keeps only
+the declared fields, and stores them beside the snapshot as
+`fulltext_maps.json`. If GitHub is unreachable, the snapshot ships without the
+map and its surfaces answer `fulltext_map_unavailable`. Every result is filtered
+to research items present in the snapshot and filed in the item set, and cites
+them by `amira_url`.
+
+| Surface | What it adds |
+| --- | --- |
+| `get_research_item` | For an article on the map: `closest_in_content` (its 8 closest articles by full-text embedding, `google/embeddinggemma-2`, with cosine scores) and `full_text_map` (its content group, the countries its text names). An ILAM article off the map says so |
+| `find_related entity_type=research_item` | The same neighbours, with the subjects, people, countries and formats they share |
+| `mentions_country` filter | Articles whose full text names a country at least three times; each row carries `country_mentions`. Shared by `search_research_items`, `list_years`, `list_locations`, `compare_collections` and exports |
+| `get_fulltext_map` | The groups with sample articles, the countries named across the journal, a group's articles (`group`), or word rates per 10,000 words per year (`words`, up to six) |
+
+Limits, stated in every response: group names are **AI-generated** (Claude Opus
+5.5, from the titles of each group's articles) and experimental; judge a group
+by its articles. Neighbour scores sit in a narrow band (about 0.90 to 0.97), so
+ranks say more than raw values. Countries come from a gazetteer, with three
+mentions minimum and journal addresses excluded; a mention is not a subject.
+Word counts cover words found in at least ten articles, single word forms
+without stemming; years with few words are marked `sparse`. 657 articles are on
+the map: articles without full text, and those excluded as shared section text,
+journal furniture or under 300 words, are not. These surfaces need the
+`descriptive` exposure level. Searching passages of the text itself is a
+separate decision, with ILAM and Rhodes University, and is not offered.
 
 ### Example questions it can answer
 
@@ -240,8 +277,8 @@ The `.mcpb` is the local, offline option for Claude Desktop. The same server can
 also run as a **remote Streamable HTTP endpoint** — one HTTPS URL that ChatGPT,
 Claude (web + desktop remote connectors), the OpenAI and Anthropic APIs, Cursor,
 VS Code and other clients connect to by pasting a URL (no download, always-fresh
-data). The remote surface serves the same 33 tools **plus** the
-OpenAI-compatible `search` / `fetch` tools for ChatGPT research integrations (35
+data). The remote surface serves the same 34 tools **plus** the
+OpenAI-compatible `search` / `fetch` tools for ChatGPT research integrations (36
 total). Access is unauthenticated — the data is public and read-only.
 
 `search` takes plain keywords (matched term-by-term, not as an exact phrase),

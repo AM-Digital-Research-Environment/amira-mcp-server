@@ -1,6 +1,6 @@
 # Tools by task
 
-All 33 core tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
+All 34 core tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
 `{ count, total_matches, offset, has_more, next_offset?, results[] }` (plus a `filters` echo of the
 filters you actually passed). Every tool clamps an excess `limit` and echoes `requested_limit` /
 `effective_limit`; a page that would exceed 40,000 characters stops early with `response_limited: true`
@@ -32,6 +32,7 @@ String arguments are trimmed; a blank optional filter is ignored. Typed ids work
 | By date | `search_research_items` | `year_from`, `year_to` (overlaps the item's derived content-date range; rights/admin dates are not used; inverted ranges return `invalid_range`) |
 | Free text | `search_research_items` | `keyword` (titles, description, abstract, ToC, identifiers); every word must match, `"quoted phrase"` matches literally |
 | Full record of one item | `get_research_item` | `id` / `omeka_id` (e.g. `9902`) or `research_item:9902` — includes typed `dates`, place hierarchy, affiliation at the time, provenance links, typed identifiers, `media[]`, `iiif_manifest`, related items |
+| ILAM articles that write about a country | `search_research_items` | `mentions_country` — *African Music* articles whose (private) full text names the country 3+ times; rows carry `country_mentions`. Works in `list_years` / `list_locations` / `compare_collections` `filters` too |
 | Cite one item | `get_research_item` | Same call: `generated_citation` (ready to paste) + `bibtex`; `citation_format=ris` / `csl-json` swaps the export for `ris` / `csl_json`. The curated `citation[]` exists on only 31 items — prefer it verbatim when present |
 
 Filters are AND-combined and all optional. Default `limit` 20 (max 100).
@@ -123,6 +124,7 @@ re-run a search in a second spelling.
 | Task | Tool | Key params |
 | --- | --- | --- |
 | What connects to X? | `find_related` | `entity_type` (subject/location/person/project) + `value`; a person is a full name or `person:<id>` (a surname shared by several people returns their ids) |
+| Which ILAM articles are closest in content? | `find_related` | `entity_type=research_item`, `value` = an *African Music* article id: its closest articles by full text (`closest_in_content`), with what they share in the `related_*` lists |
 
 Returns ranked related projects, sections, subjects, people, countries (rolled up to each place's
 top-level country), formats (with co-occurrence counts) plus slim sample items. For subject/person
@@ -130,6 +132,25 @@ seeds the bibliography joins in: `matched_publications` + up to 10 `related_publ
 tool for relational questions. Matching: subject = substring on labels (incl. former tags); person =
 name in either order; location = any hierarchy level; project = id/label. The rule is echoed in
 `matching`, and `matched_items` counts *items* (so it can differ from a `list_subjects` heading count).
+
+## The ILAM full-text map
+
+The full text of ILAM's journal *African Music* (collection 27724) is private: no tool reads or
+quotes it. DRE Visualizations derived public numbers from it offline, and the server serves those.
+
+| Task | Tool | Key params |
+| --- | --- | --- |
+| What does the journal cover, by content? | `get_fulltext_map` | No args: content groups with sizes and two sample articles each, unclustered count, countries named across the journal (articles and mentions), coverage |
+| Articles in one content group | `get_fulltext_map` | `group` (id from the overview or from `get_research_item`'s `full_text_map.group`) |
+| How a word's use changed over time | `get_fulltext_map` | `words` (1–6 single words, case-insensitive), optional `year_from` / `year_to`: counts and rates per 10,000 words per year; `not_counted` words get `similar` forms |
+| An article's neighbours and group | `get_research_item` | `closest_in_content` (up to 8, cosine scores) and `full_text_map` (`group`, `countries_named`) |
+
+Read the caveats each response carries: group names are **AI-generated** and experimental (say so
+whenever you show one, and judge a group by its articles); neighbour scores sit in a narrow band, so
+compare ranks; country counts come from a gazetteer (3+ mentions, journal addresses excluded) and a
+mention is not a subject; word counts cover words in 10+ articles, without stemming, and `sparse`
+years give unstable rates. Only 657 articles are on the map; an ILAM article off it says so
+(`full_text_map.on_map: false`). Unavailable map → `fulltext_map_unavailable`.
 
 ## Prompts and resources
 
@@ -160,6 +181,12 @@ Arguments autocomplete from the snapshot's authority names in hosts that support
   secondary link if useful.
 - *"How do Arts & Aesthetics projects relate to a place?"* → `search_projects research_section="Arts & Aesthetics"`
   → `find_related entity_type=location value="Nigeria"`.
+- *"Which *African Music* articles are closest to 'Elephantiasis and music'?"* →
+  `search_research_items keyword="Elephantiasis and music" collection=27724` → `get_research_item`
+  (`closest_in_content`) or `find_related entity_type=research_item` → cite each `amira_url`, and
+  say the neighbours were computed from full text this server cannot show.
+- *"How did *African Music* write about the mbira over time?"* → `get_fulltext_map words=["mbira"]`
+  (flag `sparse` years) → `search_research_items mentions_country="Zimbabwe" collection=27724`.
 - *"What do cluster publications say about migration control?"* →
   `search_publications keyword="migration control"` (watch for `matched_in: "fulltext"`) →
   `get_publication include_fulltext=true fulltext_max_chars=25000` and page onward → cite the

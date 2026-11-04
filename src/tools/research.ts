@@ -203,9 +203,9 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       date_range: z.object({ earliest: z.number(), latest: z.number() }).nullable() })) }),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "compare_collections");
-    const refused = researchFilterError(args.filters ?? {});
-    if (refused) return queryErrorResult(refused);
     const store = await ensureStore();
+    const refused = researchFilterError(args.filters ?? {}, store);
+    if (refused) return queryErrorResult(refused);
     const selected = new Set(selectResearchItems(store, args.filters ?? {}).filtered.map((it) => it.o_id));
     const cohorts = [];
     for (const cohort of args.cohorts) {

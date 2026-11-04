@@ -263,3 +263,12 @@ test("pages stop under the size budget and continue without gaps", async () => {
     store.items.splice(0, store.items.length, ...original);
   }
 });
+
+test("without a full-text map, its tool and filter say so instead of answering empty", async () => {
+  assert.equal(errorOf(await raw("get_fulltext_map", {})).code, "fulltext_map_unavailable");
+  assert.equal(errorOf(await raw("search_research_items", { mentions_country: "Ghana" })).code, "fulltext_map_unavailable");
+  assert.equal(errorOf(await raw("list_years", { filters: { mentions_country: "Ghana" } })).code, "fulltext_map_unavailable");
+  assert.equal(errorOf(await raw("find_related", { entity_type: "research_item", value: "500" })).code, "fulltext_map_unavailable");
+  const item = await call("get_research_item", { id: 500 });
+  assert.equal(item.full_text_map, undefined);
+});

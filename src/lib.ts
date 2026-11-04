@@ -42,3 +42,5 @@ export { escBibtex } from "./citation.js";
 export { authorityIds } from "./omekaJSON.js";
 export { scrub } from "./tools/responses.js";
 export { describeMarkdown } from "./skills.js";
+export { fetchFulltextMaps } from "./snapshot.js";
+export { FULLTEXT_SOURCE, parseFulltextMaps, fulltextIndex, wordTrends } from "./fulltextMaps.js";

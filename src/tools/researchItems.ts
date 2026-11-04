@@ -25,6 +25,10 @@ import { guidanceEnabled } from "../guidance.js";
 import { generateItemCitation } from "../citation.js";
 import { stripTypedId } from "../typedIds.js";
 import { exportLink, EXPORT_FORMATS } from "../resources.js";
+import { placeAliases } from "../matching.js";
+import {
+  countriesNote, countryNames, fulltextIndex, groupLabelNote, inMappedCollection, neighboursNote, sourceRef, excludedCount,
+} from "../fulltextMaps.js";
 
 export function registerResearchItemTools(server: Server, tools: ToolMap): void {
   // === search_research_items ================================================
@@ -52,6 +56,8 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
         genre: z.string().max(1000).optional().describe("Format/genre descriptor, partial (e.g. 'interview', 'letter', 'photograph')"),
         collection: z.string().max(1000).optional().describe("Item-set title (partial) or id from list_collections"),
         language: z.string().max(1000).optional().describe("Name or ISO code — 'French', 'fr', 'fra' and legacy 'fre' all match"),
+        mentions_country: z.string().max(1000).optional()
+          .describe("ILAM African Music articles whose full text names this country 3+ times"),
         year_from: z.number().int().min(0).max(2200).optional().describe("Keep items whose content dates overlap from this year"),
         year_to: z.number().int().min(0).max(2200).optional().describe("Keep items whose content dates overlap up to this year"),
         has_media: z.boolean().optional().describe("true: only items with digitised files"),
@@ -69,7 +75,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       const { export: format, limit: _l, offset: _o, ...filters } = args;
       // Structured-metadata filters are refused under restricted exposure, so a
       // benchmark model cannot narrow by fields it is not allowed to see.
-      const refused = researchFilterError(filters);
+      const refused = researchFilterError(filters, store);
       if (refused) return queryErrorResult(refused);
 
       const { filtered, suggestions, did_you_mean } = selectResearchItems(store, filters);
@@ -77,8 +83,17 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
 
       // Relaxation counts, spellings and the hint are guidance (AMIRA_GUIDANCE).
       const guided = guidanceEnabled();
+      // With mentions_country, each row says how often its full text names the country.
+      const index = filters.mentions_country ? fulltextIndex(store) : null;
+      const named = index ? countryNames(index, placeAliases(filters.mentions_country!)) : null;
+      const row = (it: (typeof filtered)[number]) => {
+        if (!index || !named) return itemSummary(it, store);
+        const mentions = index.articles.get(it.o_id)?.countries.filter((c) => named.has(c.country)) ?? [];
+        return { ...itemSummary(it, store), country_mentions: Object.fromEntries(mentions.map((c) => [c.country, c.mentions])) };
+      };
       return textResult({
-        ...pageOf(filtered, offset, limit, (it) => itemSummary(it, store), {
+        ...(index ? { mentions_note: countriesNote(index) } : {}),
+        ...pageOf(filtered, offset, limit, row, {
           ...limitEcho(args.limit, 100, limit),
           ...filtersEcho(filters),
           ...(suggestions && guided ? { suggestions } : {}),
@@ -130,6 +145,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       const abstract = allowDescriptive() && it.abstract ? capText(it.abstract) : null;
       const toc = allowDescriptive() && it.toc ? capText(it.toc) : null;
       const provenance = it.provenance_refs?.length ? it.provenance_refs : it.provenance.map((label) => ({ label, o_id: null }));
+      const fulltext = allowDescriptive() ? fulltextFields(store, it) : {};
 
       return textResult({
         id: String(it.o_id),
@@ -199,8 +215,41 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
         thumbnail: it.thumbnail,
         created: it.created ?? null,
         modified: it.modified ?? null,
+        ...fulltext,
         amira_url: itemUrl(it.o_id),
       });
     },
   );
+}
+
+/**
+ * For an article of the journal the full-text map describes: its closest
+ * articles by full text, its content group and the countries its text names.
+ * Derived numbers only; the text itself is private and never read here.
+ */
+function fulltextFields(store: Awaited<ReturnType<typeof ensureStore>>, it: { o_id: number; item_sets: number[] }): Record<string, unknown> {
+  const index = fulltextIndex(store);
+  if (!index || !inMappedCollection(index, it.item_sets)) return {};
+  const article = index.articles.get(it.o_id);
+  const source = sourceRef(index);
+  if (!article) {
+    return { full_text_map: { on_map: false, source,
+      note: `Not on the full-text map: no full text, or one of ${excludedCount(index)} articles with full text excluded as shared section text, journal furniture or under 300 words.` } };
+  }
+  const group = index.groups.get(article.group);
+  return {
+    closest_in_content: article.neighbours.map(({ id, score }) => {
+      const n = store.getItem(String(id))!;
+      return { title: n.title, date: yearLabel(n), score, omeka_id: n.o_id, amira_url: itemUrl(n.o_id) };
+    }),
+    full_text_map: {
+      on_map: true,
+      group: group ? { id: group.id, label: group.label, label_ai_generated: true, articles: group.members.length } : null,
+      ...(group ? { group_note: groupLabelNote(index) } : { group_note: "Not assigned to a content group (unclustered)." }),
+      countries_named: article.countries,
+      neighbours_note: neighboursNote(index),
+      countries_note: countriesNote(index),
+      source,
+    },
+  };
 }

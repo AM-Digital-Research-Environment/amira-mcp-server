@@ -123,7 +123,7 @@ async function renderExport(uri: string, corpus: string, format: string, query: 
   if (corpus === "research_items") {
     const parsed = researchFilters.safeParse(filters);
     if (!parsed.success) throw new ResourceNotFoundError(uri, "Invalid export filters.");
-    const refused = researchFilterError(parsed.data);
+    const refused = researchFilterError(parsed.data, store);
     if (refused) throw new ResourceNotFoundError(uri, refused.message);
     const rows = selectResearchItems(store, parsed.data).filtered.slice(0, MAX_EXPORT_ROWS).map((it) => itemRow(store, it));
     return format === "csv"

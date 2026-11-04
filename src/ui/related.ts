@@ -58,12 +58,14 @@ var polar = function (angle, r) {
 
 function render(d) {
   var root = document.getElementById("root");
+  // A research-item seed (full-text pivot) is named by its title, not its id.
+  var seedName = d.seed_label || d.value || "";
   var live = SECTORS.map(function (s) {
     return { key: s[0], label: s[1], rows: (d[s[0]] || []).slice(0, PER_SECTOR) };
   }).filter(function (s) { return s.rows.length > 0; });
 
   if (!(d.matched_items || d.matched_publications)) {
-    root.innerHTML = "<h1>" + esc(d.value || "") + "</h1>" +
+    root.innerHTML = "<h1>" + esc(seedName) + "</h1>" +
       '<p class="empty">Nothing co-occurs with this seed in the collection.</p>';
     return;
   }
@@ -74,7 +76,7 @@ function render(d) {
 
   var span = 360 / live.length;
   var out = ['<svg viewBox="0 0 ' + W + " " + W + '" role="img" aria-label="Entities co-occurring with ' +
-    esc(d.value) + '" preserveAspectRatio="xMidYMid meet">'];
+    esc(seedName) + '" preserveAspectRatio="xMidYMid meet">'];
 
   live.forEach(function (sector, si) {
     var start = si * span;
@@ -119,7 +121,7 @@ function render(d) {
 
   // The seed itself, last so it sits above the spokes.
   out.push('<circle class="seed" cx="' + CX + '" cy="' + CY + '" r="' + R_SEED + '" />');
-  var words = esc(clip(d.value, 30)).split(" ");
+  var words = esc(clip(seedName, 30)).split(" ");
   var lines = [], cur = "";
   words.forEach(function (w) {
     if ((cur + " " + w).trim().length > 13) { if (cur) lines.push(cur); cur = w; } else { cur = (cur + " " + w).trim(); }
@@ -135,7 +137,7 @@ function render(d) {
   out.push("</svg>");
 
   root.innerHTML =
-    "<h1>What co-occurs with " + esc(d.value) + "</h1>" +
+    "<h1>What co-occurs with " + esc(seedName) + "</h1>" +
     '<p class="sub">' + esc(d.entity_type) + " seed · " + d.matched_items + " matching research items" +
     (d.matched_publications ? " · " + d.matched_publications + " publications" : "") +
     ". Spoke length counts distinct source records; each sector is one relation type.</p>" +

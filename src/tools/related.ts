@@ -20,9 +20,11 @@ import { stripTypedId } from "../typedIds.js";
 import { APP_UI_META } from "./apps.js";
 import { resolveEntities } from "../entityGraph.js";
 import { fold } from "../text.js";
-import { limitEcho } from "./_shared.js";
+import { limitEcho, yearLabel } from "./_shared.js";
+import { allowDescriptive } from "../exposure.js";
+import { fulltextIndex, groupLabelNote, inMappedCollection, neighboursNote, sourceRef } from "../fulltextMaps.js";
 
-type EntityType = "subject" | "location" | "person" | "project";
+type EntityType = "subject" | "location" | "person" | "project" | "research_item";
 
 /** How `value` is matched for each pivot — surfaced in the response and the tool
  * description so the (sometimes surprising) counts are self-explaining (report §8). */
@@ -37,6 +39,9 @@ const MATCHING: Record<EntityType, string> = {
     "Items crediting one person: the authority record the value resolves to (a name in either order, accent-insensitive, " +
     "e.g. 'Ulli Beier' = 'Beier, Ulli', or person:<id>). A value matching several people is refused with their ids.",
   project: "Items in the project whose Omeka id or legacy project key equals the value, or whose project label contains it.",
+  research_item:
+    "The seed article's closest articles in the ILAM journal African Music by full-text embedding (DRE Visualizations' map); " +
+    "the related_* lists count what those articles share. Only articles on the full-text map can be seeds.",
 };
 
 interface Count { name: string; omeka_id: number | null; count: number; research_item_count: number; publication_count: number; amira_url: string | null }
@@ -63,8 +68,8 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
       annotations: READ_ONLY,
       inputSchema: z.strictObject({
         entity_type: z
-          .enum(["subject", "location", "person", "project"])
-          .describe("What the value denotes. Tags are merged into subjects — there is no tag pivot"),
+          .enum(["subject", "location", "person", "project", "research_item"])
+          .describe("What the value denotes. Tags are merged into subjects. research_item: an ILAM African Music article, by full text"),
         value: z
           .string().max(1000)
           .describe(
@@ -81,7 +86,12 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
       if (!allowStructured()) return exposureRestrictedResult("structured", "find_related");
       const limit = Math.max(1, Math.min(args.limit ?? 20, 50));
       const type = args.entity_type as EntityType;
-      const value = type === "project" ? stripTypedId(args.value, ["project"]) : args.value;
+      const value = type === "project" ? stripTypedId(args.value, ["project"])
+        : type === "research_item" ? stripTypedId(args.value, ["research_item"]) : args.value;
+      if (type === "research_item") {
+        if (!allowDescriptive()) return exposureRestrictedResult("descriptive", "find_related by full text");
+        return relatedByFullText(store, value, limit, args.limit);
+      }
 
       // A person pivot needs one person: "Vierke" used to pool Clarissa and Ulf
       // Vierke into one set of counts. Several authority matches are named and
@@ -111,8 +121,7 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
           case "person":
             return it.contributors.some((c) => matchesPerson(c.name, c.o_id));
           case "project":
-            return equalsCI(String(store.projectOf(it)?.o_id), value) || equalsCI(store.projectOf(it)?.dre_id, value) || containsCI(it.project?.label, value);
-        }
+            return equalsCI(String(store.projectOf(it)?.o_id), value) || equalsCI(store.projectOf(it)?.dre_id, value) || containsCI(it.project?.label, value);        }
       };
 
       const seed = store.items.filter(matches);
@@ -177,4 +186,57 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
       });
     },
   );
+}
+
+type Store = Awaited<ReturnType<typeof ensureStore>>;
+
+/** The full-text pivot: the seed's map neighbours stand in for the matched items. */
+function relatedByFullText(store: Store, value: string, limit: number, requested: number | undefined) {
+  const index = fulltextIndex(store);
+  if (!index) return errorResult("fulltext_map_unavailable", "This snapshot carries no full-text map.");
+  const item = store.getItem(value);
+  if (!item) return errorResult("not_found", `No research item with id '${value}'.`, { suggested_tool: "search_research_items" });
+  const article = index.articles.get(item.o_id);
+  if (!article) {
+    return errorResult("not_on_fulltext_map", inMappedCollection(index, item.item_sets)
+      ? `'${item.title}' is not on the full-text map (no full text, or excluded as shared section text, journal furniture or under 300 words).`
+      : "Only articles of the ILAM journal African Music (collection 27724) are on the full-text map.", {
+      suggested_tool: "search_research_items",
+    });
+  }
+  const seed = article.neighbours.map((n) => store.getItem(String(n.id))!);
+  const maps = { projects: new Map<string, Count>(), sections: new Map<string, Count>(), subjects: new Map<string, Count>(),
+    people: new Map<string, Count>(), countries: new Map<string, Count>(), formats: new Map<string, Count>() };
+  for (const it of seed) {
+    countRecord(maps.projects, it.project ? [it.project] : [], "research_item_count");
+    countRecord(maps.sections, store.projectOf(it)?.sections ?? [], "research_item_count");
+    countRecord(maps.subjects, it.subjects, "research_item_count");
+    countRecord(maps.people, it.contributors.map((c) => ({ label: c.name, o_id: c.o_id })), "research_item_count");
+    countRecord(maps.countries, it.places.map((p) => store.placeChainRefs(p).at(-1)!), "research_item_count");
+    countRecord(maps.formats, it.formats, "research_item_count");
+  }
+  const group = index.groups.get(article.group);
+  return textResult({
+    entity_type: "research_item",
+    value,
+    seed_label: item.title,
+    matching: MATCHING.research_item,
+    amira_url: itemUrl(item.o_id),
+    ...limitEcho(requested, 50, limit),
+    matched_items: seed.length,
+    content_group: group ? { id: group.id, label: group.label, label_ai_generated: true, note: groupLabelNote(index) } : null,
+    closest_in_content: article.neighbours.map(({ id, score }, i) => {
+      const it = seed[i]!;
+      return { title: it.title, date: yearLabel(it), score, omeka_id: id, amira_url: itemUrl(id),
+        ...(index.articles.get(id)?.group === article.group && group ? { same_group: true } : {}) };
+    }),
+    neighbours_note: neighboursNote(index),
+    source: sourceRef(index),
+    related_projects: topN(maps.projects, limit),
+    related_research_sections: topN(maps.sections, limit),
+    related_subjects: topN(maps.subjects, limit),
+    related_people: topN(maps.people, limit),
+    related_countries: topN(maps.countries, limit),
+    related_formats: topN(maps.formats, limit),
+  });
 }
