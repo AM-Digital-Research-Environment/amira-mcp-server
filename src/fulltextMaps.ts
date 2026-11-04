@@ -114,6 +114,8 @@ export interface FulltextIndex {
   countries: Map<string, string>;
   /** Folded word -> stored word. */
   words: Map<string, string>;
+  /** Mapped articles per year, from the snapshot's first content year (an approximation of the map's own year). */
+  articlesByYear: Map<number, number>;
 }
 
 /** The map, restricted to research items present in the snapshot and filed in its item set. */
@@ -126,8 +128,11 @@ export function fulltextIndex(store: DataStore): FulltextIndex | null {
     const articles = new Map<number, FulltextArticle>();
     const groups = new Map(maps.map.groups.map((g) => [g.id, { id: g.id, label: g.label, members: [] as number[] }]));
     const countries = new Map<string, string>();
+    const articlesByYear = new Map<number, number>();
     for (const [id, , , group] of maps.map.items) {
       if (!present(id)) continue;
+      const year = store.getItem(String(id))!.year_min;
+      if (year != null) articlesByYear.set(year, (articlesByYear.get(year) ?? 0) + 1);
       const neighbours = (maps.map.neighbours[String(id)] ?? []).filter(([n]) => present(n)).map(([n, score]) => ({ id: n, score }));
       const named = (maps.map.places.items[String(id)] ?? []).map(([country, mentions]) => ({ country, mentions }))
         .sort((a, b) => b.mentions - a.mentions || a.country.localeCompare(b.country));
@@ -136,7 +141,7 @@ export function fulltextIndex(store: DataStore): FulltextIndex | null {
       groups.get(group)?.members.push(id);
     }
     const words = new Map(Object.keys(maps.words.words).map((w) => [fold(w), w]));
-    return { maps, itemSetId: setId, articles, groups, countries, words };
+    return { maps, itemSetId: setId, articles, groups, countries, words, articlesByYear };
   });
 }
 
@@ -176,7 +181,7 @@ export function countriesNote(index: FulltextIndex): string {
 export function wordsNote(index: FulltextIndex): string {
   return `Counts per year of publication over the full text of the ${index.maps.words.articles} mapped articles, for words in at least ` +
     `${index.maps.words.minArticles} articles; rates are per 10,000 words. Single word forms only, no stemming. ` +
-    "Years with few words (marked sparse) give unstable rates.";
+    "Years with few words or articles (marked sparse) give unstable rates; `articles` counts mapped articles by their AMIRA date.";
 }
 
 /** A folded country query matched against the stored spellings, with aliases. */
@@ -199,14 +204,15 @@ export function countrySuggestions(index: FulltextIndex, query: string): string[
 
 // --- word trends ----------------------------------------------------------------
 
-/** Below this many words in a year, rates are flagged as sparse (about four articles). */
+/** Below this many words, or this many articles, a year's rates are flagged as sparse. */
 export const SPARSE_YEAR_WORDS = 12_000;
+export const SPARSE_YEAR_ARTICLES = 3;
 
 export interface WordTrends {
   counted: string[];
   not_counted: { word: string; similar?: string[] }[];
   totals: Record<string, { count: number; per_10k: number }>;
-  years: { year: number; words: number; per_10k: Record<string, number>; counts: Record<string, number>; sparse?: true }[];
+  years: { year: number; words: number; articles: number; per_10k: Record<string, number>; counts: Record<string, number>; sparse?: true }[];
 }
 
 const rate = (n: number, total: number) => (total > 0 ? Math.round((n / total) * 1_000_000) / 100 : 0);
@@ -245,7 +251,9 @@ export function wordTrends(index: FulltextIndex, requested: string[], yearFrom?:
       const n = series.get(w)!.get(yi) ?? 0;
       counts[w] = n; per[w] = rate(n, total); sums[w]! += n;
     }
-    years.push({ year, words: total, per_10k: per, counts, ...(total < SPARSE_YEAR_WORDS ? { sparse: true as const } : {}) });
+    const articles = index.articlesByYear.get(year) ?? 0;
+    const sparse = total < SPARSE_YEAR_WORDS || articles < SPARSE_YEAR_ARTICLES;
+    years.push({ year, words: total, articles, per_10k: per, counts, ...(sparse ? { sparse: true as const } : {}) });
   });
   const totals = Object.fromEntries(counted.map((w) => [w, { count: sums[w]!, per_10k: rate(sums[w]!, wordsInRange) }]));
   return { counted, not_counted, totals, years };

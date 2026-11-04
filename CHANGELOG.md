@@ -42,8 +42,9 @@ offline and committed only derived, public files; the server now serves them.
   and a caveat that their names are AI-generated (Claude Opus 5.5, from
   article titles) and experimental, the countries named across the journal,
   one group's articles (`group`), or the rate per 10,000 words per year of up
-  to six words (`words`), with years under 12,000 words marked `sparse` and
-  near forms suggested for words not counted (only words in 10 or more
+  to six words (`words`), with each year's word and article counts, years
+  under 12,000 words or three articles marked `sparse`, and near forms
+  suggested for words not counted (only words in 10 or more
   articles are). 34 core tools on stdio, 36 over HTTP; it joins the
   `research` profile.
 - **Limits are stated where the data is served:** neighbour scores sit in a

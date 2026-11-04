@@ -250,8 +250,9 @@ test("get_fulltext_map words: rates per 10,000 words, sparse years, near forms",
   const w = (await call("get_fulltext_map", { words: ["Mbira", "hiphop", "zz"] })).words;
   assert.deepEqual(w.counted, ["mbira"]);
   assert.deepEqual(w.not_counted, [{ word: "hiphop", similar: ["hip-hop"] }, { word: "zz" }]);
-  assert.deepEqual(w.years.map((y) => [y.year, y.counts.mbira, y.per_10k.mbira, y.sparse ?? false]),
-    [[1958, 0, 0, false], [1962, 40, 10, false], [1975, 15, 5, false], [2015, 0, 0, true]]);
+  // One article a year in this fixture: every year is sparse by articles, 2015 by words as well.
+  assert.deepEqual(w.years.map((y) => [y.year, y.articles, y.counts.mbira, y.per_10k.mbira, y.sparse ?? false]),
+    [[1958, 1, 0, 0, true], [1962, 1, 40, 10, true], [1975, 1, 15, 5, true], [2015, 1, 0, 0, true]]);
   assert.deepEqual(w.totals.mbira, { count: 55, per_10k: 5.91 });
   assert.equal(w.min_articles, 10);
   assert.match(w.note, /at least 10 articles/);

@@ -142,7 +142,7 @@ quotes it. DRE Visualizations derived public numbers from it offline, and the se
 | --- | --- | --- |
 | What does the journal cover, by content? | `get_fulltext_map` | No args: content groups with sizes and two sample articles each, unclustered count, countries named across the journal (articles and mentions), coverage |
 | Articles in one content group | `get_fulltext_map` | `group` (id from the overview or from `get_research_item`'s `full_text_map.group`) |
-| How a word's use changed over time | `get_fulltext_map` | `words` (1–6 single words, case-insensitive), optional `year_from` / `year_to`: counts and rates per 10,000 words per year; `not_counted` words get `similar` forms |
+| How a word's use changed over time | `get_fulltext_map` | `words` (1–6 single words, case-insensitive), optional `year_from` / `year_to`: counts and rates per 10,000 words per year, with each year's words and articles; `not_counted` words get `similar` forms |
 | An article's neighbours and group | `get_research_item` | `closest_in_content` (up to 8, cosine scores) and `full_text_map` (`group`, `countries_named`) |
 
 Read the caveats each response carries: group names are **AI-generated** and experimental (say so
