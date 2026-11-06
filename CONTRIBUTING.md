@@ -37,9 +37,11 @@ npm run prepack-mcpb
 npm run audit
 ```
 
-That chains clean → typecheck → skill validation → unit tests → stdio smoke → HTTP smoke →
-`weigh --check` → `validate:manifest`. Release and data-refresh workflows additionally run `npm run test:live`
-(hits the real API). CI, release and data-refresh workflows run `npm run audit`,
+That chains clean → build → typecheck (server and app views) → skill validation → unit
+tests → stdio smoke → HTTP smoke → `weigh --check` → `validate:manifest`; everything
+after the build is `npm run prepack-mcpb:ci`. Release and data-refresh workflows run
+that part on the build `npm run fetch-data` just made, then the live API tests
+(`.github/actions/verify-and-pack`, shared by both). CI, release and data-refresh workflows run `npm run audit`,
 including development dependencies; `npm run audit:prod` checks only runtime dependencies.
 The test launcher enumerates files so `npm test` works on every supported Node
 version (22+) and on Windows, with a 60-second timeout per test.

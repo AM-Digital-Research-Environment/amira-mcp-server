@@ -43,11 +43,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: "26"
-          cache: npm
-      - run: npm ci
       - run: npm run audit
 
       - name: Crawl latest data from the public Omeka S API
@@ -91,21 +89,12 @@ jobs:
             echo "New signature ($CURRENT, was '$PREVIOUS') — rebuilding."
           fi
 
-      # The single gate: clean, typecheck, skills check, build + unit tests,
-      # stdio and HTTP smoke, response weight, manifest. Unit tests run here
-      # only, not in a separate step as well.
-      - name: Type-check, bundle, unit + smoke tests
+      # The gate shared with the release (.github/actions/verify-and-pack):
+      # typecheck, skills, unit and smoke tests, weight, manifest, live API
+      # tests, then the .mcpb, on the build fetch-data just made.
+      - name: Verify and pack
         if: steps.check.outputs.changed == 'true'
-        run: npm run prepack-mcpb
-
-      # Reuses the bundle prepack-mcpb just built (no third build).
-      - name: Live API tests
-        if: steps.check.outputs.changed == 'true'
-        run: node scripts/test.mjs live
-
-      - name: Pack .mcpb
-        if: steps.check.outputs.changed == 'true'
-        run: node scripts/mcpb.mjs pack . amira-mcp-server.mcpb
+        uses: ./.github/actions/verify-and-pack
 
       - name: Upload build artifacts
         if: steps.check.outputs.changed == 'true'

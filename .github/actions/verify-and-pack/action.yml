@@ -1,0 +1,19 @@
+name: Verify and pack the bundle
+description: >-
+  The gate the release and the data refresh share, on a freshly crawled data/
+  and the build `npm run fetch-data` just made: typecheck, skills, unit tests,
+  stdio and HTTP smoke, response weight and manifest (prepack-mcpb:ci), the live
+  API tests, then the .mcpb. Their other steps (the release's version guard,
+  notes and image; the refresh's signature check) stay in each workflow.
+runs:
+  using: composite
+  steps:
+    - name: Type-check, unit + smoke tests, weight, manifest
+      run: npm run prepack-mcpb:ci
+      shell: bash
+    - name: Live API tests
+      run: node scripts/test.mjs live
+      shell: bash
+    - name: Pack .mcpb
+      run: node scripts/mcpb.mjs pack . amira-mcp-server.mcpb
+      shell: bash

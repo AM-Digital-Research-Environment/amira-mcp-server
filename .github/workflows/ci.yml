@@ -27,11 +27,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: "24"
-          cache: npm
-      - run: npm ci
       # Type errors do not depend on the Node runtime, so this runs once here
       # rather than in every unit-test lane. @types/node tracks the declared
       # floor (Node 22), so code cannot typecheck against APIs the floor lacks.
@@ -59,11 +57,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: ${{ matrix.node }}
-          cache: npm
-      - run: npm ci
       # --strict: an invalid skill fails CI instead of being dropped from the
       # catalog with a warning, which is what a plain local build does.
       - run: npm run build:strict
@@ -99,16 +95,29 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: "26"
-          cache: npm
-      - run: npm ci
+      # The crawl hits the public Omeka API, so CI reuses one per ISO week and
+      # per version of the crawl code; a change to it crawls afresh. Release and
+      # refresh-data always crawl, so a cached snapshot never ships.
+      - name: Snapshot cache key
+        id: week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore this week's crawled snapshot
+        id: data-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data
+          key: snapshot-${{ steps.week.outputs.week }}-${{ hashFiles('src/snapshot.ts', 'src/transform.ts', 'src/omekaJSON.ts', 'src/types.ts', 'src/semantic.ts', 'src/fulltextMaps.ts') }}
       - run: npm run fetch-data
+        if: steps.data-cache.outputs.cache-hit != 'true'
         env:
           # Read-only: lists DRE Visualizations' corpus-vector releases without
           # the anonymous API rate limit (sent to api.github.com only).
           GITHUB_TOKEN: ${{ github.token }}
+      - run: npm run build
+        if: steps.data-cache.outputs.cache-hit == 'true'
       - name: Real-bundle allowlist (crawled snapshot)
         env:
           AMIRA_REQUIRE_REAL_BUNDLE: "1"
@@ -149,11 +158,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: "24"
-          cache: npm
-      - run: npm ci
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci-bundle
@@ -171,11 +178,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: "24"
-          cache: npm
-      - run: npm ci
       - run: npm run build:strict
       - run: node scripts/fixture-snapshot.mjs
       - run: docker build --build-arg SNAPSHOT_STAGE=bundled -t amira-test .
@@ -208,11 +213,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: "26"
-          cache: npm
-      - run: npm ci
       - run: npm run build:strict
       # Offline fixture snapshot: no Omeka crawl, deterministic data.
       - run: node scripts/fixture-snapshot.mjs

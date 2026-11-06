@@ -56,7 +56,8 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "validate:manifest": "node scripts/mcpb.mjs validate manifest.json",
     "start:http": "node server/http.js",
-    "prepack-mcpb": "npm run clean && npm run typecheck && npm run skills:check && npm run test && npm run smoke && npm run smoke:http && npm run weigh -- --check && npm run validate:manifest",
+    "prepack-mcpb": "npm run clean && npm run build && npm run prepack-mcpb:ci",
+    "prepack-mcpb:ci": "npm run typecheck && npm run skills:check && node scripts/test.mjs unit && npm run smoke && npm run smoke:http && npm run weigh -- --check && npm run validate:manifest",
     "pack-mcpb": "node scripts/mcpb.mjs pack . amira-mcp-server.mcpb",
     "audit": "npm audit --audit-level=high",
     "preview:apps": "npm run build && node scripts/preview-apps.mjs"
