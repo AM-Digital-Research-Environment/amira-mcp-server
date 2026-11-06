@@ -332,6 +332,21 @@ test("every semantic surface returns one record shape", async () => {
   for (const r of [...map.results, ...map.closest_to_centre]) assert.deepEqual(keysOf(r), REF);
 });
 
+test("get_semantic_map: a type filter narrows the listed records, never the record's rank or the group's description", async () => {
+  const group = semantic.clusters.members.findIndex((g) => g.includes(500)) + 1;
+  const members = semantic.clusters.members[group - 1];
+  const all = await call("get_semantic_map", { id: 500 });
+  const onlyProjects = await call("get_semantic_map", { id: 500, types: ["project"] });
+  assert.equal(onlyProjects.record.rank_in_group, members.indexOf(500) + 1, "rank among ALL members");
+  assert.ok(onlyProjects.results.every((r) => r.type === "project"));
+  assert.equal(onlyProjects.size, all.size);
+  assert.deepEqual(onlyProjects.by_type, all.by_type);
+  // A group past the end says where the groups end.
+  const past = await call("get_semantic_map", { group: semantic.clusters.members.length + 1 });
+  assert.equal(past.error.code, "not_found");
+  assert.match(past.error.message, new RegExp(`groups run from 1 to ${semantic.clusters.members.length}`));
+});
+
 test("get_semantic_map: a record's group, and the cases without one", async () => {
   const mine = await call("get_semantic_map", { id: "research_item:500" });
   const group = semantic.clusters.members.findIndex((g) => g.includes(500)) + 1;

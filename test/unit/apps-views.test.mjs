@@ -1,0 +1,578 @@
+// Each of the seven app views, rendered from real tool payloads. The page, the bridge stub and `mount` come
+// from test/helpers/apps-harness.mjs, which explains how the views are run.
+import test from "node:test";
+import assert from "node:assert/strict";
+import {payload, sleep, text, rows, citations, options, lastCall, mount, assertHealthy,
+} from "../helpers/apps-harness.mjs";
+
+// --- overview -----------------------------------------------------------------
+
+test("overview: stat tiles and every breakdown match get_collection_overview", async (t) => {
+  const app = await mount(t, "get_collection_overview");
+  const d = await payload("get_collection_overview");
+  app.show(d);
+  assertHealthy(app);
+
+  assert.equal(text(app.root.querySelector("h1")), d.collection_name);
+  const c = d.counts;
+  const tiles = Object.fromEntries([...app.root.querySelectorAll(".tile")].map((tile) => [text(tile.querySelector(".k")), text(tile.querySelector(".n"))]));
+  const n = (v) => v.toLocaleString("en");
+  assert.deepEqual(tiles, {
+    "research items": n(c.research_items), projects: n(c.projects), people: n(c.persons), institutions: n(c.institutions),
+    publications: n(c.publications), videos: n(c.youtube_videos), "podcast episodes": n(c.podcasts), journals: n(c.journals),
+  });
+  const subs = [...app.root.querySelectorAll(".tile .sub2")].map(text);
+  assert.deepEqual(subs, [
+    `${c.publications_with_fulltext} of ${c.publications} with text`,
+    `${c.videos_with_transcript} of ${c.youtube_videos} with text`,
+    `${c.podcasts_with_transcript} of ${c.podcasts} with text`,
+  ]);
+  assert.match(text(app.root.querySelector(".sub")), new RegExp(`Content dates span ${d.content_date_range.earliest}–${d.content_date_range.latest}\\.`));
+
+  const panels = Object.fromEntries([...app.root.querySelectorAll(".panel")].map((p) => [text(p.querySelector("h2")), p]));
+  assert.deepEqual(Object.keys(panels), ["Items by university", "Items by research section", "Items by resource type", "Items by language"]);
+  const sorted = (map) => Object.entries(map).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, String(v)]);
+  assert.deepEqual(rows(panels["Items by research section"]), sorted(d.items_by_research_section));
+  assert.deepEqual(rows(panels["Items by resource type"]), sorted(d.items_by_resource_type));
+  assert.deepEqual(rows(panels["Items by language"]), sorted(d.items_by_language));
+  // University labels are shortened for the axis; the values are not.
+  assert.deepEqual(rows(panels["Items by university"]).map((r) => r[1]), sorted(d.items_by_university).map((r) => r[1]));
+  for (const panel of Object.values(panels)) {
+    const values = rows(panel).map((r) => r[1]);
+    assert.equal(panel.querySelectorAll("rect.bar").length, values.length);
+    assert.deepEqual([...panel.querySelectorAll("text.val")].map(text), values);
+  }
+  assert.equal(app.root.querySelectorAll("a[data-citation]").length, 0, "the overview carries no record links");
+});
+
+test("overview: restricted exposure keeps the tiles and explains the withheld breakdowns", async (t) => {
+  const app = await mount(t, "get_collection_overview");
+  process.env.AMIRA_EXPOSURE = "descriptive"; // read per call (src/exposure.ts)
+  let d;
+  try { d = await payload("get_collection_overview"); } finally { delete process.env.AMIRA_EXPOSURE; }
+  assert.equal(d.metadata_exposure, "descriptive");
+  app.show(d);
+  assertHealthy(app);
+  assert.match(text(app.root.querySelector(".sub")), /Metadata exposure is limited to 'descriptive', so some breakdowns are withheld\./);
+  assert.equal(app.root.querySelectorAll(".tile").length, 8);
+  assert.deepEqual([...app.root.querySelectorAll(".panel h2")].map(text), ["Items by resource type"]);
+
+  // A snapshot with no breakdowns at all gets a sentence, not a blank grid.
+  app.show({ ...d, items_by_resource_type: {} });
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector(".empty")), "No breakdowns available at this metadata-exposure level.");
+});
+
+// --- timeline -----------------------------------------------------------------
+
+test("timeline: bars, table and counts match list_years; a year opens cited evidence", async (t) => {
+  const app = await mount(t, "list_years");
+  const d = await payload("list_years");
+  app.show(d);
+  assertHealthy(app);
+
+  assert.equal(text(app.root.querySelector("h1")), "AMIRA — research items per year");
+  assert.equal(text(app.root.querySelector(".sub")),
+    `${d.dated_items} dated items spanning ${d.year_range.min}–${d.year_range.max} · ${d.undated_items} undated`);
+  const byYear = [...d.results].sort((a, b) => a.year - b.year);
+  assert.deepEqual([...app.root.querySelectorAll("rect.bar title")].map(text),
+    byYear.map((r) => `${r.year}: ${r.item_count} ${r.item_count === 1 ? "item" : "items"}`));
+  assert.deepEqual(rows(app.root.querySelector("details")), byYear.map((r) => [String(r.year), String(r.item_count)]));
+  assert.match(text(app.root), new RegExp(`Showing ${d.results.length} of ${d.total_matches} buckets\\.`));
+
+  // Click a table row: the evidence list is a real search_research_items page.
+  app.click(app.root.querySelector('button[data-year="2013"]'));
+  await app.waitFor(() => app.root.querySelector("#timeline-evidence h2"), "2013 evidence");
+  const evidence = await payload("search_research_items", { year_from: 2013, year_to: 2013, offset: 0, limit: 20 });
+  assert.deepEqual(lastCall(app, "search_research_items"), { name: "search_research_items", args: { year_from: 2013, year_to: 2013, offset: 0, limit: 20 } });
+  assert.equal(text(app.root.querySelector("#timeline-evidence h2")), `2013–2013 · ${evidence.total_matches} matching records`);
+  assert.deepEqual(citations(app.root.querySelector("#timeline-evidence")), evidence.results.map((r) => ({ href: r.amira_url, title: r.title })));
+  assert.ok(evidence.results.length > 0);
+
+  // Keyboard path on a bar (Enter re-dispatches as a click).
+  app.root.querySelector('rect[data-year="1960"]').dispatchEvent(new app.win.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await app.waitFor(() => /^1960–1960/.test(text(app.root.querySelector("#timeline-evidence h2"))), "1960 evidence");
+  const e1960 = await payload("search_research_items", { year_from: 1960, year_to: 1960, offset: 0, limit: 20 });
+  assert.deepEqual(citations(app.root.querySelector("#timeline-evidence")), e1960.results.map((r) => ({ href: r.amira_url, title: r.title })));
+  assertHealthy(app);
+});
+
+test("timeline: decade buckets, the subject filter form, and the empty range", async (t) => {
+  const app = await mount(t, "list_years");
+  const d = await payload("list_years", { bucket: "decade" });
+  app.show(d);
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector("h1")), "AMIRA — research items per decade");
+  assert.deepEqual(rows(app.root.querySelector("details")), d.results.map((r) => [r.decade, String(r.item_count)]));
+
+  // Filter by subject through the form; the re-render comes from list_years.
+  const form = app.root.querySelector("#timeline-filter");
+  form.querySelector('input[name="subject"]').value = "Islam";
+  app.submit(form);
+  await app.waitFor(() => app.calls.some((c) => c.name === "list_years"), "filtered list_years");
+  const call = app.calls.find((c) => c.name === "list_years");
+  assert.equal(call.args.filters.subject, "Islam");
+  await app.waitFor(() => !/undated/.test(text(app.root.querySelector(".sub"))), "filtered render");
+  const filtered = await payload("list_years", call.args);
+  assert.equal(text(app.root.querySelector(".sub")), `${filtered.dated_items} dated items spanning ${filtered.year_range.min}–${filtered.year_range.max}`);
+  assert.equal(app.root.querySelector('input[name="subject"]').value, "Islam");
+  assertHealthy(app);
+
+  // A range with no dated items says so and offers a way back.
+  const empty = await payload("list_years", { from: 1800, to: 1801 });
+  assert.equal(empty.results.length, 0);
+  app.show(empty);
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector(".empty")), "No dated items in this range.");
+  app.click(app.root.querySelector("#reset-range"));
+  await app.waitFor(() => text(app.root.querySelector("h1")).endsWith("per decade") && app.root.querySelector("svg"), "reset to decades");
+  assert.deepEqual(lastCall(app, "list_years"), { name: "list_years", args: { bucket: "decade", limit: 200 } });
+  assertHealthy(app);
+});
+
+test("timeline: projects are a dropdown and subjects are suggestions, both loaded by the app", async (t) => {
+  const app = await mount(t, "list_years");
+  const projects = (await payload("search_projects", { limit: 100, offset: 0 })).results.filter((p) => p.item_count);
+  assert.ok(projects.length > 0, "the fixture has projects with research items");
+  const [named] = projects;
+  // The model may pass a project by name; the dropdown resolves it to its id.
+  app.show(await payload("list_years", { bucket: "decade", filters: { project_id: named.name } }));
+  await app.waitFor(() => app.root.querySelector('select[name="project_id"]') && app.root.querySelector("#subject-options option"), "project and subject lists");
+  const select = app.root.querySelector('select[name="project_id"]');
+  assert.deepEqual(options(select), [["", "All projects"],
+    ...projects.sort((a, b) => a.name.localeCompare(b.name)).map((p) => [p.id, `${p.name} (${p.item_count})`])]);
+  assert.equal(select.value, named.id);
+  const subjects = await payload("list_subjects", { limit: 300, offset: 0 });
+  assert.equal(app.root.querySelector('input[name="subject"]').getAttribute("list"), "subject-options");
+  assert.deepEqual([...app.root.querySelectorAll("#subject-options option")].map((o) => o.value), subjects.results.map((r) => r.subject));
+
+  // Submitting filters by the chosen project's id.
+  app.submit(app.root.querySelector("#timeline-filter"));
+  await app.waitFor(() => lastCall(app, "list_years")?.args.filters?.project_id === named.id, "project filter");
+  await app.waitFor(() => app.root.querySelector('select[name="project_id"]')?.value === named.id, "re-rendered dropdown");
+  assertHealthy(app);
+});
+
+// --- sections -----------------------------------------------------------------
+
+test("sections: plotted spans, item counts and the value table match list_research_sections", async (t) => {
+  const app = await mount(t, "list_research_sections");
+  const d = await payload("list_research_sections");
+  app.show(d);
+  assertHealthy(app);
+
+  const year = (s) => (s ? Number(String(s).slice(0, 4)) : null);
+  const plotted = d.results.filter((r) => year(r.date?.start) && year(r.date?.end));
+  const undated = d.results.filter((r) => !plotted.includes(r));
+  assert.ok(plotted.length > 0 && undated.length > 0, "fixture exercises both");
+  const sub = text(app.root.querySelector(".sub"));
+  assert.ok(sub.startsWith(`${plotted.length} sections plotted`), sub);
+  for (const r of undated) assert.ok(sub.includes(r.name), `${r.name} listed as unplotted`);
+
+  assert.deepEqual([...app.root.querySelectorAll("rect.bar title")].map(text), plotted.map((r) =>
+    `${r.name}: ${year(r.date.start)}–${year(r.date.end)} · ${r.project_count} projects · ${r.item_count} items`));
+  assert.deepEqual([...app.root.querySelectorAll("text.val")].map(text), plotted.map((r) => String(r.item_count)));
+  assert.deepEqual([...app.root.querySelectorAll("text.phase")].map(text), [...new Set(plotted.map((r) => r.funding_phase))]);
+  assert.deepEqual(rows(app.root.querySelector("details")), d.results.map((r) =>
+    [r.name, `${r.date.start ?? "Unknown"} – ${r.date.end ?? "Unknown"}`, String(r.project_count), String(r.item_count)]));
+
+  app.show({ ...d, results: undated, count: undated.length });
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector(".empty")), "No section carries a date range.");
+  app.show({ ...d, results: [], count: 0 });
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector(".empty")), "No sections returned.");
+});
+
+// --- related ------------------------------------------------------------------
+
+/** Rows of every related_* list, in the app's sector order. */
+const SECTORS = ["related_subjects", "related_people", "related_projects", "related_countries", "related_research_sections", "related_formats"];
+const relatedRows = (d) => SECTORS.flatMap((k) => (d[k] ?? []).map((r) => [r.name, String(r.research_item_count), String(r.publication_count)]));
+
+test("related: hub, counts, value table and publication citations match find_related", async (t) => {
+  const app = await mount(t, "find_related");
+  const d = await payload("find_related", { entity_type: "subject", value: "Architecture" });
+  assert.ok(d.matched_items > 0 && d.matched_publications > 0);
+  app.show(d);
+  assertHealthy(app);
+
+  assert.equal(text(app.root.querySelector("h1")), "What co-occurs with Architecture");
+  assert.match(text(app.root.querySelector(".sub")),
+    new RegExp(`^subject seed · ${d.matched_items} matching research items · ${d.matched_publications} publications\\.`));
+  assert.equal(text(app.root.querySelector(".seedsub")), `${d.matched_items} items · ${d.matched_publications} pubs`);
+  assert.deepEqual(rows(app.root.querySelector("details")), relatedRows(d));
+  const spokes = SECTORS.flatMap((k) => (d[k] ?? []).slice(0, 4));
+  assert.deepEqual([...app.root.querySelectorAll("line.spoke title")].map(text),
+    spokes.map((r) => `${r.name}: ${r.count} shared record${r.count === 1 ? "" : "s"}`));
+  assert.deepEqual(citations(app.root), d.related_publications.map((p) => ({ href: p.amira_url, title: p.title })));
+  assert.ok(!app.root.querySelector(".empty"), "no empty message");
+});
+
+test("related: a research-item seed (full-text pivot) is named by its title, not its id", async (t) => {
+  const app = await mount(t, "find_related");
+  const d = await payload("find_related", { entity_type: "subject", value: "Architecture" });
+  app.show({ ...d, entity_type: "research_item", value: "500", seed_label: "Mbira tunings in Zimbabwe" });
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector("h1")), "What co-occurs with Mbira tunings in Zimbabwe");
+  assert.equal([...app.root.querySelectorAll("text.seedlab")].map(text).join(" "), "Mbira tunings in Zimbabwe");
+});
+
+test("related: a seed that matches nothing gets the friendly empty message", async (t) => {
+  const app = await mount(t, "find_related");
+  const d = await payload("find_related", { entity_type: "subject", value: "zzz-no-such-subject" });
+  assert.equal(d.matched_items, 0);
+  assert.equal(d.matched_publications, 0);
+  app.show(d);
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector(".empty")), "Nothing co-occurs with this seed in the collection.");
+  assert.ok(!app.root.querySelector("svg"), "no hub drawn");
+});
+
+test("related: a publication-only seed renders its publications, not the empty message", async (t) => {
+  const app = await mount(t, "find_related");
+  for (const value of ["Oral Literature", "Ritual Archives"]) {
+    const d = await payload("find_related", { entity_type: "subject", value });
+    assert.equal(d.matched_items, 0, value);
+    assert.equal(d.matched_publications, 1, value);
+    app.show(d);
+    assertHealthy(app);
+    assert.ok(!app.root.querySelector(".empty"), `${value}: no "Nothing co-occurs"`);
+    assert.doesNotMatch(text(app.root), /Nothing co-occurs/);
+    assert.equal(text(app.root.querySelector("h1")), `What co-occurs with ${value}`);
+    assert.match(text(app.root.querySelector(".sub")), /0 matching research items · 1 publications/);
+    assert.ok(app.root.querySelector("svg circle.seed"), `${value}: hub drawn`);
+    assert.deepEqual(citations(app.root), d.related_publications.map((p) => ({ href: p.amira_url, title: p.title })));
+    assert.deepEqual(rows(app.root.querySelector("details")), relatedRows(d));
+  }
+  // "Oral Literature" has an author, so the PEOPLE sector carries a spoke.
+  const withAuthor = await payload("find_related", { entity_type: "subject", value: "Oral Literature" });
+  app.show(withAuthor);
+  assert.deepEqual([...app.root.querySelectorAll("text.sector")].map(text), ["PEOPLE"]);
+  assert.deepEqual([...app.root.querySelectorAll("line.spoke title")].map(text), ["Okafor, Ngozi: 1 shared record"]);
+});
+
+test("related: a location seed (no publication join) renders without a publications section", async (t) => {
+  const app = await mount(t, "find_related");
+  const d = await payload("find_related", { entity_type: "location", value: "Nigeria" });
+  assert.equal(d.matched_publications, undefined);
+  app.show(d);
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector(".seedsub")), `${d.matched_items} items`);
+  assert.doesNotMatch(text(app.root), /Publication evidence/);
+  assert.deepEqual(rows(app.root.querySelector("details")), relatedRows(d));
+});
+
+// --- graph --------------------------------------------------------------------
+
+/** The graph's spoke weights: a neighbour's strongest link and its edges, strongest first. */
+function graphWeights(d) {
+  const far = (e) => (e.source === d.seed ? e.target : e.source);
+  const weights = new Map();
+  for (const e of d.edges) {
+    const w = weights.get(far(e)) ?? { count: 0, edges: [] };
+    w.count = Math.max(w.count, e.count); w.edges.push(e);
+    weights.set(far(e), w);
+  }
+  return weights;
+}
+const clipLabel = (s) => (s.length <= 24 ? s : `${s.slice(0, 23).trimEnd()}…`);
+
+test("graph: sectors, edges and evidence citations match get_entity_graph", async (t) => {
+  const app = await mount(t, "get_entity_graph");
+  const resolved = await payload("resolve_entity", { query: "Beier" });
+  const seed = resolved.results[0].id;
+  const d = await payload("get_entity_graph", { seed });
+  app.show(d);
+  assertHealthy(app);
+
+  const nodes = new Map(d.nodes.map((n) => [n.id, n]));
+  assert.equal(text(app.root.querySelector("h1")), nodes.get(seed).label);
+  assert.equal(text(app.root.querySelector(".sub")),
+    `One-hop relationships · ${d.edges.length} of ${d.total_edges} edges${d.truncated ? " · bounded view" : ""}`);
+  // Every spoke is a returned neighbour, labelled with its strongest link's count.
+  const weights = graphWeights(d);
+  const spokes = [...app.root.querySelectorAll("g.node-link")];
+  assert.ok(spokes.length > 0 && spokes.length <= Math.min(16, weights.size));
+  for (const g of spokes) {
+    const node = nodes.get(g.getAttribute("data-pick"));
+    assert.ok(node && node.id !== seed, "a spoke is a neighbour");
+    assert.equal(text(g.querySelector("text.label")), `${clipLabel(node.label)} · ${weights.get(node.id).count}`);
+  }
+  assert.ok(app.root.querySelectorAll("text.sector").length >= 1, "sectors carry headings");
+  assert.match(text(app.root.querySelector(".graph + .note")), new RegExp(`^Showing ${spokes.length} of ${weights.size} returned neighbours`));
+  const trs = [...app.root.querySelectorAll("tbody tr")];
+  assert.equal(trs.length, d.edges.length);
+  d.edges.forEach((e, i) => {
+    const other = nodes.get(e.source === seed ? e.target : e.source);
+    const node = trs[i].querySelector("button[data-node]");
+    assert.equal(node.getAttribute("data-node"), other.id);
+    assert.equal(text(node), other.label);
+    assert.equal(text(trs[i].querySelector(".note")), other.type);
+    assert.equal(text(trs[i].querySelector(`button[data-edge="${e.id}"]`)), `${e.count} ${e.count === 1 ? "record" : "records"}`);
+  });
+
+  // Evidence for one edge is a real, cited page.
+  const edge = d.edges.find((e) => e.count > 0);
+  app.click(app.root.querySelector(`tbody button[data-edge="${edge.id}"]`));
+  await app.waitFor(() => app.root.querySelector("#evidence h2"), "edge evidence");
+  const evidence = await payload("get_entity_graph", { seed, edge_id: edge.id, snapshot_id: d.snapshot_id, offset: 0 });
+  assert.equal(text(app.root.querySelector("#evidence h2")), `Evidence · ${evidence.total_matches} records`);
+  assert.deepEqual(citations(app.root.querySelector("#evidence")), evidence.results.map((r) => ({ href: r.amira_url, title: r.title })));
+  assert.ok(evidence.results.length > 0);
+
+  // Selecting a spoke keeps the graph, lists the neighbour's links and opens
+  // the records behind the strongest one.
+  const shown = spokes.map((g) => nodes.get(g.getAttribute("data-pick")));
+  const next = shown.find((n) => n.type === "person") ?? shown[0];
+  const strongest = weights.get(next.id).edges[0];
+  app.click(app.root.querySelector(`g.node-link[data-pick="${next.id}"] text.label`));
+  await app.waitFor(() => lastCall(app, "get_entity_graph").args.edge_id === strongest.id && app.root.querySelector("#evidence li"), "picked evidence");
+  assert.equal(text(app.root.querySelector("h1")), nodes.get(seed).label, "selecting does not re-seed");
+  assert.ok(app.root.querySelector(`g.node-link[data-pick="${next.id}"]`).classList.contains("picked"));
+  assert.equal(text(app.root.querySelector("#pick h2")), `${next.label} ${next.type}`);
+  assert.equal(app.root.querySelectorAll("#pick li").length, weights.get(next.id).edges.length);
+  const picked = await payload("get_entity_graph", { seed, edge_id: strongest.id, snapshot_id: d.snapshot_id, offset: 0 });
+  await app.waitFor(() => text(app.root.querySelector("#evidence h2")) === `Evidence · ${picked.total_matches} records`, "picked evidence heading");
+  assert.deepEqual(citations(app.root.querySelector("#evidence")), picked.results.map((r) => ({ href: r.amira_url, title: r.title })));
+  assertHealthy(app);
+
+  // Re-centring is its own action.
+  app.click(app.root.querySelector(`#pick button[data-node="${next.id}"]`));
+  await app.waitFor(() => text(app.root.querySelector("h1")) === next.label, "re-seeded graph");
+  assert.deepEqual(app.calls.at(-1), { name: "get_entity_graph", args: { seed: next.id } });
+  assert.equal(app.root.querySelector("#pick").innerHTML, "", "a new seed clears the selection");
+  assertHealthy(app);
+
+  // The resolve form lists candidates as re-seed buttons.
+  const form = app.root.querySelector("#resolve");
+  form.querySelector('input[name="query"]').value = "Fendler";
+  app.submit(form);
+  await app.waitFor(() => app.root.querySelector("#candidates li"), "candidates");
+  const candidates = await payload("resolve_entity", { query: "Fendler", limit: 20 });
+  assert.deepEqual([...app.root.querySelectorAll("#candidates button")].map((b) => b.getAttribute("data-node")), candidates.results.map((c) => c.id));
+  assert.match(text(app.root.querySelector("#candidates p")), new RegExp(`^${candidates.total_matches} candidates`));
+  assertHealthy(app);
+});
+
+test("graph: type chips filter on the server and the filter survives re-seeding", async (t) => {
+  const app = await mount(t, "get_entity_graph");
+  const d = await payload("get_entity_graph", { seed: "person:100" });
+  app.show(d);
+  assertHealthy(app);
+  const total = Object.values(d.neighbour_types).reduce((a, b) => a + b, 0);
+  const chips = [...app.root.querySelectorAll(".chips button")];
+  assert.equal(text(chips[0]), `All · ${total}`);
+  assert.equal(chips[0].getAttribute("aria-pressed"), "true");
+  const people = app.root.querySelector('.chips button[data-types="person"]');
+  assert.equal(text(people), `People · ${d.neighbour_types.person}`);
+
+  app.click(people);
+  await app.waitFor(() => / · People only$/.test(text(app.root.querySelector(".sub"))), "people only");
+  assert.deepEqual(lastCall(app, "get_entity_graph").args, { seed: "person:100", types: ["person"] });
+  assert.equal(app.root.querySelector('.chips button[data-types="person"]').getAttribute("aria-pressed"), "true");
+  const filtered = await payload("get_entity_graph", { seed: "person:100", types: ["person"] });
+  const types = new Map(filtered.nodes.map((n) => [n.id, n.type]));
+  const spokes = [...app.root.querySelectorAll("g.node-link")];
+  assert.ok(spokes.length > 0);
+  assert.ok(spokes.every((g) => types.get(g.getAttribute("data-pick")) === "person"));
+  assert.deepEqual([...app.root.querySelectorAll("text.sector")].map(text), ["PEOPLE"]);
+  assertHealthy(app);
+
+  // Following a person keeps the people-only view.
+  const next = filtered.nodes.find((n) => n.id === spokes[0].getAttribute("data-pick"));
+  app.click(app.root.querySelector(`tbody button[data-node="${next.id}"]`));
+  await app.waitFor(() => text(app.root.querySelector("h1")) === next.label, "re-seeded");
+  assert.deepEqual(lastCall(app, "get_entity_graph").args, { seed: next.id, types: ["person"] });
+
+  // "All" drops the filter.
+  app.click(app.root.querySelector('.chips button[data-types=""]'));
+  await app.waitFor(() => !/ only$/.test(text(app.root.querySelector(".sub"))), "all types");
+  assert.deepEqual(lastCall(app, "get_entity_graph").args, { seed: next.id });
+  assertHealthy(app);
+});
+
+test("graph: an isolated entity, an empty filter and a bounded view render honestly", async (t) => {
+  const app = await mount(t, "get_entity_graph");
+  const lonely = await payload("get_entity_graph", { seed: "organisation:201" });
+  assert.equal(lonely.edges.length, 0);
+  app.show(lonely);
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector("h1")), "Test Research Group");
+  assert.equal(text(app.root.querySelector(".empty")), "No relationships are recorded for this entity.");
+  assert.equal(app.root.querySelectorAll("tbody tr").length, 0);
+
+  const full = await payload("get_entity_graph", { seed: "person:100" });
+  const absent = ["playlist", "journal", "podcast", "video", "section", "collection"].find((type) => !(type in full.neighbour_types));
+  const none = await payload("get_entity_graph", { seed: "person:100", types: [absent] });
+  app.show(none);
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector(".empty")), "No neighbours of this type are recorded for this entity.");
+  assert.ok(app.root.querySelector(".chips"), "the chips stay, so the filter can be undone");
+
+  const bounded = await payload("get_entity_graph", { seed: "person:100", max_nodes: 2 });
+  assert.equal(bounded.truncated, true);
+  app.show(bounded);
+  assertHealthy(app);
+  assert.match(text(app.root.querySelector(".sub")), / · bounded view$/);
+  assert.equal(app.root.querySelectorAll("tbody tr").length, bounded.edges.length);
+});
+
+// --- map ----------------------------------------------------------------------
+
+test("map: markers, table and evidence citations match list_locations", async (t) => {
+  const app = await mount(t, "list_locations");
+  const d = await payload("list_locations");
+  app.show(d);
+  assertHealthy(app);
+
+  const mapped = d.results.filter((r) => Number.isFinite(r.latitude) && Number.isFinite(r.longitude));
+  assert.equal(text(app.root.querySelector(".sub")),
+    `${mapped.length} of ${d.results.length} returned places have coordinates · ${d.items_without_place} matching items have no place`);
+  assert.deepEqual([...app.root.querySelectorAll("circle.place title")].map(text), mapped.map((r) => `${r.name}: ${r.item_count} items`));
+  assert.equal(app.root.querySelectorAll("circle.place.root").length, mapped.filter((r) => r.coordinate_scope === "hierarchy_root").length);
+  assert.deepEqual(rows(app.root.querySelector("table")), d.results.map((r) =>
+    [r.name, r.country ?? "Hierarchy root", String(r.item_count), `${r.latitude.toFixed(2)}, ${r.longitude.toFixed(2)}`]));
+  assert.match(text(app.root), new RegExp(`Places 1–${d.results.length} of ${d.total_matches}`));
+
+  // A place opens its research items, by authority id.
+  const nigeria = d.results.find((r) => r.name === "Nigeria");
+  app.click(app.root.querySelector(`button[data-place-id="${nigeria.omeka_id}"]`));
+  await app.waitFor(() => app.root.querySelector("#map-evidence h2"), "place evidence");
+  const args = { limit: 20, offset: 0, location_id: nigeria.omeka_id };
+  assert.deepEqual(lastCall(app, "search_research_items"), { name: "search_research_items", args });
+  const evidence = await payload("search_research_items", args);
+  assert.equal(text(app.root.querySelector("#map-evidence h2")), `Nigeria · ${evidence.total_matches} matching records`);
+  assert.deepEqual(citations(app.root.querySelector("#map-evidence")), evidence.results.map((r) => ({ href: r.amira_url, title: r.title })));
+  assert.equal(evidence.results.length, nigeria.item_count);
+
+  // Country filter: a dropdown of the hierarchy roots, fetched by the app itself.
+  await app.waitFor(() => app.root.querySelector('select[name="country"]'), "country dropdown");
+  const all = await payload("list_locations", { limit: 300, offset: 0 });
+  const roots = all.results.filter((r) => r.coordinate_scope === "hierarchy_root").sort((a, b) => a.name.localeCompare(b.name));
+  assert.deepEqual(options(app.root.querySelector('select[name="country"]')),
+    [["", "All countries"], ...roots.map((r) => [r.name, `${r.name} (${r.item_count})`])]);
+  app.root.querySelector('select[name="country"]').value = "Nigeria";
+  app.submit(app.root.querySelector("#map-filter"));
+  await app.waitFor(() => app.root.querySelector('select[name="country"]')?.value === "Nigeria" && app.root.querySelectorAll("tbody tr").length !== d.results.length, "filtered places");
+  const filtered = await payload("list_locations", lastCall(app, "list_locations").args);
+  assert.equal(filtered.filters.country, "Nigeria");
+  assert.deepEqual(rows(app.root.querySelector("table")).map((r) => r[0]), filtered.results.map((r) => r.name));
+  assertHealthy(app);
+});
+
+test("map: a filter that matches no place renders a friendly empty message", {
+  // Fixed in 1.19: the map shows an empty-state message and keeps its filter.
+}, async (t) => {
+  const app = await mount(t, "list_locations");
+  const d = await payload("list_locations", { country: "Atlantis" });
+  assert.equal(d.results.length, 0);
+  app.show(d);
+  assertHealthy(app);
+  assert.ok(app.root.querySelector(".empty"), "an .empty message is shown");
+  assert.doesNotMatch(text(app.root), /Places 1–0 of 0/);
+});
+
+// --- bibliography -------------------------------------------------------------
+
+test("bibliography: rows and citations match search_publications; selection exports real citations", async (t) => {
+  const app = await mount(t, "search_publications");
+  const d = await payload("search_publications");
+  app.show(d);
+  assertHealthy(app);
+
+  assert.equal(text(app.root.querySelector(".sub")), `${d.total_matches} matching publications · showing 1–${d.results.length}`);
+  assert.deepEqual(citations(app.root), d.results.map((p) => ({ href: p.amira_url, title: p.title })));
+  assert.deepEqual([...app.root.querySelectorAll("tbody tr")].map((tr) => [text(tr.querySelector(".note")), text(tr.lastElementChild)]),
+    d.results.map((p) => [`${p.authors.join("; ")}${p.has_fulltext ? " · Full text available" : ""}`.replace(/^ · /, "· "), String(p.year ?? "Undated")]));
+  assert.deepEqual([...app.root.querySelectorAll("input[type=checkbox]")].map((b) => b.getAttribute("data-id")), d.results.map((p) => String(p.omeka_id)));
+
+  // Select one publication and export it in each format.
+  const first = d.results[0];
+  const box = app.root.querySelector(`input[data-id="${first.omeka_id}"]`);
+  box.checked = true;
+  box.dispatchEvent(new app.win.Event("change", { bubbles: true }));
+  assert.equal(text(app.doc.getElementById("selection-count")), "1 selected (maximum 25)");
+  assert.equal(app.doc.getElementById("export-selected").disabled, false);
+  for (const [format, extension] of [["bibtex", "bib"], ["ris", "ris"], ["csl-json", "json"]]) {
+    app.doc.getElementById("export-format").value = format;
+    const before = app.downloads.length;
+    app.click(app.doc.getElementById("export-selected"));
+    await app.waitFor(() => app.downloads.length > before, `${format} download`);
+    const download = app.downloads.at(-1);
+    const detail = await payload("get_publication", { id: String(first.omeka_id), citation_format: format });
+    assert.equal(download.extension, extension);
+    if (format === "csl-json") assert.deepEqual(JSON.parse(download.text), [detail.csl_json]);
+    else assert.equal(download.text, detail[format]);
+    await app.waitFor(() => app.status() === "Exported 1 selected publications.", "export status");
+  }
+
+  // Keyword search re-renders from search_publications; the selection persists.
+  const form = app.root.querySelector("#publication-search");
+  form.querySelector('input[name="keyword"]').value = "Migration";
+  app.submit(form);
+  await app.waitFor(() => app.calls.some((c) => c.name === "search_publications"), "keyword search");
+  assert.deepEqual(lastCall(app, "search_publications"), { name: "search_publications", args: { keyword: "Migration", offset: 0, limit: 20 } });
+  const found = await payload("search_publications", lastCall(app, "search_publications").args);
+  await app.waitFor(() => text(app.root.querySelector(".sub")).startsWith(`${found.total_matches} matching`), "search render");
+  assert.deepEqual(citations(app.root), found.results.map((p) => ({ href: p.amira_url, title: p.title })));
+  assert.equal(text(app.doc.getElementById("selection-count")), "1 selected (maximum 25)");
+  assertHealthy(app);
+});
+
+test("bibliography: no matches renders a friendly empty message", async (t) => {
+  const app = await mount(t, "search_publications");
+  const d = await payload("search_publications", { keyword: "zzz-no-such-publication" });
+  assert.equal(d.total_matches, 0);
+  app.show(d);
+  assertHealthy(app);
+  assert.equal(text(app.root.querySelector(".sub")), "0 matching publications · no results");
+  assert.equal(text(app.root.querySelector(".empty")), "No publications match these filters. Try removing a filter.");
+  assert.equal(app.doc.getElementById("export-selected").disabled, true);
+});
+
+test("bibliography: languages are a dropdown counted for the current search; authors are suggestions", async (t) => {
+  const app = await mount(t, "search_publications");
+  app.show(await payload("search_publications"));
+  await app.waitFor(() => app.root.querySelector('select[name="language"]') && app.root.querySelector("#author-options option"), "language and author lists");
+  const languageOptions = (facet, current) => [["", "Any language"],
+    ...(current && !facet.results.some((r) => r.value === current) ? [[current, current]] : []),
+    ...facet.results.map((r) => [r.value, `${r.value} (${r.publication_count})`])];
+  const languages = await payload("list_publication_facets", { facet: "language", limit: 100, offset: 0 });
+  assert.deepEqual(options(app.root.querySelector('select[name="language"]')), languageOptions(languages));
+  const authors = await payload("list_publication_facets", { facet: "author", limit: 100, offset: 0 });
+  assert.equal(app.root.querySelector('input[name="author"]').getAttribute("list"), "author-options");
+  assert.deepEqual([...app.root.querySelectorAll("#author-options option")].map((o) => o.value), authors.results.map((r) => r.value));
+
+  // Choosing a language searches with it, and the other languages stay selectable.
+  const [{ value: language }] = languages.results;
+  app.root.querySelector('select[name="language"]').value = language;
+  app.submit(app.root.querySelector("#publication-search"));
+  await app.waitFor(() => app.root.querySelector('select[name="language"]')?.value === language, "language search");
+  assert.deepEqual(lastCall(app, "search_publications").args, { language, offset: 0, limit: 20 });
+  assert.deepEqual(options(app.root.querySelector('select[name="language"]')), languageOptions(languages, language));
+  assert.ok(!app.calls.some((c) => c.name === "list_publication_facets" && c.args.language), "the language list ignores its own filter");
+
+  // A keyword re-counts the languages within the search.
+  app.root.querySelector('input[name="keyword"]').value = "Migration";
+  app.submit(app.root.querySelector("#publication-search"));
+  const scoped = await payload("list_publication_facets", { facet: "language", keyword: "Migration", limit: 100, offset: 0 });
+  await app.waitFor(() => JSON.stringify(options(app.root.querySelector('select[name="language"]'))) === JSON.stringify(languageOptions(scoped, language)), "scoped language counts");
+  assertHealthy(app);
+});
+
+test("bibliography: pickers stay text fields when the host refuses their lists", async (t) => {
+  const app = await mount(t, "search_publications");
+  const callTool = app.win.__amiraHost.callTool;
+  app.win.__amiraHost.callTool = (name, args) => name === "list_publication_facets" ? Promise.reject(new Error("refused")) : callTool(name, args);
+  app.show(await payload("search_publications"));
+  await sleep(20);
+  assert.ok(app.root.querySelector('input[name="language"]'), "language stays a text field");
+  assert.equal(app.root.querySelectorAll("#author-options option").length, 0);
+
+  // Typing still filters.
+  app.root.querySelector('input[name="language"]').value = "English";
+  app.submit(app.root.querySelector("#publication-search"));
+  await app.waitFor(() => lastCall(app, "search_publications")?.args.language === "English", "typed language search");
+  assertHealthy(app);
+});
