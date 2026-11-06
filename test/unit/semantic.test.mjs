@@ -325,7 +325,7 @@ test("get_semantic_map: a record's group, and the cases without one", async () =
   assert.match(low.error.message, /Too little own text/);
   assert.equal((await call("get_semantic_map", { id: 511 })).error.code, "not_on_map");
   assert.equal((await call("get_semantic_map", { group: 99 })).error.code, "not_found");
-  assert.equal((await call("get_semantic_map", { group: 1, id: 500 })).error.code, "invalid_arguments");
+  assert.equal((await call("get_semantic_map", { group: 1, id: 500 })).error.code, "invalid_argument");
   process.env.AMIRA_EXPOSURE = "descriptive";
   try {
     assert.equal((await call("get_semantic_map")).error.code, "exposure_restricted");

@@ -14,12 +14,14 @@ ARG SNAPSHOT_STAGE=fetch
 FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY tsconfig.json ./
 COPY src ./src
-COPY scripts ./scripts
+# Only the build scripts: copying all of scripts/ rebuilt this layer whenever
+# weigh, census or a release helper changed.
+COPY scripts/build.mjs scripts/skills.mjs ./scripts/
 COPY .claude/skills ./.claude/skills
-RUN npm run skills:check
+# --strict also validates the companion skill (it subsumes `skills:check`).
 RUN npm run build:strict
 
 # Default convenience target still fetches current public data.

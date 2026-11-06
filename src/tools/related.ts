@@ -5,6 +5,7 @@ import type { PublicationRec, ResearchItemRec } from "../types.js";
 import { allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
+  capLimit,
   containsCI,
   equalsCI,
   errorResult,
@@ -97,7 +98,7 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
     async (args) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "find_related");
-      const limit = Math.max(1, Math.min(args.limit ?? 20, 50));
+      const limit = capLimit(args.limit, 20, 50);
       const type = args.entity_type as EntityType;
       const value = type === "project" ? stripTypedId(args.value, ["project"])
         : type === "research_item" ? stripTypedId(args.value, ["research_item"]) : args.value;
@@ -134,8 +135,12 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
             return it.places.some(matchesPlace);
           case "person":
             return it.contributors.some((c) => matchesPerson(c.name, c.o_id));
-          case "project":
-            return equalsCI(String(store.projectOf(it)?.o_id), value) || equalsCI(store.projectOf(it)?.dre_id, value) || containsCI(it.project?.label, value);        }
+          case "project": {
+            // Never String(undefined): "undefined" must not match every item without a project.
+            const p = store.projectOf(it);
+            return (p != null && (String(p.o_id) === value || equalsCI(p.dre_id, value))) || containsCI(it.project?.label, value);
+          }
+        }
       };
 
       const seed = store.items.filter(matches);

@@ -95,6 +95,11 @@ const REQUIRED_ARGS = {
     ...["bibtex", "ris", "csl-json"].map((citation_format) => ({ suffix: citation_format, args: { citation_format } })),
   ],
   list_publication_facets: ["type", "year", "language", "subject", "author", "venue"].map((facet) => ({ suffix: facet, args: { facet } })),
+  // List mode at its maximum, and one group's records at theirs.
+  get_semantic_map: [
+    { suffix: "max", args: {} },
+    { suffix: "group", args: { group: 1 } },
+  ],
   list_categories: [
     { suffix: "formats", args: { category: "formats" } },
     { suffix: "languages", args: { category: "languages" } },
@@ -214,8 +219,14 @@ export async function buildProbes(client) {
   for (const seed of seeds) {
     if (parseJson(await callText(client, "get_similar_items", { id: seed.id, limit: 10 })).count) { similarSeed = seed; break; }
   }
-  if (similarSeed) add("get_similar_items@max", "get_similar_items", { id: similarSeed.id, limit: 10 });
-  else miss("get_similar_items");
+  if (similarSeed) {
+    add("get_similar_items@max", "get_similar_items", { id: similarSeed.id, limit: 10 });
+    // The semantic pivot: twenty neighbours' links, every related_* list at its cap.
+    add("find_related@record", "find_related", { entity_type: "record", value: String(similarSeed.id), limit: OVER_LIMIT });
+  } else {
+    miss("get_similar_items");
+    if (names.has("find_related")) miss("find_related@record");
+  }
 
   const person = await first("search_persons", { limit: 1 });
   if (person?.name) add("get_person", "get_person", { name: person.name });
@@ -238,8 +249,11 @@ export async function buildProbes(client) {
   // CHARACTER_LIMIT (25,000) chars of body in one go, so this asserts the cap
   // actually holds rather than trusting that it does.
   const pub = await first("search_publications", { has_fulltext: true, limit: 1 });
-  if (pub?.id) add("get_publication@fulltext", "get_publication", { id: pub.id, include_fulltext: true });
-  else miss("get_publication@fulltext");
+  if (pub?.id) {
+    add("get_publication@fulltext", "get_publication", { id: pub.id, include_fulltext: true });
+    // The heaviest detail answer: a full-text window plus five explained neighbours.
+    add("get_publication@fulltext+similar", "get_publication", { id: pub.id, include_fulltext: true, include_similar: true });
+  } else miss("get_publication@fulltext");
   if (pub?.id) {
     for (const citation_format of ["ris", "csl-json"]) {
       add(`get_publication@${citation_format}`, "get_publication", { id: pub.id, citation_format });
@@ -272,8 +286,11 @@ export async function buildProbes(client) {
 
   if (names.has("resolve_entity")) {
     add("resolve_entity@max", "resolve_entity", { query: "Afri", limit: 50 });
-    const person = await first("resolve_entity", { query: "Ulli Beier", type: "person" });
-    if (person) add("get_entity_graph@max", "get_entity_graph", { seed: person.id, max_nodes: 100, max_edges: 200 });
+    // A densely linked person when the snapshot has him; otherwise the person
+    // discovered above, so the probe survives a data change.
+    const graphSeed = (await first("resolve_entity", { query: "Ulli Beier", type: "person" }))
+      ?? (person?.name ? await first("resolve_entity", { query: person.name, type: "person" }) : undefined);
+    if (graphSeed) add("get_entity_graph@max", "get_entity_graph", { seed: graphSeed.id, max_nodes: 100, max_edges: 200 });
     else miss("get_entity_graph");
     if (pub) add("get_text_passages@max", "get_text_passages", { ids: [`publication:${pub.omeka_id ?? pub.id}`], keyword: "the", radius: 500, limit: 20 });
     else miss("get_text_passages");
@@ -393,8 +410,14 @@ export function checkResponses(current, baseline) {
       notes.push(`  ${id}: ${was} → ${tokens} (${sign(drift)})`);
     }
   }
+  // A probe that silently drops out (its discovery found nothing in a new
+  // snapshot) would take that tool out of the D10 gate without anything going
+  // red. Removing one on purpose means re-recording the baseline.
   for (const id of Object.keys(baseline ?? {})) {
-    if (!(id in current)) notes.push(`  probe ${id} no longer measured (was ${baseline[id].tokens} tokens)`);
+    if (!(id in current)) {
+      failures.push(`probe ${id} is no longer measured (was ${baseline[id].tokens} tokens). If that is intended, ` +
+        "run `npm run weigh -- --update` and commit the baseline.");
+    }
   }
   if (oversized.length) {
     failures.push(
@@ -417,6 +440,33 @@ export function snapshotIdentity(lib, store) {
     fetchedAt: m.fetchedAt,
     maxModified: m.maxModified ?? null,
     schemaVersion: m.schemaVersion,
+  };
+}
+
+/**
+ * The baseline file for `--update`. Refuses a run with a failed or unmeasured
+ * probe: a failed call weighs 0 tokens, and a 0-token baseline entry reads as
+ * "new" on every later run, so that probe's drift would never be compared again.
+ * `args` are deliberately dropped: the discovered ids change with every data
+ * refresh and would churn the committed file without telling anyone anything.
+ */
+export function baselinePayload(current, skipped = []) {
+  const failed = Object.entries(current.responses).filter(([, r]) => r.error).map(([id, r]) => `${id}: ${r.error}`);
+  if (failed.length || skipped.length) {
+    throw new Error(`refusing to write a baseline with unmeasured probes:\n  ${[...failed, ...skipped].join("\n  ")}`);
+  }
+  return {
+    _comment:
+      "Token baseline for the AMIRA tool layer, in bytes/4 estimated tokens. Regenerate with " +
+      "`npm run weigh -- --update` and commit the diff: the cost of a schema or summary change " +
+      "belongs in code review. See scripts/weigh.mjs for the two budgets and why drift is fatal " +
+      "for the surface but only a warning for responses. `snapshot` names the data/ snapshot the " +
+      "responses were measured against.",
+    snapshot: current.snapshot,
+    surface: current.surface,
+    responses: Object.fromEntries(
+      Object.entries(current.responses).map(([id, r]) => [id, { tokens: r.tokens, chars: r.chars, text_bytes: r.text_bytes, wire_bytes: r.wire_bytes }]),
+    ),
   };
 }
 
@@ -497,6 +547,8 @@ async function main() {
     checkResponses(responses, baseline?.responses),
   ];
   const failures = results.flatMap((r) => r.failures);
+  // An undiscoverable probe is a tool the gate does not cover.
+  for (const s of skipped) failures.push(`not measured: ${s}`);
 
   if (asJson) {
     console.log(JSON.stringify({ ...current, baseline_snapshot: baseline?.snapshot ?? null, failures }, null, 2));
@@ -568,21 +620,7 @@ async function main() {
   }
 
   if (update) {
-    // `args` are deliberately dropped: the discovered ids change with every data
-    // refresh and would churn the committed file without telling anyone anything.
-    const payload = {
-      _comment:
-        "Token baseline for the AMIRA tool layer, in bytes/4 estimated tokens. Regenerate with " +
-        "`npm run weigh -- --update` and commit the diff: the cost of a schema or summary change " +
-        "belongs in code review. See scripts/weigh.mjs for the two budgets and why drift is fatal " +
-        "for the surface but only a warning for responses. `snapshot` names the data/ snapshot the " +
-        "responses were measured against.",
-      snapshot: current.snapshot,
-      surface: current.surface,
-      responses: Object.fromEntries(
-        Object.entries(current.responses).map(([id, r]) => [id, { tokens: r.tokens, chars: r.chars, text_bytes: r.text_bytes, wire_bytes: r.wire_bytes }]),
-      ),
-    };
+    const payload = baselinePayload(current, skipped);
     await fs.writeFile(BASELINE_PATH, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
     console.log(`\nbaseline written: ${path.relative(process.cwd(), BASELINE_PATH)}`);
   }

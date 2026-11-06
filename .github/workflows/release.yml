@@ -116,7 +116,7 @@ jobs:
           docker build --build-arg SNAPSHOT_STAGE=bundled -t amira-mcp-release:ci .
           docker run -d --name amira-release -p 8787:8787 -e AMIRA_LIVE_REFRESH=0 amira-mcp-release:ci
           for attempt in $(seq 1 30); do
-            if curl --silent --fail http://127.0.0.1:8787/healthz; then break; fi
+            if curl --silent --fail --max-time 2 http://127.0.0.1:8787/healthz; then break; fi
             if [ "$attempt" = 30 ]; then docker logs amira-release; exit 1; fi
             sleep 1
           done

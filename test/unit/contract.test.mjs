@@ -76,6 +76,52 @@ test("scrub removes control and private-use characters, keeping tabs and newline
   assert.deepEqual(lib.scrub(dirty), { title: "abcd", nested: ["xy", { url: "https://e.org/item" }], text: "l1\nl2\tz", n: 3 });
 });
 
+test("scrub keeps letters outside ASCII and strips the Private Use Area", () => {
+  // The class once held literal U+E000/U+F8FF characters that no editor shows,
+  // so it read like a range from DEL to plane 15: this pins what it really strips.
+  assert.equal(lib.scrub("Côte d'Ivoire \uE001· ß \uF8FF"), "Côte d'Ivoire · ß ");
+});
+
+test("cachedRecent bounds each namespace on its own", () => {
+  const f = buildFixture(lib.SNAPSHOT_SCHEMA_VERSION);
+  const store = new lib.DataStore("bundled", f.data, f.manifest);
+  // A namespace with a large bound used to keep a small-bound one's entries
+  // alive: one shared map evicted at most one entry per call.
+  for (let i = 0; i < 300; i++) {
+    store.cachedRecent("wide", String(i), () => i, 256);
+    if (i % 3 === 0) store.cachedRecent("narrow", String(i), () => i, 64);
+  }
+  assert.equal(store.recentSize("wide"), 256);
+  assert.equal(store.recentSize("narrow"), 64);
+  // Most recently used survives; the oldest went first.
+  let built = 0;
+  store.cachedRecent("narrow", "297", () => built++, 64);
+  store.cachedRecent("narrow", "0", () => built++, 64);
+  assert.equal(built, 1, "297 was cached, 0 had been evicted");
+});
+
+// Error codes are a client contract: a model or host branches on them. One
+// tool shipped `invalid_arguments` beside everyone else's `invalid_argument`.
+// A new code is added here on purpose, never by a typo.
+const ERROR_CODES = new Set([
+  "ambiguous_entity", "deadline_exceeded", "export_too_large", "exposure_restricted", "fulltext_map_unavailable",
+  "invalid_argument", "invalid_category", "invalid_date", "invalid_id", "invalid_range", "missing_entity",
+  "no_neighbours", "not_embedded", "not_found", "not_on_fulltext_map", "not_on_map", "semantic_unavailable",
+  "snapshot_changed", "snapshot_unavailable", "text_access_disabled",
+]);
+
+test("every error code in src/ is on the documented list", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const path = await import("node:path");
+  const files = readdirSync(path.join(REPO_ROOT, "src"), { recursive: true }).filter((f) => String(f).endsWith(".ts"));
+  const unknown = new Set();
+  for (const file of files) {
+    const text = readFileSync(path.join(REPO_ROOT, "src", String(file)), "utf8");
+    for (const m of text.matchAll(/(?:errorResult\(\s*|code: )"([a-z_]+)"/g)) if (!ERROR_CODES.has(m[1])) unknown.add(`${m[1]} (${file})`);
+  }
+  assert.deepEqual([...unknown], []);
+});
+
 test("the release guard lets only a definite 404 through", async () => {
   const { assertUnpublished } = await import(new URL("../../scripts/release-guard.mjs", import.meta.url).href);
   const answer = (status) => async () => ({ status, ok: status >= 200 && status < 300 });

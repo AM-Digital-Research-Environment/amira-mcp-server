@@ -94,25 +94,40 @@ export class DataStore {
   private readonly subjectByOId = new Map<number, SubjectRec>();
   private readonly subjectByName = new Map<string, SubjectRec>();
   private readonly memo = new Map<string, unknown>();
-  private readonly lru = new Map<string, unknown>();
+  /** One LRU per namespace, each with its own bound. */
+  private readonly lru = new Map<string, Map<string, unknown>>();
   /** Snapshot-owned, lazy derived data. Cache keys must include exposure when relevant. */
   cached<T>(key: string, build: () => T): T {
     if (!this.memo.has(key)) this.memo.set(key, build());
     return this.memo.get(key) as T;
   }
-  /** Like `cached`, for per-argument data (a graph seed, a snapshot pair): keeps
-   * only the `max` most recently used entries so the memo cannot grow unbounded. */
-  cachedRecent<T>(key: string, build: () => T, max = 64): T {
-    if (this.lru.has(key)) {
-      const value = this.lru.get(key) as T;
-      this.lru.delete(key);
-      this.lru.set(key, value);
+  /** Like `cached`, for per-argument data (a graph seed, a record's links):
+   * keeps only the `max` most recently used entries of `namespace`. Each
+   * namespace has its own bound: one shared map let a namespace with a large
+   * bound keep a heavy one (graph edges) far past its own. */
+  cachedRecent<T>(namespace: string, key: string, build: () => T, max = 64): T {
+    let lru = this.lru.get(namespace);
+    if (!lru) {
+      lru = new Map();
+      this.lru.set(namespace, lru);
+    }
+    if (lru.has(key)) {
+      const value = lru.get(key) as T;
+      lru.delete(key);
+      lru.set(key, value);
       return value;
     }
     const value = build();
-    this.lru.set(key, value);
-    if (this.lru.size > max) this.lru.delete(this.lru.keys().next().value!);
+    lru.set(key, value);
+    for (const oldest of lru.keys()) {
+      if (lru.size <= max) break;
+      lru.delete(oldest);
+    }
     return value;
+  }
+  /** Entries currently held by one `cachedRecent` namespace (tests, metrics). */
+  recentSize(namespace: string): number {
+    return this.lru.get(namespace)?.size ?? 0;
   }
 
   constructor(source: "bundled" | "cache", data: SnapshotData, manifest: SnapshotManifest, fulltextMaps: FulltextMaps | null = null,
@@ -430,8 +445,9 @@ async function backgroundRefresh(): Promise<void> {
     if (!out.fulltext && current?.fulltextMaps?.source.tag === FULLTEXT_SOURCE.tag) out.fulltext = current.fulltextMaps;
     // No verified release this time: keep the neighbours already served (filtered to the new snapshot at load).
     if (!out.semantic && current?.semantic && config.semanticRelease !== "off") out.semantic = current.semantic;
-    await writeSnapshotAtomic(cacheSnapshotDir(), out, signal);
-    const published = await loadSnapshot(cacheSnapshotDir());
+    // The writer returns what it verified; only when another process published
+    // a newer generation first is the served snapshot read back from disk.
+    const published = (await writeSnapshotAtomic(cacheSnapshotDir(), out, signal)) ?? await loadSnapshot(cacheSnapshotDir());
     assertSnapshotSource(published.manifest, config.apiBase);
     current = new DataStore("cache", published.data, published.manifest, published.fulltext, published.semantic);
     clearFoldCache(); // the folded copies belong to the snapshot just replaced

@@ -399,6 +399,14 @@ export async function writeSnapshot(dir: string, out: CrawlOutput): Promise<void
   }, null, 2));
 }
 
+/** The manifest a snapshot dir serves (following the generation pointer),
+ * without parsing any corpus: what a writer needs to order two snapshots. */
+export async function readManifest(dir: string): Promise<SnapshotManifest> {
+  const active = await readSnapshotPointer(dir);
+  if (active) return readManifest(path.join(dir, "generations", active.current));
+  return JSON.parse(await fs.readFile(path.join(dir, "manifest.json"), "utf8")) as SnapshotManifest;
+}
+
 /** Load + validate a snapshot dir. Throws on schema/count mismatch. */
 export async function loadSnapshot(dir: string): Promise<CrawlOutput> {
   const active = await readSnapshotPointer(dir);
@@ -465,8 +473,12 @@ export async function readSnapshotPointer(dir: string): Promise<SnapshotPointer 
 }
 
 /** Immutable generations and an atomic pointer replacement preserve the old
- * snapshot on failure. Exclusive file creation serializes writers across processes. */
-export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, signal?: AbortSignal): Promise<void> {
+ * snapshot on failure. Exclusive file creation serializes writers across processes.
+ *
+ * Returns the snapshot as read back from the new generation (the verification
+ * load), so a caller serving it does not parse it a second time; or null when
+ * a newer generation was already published and this one was not written. */
+export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, signal?: AbortSignal): Promise<CrawlOutput | null> {
   signal?.throwIfAborted();
   await fs.mkdir(path.join(destDir, "generations"), { recursive: true });
   const lockPath = path.join(destDir, "writer.lock");
@@ -488,16 +500,18 @@ export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, sig
   const pointerTmp = path.join(destDir, `active-${generation}.tmp`);
   try {
     await lock.writeFile(String(process.pid));
-    const existing = await loadSnapshot(destDir).catch(() => null);
+    // Only the manifest: parsing the whole served snapshot to read one date
+    // blocked a serving process's event loop for a quarter of a second.
+    const existing = await readManifest(destDir).catch(() => null);
     // Crawls run outside this lock. An older crawl finishing last must not
     // replace a newer successfully published generation.
-    if (existing && Date.parse(existing.manifest.fetchedAt) > Date.parse(out.manifest.fetchedAt)) return;
+    if (existing && Date.parse(existing.fetchedAt) > Date.parse(out.manifest.fetchedAt)) return null;
     await writeSnapshot(dir, out);
-    await loadSnapshot(dir);
+    const written = await loadSnapshot(dir);
     let previous = await readSnapshotPointer(destDir);
     if (!previous) {
       // Preserve a pre-generation cache on the first successful publication.
-      const legacy = await loadSnapshot(destDir).catch(() => null);
+      const legacy = existing ? await loadSnapshot(destDir).catch(() => null) : null;
       if (legacy) {
         const legacyId = randomUUID();
         await writeSnapshot(path.join(destDir, "generations", legacyId), legacy);
@@ -525,6 +539,7 @@ export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, sig
         if (stat.mtimeMs < Date.now() - 86_400_000) await fs.rm(old, { recursive: true, force: true });
       }).catch(() => {});
     }
+    return written;
   } finally {
     await fs.unlink(pointerTmp).catch(() => {});
     await lock.close();

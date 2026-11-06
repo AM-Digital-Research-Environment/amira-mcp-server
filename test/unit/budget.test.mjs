@@ -21,7 +21,7 @@ import { connectInMemory } from "../helpers/mcp.mjs";
 hermeticEnv({ dataDir: true });
 
 const lib = await import("../../server/lib.js");
-const { measureSurface, checkSurface, readBaseline, SURFACE_TOKEN_BUDGET, SURFACE_DRIFT_TOLERANCE } = await import(
+const { measureSurface, checkSurface, checkResponses, baselinePayload, readBaseline, SURFACE_TOKEN_BUDGET, SURFACE_DRIFT_TOLERANCE } = await import(
   "../../scripts/weigh.mjs"
 );
 
@@ -112,3 +112,25 @@ for (const [profile, budget] of [["research", 10_700], ["discovery", 6_800], ["v
     assert.ok(surface.total_tokens <= budget, `${profile}: ${surface.total_tokens} > ${budget}`);
   });
 }
+
+// --- the response gate's own contract (scripts/weigh.mjs) ------------------------
+
+test("weigh --check fails when a baselined probe is no longer measured", () => {
+  const { failures } = checkResponses({}, { "get_similar_items@max": { tokens: 1339 } });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /get_similar_items@max is no longer measured/);
+});
+
+test("weigh --check treats a probe new to the baseline as a note, not a failure", () => {
+  const { failures, notes } = checkResponses({ "x@max": { tokens: 10, chars: 40 } }, {});
+  assert.deepEqual(failures, []);
+  assert.match(notes.join(" "), /new probe x@max/);
+});
+
+test("weigh --update refuses to record a failed or unmeasured probe", () => {
+  const current = { snapshot: {}, surface: {}, responses: { ok: { tokens: 5, chars: 20, text_bytes: 20, wire_bytes: 30 } } };
+  assert.equal(Object.keys(baselinePayload(current).responses).length, 1);
+  assert.throws(() => baselinePayload({ ...current, responses: { ...current.responses, bad: { tokens: 0, chars: 0, error: "boom" } } }),
+    /unmeasured probes:[\s\S]*bad: boom/);
+  assert.throws(() => baselinePayload(current, ["get_video@transcript (nothing in the snapshot to probe with)"]), /get_video@transcript/);
+});

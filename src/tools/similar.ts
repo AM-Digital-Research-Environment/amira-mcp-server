@@ -33,7 +33,7 @@ type Links = Record<Category, Map<string, string>>;
 
 /** The catalogue links of a record, keyed by Omeka id (or folded label when unlinked). */
 function linksOf(store: DataStore, r: SemanticRecord): Links {
-  return store.cachedRecent(`semantic-links:${r.o_id}`, () => {
+  return store.cachedRecent("semantic-links", String(r.o_id), () => {
     const links: Links = { subjects: new Map(), places: new Map(), people: new Map(), project: new Map() };
     const add = (category: Category, refs: (LinkedRef | { label: string; o_id: number | null } | null | undefined)[]) => {
       for (const ref of refs) {

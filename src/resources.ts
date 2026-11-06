@@ -21,7 +21,7 @@ import { API_BASE, SITE_BASE } from "./config.js";
 import { snapshotId } from "./snapshotIdentity.js";
 import { itemUrl } from "./urls.js";
 import { collectionFields, collectionsOfItem, itemsOfCollection, resolveCollection } from "./collections.js";
-import { refLabels } from "./matching.js";
+import { creditLabel, mediaTypes, refLabels } from "./matching.js";
 import { researchFilterError, researchFilters, selectResearchItems } from "./researchItemQuery.js";
 import { abstractsOf, languagesOf, publicationFilterError, publicationFilters, selectPublications } from "./publicationQuery.js";
 import { publicationCitation } from "./publicationCitation.js";
@@ -84,13 +84,13 @@ function itemRow(store: DataStore, it: ResearchItemRec): Record<string, unknown>
     year_min: it.year_min, year_max: it.year_max,
     ...(allowStructured() ? {
       project: it.project?.label ?? null, university: UNIVERSITY_LABELS[it.university],
-      contributors: it.contributors.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
+      contributors: it.contributors.map(creditLabel),
       subjects: refLabels(it.subjects), places: refLabels(it.places), languages: refLabels(it.languages),
       collections: collectionsOfItem(store, it).map((c) => c.title),
     } : {}),
     ...(allowDescriptive() ? { description: it.description, abstract: it.abstract } : {}),
     license: it.license, access_rights: it.access_rights,
-    has_media: it.has_media, media_types: [...new Set((it.media ?? []).map((m) => m.type).filter(Boolean))],
+    has_media: it.has_media, media_types: mediaTypes(it.media),
     created: it.created ?? null, modified: it.modified ?? null,
     amira_url: itemUrl(it.o_id),
   };

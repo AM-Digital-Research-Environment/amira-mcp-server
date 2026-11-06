@@ -31,6 +31,14 @@ export const refLabels = (refs: LinkedRef[] | undefined): string[] => (refs ?? [
 export const refLinks = (refs: LinkedRef[] | undefined) =>
   (refs ?? []).map((r) => ({ label: r.label, omeka_id: r.o_id, amira_url: itemUrlOrNull(r.o_id) }));
 
+/** A credit as one label: "Name (role)", or the name alone without a role. */
+export const creditLabel = (c: { name: string; role?: string | null }): string => (c.role ? `${c.name} (${c.role})` : c.name);
+
+/** Distinct MIME types of a record's media files. */
+export function mediaTypes(media: { type: string | null }[] | undefined): string[] {
+  return [...new Set((media ?? []).map((m) => m.type).filter((t): t is string => !!t))];
+}
+
 /** Truncate free text to a short preview for list/summary views. */
 export function brief(text: string | null | undefined, n = 280): string | null {
   if (!text) return null;

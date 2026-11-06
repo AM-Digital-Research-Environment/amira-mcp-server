@@ -39,11 +39,10 @@ function countRefs(items: ResearchItemRec[], pick: (it: ResearchItemRec) => Link
     const seen = new Set<string>();
     for (const ref of pick(it)) {
       const key = ref.o_id != null ? `id:${ref.o_id}` : `label:${ref.label.toLowerCase()}`;
-      if (!key || seen.has(key)) continue;
+      if (seen.has(key)) continue;
       seen.add(key);
       const rec = counts.get(key) ?? { label: ref.label, o_id: ref.o_id, count: 0 };
       rec.count += 1;
-      if (rec.o_id == null && ref.o_id != null) rec.o_id = ref.o_id;
       counts.set(key, rec);
     }
   }

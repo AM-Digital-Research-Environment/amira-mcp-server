@@ -417,6 +417,12 @@ test("list_journals: ranked by publication count with citable links", async () =
   assert.ok(j.results[0].amira_url.endsWith("/item/520"));
 });
 
+test("find_related project: the value 'undefined' does not match items without a project", async () => {
+  // Item 503 has no project; String(undefined) once made it match "undefined".
+  const rel = await call("find_related", { entity_type: "project", value: "undefined" });
+  assert.equal(rel.matched_items, 0);
+});
+
 test("find_related: publications join subject/person pivots", async () => {
   const rel = await call("find_related", { entity_type: "subject", value: "Architecture" });
   assert.equal(rel.matched_items, 1); // research item 500

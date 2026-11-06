@@ -8,6 +8,9 @@ import YAML from "yaml";
 import { packBundle, validateManifest } from "../../scripts/mcpb.mjs";
 import { hermeticEnv, REPO_ROOT, tempDir } from "../helpers/env.mjs";
 
+// Read before hermeticEnv() clears every AMIRA_* variable. CI sets it where a
+// snapshot exists, so the real-bundle test fails instead of skipping.
+const REQUIRE_REAL_BUNDLE = process.env.AMIRA_REQUIRE_REAL_BUNDLE === "1";
 hermeticEnv();
 
 function fixture(t) {
@@ -151,12 +154,14 @@ function archiveEntries(file, read = () => false) {
 }
 
 test("the real repository packs to an allowlisted .mcpb", { timeout: 120_000 }, (t) => {
-  if (!existsSync(path.join(REPO_ROOT, "data"))) {
-    t.skip("data/ is absent: run `npm run fetch-data` (or `node scripts/fixture-snapshot.mjs`) to check the real artifact");
-    return;
-  }
-  if (!existsSync(path.join(REPO_ROOT, "server", "index.js"))) {
-    t.skip("server/ is not built: run `npm run build` to check the real artifact");
+  const missingInput = !existsSync(path.join(REPO_ROOT, "data"))
+    ? "data/ is absent: run `npm run fetch-data` (or `node scripts/fixture-snapshot.mjs`) to check the real artifact"
+    : !existsSync(path.join(REPO_ROOT, "server", "index.js"))
+      ? "server/ is not built: run `npm run build` to check the real artifact"
+      : null;
+  if (missingInput) {
+    assert.ok(!REQUIRE_REAL_BUNDLE, `AMIRA_REQUIRE_REAL_BUNDLE=1 but ${missingInput}`);
+    t.skip(missingInput);
     return;
   }
   const manifest = JSON.parse(readFileSync(path.join(REPO_ROOT, "manifest.json"), "utf8"));

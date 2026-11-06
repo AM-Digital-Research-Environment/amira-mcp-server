@@ -4,9 +4,11 @@ export {
   anyContainsCI,
   brief,
   containsCI,
+  creditLabel,
   dateStatus,
   equalsCI,
   matchSnippet,
+  mediaTypes,
   refLabels,
   refLinks,
 } from "../matching.js";

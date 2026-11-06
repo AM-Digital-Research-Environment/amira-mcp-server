@@ -17,6 +17,7 @@
 import type { Contributor, ResearchItemRec } from "./types.js";
 import { allowStructured } from "./exposure.js";
 import { itemUrl } from "./urls.js";
+import { creditLabel as label } from "./matching.js";
 
 export type CitationFormat = "bibtex" | "ris" | "csl-json";
 
@@ -166,7 +167,6 @@ function dateLabel(it: ResearchItemRec): string {
  * kept in parentheses, the same way contributors read in search results. */
 function creditList(credits: Credit[]): string | null {
   if (!credits.length) return null;
-  const label = (c: Credit) => (c.role ? `${c.name} (${c.role})` : c.name);
   if (credits.length === 1) return label(credits[0]!);
   if (credits.length === 2) return `${label(credits[0]!)} and ${label(credits[1]!)}`;
   if (credits.length === 3) return `${label(credits[0]!)}, ${label(credits[1]!)}, and ${label(credits[2]!)}`;

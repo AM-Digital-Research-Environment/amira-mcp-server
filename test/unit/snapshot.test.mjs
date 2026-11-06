@@ -171,6 +171,22 @@ test("writeSnapshotAtomic promotes cleanly and leaves no staging dir", async (t)
   assert.deepEqual(leftovers, []);
 });
 
+test("writeSnapshotAtomic returns what it verified, and null when a newer generation won", async (t) => {
+  const parent = await tempDir();
+  t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const dest = path.join(parent, "current");
+  const newer = buildFixture(SNAPSHOT_SCHEMA_VERSION);
+  newer.manifest.fetchedAt = "2026-08-01T00:00:00.000Z";
+  const written = await writeSnapshotAtomic(dest, newer);
+  // The read-back copy, so the live refresh can serve it without a second parse.
+  assert.equal(written.manifest.fetchedAt, "2026-08-01T00:00:00.000Z");
+  assert.equal(written.data.research_items.length, newer.data.research_items.length);
+  const older = buildFixture(SNAPSHOT_SCHEMA_VERSION);
+  older.manifest.fetchedAt = "2026-07-01T00:00:00.000Z";
+  assert.equal(await writeSnapshotAtomic(dest, older), null, "an older crawl finishing last publishes nothing");
+  assert.equal((await loadSnapshot(dest)).manifest.fetchedAt, "2026-08-01T00:00:00.000Z");
+});
+
 test("isStale: only a newer remote signal (either of the D11 pair) triggers", () => {
   const local = buildFixture(SNAPSHOT_SCHEMA_VERSION).manifest;
   assert.equal(isStale(local, { maxModified: local.maxModified, totalItems: local.totalItemsOnInstance }), false);

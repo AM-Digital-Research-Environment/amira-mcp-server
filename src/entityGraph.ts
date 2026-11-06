@@ -125,7 +125,7 @@ export function resolveEntities(store: DataStore, query: string, type?: EntityTy
  * evidence page used to recompute every edge and its SHA-256 id (~120 ms on a
  * busy node such as a language). */
 export function entityEdges(store: DataStore, seed: string) {
-  return store.cachedRecent(`edges:${seed}`, () => computeEdges(store, seed));
+  return store.cachedRecent("edges", seed, () => computeEdges(store, seed));
 }
 
 function computeEdges(store: DataStore, seed: string) {

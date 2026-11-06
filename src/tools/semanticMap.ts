@@ -43,7 +43,7 @@ function tally(rows: LinkedRef[][], n: number) {
 
 /** What a group holds, read from its members' catalogue links. */
 function describeGroup(store: DataStore, id: number, members: SemanticRecord[]) {
-  return store.cachedRecent(`semantic-group:${id}`, () => {
+  return store.cachedRecent("semantic-group", String(id), () => {
     const byType: Record<string, number> = {};
     const subjects: LinkedRef[][] = [], countries: LinkedRef[][] = [], projects: LinkedRef[][] = [];
     for (const r of members) {
@@ -101,7 +101,7 @@ export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
       });
     }
     if (args.group !== undefined && args.id !== undefined) {
-      return errorResult("invalid_arguments", "Pass `group` or `id`, not both.");
+      return errorResult("invalid_argument", "Pass `group` or `id`, not both.");
     }
     const offset = capOffset(args.offset);
     const note = guidanceEnabled() ? { note: NOTE } : {};

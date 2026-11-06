@@ -30,7 +30,14 @@ import { dropSafeIntegerBounds, withJsonSchema, withoutSchemaText } from "../gui
 
 /** How long one tool call may run before the client gets an error. Every
  * query runs on the in-memory snapshot; the slowest measured calls (text
- * passages over every full text, the largest graph) finish in under 2 s. */
+ * passages over every full text, the largest graph) finish in under 2 s.
+ *
+ * A timer cannot interrupt synchronous work: once a handler is past its
+ * awaits it runs to completion, and its result wins the race. The deadline
+ * therefore bounds the ASYNC part of a call (waiting for the first snapshot
+ * load, reading retained snapshots from disk), not a long computation. Heavy
+ * indexes are warmed when a store loads (src/data.ts), so requests do not pay
+ * for them. */
 export const CALL_DEADLINE_MS = 60_000;
 
 function withDeadline<T>(work: Promise<T>, ms: number, onTimeout: () => T): Promise<T> {

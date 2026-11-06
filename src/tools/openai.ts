@@ -1,5 +1,3 @@
-import type { ToolMap } from "./policy.js";
-import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
 // OpenAI / ChatGPT compatibility tools: `search` and `fetch`.
 //
 // ChatGPT's Deep Research + connector contract calls exactly two tools, with
@@ -9,21 +7,25 @@ import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
 // Both must return `structuredContent` alongside the JSON content array — which
 // our `textResult` helper already does. These adapters sit OVER the same
 // in-memory store the rich tools use; they are registered only on the remote
-// HTTP transport (src/http.ts), so the stdio .mcpb keeps its 34-tool surface.
+// HTTP transport (src/http.ts), so the stdio .mcpb keeps its smaller surface.
 //
 // `id` is typed as `<kind>:<omeka_o_id>` (item:9902, pub:30001, video:39218,
 // podcast:39121, project:37700, section:218) so fetch can route back and a
 // human can reconstruct the Omeka URL from the final number. fetch also accepts
 // the research tools' vocabulary (research_item:9902, publication:30001).
 import { z } from "zod";
+import type { ToolMap } from "./policy.js";
+import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import type { DataStore } from "../data.js";
 import { allowDescriptive, allowStructured } from "../exposure.js";
 import { guidanceEnabled } from "../guidance.js";
 import {
   READ_ONLY,
+  capLimit,
   capText,
   CHARACTER_LIMIT,
+  creditLabel,
   dateStatus,
   refLabels,
   textResult,
@@ -130,7 +132,7 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
       struct && `University: ${UNIVERSITY_LABELS[it.university]}`,
       struct && (project ? `Project: ${project.name}` : it.project ? `Project: ${it.project.label}` : null),
       struct && it.contributors.length
-        ? `Contributors: ${it.contributors.map((c) => (c.role ? `${c.name} (${c.role})` : c.name)).join("; ")}`
+        ? `Contributors: ${it.contributors.map(creditLabel).join("; ")}`
         : null,
       yearLabel(it) ? `Date: ${yearLabel(it)}` : null,
       struct && it.subjects.length ? `Subjects: ${refLabels(it.subjects).join("; ")}` : null,
@@ -275,7 +277,7 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         struct && p.series ? `Series: ${p.series.label}` : null,
         p.episode != null ? `Episode: ${p.episode}` : null,
         p.date ? `Date: ${p.date}` : null,
-        struct && p.people.length ? `People: ${p.people.map((c) => (c.role ? `${c.name} (${c.role})` : c.name)).join("; ")}` : null,
+        struct && p.people.length ? `People: ${p.people.map(creditLabel).join("; ")}` : null,
         p.url ? `Listen: ${p.url}` : null,
         desc && p.abstract ? `\nDescription:\n${p.abstract}` : null,
       ],
@@ -396,7 +398,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
     },
     async ({ query, limit, types }) => {
       const store = await ensureStore();
-      const capped = Math.max(1, Math.min(Math.floor(limit ?? DEFAULT_SEARCH_LIMIT), MAX_SEARCH_LIMIT));
+      const capped = capLimit(limit, DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT);
       const results = runSearch(store, query, capped, types as SearchType[] | undefined).map((h) => ({
         id: h.id,
         title: h.title,
@@ -439,7 +441,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_fulltext, fulltext_offset, fulltext_max_chars, max_chars }) => {
       const store = await ensureStore();
-      const maxChars = Math.max(1, Math.min(Math.floor(max_chars ?? CHARACTER_LIMIT), CHARACTER_LIMIT));
+      const maxChars = capLimit(max_chars, CHARACTER_LIMIT, CHARACTER_LIMIT);
       const payload = fetchDoc(store, id, {
         includeTranscript: include_transcript ?? false,
         includeFulltext: include_fulltext ?? false,
