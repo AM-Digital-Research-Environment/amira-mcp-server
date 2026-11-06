@@ -503,7 +503,9 @@ snapshot, its ten closest records of each type, and stores those
 vector runs at request time. Records absent from the snapshot are dropped
 before ranking, and lists are filtered again at load, so a neighbour is always a
 record the snapshot can cite. When no release verifies, the crawl keeps the
-neighbours already served. `get_data_quality` reports the release and its
+neighbours already served. A new release is picked up by the next crawl, which
+a change on the Omeka site or the weekly forced crawl
+(`AMIRA_FULL_REFRESH_HOURS`) triggers: a release alone does not start one. `get_data_quality` reports the release and its
 coverage per type: records with neighbours, low-signal records (too little
 own text, excluded by design) and records the build predates.
 
@@ -542,6 +544,7 @@ rather than given an invented label. Group ids are renumbered per build
 | `AMIRA_SITE_BASE` | Site base URL (advanced) | `https://data.africamultiple.uni-bayreuth.de` | Base for citations + refresh (`AMIRA_DASHBOARD_BASE` is honoured with a deprecation warning) |
 | `AMIRA_SITE_SLUG` | — | `amira` | Omeka site slug used in `amira_url` |
 | `AMIRA_DATA_DIR` | — | bundled `data/` | Override the bundled snapshot path (dev) |
+| `AMIRA_ENRICHMENT_BASE` | — | — | **Tests only**: fetch the full-text map and the corpus-vector releases from `<base>/raw`, `<base>/api` and `<base>/download` instead of GitHub (no token is sent) |
 | `AMIRA_EXPOSURE` | — | `full` | **Benchmark experiments only**: restrict which metadata the tools expose (see below) |
 | `AMIRA_GUIDANCE` | — | `on` | **Benchmark experiments only**: `off` serves the same tools without the curatorial guidance — instructions, descriptions, error advice, prompts, skill (see below); restart to change |
 | `AMIRA_SKILLS` | — | on | Serve the companion skill over the finalized SEP-2640 extension. `0`/`false`/`off` withdraws the capability and the `skills/*` methods |

@@ -27,7 +27,6 @@ import {
 import { itemUrl } from "../urls.js";
 import { personMatches } from "../names.js";
 import { matchesUniversity } from "../researchItemQuery.js";
-import { stripTypedId } from "../typedIds.js";
 import { fold } from "../text.js";
 
 export function registerProjectTools(server: Server, tools: ToolMap): void {

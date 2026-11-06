@@ -55,13 +55,30 @@ export function fold(s: string): string {
 /** Above this length a haystack is worth memoising (transcripts, full text). */
 const LARGE_TEXT = 2_000;
 
-const foldedCache = new Map<string, string>();
 interface OffsetShift { start: number; end: number; original: number; delta: number }
-const offsetCache = new Map<string, OffsetShift[]>();
+
+/**
+ * Folded copies of large texts and their offset shifts. Each served snapshot
+ * owns one (src/data.ts DataStore.folds), so the copies are freed with the
+ * snapshot they belong to: a module-wide cache, cleared on refresh, was
+ * refilled with the OLD snapshot's texts by any call still running against it.
+ */
+export interface FoldCaches { folded: Map<string, string>; offsets: Map<string, OffsetShift[]> }
+export const newFoldCaches = (): FoldCaches => ({ folded: new Map(), offsets: new Map() });
+
+/** Used when no snapshot is in scope (unit tests, scripts). */
+const fallbackCaches = newFoldCaches();
+let cacheProvider: () => FoldCaches | undefined = () => undefined;
+/** src/data.ts points this at the snapshot the current call is serving. */
+export function setFoldCacheProvider(provider: () => FoldCaches | undefined): void {
+  cacheProvider = provider;
+}
+const caches = (): FoldCaches => cacheProvider() ?? fallbackCaches;
 
 // Store only characters whose normalization changes UTF-16 length. Most texts
 // need a handful of shifts, rather than two offsets for every character.
 function originalStart(text: string, index: number): number {
+  const offsetCache = caches().offsets;
   let shifts = offsetCache.get(text);
   if (!shifts) {
     shifts = [];
@@ -91,6 +108,7 @@ function originalStart(text: string, index: number): number {
 /** `fold`, memoised for large haystacks. Needles should use `fold` directly. */
 export function foldCached(s: string): string {
   if (s.length < LARGE_TEXT) return fold(s);
+  const foldedCache = caches().folded;
   const hit = foldedCache.get(s);
   if (hit !== undefined) return hit;
   const folded = fold(s);
@@ -100,8 +118,9 @@ export function foldCached(s: string): string {
 
 /** Drop memoised folds — call when the snapshot behind them is replaced. */
 export function clearFoldCache(): void {
-  foldedCache.clear();
-  offsetCache.clear();
+  const { folded, offsets } = caches();
+  folded.clear();
+  offsets.clear();
 }
 
 /**

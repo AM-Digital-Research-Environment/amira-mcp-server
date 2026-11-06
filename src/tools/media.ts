@@ -35,7 +35,6 @@ import { iiifManifestUrl, itemUrl, itemUrlOrNull } from "../urls.js";
 import { personMatches } from "../names.js";
 import { emptyKeyword, keywordMatches, parseKeyword } from "../matching.js";
 import { invalidYearRange } from "../researchItemQuery.js";
-import { stripTypedId } from "../typedIds.js";
 
 type TranscriptRecord = PodcastRec | VideoRec;
 

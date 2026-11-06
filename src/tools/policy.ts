@@ -26,6 +26,7 @@
 //     `deadline_exceeded` error instead of holding the client open.
 import type { RegisteredTool } from "@modelcontextprotocol/server";
 import { errorResult } from "./responses.js";
+import { currentStore, ensureStore, withStore } from "../data.js";
 import { dropSafeIntegerBounds, withJsonSchema, withoutSchemaText } from "../guidance.js";
 
 /** How long one tool call may run before the client gets an error. Every
@@ -47,6 +48,13 @@ function withDeadline<T>(work: Promise<T>, ms: number, onTimeout: () => T): Prom
     timer.unref();
   });
   return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
+/** Run a handler bound to the snapshot being served when it starts, so a
+ * refresh that swaps the store mid-call cannot mix two snapshots' caches. */
+async function inStore<T>(fn: () => T): Promise<Awaited<T>> {
+  const store = currentStore() ?? await ensureStore();
+  return await withStore(store, fn);
 }
 
 function withoutStructured<T>(result: T): T {
@@ -128,7 +136,7 @@ export function applyToolPolicy(tools: ToolMap, allowed: ReadonlySet<string> | n
           return withoutStructuredError(errorResult("invalid_argument", `\`${cleaned.emptyRequired}\` must not be empty.`));
         }
         const result = withoutStructuredError(
-          await withDeadline(Promise.resolve(handler(cleaned.args, ctx)), CALL_DEADLINE_MS, () =>
+          await withDeadline(inStore(() => handler(cleaned.args, ctx)), CALL_DEADLINE_MS, () =>
             errorResult("deadline_exceeded", `${name} did not answer within ${CALL_DEADLINE_MS / 1000} s; narrow the call and retry.`),
           ),
         );

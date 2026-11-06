@@ -35,7 +35,6 @@ import { publicationExportPage } from "./publicationExport.js";
 import { languagesOf, publicationFilters, publicationFilterError, selectPublications } from "../publicationQuery.js";
 import { queryErrorResult } from "./responses.js";
 import { exportLink, EXPORT_FORMATS } from "../resources.js";
-import { stripTypedId } from "../typedIds.js";
 import { fold } from "../text.js";
 import { APP_UI_META } from "./apps.js";
 

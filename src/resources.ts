@@ -14,7 +14,7 @@
 // the stateless HTTP transport.
 import { ResourceNotFoundError, ResourceTemplate, type McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { ensureStore, UNIVERSITY_LABELS, type DataStore } from "./data.js";
+import { ensureStore, UNIVERSITY_LABELS, withStore, type DataStore } from "./data.js";
 import { allowDescriptive, allowStructured } from "./exposure.js";
 import { guidanceEnabled } from "./guidance.js";
 import { API_BASE, SITE_BASE } from "./config.js";
@@ -121,6 +121,10 @@ async function renderExport(uri: string, corpus: string, format: string, query: 
     throw new ResourceNotFoundError(uri, `Unknown export: ${corpus}/${format}`);
   }
   const store = await ensureStore();
+  return withStore(store, () => exportText(store, uri, corpus, format, query));
+}
+
+function exportText(store: DataStore, uri: string, corpus: string, format: string, query: string): { mimeType: string; text: string } {
   const filters = decodeFilters(query);
   if (corpus === "research_items") {
     const parsed = researchFilters.safeParse(filters);

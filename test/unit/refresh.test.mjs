@@ -98,17 +98,28 @@ async function startStub(state) {
 
 /** A fixture snapshot that belongs to the stub's instance (the cache and the
  * bundled dir are partitioned by API base; a foreign snapshot is refused). */
-async function writeFixture(stub, manifest = {}) {
+async function writeFixture(stub, manifest = {}, extra = {}) {
   const dir = tempDir("refresh-data");
   const fx = buildFixture(SCHEMA);
   Object.assign(fx.manifest, { apiBase: stub.api, fetchedAt: new Date().toISOString() }, manifest);
-  await lib.writeSnapshot(dir, fx);
+  await lib.writeSnapshot(dir, { ...fx, ...extra });
   return dir;
 }
 
+/** Stored neighbours over the fixture's records, as a crawl would have written them. */
+const SEMANTIC = {
+  source: { repository: "AM-Digital-Research-Environment/DRE-Visualizations", tag: "semantic-embeddings-v1-7",
+    model: "google/embeddinggemma-2", model_revision: "r1", dimensions: 768, generated_at: "2026-11-01T00:00:00Z",
+    vectors_sha256: "0".repeat(64), neighbours_per_type: 10 },
+  low_signal: [],
+  neighbours: { 500: [501, 9000], 501: [500, 9000] },
+};
+
+// The GitHub-hosted enrichments (full-text map, corpus vectors) come from the
+// stub too, which answers 404: no scenario reaches the network.
 const refreshEnv = (stub, dataDir, cacheDir, extra = {}) => childEnv({
   AMIRA_LIVE_REFRESH: "1", AMIRA_SITE_BASE: stub.base, AMIRA_DATA_DIR: dataDir, AMIRA_CACHE_DIR: cacheDir,
-  AMIRA_REFRESH_INTERVAL_HOURS: "0", ...extra,
+  AMIRA_REFRESH_INTERVAL_HOURS: "0", AMIRA_ENRICHMENT_BASE: `${stub.base}/github`, ...extra,
 });
 
 // The child: load, wait for the one startup refresh to settle, report.
@@ -126,16 +137,16 @@ for (const deadline = Date.now() + 8000; Date.now() < deadline;) {
 const after = lib.currentStore();
 const overview = await conn.call("get_collection_overview");
 const summary = (s) => ({ source: s.source, maxModified: s.manifest.maxModified, apiBase: s.manifest.apiBase,
-  items: s.items.map((i) => i.title), persons: s.persons.map((p) => p.name) });
-const out = { refresh, swapped: after !== before, ensureReturnsCurrent: (await lib.ensureStore()) === after,
+  items: s.items.map((i) => i.title), persons: s.persons.map((p) => p.name), ...(s.semantic ? { semantic: s.semantic.source.tag } : {}) });
+const out = { refresh, swapped: after !== before, warm: after.isBuilt("entity-graph"), ensureReturnsCurrent: (await lib.ensureStore()) === after,
   before: summary(before), after: summary(after), counts: overview.counts, data_snapshot: overview.data_snapshot };
 await conn.close();
 process.stdout.write(JSON.stringify(out) + "\\n"); // then exit naturally: nothing may be left running
 `;
 
 /** Run CHILD against `stub` and resolve its report plus its stderr log. */
-async function runChild(stub, { manifest, env } = {}) {
-  const dataDir = await writeFixture(stub, manifest);
+async function runChild(stub, { manifest, env, extra } = {}) {
+  const dataDir = await writeFixture(stub, manifest, extra);
   const cacheDir = tempDir("refresh-cache");
   const child = spawn(process.execPath, ["--input-type=module", "-e", CHILD], {
     cwd: REPO_ROOT, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
@@ -199,6 +210,28 @@ test("a stale probe triggers a crawl that is published to the cache and hot-swap
   assert.equal(published.manifest.apiBase, stub.api);
   assert.equal(published.data.research_items[0].title, "Refreshed Item");
   assert.equal(published.data.item_sets[0].title, "Refreshed Set");
+});
+
+test("a refreshed snapshot is swapped in with its indexes already built", { timeout: 20_000 }, async (t) => {
+  const stub = await startStub({ maxModified: REMOTE_MODIFIED, total: 3 });
+  t.after(stub.close);
+  const { report, stderr } = await runChild(stub);
+  assert.equal(report.swapped, true, stderr);
+  // Built before the swap (src/warm.ts): no request on the new snapshot pays for it.
+  assert.equal(report.warm, true);
+});
+
+test("an unreachable vector release keeps the neighbours already served; AMIRA_SEMANTIC_RELEASE=off drops them", { timeout: 30_000 }, async (t) => {
+  const stub = await startStub({ maxModified: REMOTE_MODIFIED, total: 3 });
+  t.after(stub.close);
+  const kept = await runChild(stub, { extra: { semantic: SEMANTIC } });
+  assert.equal(kept.report.swapped, true, kept.stderr);
+  assert.deepEqual([kept.report.before.semantic, kept.report.after.semantic], ["semantic-embeddings-v1-7", "semantic-embeddings-v1-7"]);
+  assert.match(kept.stderr, /semantic neighbours skipped/);
+  // Offline by construction: every GitHub request went to the stub.
+  assert.ok(stub.paths().some((p) => p.startsWith("/github/api/repos/")), "the release listing was asked of the stub");
+  const off = await runChild(stub, { extra: { semantic: SEMANTIC }, env: { AMIRA_SEMANTIC_RELEASE: "off" } });
+  assert.deepEqual([off.report.before.semantic, off.report.after.semantic], ["semantic-embeddings-v1-7", undefined]);
 });
 
 test("a failing crawl keeps serving the old store and records error_class", { timeout: 20_000 }, async (t) => {

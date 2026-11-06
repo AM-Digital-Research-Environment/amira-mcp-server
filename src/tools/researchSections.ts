@@ -18,7 +18,6 @@ import {
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
 import { APP_UI_META } from "./apps.js";
-import { stripTypedId } from "../typedIds.js";
 
 export function registerResearchSectionTools(server: Server, tools: ToolMap): void {
   // === list_research_sections ===============================================

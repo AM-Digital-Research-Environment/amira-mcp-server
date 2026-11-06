@@ -10,6 +10,12 @@ import { registerPrompts } from "./prompts.js";
 import { registerDataResources } from "./resources.js";
 import { registerSkills, skillsEnabled } from "./skills.js";
 import { guidanceEnabled } from "./guidance.js";
+import { setStoreWarmup } from "./data.js";
+import { warmIndexes } from "./warm.js";
+
+// Every entry point that serves builds its server here, so this is where the
+// store learns how to warm its indexes (src/warm.ts).
+setStoreWarmup(warmIndexes);
 
 export const VERSION = typeof __SERVER_VERSION__ !== "undefined" ? __SERVER_VERSION__ : "dev";
 

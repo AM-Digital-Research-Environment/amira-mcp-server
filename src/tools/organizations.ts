@@ -22,7 +22,6 @@ import {
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
 import { anyContainsCI } from "../matching.js";
-import { stripTypedId } from "../typedIds.js";
 import { fold } from "../text.js";
 
 type PartnerCategoryKey = "amrc" | "privileged" | "cooperation" | "global";

@@ -16,7 +16,8 @@ import { FULLTEXT_SOURCE, type FulltextMaps } from "./fulltextMaps.js";
 import type { SemanticNeighbours } from "./semantic.js";
 import { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshotAtomic, type CrawlOutput } from "./snapshot.js";
 import { LanguageIndex } from "./languages.js";
-import { clearFoldCache, fold } from "./text.js";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { fold, newFoldCaches, setFoldCacheProvider } from "./text.js";
 import { stripTypedId } from "./typedIds.js";
 import * as path from "node:path";
 import { assertSnapshotSource, snapshotCacheDir } from "./snapshotIdentity.js";
@@ -67,6 +68,8 @@ export class DataStore {
   /** Subject authorities (empty when serving a v4 snapshot). */
   readonly subjects: SubjectRec[];
   readonly languageIndex: LanguageIndex;
+  /** Folded copies of this snapshot's large texts (src/text.ts). */
+  readonly folds = newFoldCaches();
   /** DRE Visualizations' ILAM full-text map products, when the snapshot carries them (src/fulltextMaps.ts). */
   readonly fulltextMaps: FulltextMaps | null;
   /** Nearest neighbours from DRE Visualizations' corpus vectors, when the snapshot carries them (src/semantic.ts). */
@@ -101,6 +104,10 @@ export class DataStore {
   cached<T>(key: string, build: () => T): T {
     if (!this.memo.has(key)) this.memo.set(key, build());
     return this.memo.get(key) as T;
+  }
+  /** Whether a `cached` entry has been built (warm-up checks, tests). */
+  isBuilt(key: string): boolean {
+    return this.memo.has(key);
   }
   /** Like `cached`, for per-argument data (a graph seed, a record's links):
    * keeps only the `max` most recently used entries of `namespace`. Each
@@ -333,6 +340,21 @@ export class DataStore {
 // -----------------------------------------------------------------------------
 
 let current: DataStore | null = null;
+
+/** Builds a store's derived indexes before it serves (src/warm.ts, wired in
+ * src/mcpServer.ts: importing it here would close an import cycle). */
+let warmup: ((store: DataStore, signal?: AbortSignal) => Promise<void>) | null = null;
+export function setStoreWarmup(fn: (store: DataStore, signal?: AbortSignal) => Promise<void>): void {
+  warmup = fn;
+}
+
+/** The store a tool call is serving, for the length of the call (src/tools/policy.ts). */
+const storeScope = new AsyncLocalStorage<DataStore>();
+/** Run `fn` against `store`: its fold caches, even after a refresh swaps `current`. */
+export function withStore<T>(store: DataStore, fn: () => T): T {
+  return storeScope.run(store, fn);
+}
+setFoldCacheProvider(() => (storeScope.getStore() ?? current)?.folds);
 let loading: Promise<DataStore> | null = null;
 let refreshInFlight: Promise<void> | null = null;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -386,6 +408,8 @@ export async function ensureStore(): Promise<DataStore> {
     loading = loadInitial()
       .then((store) => {
         current = store;
+        // In the background: a request arriving first builds what it needs itself.
+        void warmup?.(store).catch((err: Error) => console.error(`[amira] index warm-up failed: ${err.message}`));
         if (config.liveRefresh) startBackgroundRefresh();
         return store;
       })
@@ -457,8 +481,11 @@ async function backgroundRefresh(): Promise<void> {
     // a newer generation first is the served snapshot read back from disk.
     const published = (await writeSnapshotAtomic(cacheSnapshotDir(), out, signal)) ?? await loadSnapshot(cacheSnapshotDir());
     assertSnapshotSource(published.manifest, config.apiBase);
-    current = new DataStore("cache", published.data, published.manifest, published.fulltext, published.semantic);
-    clearFoldCache(); // the folded copies belong to the snapshot just replaced
+    const next = new DataStore("cache", published.data, published.manifest, published.fulltext, published.semantic);
+    // Built before the swap, so no request on the new snapshot pays for an index.
+    await warmup?.(next, signal);
+    signal.throwIfAborted();
+    current = next;
     refreshState.last_success = new Date().toISOString();
     refreshState.error_class = null;
     console.error(`[amira] refreshed snapshot (fetchedAt=${out.manifest.fetchedAt}, ${out.data.research_items.length} research items)`);

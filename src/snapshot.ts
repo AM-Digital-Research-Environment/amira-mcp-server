@@ -7,8 +7,9 @@
 
 import fs from "node:fs/promises";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import { config } from "./config.js";
 import {
   transformItemSet,
   transformJournal,
@@ -51,6 +52,15 @@ const PAGE_CONCURRENCY = 4;
 const USER_AGENT = "amira-mcp-server (https://github.com/AM-Digital-Research-Environment/amira-mcp-server)";
 
 const sleep = (ms: number, signal?: AbortSignal) => delay(ms, undefined, { signal });
+
+/** GitHub endpoints of the enrichments, or their stand-ins under AMIRA_ENRICHMENT_BASE (tests). */
+const GITHUB = {
+  raw: "https://raw.githubusercontent.com",
+  api: "https://api.github.com",
+  download: "https://github.com",
+} as const;
+const github = (host: keyof typeof GITHUB, pathname: string): string =>
+  `${config.enrichmentBase ? `${config.enrichmentBase}/${host}` : GITHUB[host]}/${pathname}`;
 
 interface FetchResult<T> {
   body: T;
@@ -168,13 +178,51 @@ const FULLTEXT_FILE = "fulltext_maps.json";
 /** Fetch the pinned full-text map files from the public repository (raw.githubusercontent.com). */
 export async function fetchFulltextMaps(signal?: AbortSignal): Promise<FulltextMaps> {
   const { repository, tag, map, words } = FULLTEXT_SOURCE;
-  const base = `https://raw.githubusercontent.com/${repository}/${tag}/`;
+  const base = github("raw", `${repository}/${tag}/`);
   const [mapRes, wordsRes] = await Promise.all([fetchJSON<unknown>(base + map, signal), fetchJSON<unknown>(base + words, signal)]);
   return parseFulltextMaps({ source: { repository, tag, map, words }, map: mapRes.body, words: wordsRes.body });
 }
 
 /** File holding the precomputed semantic neighbours inside a snapshot directory. */
 const SEMANTIC_FILE = "semantic_neighbours.json";
+
+/** Per-record fingerprints inside a snapshot directory (get_snapshot_changes). */
+const FINGERPRINT_FILE = "fingerprints.json";
+
+/**
+ * One fingerprint per record, per corpus: a short content hash, the title to
+ * report, and for an item set the project it is cited by (#18). Diffing two
+ * snapshots compares these, so get_snapshot_changes never holds a retained
+ * snapshot's records (with their full texts and transcripts) in memory.
+ */
+export type Fingerprint = [hash: string, title: string, citedBy?: number];
+export type Fingerprints = Partial<Record<CorpusName, Record<string, Fingerprint>>>;
+
+export function snapshotFingerprints(data: SnapshotData): Fingerprints {
+  const out: Fingerprints = {};
+  for (const corpus of CORPORA) {
+    const rows: Record<string, Fingerprint> = {};
+    for (const rec of (data[corpus] ?? []) as { o_id: number; title?: string; name?: string; project?: { o_id: number | null } | null }[]) {
+      const hash = createHash("sha1").update(JSON.stringify(rec)).digest("base64url").slice(0, 16);
+      const citedBy = corpus === "item_sets" ? rec.project?.o_id ?? undefined : undefined;
+      rows[String(rec.o_id)] = citedBy != null ? [hash, rec.title ?? rec.name ?? "", citedBy] : [hash, rec.title ?? rec.name ?? ""];
+    }
+    out[corpus] = rows;
+  }
+  return out;
+}
+
+/** A snapshot dir's fingerprints (following the pointer), or null for one written before 1.35. */
+export async function readFingerprints(dir: string): Promise<Fingerprints | null> {
+  const active = await readSnapshotPointer(dir);
+  if (active) return readFingerprints(path.join(dir, "generations", active.current));
+  try {
+    return JSON.parse(await fs.readFile(path.join(dir, FINGERPRINT_FILE), "utf8")) as Fingerprints;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
+  }
+}
 
 /**
  * Download and verify a corpus-vector release. `setting` is a release tag to
@@ -189,8 +237,9 @@ export async function fetchSemanticRelease(setting: string, log: (msg: string) =
   if (setting === "latest") {
     // The API is the only listing of release tags. A token (CI) avoids the
     // anonymous rate limit; it is sent to api.github.com only.
-    const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim();
-    const releases = await fetchRetrying(`https://api.github.com/repos/${repo}/releases?per_page=100`,
+    // Never to a stand-in host (AMIRA_ENRICHMENT_BASE).
+    const token = config.enrichmentBase ? undefined : process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim();
+    const releases = await fetchRetrying(github("api", `repos/${repo}/releases?per_page=100`),
       (res) => res.json() as Promise<{ tag_name?: unknown; draft?: unknown; prerelease?: unknown }[]>,
       { signal, headers: { Accept: "application/vnd.github+json", ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
     if (!Array.isArray(releases)) throw new Error("semantic release: the GitHub release listing is not an array");
@@ -206,7 +255,7 @@ export async function fetchSemanticRelease(setting: string, log: (msg: string) =
   let lastError: Error | null = null;
   for (const tag of tags) {
     try {
-      const asset = (name: string) => `https://github.com/${repo}/releases/download/${tag}/${name}`;
+      const asset = (name: string) => github("download", `${repo}/releases/download/${tag}/${name}`);
       const manifest = await fetchJSON<unknown>(asset("manifest.json"), signal);
       const ids = await fetchJSON<unknown>(asset("ids.json"), signal);
       const vectors = await fetchRetrying(asset("vectors.f32"), async (res) => new Uint8Array(await res.arrayBuffer()),
@@ -392,6 +441,7 @@ export async function writeSnapshot(dir: string, out: CrawlOutput): Promise<void
   const { fulltextMaps: _stale, semanticNeighbours: _staleSemantic, ...manifest } = out.manifest;
   if (out.fulltext) await fs.writeFile(path.join(dir, FULLTEXT_FILE), JSON.stringify(out.fulltext));
   if (out.semantic) await fs.writeFile(path.join(dir, SEMANTIC_FILE), JSON.stringify(out.semantic));
+  await fs.writeFile(path.join(dir, FINGERPRINT_FILE), JSON.stringify(snapshotFingerprints(out.data)));
   await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify({
     ...manifest,
     ...(out.fulltext ? { fulltextMaps: fulltextManifestEntry(out.fulltext) } : {}),
@@ -520,7 +570,7 @@ export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, sig
     }
     // Flush data before publishing the only mutable reference.
     for (const name of [...CORPORA.map((c) => `${c}.json`), ...(out.fulltext ? [FULLTEXT_FILE] : []),
-      ...(out.semantic ? [SEMANTIC_FILE] : []), "manifest.json"]) {
+      ...(out.semantic ? [SEMANTIC_FILE] : []), FINGERPRINT_FILE, "manifest.json"]) {
       const file = await fs.open(path.join(dir, name), "r+");
       try { await file.sync(); } finally { await file.close(); }
     }

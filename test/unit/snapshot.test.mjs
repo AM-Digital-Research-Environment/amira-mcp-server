@@ -22,6 +22,9 @@ const {
   assertSnapshotSource,
   snapshotCacheDir,
   fetchJSON,
+  readFingerprints,
+  readManifest,
+  snapshotFingerprints,
 } = await import("../../server/lib.js");
 
 async function tempDir() {
@@ -247,4 +250,26 @@ test("refresh retries transient errors, rejects permanent errors and accepts can
   await assert.rejects(fetchJSON("https://example.test/api", ctrl.signal), /abort/i);
   assert.equal(isStale(buildFixture(SNAPSHOT_SCHEMA_VERSION).manifest,
     { maxModified: null, totalItems: 25, itemSetsSignature: "changed" }), true);
+});
+
+test("each snapshot carries per-record fingerprints; one written before them falls back to its data", async (t) => {
+  const parent = await tempDir();
+  t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const dest = path.join(parent, "current");
+  const fx = buildFixture(SNAPSHOT_SCHEMA_VERSION);
+  await writeSnapshotAtomic(dest, fx);
+  const written = await readFingerprints(dest);
+  // What get_snapshot_changes diffs: the stored file equals what the data gives.
+  assert.deepEqual(written, snapshotFingerprints((await loadSnapshot(dest)).data));
+  const [hash, title] = written.persons[String(fx.data.persons[0].o_id)];
+  assert.equal(title, fx.data.persons[0].name);
+  assert.match(hash, /^[\w-]{16}$/);
+  assert.equal((await readManifest(dest)).fetchedAt, fx.manifest.fetchedAt);
+  const changed = structuredClone(fx.data);
+  changed.persons[0].name = "Renamed";
+  assert.notEqual(snapshotFingerprints(changed).persons[String(fx.data.persons[0].o_id)][0], hash);
+  const flat = path.join(parent, "flat");
+  await writeSnapshot(flat, fx);
+  await fs.rm(path.join(flat, "fingerprints.json"));
+  assert.equal(await readFingerprints(flat), null);
 });

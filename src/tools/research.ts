@@ -1,17 +1,15 @@
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
-import * as path from "node:path";
-import { ensureStore, cacheSnapshotDir, refreshStatus, type DataStore } from "../data.js";
-import { config } from "../config.js";
+import { ensureStore, refreshStatus, } from "../data.js";
 import { allowFullText, allowStructured } from "../exposure.js";
-import { CORPORA, type CorpusName, type SnapshotData } from "../types.js";
+import { CORPORA, } from "../types.js";
 import { entityGraph, entityEdges, entitySchema, entityTypes, edgeSchema, evidenceSchema, graphIndex, resolveEntities } from "../entityGraph.js";
 import { researchFilterError, researchFilters, selectResearchItems } from "../researchItemQuery.js";
 import { foldCached, fold, foldedMatches } from "../text.js";
 import { APP_UI_META } from "./apps.js";
-import { assertSnapshotSource, snapshotId } from "../snapshotIdentity.js";
-import { loadSnapshot, readSnapshotPointer } from "../snapshot.js";
-import { itemUrl, itemSetUrl } from "../urls.js";
+import { snapshotId } from "../snapshotIdentity.js";
+import { retainedSnapshots, snapshotDiff } from "../snapshotHistory.js";
+import { itemUrl, } from "../urls.js";
 import { canonicalTypedId, parseTypedId, stripTypedId } from "../typedIds.js";
 import { itemsOfCollection, resolveCollection } from "../collections.js";
 import { semanticCoverage } from "../semantic.js";
@@ -28,67 +26,6 @@ const counts = z.record(z.string(), z.number());
 
 /** Matches scanned per document; `scanned_matches_capped` says when it was hit. */
 const MATCH_CAP = 10_000;
-
-// --- retained snapshot history (get_snapshot_changes) -----------------------------
-
-type Loaded = { id: string; fetchedAt: string; data: SnapshotData };
-/** Loaded generations by directory + pointer state; reloading every retained
- * snapshot from disk on each call cost ~1 s even with nothing to compare. */
-let historyCache: { key: string; snapshots: Loaded[] } | null = null;
-const diffCache = new Map<string, { corpus: CorpusName; id: number; change: "added" | "updated" | "deleted"; title: string; amira_url: string }[]>();
-
-async function retainedSnapshots(store: DataStore): Promise<Loaded[]> {
-  const dir = cacheSnapshotDir();
-  const pointer = await readSnapshotPointer(dir).catch(() => null);
-  const generations = pointer ? [pointer.current, ...pointer.previous] : [];
-  const key = JSON.stringify([config.bundledDataDir, dir, generations, snapshotId(store.manifest)]);
-  if (historyCache?.key === key) return historyCache.snapshots;
-  const found = new Map<string, Loaded>();
-  // The served store is one of the snapshots; never reload it.
-  found.set(snapshotId(store.manifest), { id: snapshotId(store.manifest), fetchedAt: store.manifest.fetchedAt,
-    data: { persons: store.persons, organisations: store.organisations, locations: store.locations, projects: store.projects,
-      research_sections: store.sections, research_items: store.items, publications: store.publications, journals: store.journals,
-      podcasts: store.podcasts, videos: store.videos, playlists: store.playlists, languages: store.languageIndex.all,
-      item_sets: store.itemSets, subjects: store.subjects } });
-  // Without retained generations the only other candidate is the bundled
-  // snapshot, and it is the served one unless a refresh replaced it.
-  const directories = [...(store.source === "cache" ? [config.bundledDataDir] : []),
-    ...generations.map((g) => path.join(dir, "generations", g))];
-  for (const directory of directories) {
-    try {
-      const out = await loadSnapshot(directory);
-      assertSnapshotSource(out.manifest, config.apiBase);
-      const id = snapshotId(out.manifest);
-      if (!found.has(id)) found.set(id, { id, fetchedAt: out.manifest.fetchedAt, data: out.data });
-    } catch { /* Missing, invalid or cross-instance snapshots cannot participate. */ }
-  }
-  const snapshots = [...found.values()].sort((a, b) => b.fetchedAt.localeCompare(a.fetchedAt));
-  historyCache = { key, snapshots };
-  diffCache.clear();
-  return snapshots;
-}
-
-function snapshotDiff(before: Loaded, after: Loaded, corpora: readonly CorpusName[]) {
-  const key = `${before.id}:${after.id}:${corpora.join(",")}`;
-  const hit = diffCache.get(key);
-  if (hit) return hit;
-  const changes = [];
-  for (const corpus of corpora) {
-    const old = new Map((before.data[corpus] ?? []).map((r) => [r.o_id, r]));
-    const current = new Map((after.data[corpus] ?? []).map((r) => [r.o_id, r]));
-    for (const id of [...new Set([...old.keys(), ...current.keys()])].sort((a, b) => a - b)) {
-      const prev = old.get(id), next = current.get(id), rec = next ?? prev!;
-      const change = !prev ? "added" as const : !next ? "deleted" as const : JSON.stringify(prev) !== JSON.stringify(next) ? "updated" as const : null;
-      // A collection item set is cited by its project page (#18); the set page redirects there.
-      const setProject = corpus === "item_sets" && "project" in rec ? rec.project?.o_id : undefined;
-      if (change) changes.push({ corpus, id, change, title: "name" in rec ? rec.name : rec.title,
-        amira_url: corpus !== "item_sets" ? itemUrl(id) : setProject != null ? itemUrl(setProject) : itemSetUrl(id) });
-    }
-  }
-  diffCache.set(key, changes);
-  if (diffCache.size > 16) diffCache.delete(diffCache.keys().next().value!);
-  return changes;
-}
 
 export function registerResearchTools(server: Server, tools: ToolMap): void {
   tools.resolve_entity = server.registerTool("resolve_entity", {

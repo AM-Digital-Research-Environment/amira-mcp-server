@@ -161,6 +161,10 @@ export const config = {
   /** Corpus-vector release for semantic neighbours (src/semantic.ts): "latest"
    * (default), "off", or a pinned tag such as semantic-embeddings-v1-35. */
   semanticRelease: envValue("AMIRA_SEMANTIC_RELEASE") ?? "latest",
+  /** Test hook: serve the GitHub-hosted enrichments (the full-text map, the
+   * corpus-vector releases) from `<base>/raw`, `<base>/api` and
+   * `<base>/download` instead of GitHub, so a refresh test stays offline. */
+  enrichmentBase: envValue("AMIRA_ENRICHMENT_BASE")?.replace(/\/+$/, "") ?? null,
   /** Bind for the remote HTTP transport (server/http.js); ignored by the stdio
    * entry point. PORT/HOST are the conventional names; AMIRA_HTTP_* also work. */
   httpPort: Number(envValue("PORT") ?? envValue("AMIRA_HTTP_PORT") ?? "8787"),
