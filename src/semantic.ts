@@ -25,6 +25,7 @@ import { z } from "zod";
 import type { DataStore } from "./data.js";
 import { RECORD_KINDS, recordTitle } from "./recordKinds.js";
 import type { SnapshotData } from "./types.js";
+import { itemUrl } from "./urls.js";
 
 /** Where the vectors come from, and the one space this server accepts. */
 export const SEMANTIC_SOURCE = {
@@ -353,6 +354,10 @@ export function semanticRecord(store: DataStore, oId: number, kinds: readonly Se
   return rec && (kinds === SEMANTIC_KINDS || kinds.includes(rec.kind)) ? rec : undefined;
 }
 
+/** The one shape every semantic surface returns for a record: get_similar_items,
+ * the `similar` block, find_related's record pivot and the semantic map. */
+export const semanticRef = (r: SemanticRecord) => ({ title: r.title, type: r.kind, omeka_id: r.o_id, amira_url: itemUrl(r.o_id) });
+
 export interface SemanticIndex {
   source: SemanticNeighbours["source"];
   lowSignal: Set<number>;
@@ -389,6 +394,10 @@ export function semanticIndex(store: DataStore): SemanticIndex | null {
     return { source: semantic.source, lowSignal: new Set(semantic.low_signal), neighbours, groups, groupOf };
   });
 }
+
+/** The vector space a semantic answer comes from, so it can be cited. */
+export const semanticSpace = (index: SemanticIndex) =>
+  ({ release: index.source.tag, model: index.source.model, generated_at: index.source.generated_at });
 
 /** Coverage of the served snapshot, per record kind (get_data_quality, amira://dataset). */
 export function semanticCoverage(store: DataStore) {

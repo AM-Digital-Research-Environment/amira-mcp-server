@@ -21,32 +21,16 @@ import { itemUrlOrNull } from "../urls.js";
 import { allCollections, collectionFields, itemsOfCollection } from "../collections.js";
 import { APP_UI_META } from "./apps.js";
 import { researchFilterError, researchFilters, selectResearchItems } from "../researchItemQuery.js";
-import { placeAliases } from "../matching.js";
+import { placeAliases, RefTally, refKey, type TallyRow } from "../matching.js";
 import { fold } from "../text.js";
 import { queryErrorResult } from "./responses.js";
 import { timelineSchema } from "./outputSchemas.js";
 
-interface RefCount {
-  label: string;
-  o_id: number | null;
-  count: number;
-}
-
-/** Count linked refs across items, deduping per item by ID or literal label. */
-function countRefs(items: ResearchItemRec[], pick: (it: ResearchItemRec) => LinkedRef[]): RefCount[] {
-  const counts = new Map<string, RefCount>();
-  for (const it of items) {
-    const seen = new Set<string>();
-    for (const ref of pick(it)) {
-      const key = ref.o_id != null ? `id:${ref.o_id}` : `label:${ref.label.toLowerCase()}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const rec = counts.get(key) ?? { label: ref.label, o_id: ref.o_id, count: 0 };
-      rec.count += 1;
-      counts.set(key, rec);
-    }
-  }
-  return [...counts.values()].sort((a, b) => b.count - a.count);
+/** Count linked refs across items, each item once per value (src/matching.ts refKey). */
+function countRefs(items: ResearchItemRec[], pick: (it: ResearchItemRec) => LinkedRef[]): TallyRow[] {
+  const tally = new RefTally();
+  for (const it of items) tally.add(pick(it));
+  return tally.rows().sort((a, b) => b.count - a.count);
 }
 
 /** "Library of Congress Subject Headings" → "lcsh", "Tag" → "tag". */
@@ -129,7 +113,10 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       const limit = capLimit(args.limit, 50, 300);
       const offset = capOffset(args.offset);
 
-      interface PlaceCount extends RefCount {
+      interface PlaceCount {
+        label: string;
+        o_id: number | null;
+        count: number;
         country: string | null;
       }
       const selected = selectResearchItems(store, args.filters ?? {}).filtered;
@@ -144,13 +131,12 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
           for (let i = 0; i < chain.length; i++) {
             const { label, o_id: oId } = chain[i]!;
             const isCountry = i === chain.length - 1;
-            const key = oId == null ? `label:${label.toLowerCase()}` : `id:${oId}`;
+            const key = refKey(chain[i]!);
             if (seen.has(key)) continue;
             seen.add(key);
             // country filter keeps the country itself and any place under it.
             const rec = counts.get(key) ?? { label, o_id: oId, count: 0, country: isCountry ? null : root.label };
             rec.count += 1;
-            if (rec.o_id == null && oId != null) rec.o_id = oId;
             counts.set(key, rec);
           }
         }
@@ -282,7 +268,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       const offset = capOffset(args.offset);
 
       let ranked = store.cached(`facets:category:${category}`, () => {
-      let ranked: RefCount[];
+      let ranked: TallyRow[];
       if (category === "formats") {
         ranked = countRefs(store.items, (it) => [
           ...it.formats,

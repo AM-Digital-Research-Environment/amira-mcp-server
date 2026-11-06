@@ -95,3 +95,22 @@ test("instructions fit Claude Code's 2,048-character limit and lead with the cit
     assert.ok(lib.INSTRUCTIONS.includes(rule), rule);
   }
 });
+
+test("refKey: an authority by id, an unlinked value by folded label", () => {
+  assert.equal(lib.refKey({ label: "Lagos", o_id: 7 }), "id:7");
+  // Two unlinked spellings of one name are one value; facets once split them.
+  assert.equal(lib.refKey({ label: "Vidéo/MP4", o_id: null }), lib.refKey({ label: "video/mp4", o_id: null }));
+  assert.notEqual(lib.refKey({ label: "Niger", o_id: null }), lib.refKey({ label: "Nigeria", o_id: null }));
+});
+
+test("RefTally counts each record once per value, splits by field, and ranks ties by label", () => {
+  const tally = new lib.RefTally();
+  tally.add([{ label: "Côte d'Ivoire", o_id: null }, { label: "Cote d'Ivoire", o_id: null }], "research_item_count");
+  tally.add([{ label: "Cote d'Ivoire", o_id: null }, { label: "Benin", o_id: 9 }], "publication_count");
+  tally.add([{ label: "Benin (renamed)", o_id: 9 }, { label: "", o_id: null }], "publication_count");
+  const [second, first] = tally.top(5); // a tie at 2: "Benin" sorts before "Côte d'Ivoire"
+  assert.deepEqual(first, { label: "Côte d'Ivoire", o_id: null, count: 2, by: { research_item_count: 1, publication_count: 1 } });
+  // Same id, another label: one value, its first label kept; empty labels are skipped.
+  assert.deepEqual(second, { label: "Benin", o_id: 9, count: 2, by: { publication_count: 2 } });
+  assert.equal(tally.rows().length, 2);
+});

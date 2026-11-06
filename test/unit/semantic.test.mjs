@@ -142,7 +142,8 @@ test("a stored list naming a record the snapshot no longer holds is filtered at 
 // --- get_similar_items --------------------------------------------------------------------
 
 const SPACE = { release: TAG, model: "google/embeddinggemma-2", generated_at: "2026-11-06T08:04:17Z" };
-const ref = (id, type, title) => ({ id: String(id), omeka_id: id, type, title, amira_url: url(id) });
+// The one ref shape of every semantic surface (src/semantic.ts semanticRef): no `id` beside `omeka_id`.
+const ref = (id, type, title) => ({ omeka_id: id, type, title, amira_url: url(id) });
 
 // What 500 (Architecture, Islam; Lagos → Nigeria; Beier; Fixture Art Worlds)
 // shares with each neighbour, beyond wording (phase 2). Sections never count.
@@ -313,6 +314,22 @@ test("get_semantic_map: unnamed groups described by their contents, then one gro
   assert.ok(listed.results.every((r) => r.amira_url === url(r.omeka_id)));
   const projects = await call("get_semantic_map", { group: 1, types: ["project"] });
   assert.ok(projects.results.every((r) => r.type === "project"));
+});
+
+test("every semantic surface returns one record shape", async () => {
+  const REF = ["amira_url", "omeka_id", "title", "type"];
+  const keysOf = (r, extra = []) => Object.keys(r).filter((k) => !extra.includes(k)).sort();
+  const similar = await call("get_similar_items", { id: 500 });
+  assert.deepEqual(keysOf(similar.source), REF);
+  for (const r of similar.results) assert.deepEqual(keysOf(r, ["score", "basis", "shared", "shared_counts"]), REF);
+  const block = (await call("get_research_item", { id: 500, include_similar: true })).similar;
+  for (const r of block.results) assert.deepEqual(keysOf(r, ["score", "basis", "shared", "shared_counts"]), REF);
+  const pivot = await call("find_related", { entity_type: "record", value: "500" });
+  assert.deepEqual(keysOf(pivot.seed), REF);
+  for (const r of pivot.closest) assert.deepEqual(keysOf(r, ["score"]), REF);
+  const map = await call("get_semantic_map", { id: 500 });
+  assert.deepEqual(keysOf(map.record, ["rank_in_group"]), REF);
+  for (const r of [...map.results, ...map.closest_to_centre]) assert.deepEqual(keysOf(r), REF);
 });
 
 test("get_semantic_map: a record's group, and the cases without one", async () => {

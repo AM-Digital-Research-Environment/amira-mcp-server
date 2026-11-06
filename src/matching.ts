@@ -26,6 +26,54 @@ export function equalsCI(a: string | null | undefined, b: string): boolean {
 
 export const refLabels = (refs: LinkedRef[] | undefined): string[] => (refs ?? []).map((r) => r.label);
 
+/**
+ * The identity of a linked value: its authority id, else its FOLDED label, so
+ * two unlinked spellings of one name ("Côte d'Ivoire", "Cote d'Ivoire") are one
+ * value. Facets, find_related, the semantic map and the similarity
+ * explanations all key on it; they once used three different label rules.
+ */
+export const refKey = (ref: LinkedRef): string => (ref.o_id != null ? `id:${ref.o_id}` : `label:${fold(ref.label)}`);
+
+export interface TallyRow {
+  /** The first label seen for this value. */
+  label: string;
+  o_id: number | null;
+  /** Records carrying the value, each counted once. */
+  count: number;
+  /** The same count split by the field `add` was given (a corpus, a record kind). */
+  by: Record<string, number>;
+}
+
+/** Distinct linked values across records, each record counted once per value. */
+export class RefTally {
+  private readonly counts = new Map<string, TallyRow>();
+  /** Count the values one record links to (a value listed twice counts once). */
+  add(refs: readonly LinkedRef[], field?: string): void {
+    const seen = new Set<string>();
+    for (const ref of refs) {
+      if (!ref?.label) continue;
+      const key = refKey(ref);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      let row = this.counts.get(key);
+      if (!row) {
+        row = { label: ref.label, o_id: ref.o_id, count: 0, by: {} };
+        this.counts.set(key, row);
+      }
+      row.count++;
+      if (field) row.by[field] = (row.by[field] ?? 0) + 1;
+    }
+  }
+  /** Every value, in first-seen order. */
+  rows(): TallyRow[] {
+    return [...this.counts.values()];
+  }
+  /** The `n` most frequent values; ties by label. */
+  top(n: number): TallyRow[] {
+    return this.rows().sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, n);
+  }
+}
+
 /** Linked refs with their citation link: the instructions require an amira_url
  * for every person or record a reader may mention, so name lists carry these. */
 export const refLinks = (refs: LinkedRef[] | undefined) =>

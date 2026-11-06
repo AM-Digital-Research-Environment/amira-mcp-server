@@ -10,73 +10,46 @@ import type { ToolMap } from "./policy.js";
 import { ensureStore, type DataStore } from "../data.js";
 import { allowStructured } from "../exposure.js";
 import { guidanceEnabled } from "../guidance.js";
-import { SEMANTIC_KINDS, semanticIndex, type SemanticIndex, type SemanticRecord } from "../semantic.js";
-import { fold } from "../text.js";
-import type { LinkedRef } from "../types.js";
+import { RefTally } from "../matching.js";
+import { recordLinks } from "../recordLinks.js";
+import { SEMANTIC_KINDS, semanticIndex, semanticRef, semanticSpace, type SemanticRecord } from "../semantic.js";
 import { itemUrl } from "../urls.js";
 import { READ_ONLY, capLimit, capOffset, errorResult, exposureRestrictedResult, limitEcho, pageOf, textResult, type Server } from "./_shared.js";
-import { noNeighboursReason, resolveSemanticSeed } from "./similar.js";
+import { noNeighboursReason, resolveSemanticSeed, semanticUnavailable } from "./similar.js";
 
 const TOP = 5;
 const EXAMPLES = 3;
 
-const view = (r: SemanticRecord) => ({ title: r.title, type: r.kind, omeka_id: r.o_id, amira_url: itemUrl(r.o_id) });
+/** The most frequent values of a tally, each cited when it is an authority. */
+const top = (tally: RefTally, n: number) =>
+  tally.top(n).map((r) => ({ name: r.label, count: r.count, ...(r.o_id != null ? { amira_url: itemUrl(r.o_id) } : {}) }));
 
-/** Most frequent linked values across a group, counting each record once. */
-function tally(rows: LinkedRef[][], n: number) {
-  const counts = new Map<string, { label: string; o_id: number | null; count: number }>();
-  for (const refs of rows) {
-    const seen = new Set<string>();
-    for (const ref of refs) {
-      if (!ref?.label) continue;
-      const key = ref.o_id != null ? `id:${ref.o_id}` : `label:${fold(ref.label)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const row = counts.get(key) ?? { label: ref.label, o_id: ref.o_id, count: 0 };
-      row.count++;
-      counts.set(key, row);
-    }
-  }
-  return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, n)
-    .map((r) => ({ name: r.label, count: r.count, ...(r.o_id != null ? { amira_url: itemUrl(r.o_id) } : {}) }));
-}
-
-/** What a group holds, read from its members' catalogue links. */
+/** What a group holds, read from its members' catalogue links (src/recordLinks.ts). */
 function describeGroup(store: DataStore, id: number, members: SemanticRecord[]) {
   return store.cachedRecent("semantic-group", String(id), () => {
     const byType: Record<string, number> = {};
-    const subjects: LinkedRef[][] = [], countries: LinkedRef[][] = [], projects: LinkedRef[][] = [];
+    const subjects = new RefTally(), countries = new RefTally(), projects = new RefTally();
     for (const r of members) {
       byType[r.kind] = (byType[r.kind] ?? 0) + 1;
-      if (r.kind === "research_item") {
-        const it = store.getItem(String(r.o_id))!;
-        subjects.push(it.subjects);
-        countries.push(it.places.map((p) => store.placeChainRefs(p).at(-1)!));
-        projects.push(it.project ? [it.project] : []);
-      } else if (r.kind === "publication") {
-        subjects.push(store.getPublication(String(r.o_id))!.subjects);
-      } else if (r.kind === "project") {
-        projects.push([{ label: r.title, o_id: r.o_id }]);
-      }
+      const links = recordLinks(store, r.kind, r.o_id);
+      subjects.add(links.subjects);
+      countries.add(links.countries);
+      projects.add(links.projects);
     }
     return {
       group: id,
       size: members.length,
       by_type: byType,
-      top_subjects: tally(subjects, TOP),
-      top_countries: tally(countries, 3),
-      top_projects: tally(projects, 3),
-      closest_to_centre: members.slice(0, EXAMPLES).map(view),
+      top_subjects: top(subjects, TOP),
+      top_countries: top(countries, 3),
+      top_projects: top(projects, 3),
+      closest_to_centre: members.slice(0, EXAMPLES).map(semanticRef),
     };
   }, 128);
 }
 
 const NOTE = "Groups of records whose catalogue descriptions read alike (k-means over EmbeddingGemma 2 vectors). They are unnamed: " +
   "describe a group by its subjects, countries, projects and records, and do not present it as a curated category. Group ids hold for this snapshot only.";
-
-function space(index: SemanticIndex) {
-  return { release: index.source.tag, model: index.source.model, generated_at: index.source.generated_at };
-}
 
 export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
   tools.get_semantic_map = server.registerTool("get_semantic_map", {
@@ -95,11 +68,7 @@ export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_semantic_map");
     const store = await ensureStore();
     const index = semanticIndex(store);
-    if (!index?.groups.size) {
-      return errorResult("semantic_unavailable", "This snapshot carries no semantic map (no verified corpus-vector release).", {
-        suggested_tool: "get_collection_overview",
-      });
-    }
+    if (!index?.groups.size) return semanticUnavailable("semantic map", "get_collection_overview");
     if (args.group !== undefined && args.id !== undefined) {
       return errorResult("invalid_argument", "Pass `group` or `id`, not both.");
     }
@@ -124,7 +93,7 @@ export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
       const all = [...index.groups.entries()];
       const clustered = all.reduce((n, [, m]) => n + m.length, 0);
       return textResult(pageOf(all, offset, limit, ([id, members]) => describeGroup(store, id, members), {
-        space: space(index), groups: all.length, records_on_map: clustered, low_signal_records: index.lowSignal.size,
+        space: semanticSpace(index), groups: all.length, records_on_map: clustered, low_signal_records: index.lowSignal.size,
         ...limitEcho(args.limit, 30, limit), ...note,
       }));
     }
@@ -138,10 +107,10 @@ export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
     const limit = capLimit(args.limit, 20, 100);
     const wanted = args.types ? new Set<string>(args.types) : null;
     const listed = members.filter((r) => !wanted || wanted.has(r.kind));
-    return textResult(pageOf(listed, offset, limit, view, {
-      space: space(index),
+    return textResult(pageOf(listed, offset, limit, semanticRef, {
+      space: semanticSpace(index),
       ...describeGroup(store, groupId, members),
-      ...(seed ? { record: { ...view(seed), rank_in_group: members.findIndex((r) => r.o_id === seed!.o_id) + 1 } } : {}),
+      ...(seed ? { record: { ...semanticRef(seed), rank_in_group: members.findIndex((r) => r.o_id === seed!.o_id) + 1 } } : {}),
       ...limitEcho(args.limit, 100, limit), ...note,
     }));
   });

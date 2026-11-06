@@ -33,7 +33,7 @@ export { INSTRUCTIONS } from "./mcpServer.js";
 export { createHttpApp, clientAddress, addressBucket, createRateLimiter } from "./httpApp.js";
 export { parseTypedId, canonicalTypedId, stripTypedId } from "./typedIds.js";
 export { RECORD_KINDS, findRecord, recordByOId, recordTitle } from "./recordKinds.js";
-export { parseKeyword, keywordMatches, placeAliases, wordPrefixMatch, tokenize } from "./matching.js";
+export { parseKeyword, keywordMatches, placeAliases, wordPrefixMatch, tokenize, RefTally, refKey } from "./matching.js";
 export { placeMatcher, researchFilterError } from "./researchItemQuery.js";
 export { foldedMatches } from "./text.js";
 export { cleanArgs, ALWAYS_LOAD } from "./tools/policy.js";

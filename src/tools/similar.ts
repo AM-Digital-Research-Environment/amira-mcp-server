@@ -15,12 +15,14 @@ import type { ToolMap } from "./policy.js";
 import { ensureStore, type DataStore } from "../data.js";
 import { allowStructured } from "../exposure.js";
 import { guidanceEnabled } from "../guidance.js";
-import { SEMANTIC_KINDS, semanticIndex, semanticRecord, type SemanticIndex, type SemanticKind, type SemanticRecord } from "../semantic.js";
+import { refKey } from "../matching.js";
 import { findRecord } from "../recordKinds.js";
-import { fold } from "../text.js";
+import { recordLinks } from "../recordLinks.js";
+import {
+  SEMANTIC_KINDS, semanticIndex, semanticRecord, semanticRef, semanticSpace, type SemanticIndex, type SemanticKind, type SemanticRecord,
+} from "../semantic.js";
 import { parseTypedId } from "../typedIds.js";
 import type { LinkedRef } from "../types.js";
-import { itemUrl } from "../urls.js";
 import { READ_ONLY, capLimit, errorResult, exposureRestrictedResult, limitEcho, textResult, type Server } from "./_shared.js";
 
 /** Neighbours an `include_similar` block lists; get_similar_items goes to 10. */
@@ -32,40 +34,19 @@ const CATEGORIES = ["subjects", "places", "people", "project"] as const;
 type Category = (typeof CATEGORIES)[number];
 type Links = Record<Category, Map<string, string>>;
 
-/** The catalogue links of a record, keyed by Omeka id (or folded label when unlinked). */
+/** The catalogue links of a record, keyed by refKey (src/matching.ts). */
 function linksOf(store: DataStore, r: SemanticRecord): Links {
   return store.cachedRecent("semantic-links", String(r.o_id), () => {
     const links: Links = { subjects: new Map(), places: new Map(), people: new Map(), project: new Map() };
-    const add = (category: Category, refs: (LinkedRef | { label: string; o_id: number | null } | null | undefined)[]) => {
-      for (const ref of refs) {
-        if (!ref?.label && ref?.o_id == null) continue;
-        links[category].set(ref.o_id != null ? `id:${ref.o_id}` : `label:${fold(ref.label)}`, ref.label);
-      }
+    const add = (category: Category, refs: readonly LinkedRef[]) => {
+      for (const ref of refs) if (ref.label || ref.o_id != null) links[category].set(refKey(ref), ref.label);
     };
-    const person = (c: { name: string; o_id: number | null }) => ({ label: c.name, o_id: c.o_id });
-    if (r.kind === "research_item") {
-      const it = store.getItem(String(r.o_id))!;
-      add("subjects", it.subjects);
-      // A place shares its country: Lagos and Ibadan items both name Nigeria.
-      add("places", it.places.flatMap((p) => store.placeChainRefs(p)));
-      add("people", it.contributors.map(person));
-      add("project", [it.project]);
-    } else if (r.kind === "publication") {
-      const p = store.getPublication(String(r.o_id))!;
-      add("subjects", p.subjects);
-      add("people", [...p.authors, ...p.editors]);
-    } else if (r.kind === "podcast") {
-      add("people", store.getPodcast(r.o_id)!.people.map(person));
-    } else if (r.kind === "video") {
-      add("people", store.getVideo(r.o_id)!.speakers.map(person));
-    } else if (r.kind === "project") {
-      const p = store.getProjectByOId(r.o_id)!;
-      add("people", [...p.pis, ...p.members]);
-      add("project", [{ label: p.name, o_id: p.o_id }]);
-    } else {
-      const s = store.getSectionByOId(r.o_id)!;
-      add("people", [...s.pis, ...s.members]);
-    }
+    const own = recordLinks(store, r.kind, r.o_id);
+    add("subjects", own.subjects);
+    // A place shares its country: Lagos and Ibadan items both name Nigeria.
+    add("places", own.places.flatMap((p) => store.placeChainRefs(p)));
+    add("people", own.people);
+    add("project", own.projects);
     return links;
   }, 256);
 }
@@ -86,7 +67,6 @@ function explain(store: DataStore, source: SemanticRecord, neighbour: SemanticRe
     : { basis: "wording_only" as const };
 }
 
-const view = (r: SemanticRecord) => ({ id: String(r.o_id), omeka_id: r.o_id, type: r.kind, title: r.title, amira_url: itemUrl(r.o_id) });
 
 /**
  * A record's neighbours, explained, or the reason it has none. The shape both
@@ -101,7 +81,7 @@ function neighbours(store: DataStore, index: SemanticIndex, record: SemanticReco
   }
   const wanted = types ? new Set<string>(types) : null;
   const results = list.filter((n) => !wanted || wanted.has(n.record.kind)).slice(0, limit)
-    .map((n) => ({ ...view(n.record), score: n.score, ...explain(store, record, n.record) }));
+    .map((n) => ({ ...semanticRef(n.record), score: n.score, ...explain(store, record, n.record) }));
   return { count: results.length, results };
 }
 
@@ -151,6 +131,13 @@ export function resolveSemanticSeed(store: DataStore, value: string | number, ot
   return { record };
 }
 
+/** The error when the snapshot carries no verified corpus-vector release. */
+export function semanticUnavailable(what: string, suggested: string) {
+  return errorResult("semantic_unavailable", `This snapshot carries no ${what} (no verified corpus-vector release).`, {
+    suggested_tool: suggested,
+  });
+}
+
 /** Why a record has no neighbours, or null when it has some. */
 export function noNeighboursReason(index: SemanticIndex, oId: number): string | null {
   if (index.lowSignal.has(oId)) return "Too little own text (title, abstract or description, subjects, places) to compare reliably, so it has no neighbours.";
@@ -176,19 +163,15 @@ export function registerSimilarTools(server: Server, tools: ToolMap): void {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_similar_items");
     const store = await ensureStore();
     const index = semanticIndex(store);
-    if (!index) {
-      return errorResult("semantic_unavailable", "This snapshot carries no semantic neighbours (no verified corpus-vector release).", {
-        suggested_tool: "find_related",
-      });
-    }
+    if (!index) return semanticUnavailable("semantic neighbours", "find_related");
     const seed = resolveSemanticSeed(store, args.id, "find_related");
     if ("error" in seed) return seed.error;
     const { record } = seed;
     const limit = capLimit(args.limit, 5, 10);
     const found = neighbours(store, index, record, limit, args.types);
     return textResult({
-      source: view(record),
-      space: { release: index.source.tag, model: index.source.model, generated_at: index.source.generated_at },
+      source: semanticRef(record),
+      space: semanticSpace(index),
       ...found,
       ...(found.count ? limitEcho(args.limit, 10, limit) : {}),
       ...(found.count && guidanceEnabled() ? { note: NOTE } : {}),

@@ -6,7 +6,7 @@ import { registerPeopleTools } from "./people.js";
 import { registerOrganizationTools } from "./organizations.js";
 import { registerFacetTools } from "./facets.js";
 import { registerPublicationTools } from "./publications.js";
-import { registerRelatedTools } from "./related.js";
+import { registerRelatedTools } from "./related/index.js";
 import { registerMediaTools } from "./media.js";
 import { registerAppResources } from "./apps.js";
 import { registerResearchTools } from "./research.js";
