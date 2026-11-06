@@ -5,7 +5,7 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## [Unreleased]
+## 1.33.0 — 2026-11-06
 
 Similarity by meaning across the whole collection, collections cited by their
 project, and an explicit tier on every place.
