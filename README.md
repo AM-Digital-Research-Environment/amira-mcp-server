@@ -31,7 +31,7 @@ digitised **research items**, **people**, **institutions**, **groups**,
 **collections**, the cluster **bibliography with searchable full text** (extracted
 from the open-access PDFs) and its **journals**, **podcast episodes with
 transcripts**, and the cluster's **YouTube videos with searchable transcripts** —
-as 34 core tools an LLM can query, five research-workflow prompts, and resources
+as 35 core tools an LLM can query, five research-workflow prompts, and resources
 for citable records and bulk exports. From one MCP interface, clients can move
 across records and the places, languages, and subjects that connect them.
 
@@ -98,6 +98,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `get_data_quality` | Snapshot coverage, missing metadata and unresolved-reference counts |
 | `get_snapshot_changes` | Page added, updated or deleted records across retained snapshots from the same instance |
 | `get_fulltext_map` | The ILAM journal *African Music* read through its private full text, from public derived counts: content groups (AI-labelled) with their articles, the countries articles name, and word rates per year for up to six words |
+| `get_similar_items` | Records whose catalogue descriptions read most alike, across research items, publications, videos, podcasts, projects and sections, with cosine scores and `amira_url`s; `types` narrows the result, and a record without neighbours says why (`low_signal`, `not_in_release`). See [Semantic neighbours](#semantic-neighbours) |
 
 ### Prompts and resources
 
@@ -120,11 +121,11 @@ add nothing to the per-turn tool payload.
 | --- | --- |
 | `amira://record/{kind}/{id}` | Any record as citable JSON — the same projection as its `get_*` tool; kinds follow `resolve_entity` ids (`research_item`, `publication`, `person`, `location`, `subject`, …) |
 | `amira://export/{corpus}/{format}/{query}` | A filtered export (CSV/JSONL for research items; CSV/JSONL/BibTeX/RIS/CSL-JSON for publications). The search tools return these links as `resource_link`s when called with `export` |
-| `amira://dataset` | A schema.org `Dataset` description of the served snapshot: counts, coverage, licence mix, funder and how to cite it |
+| `amira://dataset` | A schema.org `Dataset` description of the served snapshot: counts, coverage, licence mix, funder, how to cite it and the vector space behind `get_similar_items` (`amira:semantic_space`) |
 
 ### Profiles and research workflows
 
-`AMIRA_TOOL_PROFILE=full` is the default: 34 core tools, or 36 over HTTP.
+`AMIRA_TOOL_PROFILE=full` is the default: 35 core tools, or 37 over HTTP.
 `research`, `discovery` and `visualization` expose smaller documented subsets
 (23/12/14 core tools respectively; HTTP adds `search` and `fetch`). Profiles are
 fixed at startup; they reduce discovery cost, not access permissions. Tools
@@ -280,7 +281,7 @@ The `.mcpb` is the local, offline option for Claude Desktop. The same server can
 also run as a **remote Streamable HTTP endpoint** — one HTTPS URL that ChatGPT,
 Claude (web + desktop remote connectors), the OpenAI and Anthropic APIs, Cursor,
 VS Code and other clients connect to by pasting a URL (no download, always-fresh
-data). The remote surface serves the same 34 tools **plus** the
+data). The remote surface serves the same 35 tools **plus** the
 OpenAI-compatible `search` / `fetch` tools for ChatGPT research integrations (36
 total). Access is unauthenticated — the data is public and read-only.
 
@@ -482,6 +483,32 @@ workflows crawl the **public** API — no credentials):
 > (a PAT or GitHub App token with `contents: write`). The workflows use
 > `secrets.RELEASE_TOKEN` when present and fall back to the default token.
 
+## Semantic neighbours
+
+`get_similar_items` finds records whose catalogue descriptions read most alike,
+across research items, publications, videos, podcasts, projects and research
+sections. The vectors come from the versioned
+[DRE Visualizations](https://github.com/AM-Digital-Research-Environment/DRE-Visualizations/releases)
+releases `semantic-embeddings-v1-<build>`: `google/embeddinggemma-2`, 768
+dimensions, L2-normalised, built offline from the public API only (title,
+abstract or description, subjects and places; never full text).
+
+The crawl downloads the newest release (or the one `AMIRA_SEMANTIC_RELEASE`
+pins), verifies the model, dimensions, normalisation, row count, byte length,
+SHA-256 and row norms against its manifest, and refuses any mismatch, so two
+vector spaces never mix. It then computes, for every record present in the
+snapshot, its ten closest records of each type, and stores those
+(`semantic_neighbours.json`), never the ~15 MB of vectors: no model and no
+vector runs at request time. Records absent from the snapshot are dropped
+before ranking, and lists are filtered again at load, so a neighbour is always a
+record the snapshot can cite. When no release verifies, the crawl keeps the
+neighbours already served. `get_data_quality` reports the release and its
+coverage per type: records with neighbours, low-signal records (too little
+own text, excluded by design) and records the build predates.
+
+Scores are cosine similarities of descriptions: similar wording is not
+evidence of a documented relation.
+
 ## Configuration (environment / extension settings)
 
 | Env var | Extension setting | Default | Meaning |
@@ -489,6 +516,7 @@ workflows crawl the **public** API — no credentials):
 | `AMIRA_LIVE_REFRESH` | Refresh data from the live site | `true` | Probe + refresh the snapshot from the public API at startup and on the periodic interval |
 | `AMIRA_REFRESH_INTERVAL_HOURS` | — | `24` | When live refresh is on, repeat the freshness probe this often while the server is running; set `0` to disable periodic checks |
 | `AMIRA_FULL_REFRESH_HOURS` | — | `168` | Force a complete crawl after this snapshot age even if item signatures are unchanged; minimum 1 hour |
+| `AMIRA_SEMANTIC_RELEASE` | — | `latest` | Corpus-vector release for `get_similar_items`: `latest` (the newest build that verifies), a pinned tag such as `semantic-embeddings-v1-35`, or `off`. `GITHUB_TOKEN` / `GH_TOKEN`, when set, is sent to `api.github.com` only, to list releases |
 | `AMIRA_TOOL_PROFILE` | — | `full` | `full`, `research`, `discovery`, or `visualization`; restart to change |
 | `AMIRA_CACHE_DIR` | Refreshed-data cache directory | `~/.amira-mcp/cache` | Where refreshed snapshots are stored |
 | `AMIRA_SITE_BASE` | Site base URL (advanced) | `https://data.africamultiple.uni-bayreuth.de` | Base for citations + refresh (`AMIRA_DASHBOARD_BASE` is honoured with a deprecation warning) |

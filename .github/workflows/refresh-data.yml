@@ -52,6 +52,10 @@ jobs:
 
       - name: Crawl latest data from the public Omeka S API
         run: npm run fetch-data
+        env:
+          # Read-only: lists DRE Visualizations' corpus-vector releases without
+          # the anonymous API rate limit (sent to api.github.com only).
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Read snapshot freshness signature
         id: snap

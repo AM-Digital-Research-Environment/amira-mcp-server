@@ -90,6 +90,10 @@ jobs:
           cat release-notes.md
       - name: Build data snapshot from the public Omeka S API
         run: npm run fetch-data
+        env:
+          # Read-only: lists DRE Visualizations' corpus-vector releases without
+          # the anonymous API rate limit (sent to api.github.com only).
+          GITHUB_TOKEN: ${{ github.token }}
       # The single release gate: clean, typecheck, skills check, build + unit
       # tests, stdio and HTTP smoke, response weight, manifest. Unit tests run
       # here only, not in a separate step as well.

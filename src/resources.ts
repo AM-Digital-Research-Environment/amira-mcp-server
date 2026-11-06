@@ -225,6 +225,10 @@ function datasetDescription(store: DataStore): Record<string, unknown> {
     variableMeasured: Object.entries(counts).map(([name, value]) => ({ "@type": "PropertyValue", name, value })),
     "amira:license_distribution": Object.fromEntries([...licences].sort((a, b) => b[1] - a[1])),
     "amira:snapshot": { source: store.source, fetched_at: store.manifest.fetchedAt, api_base: store.manifest.apiBase },
+    // The exact vector space behind get_similar_items, so a citation of semantic results can name it (#12).
+    "amira:semantic_space": store.semantic ? { repository: store.semantic.source.repository, release: store.semantic.source.tag,
+      model: store.semantic.source.model, model_revision: store.semantic.source.model_revision,
+      generated_at: store.semantic.source.generated_at, vectors_sha256: store.semantic.source.vectors_sha256 } : null,
   };
 }
 

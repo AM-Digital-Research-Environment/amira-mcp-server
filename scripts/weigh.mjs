@@ -119,6 +119,7 @@ const DISCOVERED = new Set([
   "find_related",
   "fetch",
   "resolve_entity", "get_entity_graph", "get_text_passages", "compare_collections",
+  "get_similar_items",
 ]);
 
 // --- measurement -------------------------------------------------------------
@@ -207,6 +208,14 @@ export async function buildProbes(client) {
   const item = await first("search_research_items", { limit: 1 });
   if (item?.id) add("get_research_item", "get_research_item", { id: item.id });
   else miss("get_research_item");
+  // The heaviest answer: a full page of neighbours (low-signal seeds return none).
+  const seeds = await results("search_research_items", { keyword: "music", limit: 20 });
+  let similarSeed = null;
+  for (const seed of seeds) {
+    if (parseJson(await callText(client, "get_similar_items", { id: seed.id, limit: 10 })).count) { similarSeed = seed; break; }
+  }
+  if (similarSeed) add("get_similar_items@max", "get_similar_items", { id: similarSeed.id, limit: 10 });
+  else miss("get_similar_items");
 
   const person = await first("search_persons", { limit: 1 });
   if (person?.name) add("get_person", "get_person", { name: person.name });

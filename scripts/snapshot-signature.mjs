@@ -16,5 +16,7 @@ console.log(
   createHash("sha256")
     .update(`amira-mcp-server@${version}\n`)
     .update(JSON.stringify(out.data))
+    // A new corpus-vector build changes the neighbours the bundle serves.
+    .update(JSON.stringify(out.semantic?.source ?? null))
     .digest("hex"),
 );

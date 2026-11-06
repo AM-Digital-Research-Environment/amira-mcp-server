@@ -30,6 +30,10 @@ import {
 import { classId, oid, systemDate, type OmekaItem } from "./omekaJSON.js";
 import { FULLTEXT_SOURCE, fulltextManifestEntry, parseFulltextMaps, type FulltextMaps } from "./fulltextMaps.js";
 import {
+  SEMANTIC_SOURCE, computeNeighbours, parseSemanticNeighbours, semanticBuild, semanticManifestEntry, verifySemanticRelease,
+  type SemanticNeighbours, type VerifiedRelease,
+} from "./semantic.js";
+import {
   CORPORA,
   MIN_SNAPSHOT_SCHEMA_VERSION,
   SNAPSHOT_SCHEMA_VERSION,
@@ -54,21 +58,28 @@ interface FetchResult<T> {
 }
 
 export async function fetchJSON<T>(url: string, signal?: AbortSignal, timeoutMs = 30000): Promise<FetchResult<T>> {
+  return fetchRetrying(url, async (res) => ({ body: (await res.json()) as T, total: Number(res.headers.get("omeka-s-total-results") ?? NaN) }),
+    { signal, timeoutMs });
+}
+
+/** GET with bounded retries on transient failures; `read` consumes the body inside the retry. */
+async function fetchRetrying<T>(url: string, read: (res: Response) => Promise<T>,
+  opts: { signal?: AbortSignal; timeoutMs?: number; headers?: Record<string, string> } = {}): Promise<T> {
+  const { signal, timeoutMs = 30000 } = opts;
   for (let attempt = 1; ; attempt++) {
     signal?.throwIfAborted();
     let retryAfter = 0;
     try {
       const timeout = AbortSignal.timeout(timeoutMs);
       const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-        headers: { "User-Agent": USER_AGENT } });
+        headers: { "User-Agent": USER_AGENT, ...opts.headers } });
       if (!res.ok) {
         const header = res.headers.get("retry-after");
         retryAfter = header ? (Number.isFinite(Number(header)) ? Number(header) * 1000 : Date.parse(header) - Date.now()) : 0;
         await res.body?.cancel();
         throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
       }
-      const body = (await res.json()) as T;
-      return { body, total: Number(res.headers.get("omeka-s-total-results") ?? NaN) };
+      return await read(res);
     } catch (err) {
       signal?.throwIfAborted();
       const status = (err as { status?: number }).status;
@@ -147,6 +158,8 @@ export interface CrawlOutput {
   manifest: SnapshotManifest;
   /** Public derived files of DRE Visualizations' ILAM full-text map (src/fulltextMaps.ts); optional. */
   fulltext?: FulltextMaps | null;
+  /** Nearest neighbours computed from DRE Visualizations' corpus vectors (src/semantic.ts); optional. */
+  semantic?: SemanticNeighbours | null;
 }
 
 /** File holding the validated full-text map products inside a snapshot directory. */
@@ -160,8 +173,58 @@ export async function fetchFulltextMaps(signal?: AbortSignal): Promise<FulltextM
   return parseFulltextMaps({ source: { repository, tag, map, words }, map: mapRes.body, words: wordsRes.body });
 }
 
+/** File holding the precomputed semantic neighbours inside a snapshot directory. */
+const SEMANTIC_FILE = "semantic_neighbours.json";
+
+/**
+ * Download and verify a corpus-vector release. `setting` is a release tag to
+ * pin, "latest" (the newest build whose manifest matches the accepted space;
+ * older builds are tried when a newer one does not verify) or "off".
+ */
+export async function fetchSemanticRelease(setting: string, log: (msg: string) => void = () => {},
+  signal?: AbortSignal): Promise<VerifiedRelease | null> {
+  if (setting === "off") return null;
+  const repo = SEMANTIC_SOURCE.repository;
+  let tags: string[];
+  if (setting === "latest") {
+    // The API is the only listing of release tags. A token (CI) avoids the
+    // anonymous rate limit; it is sent to api.github.com only.
+    const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim();
+    const releases = await fetchRetrying(`https://api.github.com/repos/${repo}/releases?per_page=100`,
+      (res) => res.json() as Promise<{ tag_name?: unknown; draft?: unknown; prerelease?: unknown }[]>,
+      { signal, headers: { Accept: "application/vnd.github+json", ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+    if (!Array.isArray(releases)) throw new Error("semantic release: the GitHub release listing is not an array");
+    tags = releases.filter((r) => typeof r.tag_name === "string" && !r.draft && !r.prerelease && semanticBuild(r.tag_name) != null)
+      .map((r) => r.tag_name as string).sort((a, b) => semanticBuild(b)! - semanticBuild(a)!).slice(0, 3);
+    if (!tags.length) throw new Error("semantic release: no corpus-vector release found");
+  } else {
+    if (semanticBuild(setting) == null) {
+      throw new Error("AMIRA_SEMANTIC_RELEASE must be \"latest\", \"off\" or a release tag such as semantic-embeddings-v1-35");
+    }
+    tags = [setting];
+  }
+  let lastError: Error | null = null;
+  for (const tag of tags) {
+    try {
+      const asset = (name: string) => `https://github.com/${repo}/releases/download/${tag}/${name}`;
+      const manifest = await fetchJSON<unknown>(asset("manifest.json"), signal);
+      const ids = await fetchJSON<unknown>(asset("ids.json"), signal);
+      const vectors = await fetchRetrying(asset("vectors.f32"), async (res) => new Uint8Array(await res.arrayBuffer()),
+        { signal, timeoutMs: 180_000 });
+      return verifySemanticRelease({ tag, manifest: manifest.body, ids: ids.body, vectors });
+    } catch (err) {
+      signal?.throwIfAborted();
+      lastError = err as Error;
+      if (setting !== "latest") break;
+      log(`semantic release ${tag} skipped: ${lastError.message}`);
+    }
+  }
+  throw lastError ?? new Error("semantic release: nothing to verify");
+}
+
 /** Crawl everything and transform to snapshot records. Throws on ANY shortfall. */
-export async function crawlSnapshot(apiBase: string, log: (msg: string) => void = () => {}, signal?: AbortSignal): Promise<CrawlOutput> {
+export async function crawlSnapshot(apiBase: string, log: (msg: string) => void = () => {}, signal?: AbortSignal,
+  opts: { semanticRelease?: string } = {}): Promise<CrawlOutput> {
   // The full-text map is an optional enrichment from another repository: a
   // failure there must never block an AMIRA refresh, so the snapshot ships without it.
   // Fetched before the first probe, so it cannot widen the Omeka consistency window.
@@ -171,6 +234,15 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     return null;
   });
   if (fulltext) log(`fetched full-text map ${fulltext.source.tag}: ${fulltext.map.items.length} articles`);
+  // Corpus vectors, likewise optional and fetched before the first probe. A
+  // release that fails verification is never used: the snapshot ships without
+  // neighbours, and the callers keep the ones already served.
+  const release = await fetchSemanticRelease(opts.semanticRelease ?? "latest", log, signal).catch((err: Error) => {
+    signal?.throwIfAborted();
+    log(`semantic neighbours skipped: ${err.message}`);
+    return null;
+  });
+  if (release) log(`verified corpus vectors ${release.tag}: ${release.manifest.count} rows, ${release.manifest.model}`);
 
   const before = await probeRemote(apiBase, signal);
   const labels = await fetchPropertyLabels(apiBase, signal);
@@ -259,6 +331,9 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   if (before.maxModified !== probe.maxModified || before.totalItems !== probe.totalItems || before.itemSetsSignature !== probe.itemSetsSignature) {
     throw new Error("Omeka items changed during the crawl; keeping the previous snapshot. Retry after the upstream sync finishes.");
   }
+  // CPU only (no requests), so it runs after the consistency window closes.
+  const semantic = release ? await computeNeighbours(release, data, { signal }) : null;
+  if (semantic) log(`computed semantic neighbours: ${Object.keys(semantic.neighbours).length} records, ${semantic.low_signal.length} low-signal`);
   const manifest: SnapshotManifest = {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     fetchedAt: new Date().toISOString(),
@@ -271,8 +346,9 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     itemSetsSignature: probe.itemSetsSignature,
     counts: Object.fromEntries(CORPORA.map((c) => [c, data[c].length])) as Record<CorpusName, number>,
     ...(fulltext ? { fulltextMaps: fulltextManifestEntry(fulltext) } : {}),
+    ...(semantic ? { semanticNeighbours: semanticManifestEntry(semantic) } : {}),
   };
-  return { data, manifest, fulltext };
+  return { data, manifest, fulltext, semantic };
 }
 
 /** One-request freshness probe: max o:modified + unfiltered item total (D11). */
@@ -313,10 +389,14 @@ export async function writeSnapshot(dir: string, out: CrawlOutput): Promise<void
     await fs.writeFile(path.join(dir, `${corpus}.json`), JSON.stringify(out.data[corpus]));
   }
   // The manifest entry is derived from the files actually written, never trusted from the caller.
-  const { fulltextMaps: _stale, ...manifest } = out.manifest;
+  const { fulltextMaps: _stale, semanticNeighbours: _staleSemantic, ...manifest } = out.manifest;
   if (out.fulltext) await fs.writeFile(path.join(dir, FULLTEXT_FILE), JSON.stringify(out.fulltext));
-  await fs.writeFile(path.join(dir, "manifest.json"),
-    JSON.stringify(out.fulltext ? { ...manifest, fulltextMaps: fulltextManifestEntry(out.fulltext) } : manifest, null, 2));
+  if (out.semantic) await fs.writeFile(path.join(dir, SEMANTIC_FILE), JSON.stringify(out.semantic));
+  await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify({
+    ...manifest,
+    ...(out.fulltext ? { fulltextMaps: fulltextManifestEntry(out.fulltext) } : {}),
+    ...(out.semantic ? { semanticNeighbours: semanticManifestEntry(out.semantic) } : {}),
+  }, null, 2));
 }
 
 /** Load + validate a snapshot dir. Throws on schema/count mismatch. */
@@ -354,7 +434,16 @@ export async function loadSnapshot(dir: string): Promise<CrawlOutput> {
       throw new Error(`snapshot ${FULLTEXT_FILE}: ${entry.tag} with ${entry.articles} articles, manifest says ${manifest.fulltextMaps.tag} with ${manifest.fulltextMaps.articles}`);
     }
   }
-  return { data, manifest, fulltext };
+  let semantic: SemanticNeighbours | null = null;
+  if (manifest.semanticNeighbours) {
+    semantic = parseSemanticNeighbours(JSON.parse(await fs.readFile(path.join(dir, SEMANTIC_FILE), "utf8")));
+    const entry = semanticManifestEntry(semantic);
+    if (entry.tag !== manifest.semanticNeighbours.tag || entry.sources !== manifest.semanticNeighbours.sources) {
+      throw new Error(`snapshot ${SEMANTIC_FILE}: ${entry.tag} with ${entry.sources} sources, manifest says ` +
+        `${manifest.semanticNeighbours.tag} with ${manifest.semanticNeighbours.sources}`);
+    }
+  }
+  return { data, manifest, fulltext, semantic };
 }
 
 /**
@@ -416,7 +505,8 @@ export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, sig
       }
     }
     // Flush data before publishing the only mutable reference.
-    for (const name of [...CORPORA.map((c) => `${c}.json`), ...(out.fulltext ? [FULLTEXT_FILE] : []), "manifest.json"]) {
+    for (const name of [...CORPORA.map((c) => `${c}.json`), ...(out.fulltext ? [FULLTEXT_FILE] : []),
+      ...(out.semantic ? [SEMANTIC_FILE] : []), "manifest.json"]) {
       const file = await fs.open(path.join(dir, name), "r+");
       try { await file.sync(); } finally { await file.close(); }
     }

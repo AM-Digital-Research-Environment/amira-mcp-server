@@ -415,6 +415,8 @@ export interface SnapshotManifest {
   counts: Record<CorpusName, number>;
   /** Present when the snapshot carries DRE Visualizations' ILAM full-text map files (`fulltext_maps.json`). */
   fulltextMaps?: import("./fulltextMaps.js").FulltextManifestEntry;
+  /** Present when the snapshot carries semantic neighbours from corpus vectors (`semantic_neighbours.json`). */
+  semanticNeighbours?: import("./semantic.js").SemanticManifestEntry;
 }
 
 /** v5: subjects corpus, media records, record timestamps, authority identifiers,

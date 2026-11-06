@@ -1,6 +1,6 @@
 # Tools by task
 
-All 34 core tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
+All 35 core tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
 `{ count, total_matches, offset, has_more, next_offset?, results[] }` (plus a `filters` echo of the
 filters you actually passed). Every tool clamps an excess `limit` and echoes `requested_limit` /
 `effective_limit`; a page that would exceed 40,000 characters stops early with `response_limited: true`
@@ -125,6 +125,7 @@ re-run a search in a second spelling.
 | --- | --- | --- |
 | What connects to X? | `find_related` | `entity_type` (subject/location/person/project) + `value`; a person is a full name or `person:<id>` (a surname shared by several people returns their ids) |
 | Which ILAM articles are closest in content? | `find_related` | `entity_type=research_item`, `value` = an *African Music* article id: its closest articles by full text (`closest_in_content`), with what they share in the `related_*` lists |
+| What reads like this record, in any corpus? | `get_similar_items` | `id` = an `omeka_id` or typed id (`publication:29919`) of a research item, publication, video, podcast, project or section; `types` to narrow (e.g. `["podcast","video"]`); `limit` ≤ 10. Cosine scores over EmbeddingGemma 2 vectors of catalogue descriptions. No neighbours → `no_neighbours` = `low_signal` (too little own text) or `not_in_release` (newer than the vector build) |
 
 Returns ranked related projects, sections, subjects, people, countries (rolled up to each place's
 top-level country), formats (with co-occurrence counts) plus slim sample items. For subject/person

@@ -108,6 +108,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run fetch-data
+        env:
+          # Read-only: lists DRE Visualizations' corpus-vector releases without
+          # the anonymous API rate limit (sent to api.github.com only).
+          GITHUB_TOKEN: ${{ github.token }}
       - run: npm run smoke
       - run: npm run smoke:http
       # Response weight at every tool's maximum limit. Needs the real snapshot,

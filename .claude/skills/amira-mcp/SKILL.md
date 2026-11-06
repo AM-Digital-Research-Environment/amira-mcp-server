@@ -94,7 +94,7 @@ Every entity is an Omeka item with a stable public page: its **`amira_url`**
 number in that URL; use that when an identifier is needed.
 
 See [references/data-model.md](references/data-model.md) for field-level detail, and
-[references/tools-by-task.md](references/tools-by-task.md) for the full 34-tool catalogue (36 over HTTP),
+[references/tools-by-task.md](references/tools-by-task.md) for the full 35-tool catalogue (37 over HTTP),
 the five prompts and the resources.
 
 ## Workflow
@@ -181,6 +181,13 @@ full-text map adds content-based links: `find_related entity_type=research_item`
 `get_fulltext_map` gives content groups, countries named and word trends per year. Group names are
 AI-generated and experimental: say so whenever you show one. None of these returns text; never
 claim to have read an ILAM article.
+
+`get_similar_items` adds similarity by meaning across corpora: the records whose catalogue
+descriptions read most alike (a project → related podcasts, a publication → research items), with
+cosine scores. Present these as "described in similar terms", never as a documented link, and
+check shared subjects, places or projects before claiming a connection. A record with too little
+own text (`low_signal`) or newer than the vector build (`not_in_release`) has no neighbours; that
+says nothing about the record itself.
 
 Prefer `resolve_entity` when a name could be ambiguous. It returns typed IDs,
 separate homonym candidates and unresolved literal nodes; do not silently pick
@@ -284,6 +291,6 @@ link.
 
 13. **Exact place identity.** `location` is a label search and may match homonyms.
     Use `location_id` from `list_locations` for one authority and its descendants.
-14. **Profiles.** Full mode has 34 core tools (36 over HTTP). Some deployments expose
+14. **Profiles.** Full mode has 35 core tools (37 over HTTP). Some deployments expose
     `research`, `discovery` or `visualization` subsets. Use the advertised catalogue;
     do not assume an omitted tool exists.

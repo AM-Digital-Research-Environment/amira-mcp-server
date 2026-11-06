@@ -13,6 +13,7 @@
 
 import { config } from "./config.js";
 import { FULLTEXT_SOURCE, type FulltextMaps } from "./fulltextMaps.js";
+import type { SemanticNeighbours } from "./semantic.js";
 import { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshotAtomic, type CrawlOutput } from "./snapshot.js";
 import { LanguageIndex } from "./languages.js";
 import { clearFoldCache, fold } from "./text.js";
@@ -67,6 +68,8 @@ export class DataStore {
   readonly languageIndex: LanguageIndex;
   /** DRE Visualizations' ILAM full-text map products, when the snapshot carries them (src/fulltextMaps.ts). */
   readonly fulltextMaps: FulltextMaps | null;
+  /** Nearest neighbours from DRE Visualizations' corpus vectors, when the snapshot carries them (src/semantic.ts). */
+  readonly semantic: SemanticNeighbours | null;
 
   private readonly itemByDreId = new Map<string, ResearchItemRec>();
   private readonly itemByOId = new Map<number, ResearchItemRec>();
@@ -112,10 +115,12 @@ export class DataStore {
     return value;
   }
 
-  constructor(source: "bundled" | "cache", data: SnapshotData, manifest: SnapshotManifest, fulltextMaps: FulltextMaps | null = null) {
+  constructor(source: "bundled" | "cache", data: SnapshotData, manifest: SnapshotManifest, fulltextMaps: FulltextMaps | null = null,
+    semantic: SemanticNeighbours | null = null) {
     this.source = source;
     this.manifest = manifest;
     this.fulltextMaps = fulltextMaps;
+    this.semantic = semantic;
     this.items = data.research_items;
     this.projects = data.projects;
     this.persons = data.persons;
@@ -327,9 +332,9 @@ export function cacheSnapshotDir(): string {
 
 async function tryLoad(dir: string, source: "bundled" | "cache"): Promise<DataStore | null> {
   try {
-    const { data, manifest, fulltext } = await loadSnapshot(dir);
+    const { data, manifest, fulltext, semantic } = await loadSnapshot(dir);
     assertSnapshotSource(manifest, config.apiBase);
-    return new DataStore(source, data, manifest, fulltext);
+    return new DataStore(source, data, manifest, fulltext, semantic);
   } catch (err) {
     if (source === "bundled") {
       console.error(`[amira] bundled snapshot unusable: ${(err as Error).message}`);
@@ -418,14 +423,17 @@ async function backgroundRefresh(): Promise<void> {
     }
 
     console.error(`[amira] snapshot stale (local ${local.maxModified ?? "?"} < remote ${probe.maxModified ?? "?"}); refreshing…`);
-    const out: CrawlOutput = await crawlSnapshot(config.apiBase, (m) => console.error(`[amira] refresh: ${m}`), signal);
+    const out: CrawlOutput = await crawlSnapshot(config.apiBase, (m) => console.error(`[amira] refresh: ${m}`), signal,
+      { semanticRelease: config.semanticRelease });
     signal.throwIfAborted();
     // The pinned full-text files never change: when GitHub was unreachable, keep the ones already served.
     if (!out.fulltext && current?.fulltextMaps?.source.tag === FULLTEXT_SOURCE.tag) out.fulltext = current.fulltextMaps;
+    // No verified release this time: keep the neighbours already served (filtered to the new snapshot at load).
+    if (!out.semantic && current?.semantic && config.semanticRelease !== "off") out.semantic = current.semantic;
     await writeSnapshotAtomic(cacheSnapshotDir(), out, signal);
     const published = await loadSnapshot(cacheSnapshotDir());
     assertSnapshotSource(published.manifest, config.apiBase);
-    current = new DataStore("cache", published.data, published.manifest, published.fulltext);
+    current = new DataStore("cache", published.data, published.manifest, published.fulltext, published.semantic);
     clearFoldCache(); // the folded copies belong to the snapshot just replaced
     refreshState.last_success = new Date().toISOString();
     refreshState.error_class = null;

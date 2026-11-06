@@ -158,6 +158,9 @@ export const config = {
   refreshIntervalHours: parseNonNegativeNumber(envValue("AMIRA_REFRESH_INTERVAL_HOURS"), 24),
   /** Refresh vocabularies even when item timestamps do not change (minimum one hour). */
   fullRefreshHours: Math.max(1, parseNonNegativeNumber(envValue("AMIRA_FULL_REFRESH_HOURS"), 168)),
+  /** Corpus-vector release for semantic neighbours (src/semantic.ts): "latest"
+   * (default), "off", or a pinned tag such as semantic-embeddings-v1-35. */
+  semanticRelease: envValue("AMIRA_SEMANTIC_RELEASE") ?? "latest",
   /** Bind for the remote HTTP transport (server/http.js); ignored by the stdio
    * entry point. PORT/HOST are the conventional names; AMIRA_HTTP_* also work. */
   httpPort: Number(envValue("PORT") ?? envValue("AMIRA_HTTP_PORT") ?? "8787"),

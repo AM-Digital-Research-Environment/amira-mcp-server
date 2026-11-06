@@ -23,6 +23,9 @@ export function assertSnapshotSource(manifest: SnapshotManifest, apiBase: string
 }
 
 export function snapshotId(manifest: SnapshotManifest): string {
+  // The corpus-vector release names the semantic space a neighbour list came
+  // from (#12). Appended only when present, so older snapshot ids are unchanged.
+  const space = manifest.semanticNeighbours ? [manifest.semanticNeighbours.tag, manifest.semanticNeighbours.model] : [];
   return createHash("sha256").update(JSON.stringify([normalizeApiBase(manifest.apiBase), manifest.fetchedAt,
-    manifest.maxModified, manifest.counts])).digest("hex").slice(0, 24);
+    manifest.maxModified, manifest.counts, ...space])).digest("hex").slice(0, 24);
 }

@@ -14,6 +14,7 @@ import { loadSnapshot, readSnapshotPointer } from "../snapshot.js";
 import { itemUrl, itemSetUrl } from "../urls.js";
 import { canonicalTypedId, parseTypedId, stripTypedId } from "../typedIds.js";
 import { itemsOfCollection, resolveCollection } from "../collections.js";
+import { semanticCoverage } from "../semantic.js";
 import { READ_ONLY, capLimit, capOffset, limitEcho, queryErrorResult, textResult, errorResult, exposureRestrictedResult, pageOf, type Server } from "./_shared.js";
 import { refreshSchema } from "./outputSchemas.js";
 import { personSuggestions } from "./people.js";
@@ -243,10 +244,11 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
 
   tools.get_data_quality = server.registerTool("get_data_quality", {
     title: "Inspect data coverage", annotations: READ_ONLY,
-    description: "Snapshot coverage and missing metadata, unresolved loaded-authority links, and sanitized refresh status. Missing catalogue metadata is not evidence of real-world absence.",
+    description: "Snapshot coverage and missing metadata, unresolved loaded-authority links, semantic-neighbour coverage and sanitized refresh status. Missing catalogue metadata is not evidence of real-world absence.",
     inputSchema: z.strictObject({}),
     outputSchema: z.object({ snapshot_id: z.string(), fetched_at: z.string(), schema_version: z.number(), counts, missing: counts,
-      unresolved_entities: z.number(), literal_entities: z.number(), refresh: refreshSchema }),
+      unresolved_entities: z.number(), literal_entities: z.number(), refresh: refreshSchema,
+      semantic_neighbours: z.record(z.string(), z.unknown()).nullable() }),
   }, async () => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_data_quality");
     const store = await ensureStore();
@@ -262,7 +264,9 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
           publication_fulltext: store.publications.filter((p) => !p.fulltext).length,
           podcast_transcript: store.podcasts.filter((p) => !p.transcript).length, video_transcript: store.videos.filter((v) => !v.transcript).length },
         unresolved_entities: entities.filter((e) => e.omeka_id != null && !e.resolved).length,
-        literal_entities: entities.filter((e) => e.omeka_id == null).length };
+        literal_entities: entities.filter((e) => e.omeka_id == null).length,
+        // Records with neighbours, low-signal ones (none by design) and ones the vector build predates (#12).
+        semantic_neighbours: semanticCoverage(store) };
     });
     return textResult({ ...quality, refresh: refreshStatus() });
   });

@@ -276,3 +276,8 @@ test("without a full-text map, its tool and filter say so instead of answering e
   const item = await call("get_research_item", { id: 500 });
   assert.equal(item.full_text_map, undefined);
 });
+
+test("get_similar_items without semantic neighbours says so and points to find_related", async () => {
+  const error = errorOf(await raw("get_similar_items", { id: 500 }));
+  assert.deepEqual([error.code, error.suggested_tool], ["semantic_unavailable", "find_related"]);
+});

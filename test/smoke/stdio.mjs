@@ -152,6 +152,22 @@ if (top) {
     check(byColl.total_matches === top.item_count, `collection filter round-trips the count (${key})`);
   }
 }
+// #12: semantic neighbours from a verified corpus-vector release, cited by amira_url.
+const semanticQuality = (await call("get_data_quality", {})).semantic_neighbours;
+check(semanticQuality?.with_neighbours?.research_item > 0 && /^semantic-embeddings-v1-\d+$/.test(semanticQuality.release),
+  "semantic neighbours: a verified release covers research items");
+const similarSeed = (await call("search_research_items", { keyword: "music", limit: 20 })).results ?? [];
+let similar = null;
+for (const seed of similarSeed) {
+  similar = await call("get_similar_items", { id: seed.omeka_id, limit: 10 });
+  if (similar.count) break;
+}
+check(similar?.count > 0 && similar.results.every((r, i, all) => r.amira_url === `${AMIRA}${r.omeka_id}` && (i === 0 || all[i - 1].score >= r.score)),
+  "get_similar_items: neighbours ranked by score, each cited by amira_url");
+if (similar?.count) {
+  const media = await call("get_similar_items", { id: similar.source.omeka_id, types: ["podcast", "video"] });
+  check(media.results.every((r) => ["podcast", "video"].includes(r.type)), "get_similar_items: types filter honoured");
+}
 await call("search_persons", { keyword: "Beier", limit: 3 }, { expect: [AMIRA] });
 
 const person = await call("get_person", { name: "Ulli Beier" });
