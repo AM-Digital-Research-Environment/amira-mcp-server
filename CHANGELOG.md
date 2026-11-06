@@ -5,6 +5,58 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## [Unreleased]
+
+Similarity by meaning across the whole collection, collections cited by their
+project, and an explicit tier on every place.
+
+- **`get_similar_items`**, a new tool (#12, phase 1): the records whose
+  catalogue descriptions read most alike, across research items,
+  publications, videos, podcasts, projects and research sections, with cosine
+  scores and `amira_url`s. `types` narrows the answer exactly (the ten best of
+  each type are kept), `limit` goes up to 10, and a record without neighbours
+  says why: `low_signal` (too little own text, excluded by the producer) or
+  `not_in_release` (newer than the vector build). It needs the `structured`
+  exposure level, since the vectors encode subjects and places too, and joins
+  the `research` and `discovery` profiles. 35 core tools on stdio, 37 over
+  HTTP.
+- **Verified corpus vectors, neighbours only in the bundle.** The crawl
+  downloads the newest DRE Visualizations release
+  `semantic-embeddings-v1-<build>` (`AMIRA_SEMANTIC_RELEASE` pins a tag or
+  turns it `off`) and refuses it unless the model (`google/embeddinggemma-2`),
+  768 dimensions, float32-le, L2-normalised rows, row count, byte length and
+  SHA-256 all match its manifest. It then computes the neighbours of every
+  record in the snapshot and stores them as `semantic_neighbours.json`, never
+  the ~15 MB of vectors: no model and no vector at request time. Records
+  absent from the snapshot are dropped before ranking and again at load, so a
+  neighbour is always citable. The computation yields to the event loop, so a
+  live refresh keeps serving; when no release verifies, the neighbours
+  already served are kept. `get_data_quality` reports the release and its
+  coverage per type, `amira://dataset` names the space
+  (`amira:semantic_space`), and the release joins the snapshot id and the
+  rolling-release signature. The crawl steps in CI and in the release and
+  refresh workflows pass the read-only workflow token to list releases.
+- **Collections are projects** (#18). Every research project exists in Omeka
+  both as the project item and as the item set its records are filed in, and
+  the set page now redirects to the project. The crawl reads each set's
+  project (`dcterms:isPartOf`) and code (`dre:id`); older snapshots infer the
+  project from the set's members. `list_collections` lists one row per
+  project, cited by the project page, with `project_id`, `item_sets [{id,
+  code}]` and the IIIF collection link (`project` only when its name differs
+  from the set's title). The `collection` filter and `compare_collections`
+  take a project id, `dre:id`, item-set id or code and all resolve to the same
+  records. `get_research_item.collections`, export rows, the collection
+  record, entity-graph nodes, snapshot changes and the ILAM full-text map cite
+  the project page too. Membership follows each item's own project link, so
+  nothing depends on the per-project item sets staying public.
+- **`list_locations` rows carry `level`** (#3): `country` for a hierarchy root,
+  `place` for everything under it (a city, region, province or site). An
+  output field, not a filter, so stale connector schemas see it at once.
+- **Surface and size:** stdio `tools/list` 12,223 → 12,541 estimated tokens
+  (+2.6%); the `research` profile's ceiling moves from 10,450 to 10,700. The
+  neighbours add about 0.6 MB compressed to the bundle (7.46 MB in 1.32.0).
+  The token baseline is re-measured on the 6 November snapshot.
+
 ## 1.32.0 — 2026-11-04
 
 The ILAM journal *African Music* (item set 27724) beyond its metadata. Its full
