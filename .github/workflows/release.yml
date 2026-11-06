@@ -63,6 +63,8 @@ jobs:
           TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
         run: node scripts/release-guard.mjs
+      # The guard runs before npm ci on purpose (it needs no dependencies), so
+      # this job keeps its own setup-node; npm ci is the only shared step here.
       - run: npm ci
       - run: npm run audit
       - run: npm run lint
@@ -73,7 +75,7 @@ jobs:
       # published, so a failed build never leaves a bump behind.
       - name: Stamp CITATION.cff from the tag
         run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             node scripts/stamp-citation.mjs \
               --version "${GITHUB_REF_NAME#v}" \
               --date "$(date -u +%Y-%m-%d)"
@@ -94,17 +96,12 @@ jobs:
           # Read-only: lists DRE Visualizations' corpus-vector releases without
           # the anonymous API rate limit (sent to api.github.com only).
           GITHUB_TOKEN: ${{ github.token }}
-      # The single release gate: clean, typecheck, skills check, build + unit
-      # tests, stdio and HTTP smoke, response weight, manifest. Unit tests run
-      # here only, not in a separate step as well.
-      - name: Type-check, bundle, unit + smoke tests
-        run: npm run prepack-mcpb
-      # Reuses the bundle prepack-mcpb just built instead of `npm run
-      # test:live`, which would rebuild it a third time.
-      - name: Live API tests
-        run: node scripts/test.mjs live
-      - name: Pack .mcpb
-        run: node scripts/mcpb.mjs pack . amira-mcp-server.mcpb
+      # The single release gate, shared with refresh-data
+      # (.github/actions/verify-and-pack): typecheck, skills, unit and smoke
+      # tests, weight, manifest, live API tests, then the .mcpb, on the build
+      # fetch-data just made (no second build).
+      - name: Verify and pack
+        uses: ./.github/actions/verify-and-pack
       - name: Pack companion skill
         # Zip the skill with `amira-mcp/` at the archive root, so end users can
         # unzip it straight into their Claude skills dir (~/.claude/skills/).
@@ -116,7 +113,7 @@ jobs:
           docker build --build-arg SNAPSHOT_STAGE=bundled -t amira-mcp-release:ci .
           docker run -d --name amira-release -p 8787:8787 -e AMIRA_LIVE_REFRESH=0 amira-mcp-release:ci
           for attempt in $(seq 1 30); do
-            if curl --silent --fail http://127.0.0.1:8787/healthz; then break; fi
+            if curl --silent --fail --max-time 2 http://127.0.0.1:8787/healthz; then break; fi
             if [ "$attempt" = 30 ]; then docker logs amira-release; exit 1; fi
             sleep 1
           done

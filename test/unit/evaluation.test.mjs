@@ -1,8 +1,12 @@
 // Deterministic replay of the dated evaluation sets in test/evaluations/. Each
-// question has an oracle: the exact tool calls a careful model would make. The
-// replay runs only when the bundled data/ snapshot is the one the set was
-// verified on — the answers are facts about that snapshot, not invariants — and
-// skips otherwise (CI unit jobs use the fixture; release jobs crawl fresh data).
+// question has an oracle: the exact tool calls a careful model would make.
+//
+// Two kinds of answer. A COUNT is a fact about the snapshot the set was
+// verified on, so it is replayed only on that snapshot. An IDENTITY (which
+// record two repository ids name, a thesis adviser's authority, a person's GND
+// id, the institution an acronym denotes) holds on any crawl of the public
+// site, so it is replayed on every real snapshot: in the smoke job, the release
+// and the data refresh. Before this split every question skipped everywhere.
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
@@ -20,6 +24,9 @@ const SETS = {
   "amira-2026-10-06.xml": "2026-10-06T15:37:16.611Z",
   "publications.xml": "2026-09-09T08:12:42.277Z",
 };
+/** Questions (1-based) whose answer is an identity, not a count: replayed on any real crawl. */
+const IDENTITIES = { "amira-2026-10-06.xml": new Set([3, 5, 11, 12, 13, 14]) };
+const PUBLIC_API = "https://data.africamultiple.uni-bayreuth.de/api";
 
 function qaPairs(file) {
   const xml = fs.readFileSync(`${REPO_ROOT}/test/evaluations/${file}`, "utf8");
@@ -93,10 +100,14 @@ for (const [file, fetchedAt] of Object.entries(SETS)) {
   if (oracles) {
     test(`${file}: one oracle per question`, () => assert.equal(oracles.length, pairs.length));
   }
-  const skip = !snapshot ? "no bundled data/ snapshot"
-    : snapshot.fetchedAt !== fetchedAt ? `verified on the ${fetchedAt} snapshot; data/ holds ${snapshot.fetchedAt}`
-    : !oracles ? "no deterministic oracles for this set" : false;
+  // A real crawl of the public site, not the fixture (which CI writes to data/ for packaging).
+  const realCrawl = !!snapshot && snapshot.apiBase === PUBLIC_API && (snapshot.counts?.research_items ?? 0) >= 1000;
   pairs.forEach(({ question, answer }, i) => {
+    const identity = IDENTITIES[file]?.has(i + 1) ?? false;
+    const skip = !snapshot ? "no bundled data/ snapshot"
+      : !oracles ? "no deterministic oracles for this set"
+      : identity ? (realCrawl ? false : "an identity question needs a real crawl of the public site")
+      : snapshot.fetchedAt !== fetchedAt ? `a count verified on the ${fetchedAt} snapshot; data/ holds ${snapshot.fetchedAt}` : false;
     test(`${file} #${i + 1}: ${question.slice(0, 60)}…`, { skip }, async () => {
       assert.equal(await oracles[i](), answer);
     });

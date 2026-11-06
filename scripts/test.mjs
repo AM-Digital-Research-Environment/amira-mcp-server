@@ -1,5 +1,6 @@
-// Node 20 does not expand test globs. Enumerate files instead of depending on
-// the invoking shell (npm uses cmd.exe on Windows and sh on Unix).
+// Enumerate test files instead of depending on the invoking shell's globbing
+// (npm uses cmd.exe on Windows and sh on Unix), refuse an empty file list, and
+// apply one per-test timeout on every supported Node version (22+).
 //
 //   node scripts/test.mjs unit   test/unit/*.test.mjs (offline, fixture data)
 //   node scripts/test.mjs live   test/live/*.test.mjs (network: public Omeka API)

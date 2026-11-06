@@ -21,6 +21,7 @@ amira-mcp-skill.zip
 src/
 scripts/
 tsconfig.json
+tsconfig.views.json
 *.ts
 *.map
 

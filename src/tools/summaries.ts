@@ -16,7 +16,8 @@ import type {
   VideoRec,
 } from "../types.js";
 
-import { brief, refLabels, equalsCI, dateStatus } from "./matching.js";
+import { brief, creditLabel, refLabels, equalsCI, dateStatus, mediaTypes } from "./matching.js";
+export { mediaTypes } from "./matching.js";
 // --- entity summaries (search results) -----------------------------------------
 
 /** "1953" / "1950–1960" from an item's content-date year range. */
@@ -35,11 +36,6 @@ function capped(key: string, values: string[]): Record<string, unknown> {
     : { [key]: values };
 }
 
-/** Distinct MIME types of a record's media files. */
-export function mediaTypes(media: { type: string | null }[] | undefined): string[] {
-  return [...new Set((media ?? []).map((m) => m.type).filter((t): t is string => !!t))];
-}
-
 /** Search-result summary of a research item. */
 export function itemSummary(it: ResearchItemRec, store: DataStore): Record<string, unknown> {
   const project = store.projectOf(it);
@@ -56,7 +52,7 @@ export function itemSummary(it: ResearchItemRec, store: DataStore): Record<strin
           project: it.project?.label ?? null,
           project_omeka_id: project?.o_id ?? null,
           university: UNIVERSITY_LABELS[it.university],
-          ...capped("contributors", it.contributors.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`)),
+          ...capped("contributors", it.contributors.map(creditLabel)),
           ...capped("subjects", refLabels(it.subjects)),
           place: it.places[0]?.label ?? null,
         }
@@ -160,7 +156,7 @@ export function podcastSummary(p: PodcastRec): Record<string, unknown> {
     date: p.date,
     date_status: dateStatus(p.date),
     ...(allowStructured()
-      ? { series: p.series?.label ?? null, people: p.people.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`) }
+      ? { series: p.series?.label ?? null, people: p.people.map(creditLabel) }
       : {}),
     url: p.url,
     ...(p.duration ? { duration: p.duration } : {}),

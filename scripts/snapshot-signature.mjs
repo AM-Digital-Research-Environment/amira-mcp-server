@@ -8,10 +8,12 @@
 // old bundle until the Omeka data happened to change.
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { loadSnapshot } from "../server/lib.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-const out = await loadSnapshot("data");
+// Resolved from this file, like every other script, not from the working directory.
+const out = await loadSnapshot(fileURLToPath(new URL("../data", import.meta.url)));
 console.log(
   createHash("sha256")
     .update(`amira-mcp-server@${version}\n`)

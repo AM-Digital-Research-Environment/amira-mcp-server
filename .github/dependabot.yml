@@ -18,7 +18,8 @@ updates:
   # Workflows pin every action to a full commit SHA with a `# vX.Y.Z` comment;
   # Dependabot bumps the SHA and the comment together.
   - package-ecosystem: github-actions
-    directory: /
+    # The workflows, and the composite actions they share.
+    directories: ["/", "/.github/actions/*"]
     schedule:
       interval: monthly
     groups:

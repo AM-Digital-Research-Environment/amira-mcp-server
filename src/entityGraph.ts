@@ -8,6 +8,7 @@ import { itemSetUrl, itemUrl } from "./urls.js";
 import { collectionOfItemSet } from "./collections.js";
 import { snapshotId } from "./snapshotIdentity.js";
 import { canonicalTypedId } from "./typedIds.js";
+import { RECORD_KINDS, recordTitle } from "./recordKinds.js";
 
 export const entityTypes = ["person", "project", "section", "organisation", "location", "subject", "format", "language",
   "collection", "research_item", "publication", "journal", "podcast", "video", "playlist"] as const;
@@ -43,12 +44,11 @@ export function graphIndex(store: DataStore): GraphIndex {
         amira_url: id == null ? null : type === "collection" ? collectionUrl(id) : itemUrl(id), resolved: id != null && resolved });
       return key;
     };
-    for (const [type, rows] of [
-      ["person", store.persons], ["project", store.projects], ["section", store.sections],
-      ["organisation", store.organisations], ["location", store.locations], ["collection", store.itemSets],
-      ["research_item", store.items], ["publication", store.publications], ["journal", store.journals],
-      ["podcast", store.podcasts], ["video", store.videos], ["playlist", store.playlists],
-    ] as const) for (const row of rows) entity(type, "name" in row ? row.name : row.title, row.o_id);
+    // Subjects, languages and formats enter as they are referenced, resolved by type below.
+    for (const type of ["person", "project", "section", "organisation", "location", "collection", "research_item", "publication",
+      "journal", "podcast", "video", "playlist"] as const) {
+      for (const row of RECORD_KINDS[type].rows(store)) entity(type, recordTitle(row), row.o_id);
+    }
 
     const add = (source: string, type: EntityType, ref: LinkedRef, relation: string, evidence: Evidence, group?: Set<string>) => {
       if (!ref.label && ref.o_id == null) return;
@@ -125,7 +125,7 @@ export function resolveEntities(store: DataStore, query: string, type?: EntityTy
  * evidence page used to recompute every edge and its SHA-256 id (~120 ms on a
  * busy node such as a language). */
 export function entityEdges(store: DataStore, seed: string) {
-  return store.cachedRecent(`edges:${seed}`, () => computeEdges(store, seed));
+  return store.cachedRecent("edges", seed, () => computeEdges(store, seed));
 }
 
 function computeEdges(store: DataStore, seed: string) {

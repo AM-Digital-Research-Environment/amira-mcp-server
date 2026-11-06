@@ -26,11 +26,19 @@
 //     `deadline_exceeded` error instead of holding the client open.
 import type { RegisteredTool } from "@modelcontextprotocol/server";
 import { errorResult } from "./responses.js";
-import { dropSafeIntegerBounds, withJsonSchema, withoutSchemaText } from "../guidance.js";
+import { currentStore, ensureStore, withStore } from "../data.js";
+import { dropSafeIntegerBounds, dropSchemaNoise, withJsonSchema, withoutSchemaText } from "../guidance.js";
 
 /** How long one tool call may run before the client gets an error. Every
  * query runs on the in-memory snapshot; the slowest measured calls (text
- * passages over every full text, the largest graph) finish in under 2 s. */
+ * passages over every full text, the largest graph) finish in under 2 s.
+ *
+ * A timer cannot interrupt synchronous work: once a handler is past its
+ * awaits it runs to completion, and its result wins the race. The deadline
+ * therefore bounds the ASYNC part of a call (waiting for the first snapshot
+ * load, reading retained snapshots from disk), not a long computation. Heavy
+ * indexes are warmed when a store loads (src/data.ts), so requests do not pay
+ * for them. */
 export const CALL_DEADLINE_MS = 60_000;
 
 function withDeadline<T>(work: Promise<T>, ms: number, onTimeout: () => T): Promise<T> {
@@ -40,6 +48,13 @@ function withDeadline<T>(work: Promise<T>, ms: number, onTimeout: () => T): Prom
     timer.unref();
   });
   return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
+/** Run a handler bound to the snapshot being served when it starts, so a
+ * refresh that swaps the store mid-call cannot mix two snapshots' caches. */
+async function inStore<T>(fn: () => T): Promise<Awaited<T>> {
+  const store = currentStore() ?? await ensureStore();
+  return await withStore(store, fn);
 }
 
 function withoutStructured<T>(result: T): T {
@@ -113,7 +128,9 @@ export function applyToolPolicy(tools: ToolMap, allowed: ReadonlySet<string> | n
     const handler = tool.handler as (args: unknown, ctx: unknown) => unknown;
     const shape = (tool.inputSchema as unknown as { shape?: Shape } | undefined)?.shape;
     const keepStructured = Boolean(tool.outputSchema) || Boolean((tool._meta as { ui?: unknown } | undefined)?.ui);
-    const advertised = <S>(schema: S): S => withJsonSchema(guidance ? schema : withoutSchemaText(schema), dropSafeIntegerBounds);
+    // Memoised per tool: what a tool advertises is fixed for the process (given guidance).
+    const advertised = <S>(schema: S, side: "in" | "out"): S => withJsonSchema(guidance ? schema : withoutSchemaText(schema),
+      (json) => dropSchemaNoise(dropSafeIntegerBounds(json), { output: side === "out" }), `${name}:${guidance ? "g" : "-"}:${side}`);
     tool.update({
       callback: (async (args: unknown, ctx: unknown) => {
         const cleaned = cleanArgs(args, shape);
@@ -121,15 +138,15 @@ export function applyToolPolicy(tools: ToolMap, allowed: ReadonlySet<string> | n
           return withoutStructuredError(errorResult("invalid_argument", `\`${cleaned.emptyRequired}\` must not be empty.`));
         }
         const result = withoutStructuredError(
-          await withDeadline(Promise.resolve(handler(cleaned.args, ctx)), CALL_DEADLINE_MS, () =>
+          await withDeadline(inStore(() => handler(cleaned.args, ctx)), CALL_DEADLINE_MS, () =>
             errorResult("deadline_exceeded", `${name} did not answer within ${CALL_DEADLINE_MS / 1000} s; narrow the call and retry.`),
           ),
         );
         return keepStructured ? result : withoutStructured(result);
       }) as unknown as NonNullable<Parameters<RegisteredTool["update"]>[0]["callback"]>,
       ...(guidance && ALWAYS_LOAD.has(name) ? { _meta: { ...tool._meta, "anthropic/alwaysLoad": true } } : {}),
-      paramsSchema: advertised(tool.inputSchema),
-      ...(tool.outputSchema ? { outputSchema: advertised(tool.outputSchema) } : {}),
+      paramsSchema: advertised(tool.inputSchema, "in"),
+      ...(tool.outputSchema ? { outputSchema: advertised(tool.outputSchema, "out") } : {}),
     });
     if (!guidance) {
       // `update()` skips undefined values, so clearing takes an assignment.

@@ -5,6 +5,55 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+A refactoring pass after the 1.33 and 1.34 semantic work: shared code where
+copies had begun to disagree, less work and memory on the request path, a
+cheaper tool surface, and CI gates that actually run. No tool was added or
+renamed.
+
+- **Tool surface: about 1,000 fewer tokens per turn** (stdio 13,003 → 12,042,
+  HTTP 13,896 → 12,841) with every field still documented. `tools/list` no
+  longer repeats `$schema` (MCP reads a schema without one as 2020-12) or
+  `propertyNames: string`, and output schemas drop `additionalProperties:
+  false`; input schemas stay closed objects.
+- **Semantic results share one record shape** (`title`, `type`, `omeka_id`,
+  `amira_url`). `get_similar_items` and the `similar` block of the detail
+  tools no longer return `id`, which repeated `omeka_id` as a string.
+- **A typed id of the wrong kind names the right tool.** `get_podcast` with
+  `video:540` is still `not_found`, now with `suggested_tool: get_video` and a
+  message saying which kind the id is. All detail tools resolve ids through one
+  registry of record kinds (`src/recordKinds.ts`).
+- **Counts merge accent variants of unlinked values.** Facets keyed unlinked
+  labels by `toLowerCase`, so `list_categories formats` listed "Vidéo/MP4"
+  and "video/mp4" as two formats; every count now keys on the authority id or
+  the folded label, as `find_related` already did. On the real snapshot every
+  other `find_related`, `get_similar_items`, `get_semantic_map` and facet
+  answer checked is unchanged.
+- **Fixes:** `find_related entity_type=project` no longer matches the value
+  `undefined` against items without a project; `get_semantic_map` reports
+  `invalid_argument` like every other tool (it said `invalid_arguments`); the
+  record resource (`amira://record/…`) follows the tool profile.
+- **Faster and leaner.** The heavy indexes (record ids, semantic index,
+  full-text map, entity graph) are built when a snapshot loads, and on a live
+  refresh before the swap: the first `get_similar_items` call fell from 170 ms
+  to 10 ms. `get_snapshot_changes` diffs per-record fingerprints
+  (`fingerprints.json`, written with every snapshot) instead of keeping whole
+  retained snapshots in memory. A refresh parses the new snapshot once, not
+  three times. Each snapshot owns its folded-text cache. A server builds in
+  0.3 ms instead of 2.8 ms (the HTTP transport builds one per request).
+- **Tests and CI.** The real-bundle allowlist test now runs in CI (it skipped
+  in every lane), and the Windows packaging step fails when it should.
+  `weigh --check` fails when a probe stops being measured, and new probes
+  cover `find_related@record`, `get_semantic_map@group` and
+  `get_publication@fulltext+similar`. The evaluation set's identity questions
+  run on every real crawl. The refresh tests no longer download from GitHub
+  (`AMIRA_ENRICHMENT_BASE`, a test hook), and the unit suite went from 19 s to
+  8 s. The app views' scripts moved to `src/ui/views/`, where Biome lints them
+  and `npm run typecheck` checks them. CI reuses one crawl per week, and the
+  release and data refresh share their gate (`.github/actions/verify-and-pack`)
+  and no longer build twice.
+
 ## 1.34.0 — 2026-11-06
 
 The second phase of semantic discovery (#12): recommendations that say why,

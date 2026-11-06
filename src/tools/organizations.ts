@@ -1,3 +1,5 @@
+import { schemaOnce } from "./schemaOnce.js";
+import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore } from "../data.js";
@@ -21,7 +23,6 @@ import {
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
 import { anyContainsCI } from "../matching.js";
-import { stripTypedId } from "../typedIds.js";
 import { fold } from "../text.js";
 
 type PartnerCategoryKey = "amrc" | "privileged" | "cooperation" | "global";
@@ -186,11 +187,11 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       title: "List institutions",
       description: "Browse institution authorities by name or acronym (e.g. 'UJKZ'), with project counts and citation links.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("list_institutions:in", () => z.strictObject({
         keyword: z.string().max(1000).optional().describe("Name or acronym, partial"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();
@@ -230,18 +231,19 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       title: "Get institution detail",
       description: "Institution or group profile: identifiers, members, funded projects and credited items, with citation links.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("get_institution:in", () => z.strictObject({
         name: z.string().max(1000).optional().describe("Institution or group name, or an acronym"),
         id: z.union([z.string().max(64), z.number()]).optional().describe("Omeka id or typed id organisation:1224"),
-      }),
+      })),
     },
     async ({ name, id }) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_institution");
       if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
-      let record = id != null
-        ? store.getOrganisationByOId(Number(stripTypedId(String(id), ["organisation"])))
-        : store.getOrganisation(name!);
+      const byId = id != null ? recordArg(store, id, "organisation",
+        () => errorResult("not_found", `No institution or group with id '${id}'.`, { suggested_tool: "list_institutions" })) : undefined;
+      if (byId && "error" in byId) return byId.error;
+      let record = byId ? byId.record : store.getOrganisation(name!);
       // Not an exact name or recorded variant: accept whole words of one name,
       // so an acronym in parentheses ("LACC") resolves the way list_institutions
       // finds it. Several matches are named, never guessed between.
@@ -311,12 +313,12 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       title: "List cluster partner institutions",
       description: "Cluster partner institutions grouped by catalogue category, with citation links.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("list_cluster_partners:in", () => z.strictObject({
         category: z
           .string().max(1000)
           .optional()
           .describe("Optional: amrc | privileged | cooperation | global, or a category label"),
-      }),
+      })),
     },
     async ({ category }) => {
       const store = await ensureStore();
@@ -364,11 +366,11 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       title: "List groups",
       description: "Browse research groups and associations by name, with citation links.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("list_groups:in", () => z.strictObject({
         keyword: z.string().max(1000).optional().describe("Name or acronym, partial"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();

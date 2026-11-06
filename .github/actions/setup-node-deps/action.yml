@@ -1,0 +1,20 @@
+name: Set up Node and install dependencies
+description: >-
+  setup-node with the npm cache, then a clean `npm ci`. Every job that builds or
+  tests runs these two steps; the checkout stays in the caller, which needs it
+  before it can use this local action.
+inputs:
+  node-version:
+    description: Node version for actions/setup-node
+    required: true
+runs:
+  using: composite
+  steps:
+    # Pinned to a full commit SHA like every workflow action; Dependabot's
+    # github-actions ecosystem bumps it (.github/dependabot.yml lists this directory).
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+    - run: npm ci
+      shell: bash

@@ -34,7 +34,7 @@ import { MAP_VIEW } from "./map.js";
 import { OVERVIEW_VIEW } from "./overview.js";
 import { RELATED_VIEW } from "./related.js";
 import { SECTIONS_VIEW } from "./sections.js";
-import { BAR_CHART_JS, PICKER_JS, SELECTION_JS, SHELL_CSS, scopeCss, type AppView } from "./shell.js";
+import { BAR_CHART_JS, EVIDENCE_JS, PICKER_JS, SELECTION_JS, SHELL_CSS, scopeCss, type AppView } from "./shell.js";
 import { TIMELINE_VIEW } from "./timeline.js";
 import { VIEW_OF_TOOL } from "./viewContract.js";
 
@@ -74,15 +74,25 @@ window.amiraApp.onResult(function (payload) {
 });
 `;
 
-/** Shared helpers, then each view in its own scope, then the router. */
-export function viewsScript(): string {
+/** A view's script as written in src/ui/views/, without the `export { render }`
+ * that makes the file a module for its typecheck and lint. */
+function viewSource(view: AppView, read: (file: string) => string): string {
+  const source = read(view.file).replace(/\nexport \{ render \};\s*$/, "\n");
+  if (/^export /m.test(source)) throw new Error(`${view.file}: only the final \`export { render }\` is allowed`);
+  return view.prepare ? view.prepare(source) : source;
+}
+
+/** Shared helpers, then each view in its own scope, then the router. `read`
+ * returns a file of src/ui/views/ (scripts/build.mjs passes it). */
+export function viewsScript(read: (file: string) => string): string {
   return [
     PICKER_JS,
     BAR_CHART_JS,
     SELECTION_JS,
+    EVIDENCE_JS,
     "var amiraViews = {};",
     ...VIEWS.map((view) =>
-      `amiraViews[${JSON.stringify(view.name)}] = { title: ${JSON.stringify(view.title)}, render: (function () {\n${view.script}\nreturn render;\n})() };`),
+      `amiraViews[${JSON.stringify(view.name)}] = { title: ${JSON.stringify(view.title)}, render: (function () {\n${viewSource(view, read)}\nreturn render;\n})() };`),
     `var amiraViewOfTool = ${JSON.stringify(VIEW_OF_TOOL)};`,
     ROUTER_JS,
   ].join("\n");
@@ -120,8 +130,8 @@ export interface AppPage {
  * share globals (pickerLoad, selectionControls) and the tests read
  * `api.<member>` uses.
  */
-export function appPage(bridgeJs: string, minify: (js: string) => string = (js) => js): AppPage {
-  const script = `${bridgeJs}\n${minify(viewsScript())}`;
+export function appPage(bridgeJs: string, read: (file: string) => string, minify: (js: string) => string = (js) => js): AppPage {
+  const script = `${bridgeJs}\n${minify(viewsScript(read))}`;
   const compressed = gzipSync(script, { level: 9 });
   const css = SHELL_CSS + VIEWS.map((view) => scopeCss(`[data-view="${view.name}"]`, view.css)).join("");
   const html = `<!doctype html>

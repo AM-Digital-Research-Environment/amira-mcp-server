@@ -23,7 +23,9 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { DataStore } from "./data.js";
+import { RECORD_KINDS, recordTitle } from "./recordKinds.js";
 import type { SnapshotData } from "./types.js";
+import { itemUrl } from "./urls.js";
 
 /** Where the vectors come from, and the one space this server accepts. */
 export const SEMANTIC_SOURCE = {
@@ -333,22 +335,28 @@ async function clusterRows(v: Float32Array, dims: number, rows: { row: number; i
 
 export interface SemanticRecord { kind: SemanticKind; o_id: number; title: string }
 
+/** Every record of an embedded kind, by Omeka id: one shared object per
+ * record, built once per snapshot. Resolving through six per-kind lookups
+ * (and six closures) per call made the first semantic request take 170 ms. */
+function semanticRecords(store: DataStore): Map<number, SemanticRecord> {
+  return store.cached("semantic:records", () => {
+    const map = new Map<number, SemanticRecord>();
+    for (const kind of SEMANTIC_KINDS) {
+      for (const r of RECORD_KINDS[kind].rows(store)) if (!map.has(r.o_id)) map.set(r.o_id, { kind, o_id: r.o_id, title: recordTitle(r) });
+    }
+    return map;
+  });
+}
+
 /** A record of an embedded kind, by Omeka id (optionally restricted to `kinds`). */
 export function semanticRecord(store: DataStore, oId: number, kinds: readonly SemanticKind[] = SEMANTIC_KINDS): SemanticRecord | undefined {
-  const lookups: Record<SemanticKind, () => { o_id: number; title?: string; name?: string } | undefined> = {
-    research_item: () => store.getItem(String(oId)),
-    publication: () => store.getPublication(String(oId)),
-    video: () => store.getVideo(oId),
-    podcast: () => store.getPodcast(oId),
-    project: () => store.getProjectByOId(oId),
-    section: () => store.getSectionByOId(oId),
-  };
-  for (const kind of kinds) {
-    const rec = lookups[kind]();
-    if (rec && rec.o_id === oId) return { kind, o_id: rec.o_id, title: rec.title ?? rec.name ?? String(oId) };
-  }
-  return undefined;
+  const rec = semanticRecords(store).get(oId);
+  return rec && (kinds === SEMANTIC_KINDS || kinds.includes(rec.kind)) ? rec : undefined;
 }
+
+/** The one shape every semantic surface returns for a record: get_similar_items,
+ * the `similar` block, find_related's record pivot and the semantic map. */
+export const semanticRef = (r: SemanticRecord) => ({ title: r.title, type: r.kind, omeka_id: r.o_id, amira_url: itemUrl(r.o_id) });
 
 export interface SemanticIndex {
   source: SemanticNeighbours["source"];
@@ -386,6 +394,10 @@ export function semanticIndex(store: DataStore): SemanticIndex | null {
     return { source: semantic.source, lowSignal: new Set(semantic.low_signal), neighbours, groups, groupOf };
   });
 }
+
+/** The vector space a semantic answer comes from, so it can be cited. */
+export const semanticSpace = (index: SemanticIndex) =>
+  ({ release: index.source.tag, model: index.source.model, generated_at: index.source.generated_at });
 
 /** Coverage of the served snapshot, per record kind (get_data_quality, amira://dataset). */
 export function semanticCoverage(store: DataStore) {

@@ -1,3 +1,4 @@
+import { schemaOnce } from "./schemaOnce.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore } from "../data.js";
@@ -21,33 +22,16 @@ import { itemUrlOrNull } from "../urls.js";
 import { allCollections, collectionFields, itemsOfCollection } from "../collections.js";
 import { APP_UI_META } from "./apps.js";
 import { researchFilterError, researchFilters, selectResearchItems } from "../researchItemQuery.js";
-import { placeAliases } from "../matching.js";
+import { placeAliases, RefTally, refKey, type TallyRow } from "../matching.js";
 import { fold } from "../text.js";
 import { queryErrorResult } from "./responses.js";
 import { timelineSchema } from "./outputSchemas.js";
 
-interface RefCount {
-  label: string;
-  o_id: number | null;
-  count: number;
-}
-
-/** Count linked refs across items, deduping per item by ID or literal label. */
-function countRefs(items: ResearchItemRec[], pick: (it: ResearchItemRec) => LinkedRef[]): RefCount[] {
-  const counts = new Map<string, RefCount>();
-  for (const it of items) {
-    const seen = new Set<string>();
-    for (const ref of pick(it)) {
-      const key = ref.o_id != null ? `id:${ref.o_id}` : `label:${ref.label.toLowerCase()}`;
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      const rec = counts.get(key) ?? { label: ref.label, o_id: ref.o_id, count: 0 };
-      rec.count += 1;
-      if (rec.o_id == null && ref.o_id != null) rec.o_id = ref.o_id;
-      counts.set(key, rec);
-    }
-  }
-  return [...counts.values()].sort((a, b) => b.count - a.count);
+/** Count linked refs across items, each item once per value (src/matching.ts refKey). */
+function countRefs(items: ResearchItemRec[], pick: (it: ResearchItemRec) => LinkedRef[]): TallyRow[] {
+  const tally = new RefTally();
+  for (const it of items) tally.add(pick(it));
+  return tally.rows().sort((a, b) => b.count - a.count);
 }
 
 /** "Library of Congress Subject Headings" → "lcsh", "Tag" → "tag". */
@@ -73,12 +57,12 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       title: "List subjects",
       description: "Subject headings (LCSH or free tags) ranked by distinct research-item count. Feed a heading into search_research_items.subject.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("list_subjects:in", () => z.strictObject({
         keyword: z.string().max(1000).optional().describe("Substring filter on the subject heading"),
         vocabulary: z.enum(["lcsh", "tag"]).optional().describe("Only Library of Congress headings or only free tags"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();
@@ -112,7 +96,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       description: "Research places with coordinates and ancestor rollups. Two tiers: level \"country\" or \"place\" (city, region or site); one item counts under both. Feed a name into search_research_items.location.",
       annotations: READ_ONLY,
       _meta: APP_UI_META,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("list_locations:in", () => z.strictObject({
         filters: researchFilters.optional().describe("Research-item filters applied before place counts"),
         country: z.string().max(1000).optional().describe("One country, exact name or alias, plus its cities"),
         keyword: z.string().max(1000).optional().describe("Substring filter on the place name"),
@@ -120,7 +104,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
         bbox: z.array(z.number()).length(4).optional().describe("[west, south, east, north]"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();
@@ -130,7 +114,10 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       const limit = capLimit(args.limit, 50, 300);
       const offset = capOffset(args.offset);
 
-      interface PlaceCount extends RefCount {
+      interface PlaceCount {
+        label: string;
+        o_id: number | null;
+        count: number;
         country: string | null;
       }
       const selected = selectResearchItems(store, args.filters ?? {}).filtered;
@@ -145,13 +132,12 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
           for (let i = 0; i < chain.length; i++) {
             const { label, o_id: oId } = chain[i]!;
             const isCountry = i === chain.length - 1;
-            const key = oId == null ? `label:${label.toLowerCase()}` : `id:${oId}`;
+            const key = refKey(chain[i]!);
             if (seen.has(key)) continue;
             seen.add(key);
             // country filter keeps the country itself and any place under it.
             const rec = counts.get(key) ?? { label, o_id: oId, count: 0, country: isCountry ? null : root.label };
             rec.count += 1;
-            if (rec.o_id == null && oId != null) rec.o_id = oId;
             counts.set(key, rec);
           }
         }
@@ -222,11 +208,11 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       title: "List collections",
       description: "Research collections, one per project, ranked by research-item count and cited by the project page. Feed an id or code into search_research_items.collection.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("list_collections:in", () => z.strictObject({
         keyword: z.string().max(1000).optional().describe("Substring filter on the collection title, project name or code"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();
@@ -263,14 +249,14 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       title: "List a category facet",
       description: "Ranked formats, languages or resource types used by research items. Feed values into the corresponding search filters.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("list_categories:in", () => z.strictObject({
         category: z
           .enum(["formats", "genres", "languages", "resource_types"])
           .describe("'genres' is an alias of 'formats'. The former 'tags' facet is merged into subjects — use list_subjects"),
         keyword: z.string().max(1000).optional().describe("Substring filter on the value"),
         limit: z.number().int().min(1).optional().describe("Default 100, max 500"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();
@@ -283,7 +269,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       const offset = capOffset(args.offset);
 
       let ranked = store.cached(`facets:category:${category}`, () => {
-      let ranked: RefCount[];
+      let ranked: TallyRow[];
       if (category === "formats") {
         ranked = countRefs(store.items, (it) => [
           ...it.formats,
@@ -333,8 +319,8 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       _meta: APP_UI_META,
       description: "Research-item year/decade histogram with dated and undated counts. A date range counts in each spanned bucket. Supports shared item filters and pagination.",
       annotations: READ_ONLY,
-      outputSchema: timelineSchema,
-      inputSchema: z.strictObject({
+      outputSchema: schemaOnce("list_years:out", () => timelineSchema),
+      inputSchema: schemaOnce("list_years:in", () => z.strictObject({
         filters: researchFilters.optional().describe("Research-item filters applied before bucketing"),
         bucket: z.enum(["year", "decade"]).optional().describe("Default 'year'"),
         from: z.number().int().min(0).max(2200).optional().describe("Earliest year to report (inclusive)"),
@@ -342,7 +328,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
         sort: z.enum(["chronological", "count"]).optional().describe("Default 'chronological' (oldest first); 'count' ranks by item count"),
         limit: z.number().int().min(1).optional().describe("Default 200, max 500"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();

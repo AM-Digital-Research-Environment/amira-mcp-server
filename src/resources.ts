@@ -14,18 +14,19 @@
 // the stateless HTTP transport.
 import { ResourceNotFoundError, ResourceTemplate, type McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { ensureStore, UNIVERSITY_LABELS, type DataStore } from "./data.js";
+import { ensureStore, UNIVERSITY_LABELS, withStore, type DataStore } from "./data.js";
 import { allowDescriptive, allowStructured } from "./exposure.js";
 import { guidanceEnabled } from "./guidance.js";
 import { API_BASE, SITE_BASE } from "./config.js";
 import { snapshotId } from "./snapshotIdentity.js";
 import { itemUrl } from "./urls.js";
 import { collectionFields, collectionsOfItem, itemsOfCollection, resolveCollection } from "./collections.js";
-import { refLabels } from "./matching.js";
+import { creditLabel, mediaTypes, refLabels } from "./matching.js";
 import { researchFilterError, researchFilters, selectResearchItems } from "./researchItemQuery.js";
 import { abstractsOf, languagesOf, publicationFilterError, publicationFilters, selectPublications } from "./publicationQuery.js";
 import { publicationCitation } from "./publicationCitation.js";
 import { parseTypedId, type RecordKind } from "./typedIds.js";
+import { isStoredKind, RECORD_KINDS, type StoredKind } from "./recordKinds.js";
 import type { ToolMap } from "./tools/policy.js";
 import type { PublicationRec, ResearchItemRec } from "./types.js";
 
@@ -84,13 +85,13 @@ function itemRow(store: DataStore, it: ResearchItemRec): Record<string, unknown>
     year_min: it.year_min, year_max: it.year_max,
     ...(allowStructured() ? {
       project: it.project?.label ?? null, university: UNIVERSITY_LABELS[it.university],
-      contributors: it.contributors.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
+      contributors: it.contributors.map(creditLabel),
       subjects: refLabels(it.subjects), places: refLabels(it.places), languages: refLabels(it.languages),
       collections: collectionsOfItem(store, it).map((c) => c.title),
     } : {}),
     ...(allowDescriptive() ? { description: it.description, abstract: it.abstract } : {}),
     license: it.license, access_rights: it.access_rights,
-    has_media: it.has_media, media_types: [...new Set((it.media ?? []).map((m) => m.type).filter(Boolean))],
+    has_media: it.has_media, media_types: mediaTypes(it.media),
     created: it.created ?? null, modified: it.modified ?? null,
     amira_url: itemUrl(it.o_id),
   };
@@ -120,6 +121,10 @@ async function renderExport(uri: string, corpus: string, format: string, query: 
     throw new ResourceNotFoundError(uri, `Unknown export: ${corpus}/${format}`);
   }
   const store = await ensureStore();
+  return withStore(store, () => exportText(store, uri, corpus, format, query));
+}
+
+function exportText(store: DataStore, uri: string, corpus: string, format: string, query: string): { mimeType: string; text: string } {
   const filters = decodeFilters(query);
   if (corpus === "research_items") {
     const parsed = researchFilters.safeParse(filters);
@@ -147,17 +152,13 @@ async function renderExport(uri: string, corpus: string, format: string, query: 
   return { mimeType: MIME[format]!, text: records.map((p) => publicationCitation(p, format as "bibtex" | "ris").export).join(separator) + "\n" };
 }
 
-/** Which get_* tool renders each record kind, and how its id is passed. */
-const RECORD_TOOLS: Partial<Record<RecordKind, { tool: string; arg: (id: string) => Record<string, unknown> }>> = {
-  research_item: { tool: "get_research_item", arg: (id) => ({ id }) },
-  publication: { tool: "get_publication", arg: (id) => ({ id }) },
-  project: { tool: "get_project", arg: (id) => ({ id }) },
-  section: { tool: "get_research_section", arg: (id) => ({ id }) },
-  person: { tool: "get_person", arg: (id) => ({ id: Number(id) }) },
-  organisation: { tool: "get_institution", arg: (id) => ({ id }) },
-  podcast: { tool: "get_podcast", arg: (id) => ({ id }) },
-  video: { tool: "get_video", arg: (id) => ({ id }) },
-};
+/** Authority kinds without a detail tool, described from the snapshot. */
+const AUTHORITY_KINDS: readonly RecordKind[] = ["location", "subject", "collection", "journal", "playlist"];
+/** Kinds the record resource serves: those with a get_* tool (src/recordKinds.ts), then the authorities. */
+const RESOURCE_KINDS = [
+  ...(Object.keys(RECORD_KINDS) as StoredKind[]).filter((kind) => RECORD_KINDS[kind].detail),
+  ...AUTHORITY_KINDS,
+];
 
 /** Authority kinds without a detail tool, described from the snapshot. */
 function authorityRecord(store: DataStore, kind: RecordKind, oId: number): Record<string, unknown> | null | undefined {
@@ -236,15 +237,16 @@ const json = (uri: string, value: unknown) => ({
   contents: [{ uri, mimeType: "application/json", text: JSON.stringify(value) }],
 });
 
-export function registerDataResources(server: McpServer, tools: ToolMap, opts: { guidance?: boolean } = {}): void {
+export function registerDataResources(server: McpServer, tools: ToolMap,
+  opts: { guidance?: boolean; servedTools?: ReadonlySet<string> | null } = {}): void {
+  const servedTools = opts.servedTools ?? null;
   // AMIRA_GUIDANCE=off: no titles or descriptions (src/guidance.ts).
   const described = (title: string, description: string) => (opts.guidance ?? true ? { title, description } : {});
   server.registerResource(
     "amira-record",
     new ResourceTemplate("amira://record/{kind}/{id}", {
       list: undefined,
-      complete: { kind: (value) => ["research_item", "publication", "project", "section", "person", "organisation", "location",
-        "subject", "collection", "journal", "podcast", "video", "playlist"].filter((k) => k.startsWith(value)) },
+      complete: { kind: (value) => RESOURCE_KINDS.filter((k) => k.startsWith(value)) },
     }),
     {
       ...described("AMIRA record", "Any AMIRA record as citable JSON, e.g. amira://record/research_item/9902. Kinds follow resolve_entity ids."),
@@ -254,8 +256,10 @@ export function registerDataResources(server: McpServer, tools: ToolMap, opts: {
       const kindRaw = String(variables.kind ?? ""), id = String(variables.id ?? "");
       const parsed = parseTypedId(`${kindRaw}:${id}`);
       if (!parsed || !/^[1-9]\d*$/.test(parsed.key)) throw new ResourceNotFoundError(uri.href, `Unknown record ${kindRaw}/${id}.`);
-      const route = RECORD_TOOLS[parsed.kind];
-      const tool = route ? tools[route.tool] : undefined;
+      const route = isStoredKind(parsed.kind) ? RECORD_KINDS[parsed.kind].detail : undefined;
+      // A tool the profile removed serves no records either: the resource
+      // reflects the same surface as tools/list.
+      const tool = route && (!servedTools || servedTools.has(route.tool)) ? tools[route.tool] : undefined;
       if (route && tool) {
         const result = (await (tool.handler as (args: unknown, ctx: unknown) => Promise<{ isError?: boolean; content?: { type: string; text?: string }[] }>)(
           route.arg(parsed.key), {})) ?? {};

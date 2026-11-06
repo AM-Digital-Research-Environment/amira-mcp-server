@@ -1,3 +1,5 @@
+import { schemaOnce } from "./schemaOnce.js";
+import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore } from "../data.js";
@@ -17,7 +19,6 @@ import {
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
 import { APP_UI_META } from "./apps.js";
-import { stripTypedId } from "../typedIds.js";
 
 export function registerResearchSectionTools(server: Server, tools: ToolMap): void {
   // === list_research_sections ===============================================
@@ -29,7 +30,7 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
       _meta: APP_UI_META,
       description: "Cluster research sections, funding phases, project/item counts and citation links. Includes the external-collection grouping.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({}),
+      inputSchema: schemaOnce("list_research_sections:in", () => z.strictObject({})),
     },
     async () => {
       const store = await ensureStore();
@@ -52,22 +53,23 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
       title: "Get research section detail",
       description: "One research section's description, team and projects, each with its research-item count.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("get_research_section:in", () => z.strictObject({
         name: z.string().max(1000).optional().describe("Section name, e.g. 'Arts & Aesthetics'"),
         id: z.union([z.string().max(64), z.number()]).optional().describe("Section Omeka id or typed id section:218"),
-      }),
+      })),
     },
     async ({ name, id }) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_research_section");
       if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
-      const s = id != null ? store.getSectionByOId(Number(stripTypedId(String(id), ["section"]))) : store.getSection(name!);
-      if (!s) {
-        return errorResult("not_found", `No research section ${id != null ? `with id '${id}'` : `named '${name}'`}.`, {
-          suggested_tool: "list_research_sections",
-          available_values: store.sections.map((x) => x.name),
-        });
-      }
+      const notFound = () => errorResult("not_found", `No research section ${id != null ? `with id '${id}'` : `named '${name}'`}.`, {
+        suggested_tool: "list_research_sections",
+        available_values: store.sections.map((x) => x.name),
+      });
+      const found = id != null ? recordArg(store, id, "section", notFound) : undefined;
+      if (found && "error" in found) return found.error;
+      const s = found ? found.record : store.getSection(name!);
+      if (!s) return notFound();
       const projects = store.projectsOfSection(s);
       const itemCount = projects.reduce((acc, p) => acc + store.itemsForProject(p.o_id).length, 0);
 

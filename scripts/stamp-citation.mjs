@@ -9,9 +9,9 @@
 // this repository" button will happily render a stale version forever. So this
 // is stamped from the tag at release time instead of being maintained by hand.
 //
-// Two lines are rewritten by regex rather than round-tripping the YAML: this
-// repo has no YAML dependency, and a formatter reflowing the whole file to
-// normalise quoting would make every release diff unreadable.
+// Two lines are rewritten by regex rather than round-tripping the YAML: a YAML
+// serializer (the `yaml` devDependency the tests use) would reflow the whole
+// file and normalise quoting, which would make every release diff unreadable.
 //
 // Usage:
 //   node scripts/stamp-citation.mjs                    stamp from package.json + today (UTC)
@@ -37,7 +37,7 @@ const check = args.includes("--check");
 const version = flag("version") ?? JSON.parse(await readFile(PKG, "utf8")).version;
 const date = flag("date") ?? new Date().toISOString().slice(0, 10);
 
-if (!/^\d+\.\d+\.\d+/.test(version)) {
+if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)) {
   console.error(`stamp-citation: not a version: ${version}`);
   process.exit(2);
 }

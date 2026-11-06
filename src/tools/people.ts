@@ -1,3 +1,4 @@
+import { schemaOnce } from "./schemaOnce.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore } from "../data.js";
@@ -137,12 +138,12 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       title: "Search people",
       description: "Find canonical person authority records. Names accept either order and ignore accents. Use resolve_entity to disambiguate homonyms.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("search_persons:in", () => z.strictObject({
         keyword: z.string().max(1000).optional().describe("Matches the name, a name variant or an affiliation"),
         affiliation: z.string().max(1000).optional().describe("Matches the person's affiliations only"),
         limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();
@@ -174,14 +175,14 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       title: "Get person profile",
       description: "Person affiliations, identifiers, project and section roles, credited items, publications, podcasts, videos and collaborators. Lists cap at 50 with totals. Use id to disambiguate.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("get_person:in", () => z.strictObject({
         name: z
           .string().max(1000)
           .optional()
           .describe("Full name in either order, with or without accents: 'Beier, Ulli' and 'Ulli Beier' both resolve"),
         id: z.union([z.number().int().positive(), z.string().max(64)]).optional()
           .describe("Exact person Omeka id or typed id (person:123); required to disambiguate homonyms"),
-      }),
+      })),
     },
     async ({ name, id }) => {
       const store = await ensureStore();

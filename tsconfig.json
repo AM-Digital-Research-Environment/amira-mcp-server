@@ -15,5 +15,7 @@
     "declaration": false,
     "sourceMap": false
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  // The app views are browser scripts with their own check: tsconfig.views.json.
+  "exclude": ["src/ui/views"]
 }

@@ -1,20 +1,20 @@
+import { schemaOnce } from "./schemaOnce.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
-import * as path from "node:path";
-import { ensureStore, cacheSnapshotDir, refreshStatus, type DataStore } from "../data.js";
-import { config } from "../config.js";
+import { ensureStore, refreshStatus, } from "../data.js";
 import { allowFullText, allowStructured } from "../exposure.js";
-import { CORPORA, type CorpusName, type SnapshotData } from "../types.js";
+import { CORPORA, } from "../types.js";
 import { entityGraph, entityEdges, entitySchema, entityTypes, edgeSchema, evidenceSchema, graphIndex, resolveEntities } from "../entityGraph.js";
 import { researchFilterError, researchFilters, selectResearchItems } from "../researchItemQuery.js";
 import { foldCached, fold, foldedMatches } from "../text.js";
 import { APP_UI_META } from "./apps.js";
-import { assertSnapshotSource, snapshotId } from "../snapshotIdentity.js";
-import { loadSnapshot, readSnapshotPointer } from "../snapshot.js";
-import { itemUrl, itemSetUrl } from "../urls.js";
+import { snapshotId } from "../snapshotIdentity.js";
+import { retainedSnapshots, snapshotDiff } from "../snapshotHistory.js";
+import { itemUrl, } from "../urls.js";
 import { canonicalTypedId, parseTypedId, stripTypedId } from "../typedIds.js";
 import { itemsOfCollection, resolveCollection } from "../collections.js";
 import { semanticCoverage } from "../semantic.js";
+import { findRecord } from "../recordKinds.js";
 import { READ_ONLY, capLimit, capOffset, limitEcho, queryErrorResult, textResult, errorResult, exposureRestrictedResult, pageOf, type Server } from "./_shared.js";
 import { refreshSchema } from "./outputSchemas.js";
 import { personSuggestions } from "./people.js";
@@ -28,75 +28,14 @@ const counts = z.record(z.string(), z.number());
 /** Matches scanned per document; `scanned_matches_capped` says when it was hit. */
 const MATCH_CAP = 10_000;
 
-// --- retained snapshot history (get_snapshot_changes) -----------------------------
-
-type Loaded = { id: string; fetchedAt: string; data: SnapshotData };
-/** Loaded generations by directory + pointer state; reloading every retained
- * snapshot from disk on each call cost ~1 s even with nothing to compare. */
-let historyCache: { key: string; snapshots: Loaded[] } | null = null;
-const diffCache = new Map<string, { corpus: CorpusName; id: number; change: "added" | "updated" | "deleted"; title: string; amira_url: string }[]>();
-
-async function retainedSnapshots(store: DataStore): Promise<Loaded[]> {
-  const dir = cacheSnapshotDir();
-  const pointer = await readSnapshotPointer(dir).catch(() => null);
-  const generations = pointer ? [pointer.current, ...pointer.previous] : [];
-  const key = JSON.stringify([config.bundledDataDir, dir, generations, snapshotId(store.manifest)]);
-  if (historyCache?.key === key) return historyCache.snapshots;
-  const found = new Map<string, Loaded>();
-  // The served store is one of the snapshots; never reload it.
-  found.set(snapshotId(store.manifest), { id: snapshotId(store.manifest), fetchedAt: store.manifest.fetchedAt,
-    data: { persons: store.persons, organisations: store.organisations, locations: store.locations, projects: store.projects,
-      research_sections: store.sections, research_items: store.items, publications: store.publications, journals: store.journals,
-      podcasts: store.podcasts, videos: store.videos, playlists: store.playlists, languages: store.languageIndex.all,
-      item_sets: store.itemSets, subjects: store.subjects } });
-  // Without retained generations the only other candidate is the bundled
-  // snapshot, and it is the served one unless a refresh replaced it.
-  const directories = [...(store.source === "cache" ? [config.bundledDataDir] : []),
-    ...generations.map((g) => path.join(dir, "generations", g))];
-  for (const directory of directories) {
-    try {
-      const out = await loadSnapshot(directory);
-      assertSnapshotSource(out.manifest, config.apiBase);
-      const id = snapshotId(out.manifest);
-      if (!found.has(id)) found.set(id, { id, fetchedAt: out.manifest.fetchedAt, data: out.data });
-    } catch { /* Missing, invalid or cross-instance snapshots cannot participate. */ }
-  }
-  const snapshots = [...found.values()].sort((a, b) => b.fetchedAt.localeCompare(a.fetchedAt));
-  historyCache = { key, snapshots };
-  diffCache.clear();
-  return snapshots;
-}
-
-function snapshotDiff(before: Loaded, after: Loaded, corpora: readonly CorpusName[]) {
-  const key = `${before.id}:${after.id}:${corpora.join(",")}`;
-  const hit = diffCache.get(key);
-  if (hit) return hit;
-  const changes = [];
-  for (const corpus of corpora) {
-    const old = new Map((before.data[corpus] ?? []).map((r) => [r.o_id, r]));
-    const current = new Map((after.data[corpus] ?? []).map((r) => [r.o_id, r]));
-    for (const id of [...new Set([...old.keys(), ...current.keys()])].sort((a, b) => a - b)) {
-      const prev = old.get(id), next = current.get(id), rec = next ?? prev!;
-      const change = !prev ? "added" as const : !next ? "deleted" as const : JSON.stringify(prev) !== JSON.stringify(next) ? "updated" as const : null;
-      // A collection item set is cited by its project page (#18); the set page redirects there.
-      const setProject = corpus === "item_sets" && "project" in rec ? rec.project?.o_id : undefined;
-      if (change) changes.push({ corpus, id, change, title: "name" in rec ? rec.name : rec.title,
-        amira_url: corpus !== "item_sets" ? itemUrl(id) : setProject != null ? itemUrl(setProject) : itemSetUrl(id) });
-    }
-  }
-  diffCache.set(key, changes);
-  if (diffCache.size > 16) diffCache.delete(diffCache.keys().next().value!);
-  return changes;
-}
-
 export function registerResearchTools(server: Server, tools: ToolMap): void {
   tools.resolve_entity = server.registerTool("resolve_entity", {
     title: "Resolve an entity", annotations: READ_ONLY,
     description: "Resolve a label or typed ID to cited candidates. Returns ambiguity instead of merging names. Use a returned id with get_entity_graph or get_* tools.",
-    inputSchema: z.strictObject({ query: querySchema, type: z.enum(entityTypes).optional(),
-      limit: z.number().int().min(1).optional(), offset: offsetSchema }),
-    outputSchema: z.object({ ...pageShape, results: z.array(entitySchema), ambiguous: z.boolean(), snapshot_id: z.string(),
-      suggestions: z.array(z.object({ id: z.string(), name: z.string(), amira_url: z.string() })).optional(), hint: z.string().optional() }),
+    inputSchema: schemaOnce("resolve_entity:in", () => z.strictObject({ query: querySchema, type: z.enum(entityTypes).optional(),
+      limit: z.number().int().min(1).optional(), offset: offsetSchema })),
+    outputSchema: schemaOnce("resolve_entity:out", () => z.object({ ...pageShape, results: z.array(entitySchema), ambiguous: z.boolean(), snapshot_id: z.string(),
+      suggestions: z.array(z.object({ id: z.string(), name: z.string(), amira_url: z.string() })).optional(), hint: z.string().optional() })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "resolve_entity");
     const store = await ensureStore();
@@ -114,17 +53,17 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     title: "Explore an entity graph", annotations: READ_ONLY,
     _meta: APP_UI_META,
     description: "One-hop graph from a typed ID: explicit catalogue links and derived co-occurrence with distinct-record counts and cited evidence. types filters neighbours before the bounds. Pass edge_id to page its evidence; pin snapshot_id across pages.",
-    inputSchema: z.strictObject({ seed: z.string().min(1).max(256), max_nodes: z.number().int().min(2).optional().describe("Default 40, max 100"),
+    inputSchema: schemaOnce("get_entity_graph:in", () => z.strictObject({ seed: z.string().min(1).max(256), max_nodes: z.number().int().min(2).optional().describe("Default 40, max 100"),
       max_edges: z.number().int().min(1).optional().describe("Default 50, max 200"),
       types: z.array(z.enum(entityTypes)).min(1).max(entityTypes.length).optional(),
       edge_id: z.string().max(64).optional(), snapshot_id: z.string().max(64).optional(), offset: offsetSchema,
-      limit: z.number().int().min(1).optional().describe("Evidence page size, default 20, max 50") }),
-    outputSchema: z.object({ snapshot_id: z.string(), seed: z.string(), nodes: z.array(entitySchema).optional(), edges: z.array(edgeSchema).optional(),
+      limit: z.number().int().min(1).optional().describe("Evidence page size, default 20, max 50") })),
+    outputSchema: schemaOnce("get_entity_graph:out", () => z.object({ snapshot_id: z.string(), seed: z.string(), nodes: z.array(entitySchema).optional(), edges: z.array(edgeSchema).optional(),
       total_edges: z.number().optional(), truncated: z.boolean().optional(), bounds: z.object({ max_nodes: z.number(), max_edges: z.number(), hops: z.number() }).optional(),
       neighbour_types: z.record(z.string(), z.number()).optional(), types: z.array(z.string()).optional(),
       results: z.array(evidenceSchema).optional(), count: z.number().optional(), total_matches: z.number().optional(), offset: z.number().optional(),
       has_more: z.boolean().optional(), next_offset: z.number().optional(), requested_limit: z.number().optional(), effective_limit: z.number().optional(),
-      response_limited: z.boolean().optional() }),
+      response_limited: z.boolean().optional() })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_entity_graph");
     const store = await ensureStore();
@@ -147,12 +86,12 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
   tools.get_text_passages = server.registerTool("get_text_passages", {
     title: "Find cited text passages", annotations: READ_ONLY,
     description: "Find literal accent-insensitive keyword passages in selected publication/video/podcast IDs. Original UTF-16 offsets, bounded context, and citations. Requires full text exposure; no semantic ranking.",
-    inputSchema: z.strictObject({ ids: z.array(z.string().max(64)).min(1).max(10).describe("publication:, video: or podcast: ids"),
+    inputSchema: schemaOnce("get_text_passages:in", () => z.strictObject({ ids: z.array(z.string().max(64)).min(1).max(10).describe("publication:, video: or podcast: ids"),
       keyword: querySchema, radius: z.number().int().min(20).max(500).optional(), offset: offsetSchema,
-      limit: z.number().int().min(1).optional().describe("Default 10, max 20") }),
-    outputSchema: z.object({ ...pageShape, results: z.array(z.object({ id: z.string(), title: z.string(), amira_url: z.string(),
+      limit: z.number().int().min(1).optional().describe("Default 10, max 20") })),
+    outputSchema: schemaOnce("get_text_passages:out", () => z.object({ ...pageShape, results: z.array(z.object({ id: z.string(), title: z.string(), amira_url: z.string(),
       start: z.number(), end: z.number(), match_start: z.number(), match_end: z.number(), text: z.string() })),
-      snapshot_id: z.string(), scanned_matches_capped: z.boolean(), unavailable_ids: z.array(z.string()) }),
+      snapshot_id: z.string(), scanned_matches_capped: z.boolean(), unavailable_ids: z.array(z.string()) })),
   }, async (args) => {
     if (!allowFullText()) return exposureRestrictedResult("full", "get_text_passages");
     const store = await ensureStore();
@@ -167,9 +106,8 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     let capped = false;
     for (const raw of new Set(args.ids)) {
       const parsed = parseTypedId(raw);
-      const rec = parsed?.kind === "publication" ? store.getPublication(parsed.key)
-        : parsed?.kind === "video" ? store.getVideo(Number(parsed.key))
-        : parsed?.kind === "podcast" ? store.getPodcast(Number(parsed.key)) : undefined;
+      const rec = parsed && (parsed.kind === "publication" || parsed.kind === "video" || parsed.kind === "podcast")
+        ? findRecord(store, parsed.kind, parsed.key) : undefined;
       const text = rec && ("fulltext" in rec ? rec.fulltext : rec.transcript);
       if (!text || !rec || !parsed) { unavailable.push(raw); continue; }
       const id = `${parsed.kind}:${parsed.key}`;
@@ -200,11 +138,11 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
   tools.compare_collections = server.registerTool("compare_collections", {
     title: "Compare project collections", annotations: READ_ONLY,
     description: "Compare 2–4 projects or collections (id or code from list_collections) with identical research-item filters. Reports denominators, missingness, dates and top types/languages.",
-    inputSchema: z.strictObject({ cohorts: z.array(z.strictObject({ type: z.enum(["project", "collection"]), id: z.string().min(1).max(256) })).min(2).max(4),
-      filters: researchFilters.optional() }),
-    outputSchema: z.object({ snapshot_id: z.string(), overlap_note: z.string(), cohorts: z.array(z.object({ type: z.string(), id: z.number(), name: z.string(),
+    inputSchema: schemaOnce("compare_collections:in", () => z.strictObject({ cohorts: z.array(z.strictObject({ type: z.enum(["project", "collection"]), id: z.string().min(1).max(256) })).min(2).max(4),
+      filters: researchFilters.optional() })),
+    outputSchema: schemaOnce("compare_collections:out", () => z.object({ snapshot_id: z.string(), overlap_note: z.string(), cohorts: z.array(z.object({ type: z.string(), id: z.number(), name: z.string(),
       amira_url: z.string(), total_items: z.number(), matched_items: z.number(), missing: counts, resource_types: counts, languages: counts,
-      date_range: z.object({ earliest: z.number(), latest: z.number() }).nullable() })) }),
+      date_range: z.object({ earliest: z.number(), latest: z.number() }).nullable() })) })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "compare_collections");
     const store = await ensureStore();
@@ -245,10 +183,10 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
   tools.get_data_quality = server.registerTool("get_data_quality", {
     title: "Inspect data coverage", annotations: READ_ONLY,
     description: "Snapshot coverage and missing metadata, unresolved loaded-authority links, semantic-neighbour coverage and sanitized refresh status. Missing catalogue metadata is not evidence of real-world absence.",
-    inputSchema: z.strictObject({}),
-    outputSchema: z.object({ snapshot_id: z.string(), fetched_at: z.string(), schema_version: z.number(), counts, missing: counts,
+    inputSchema: schemaOnce("get_data_quality:in", () => z.strictObject({})),
+    outputSchema: schemaOnce("get_data_quality:out", () => z.object({ snapshot_id: z.string(), fetched_at: z.string(), schema_version: z.number(), counts, missing: counts,
       unresolved_entities: z.number(), literal_entities: z.number(), refresh: refreshSchema,
-      semantic_neighbours: z.record(z.string(), z.unknown()).nullable() }),
+      semantic_neighbours: z.record(z.string(), z.unknown()).nullable() })),
   }, async () => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_data_quality");
     const store = await ensureStore();
@@ -274,13 +212,13 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
   tools.get_snapshot_changes = server.registerTool("get_snapshot_changes", {
     title: "Compare retained snapshots", annotations: READ_ONLY,
     description: "Page added/updated/deleted records between retained snapshots from this Omeka instance. Lists available snapshot IDs when fewer than two exist. For recent additions without history, use added_since on the search tools.",
-    inputSchema: z.strictObject({ from_id: z.string().max(64).optional(), to_id: z.string().max(64).optional(),
-      corpus: z.enum(CORPORA).optional(), offset: offsetSchema, limit: z.number().int().min(1).optional().describe("Default 30, max 100") }),
-    outputSchema: z.object({ status: z.enum(["ready", "history_unavailable"]), snapshots: z.array(z.object({ id: z.string(), fetched_at: z.string() })),
+    inputSchema: schemaOnce("get_snapshot_changes:in", () => z.strictObject({ from_id: z.string().max(64).optional(), to_id: z.string().max(64).optional(),
+      corpus: z.enum(CORPORA).optional(), offset: offsetSchema, limit: z.number().int().min(1).optional().describe("Default 30, max 100") })),
+    outputSchema: schemaOnce("get_snapshot_changes:out", () => z.object({ status: z.enum(["ready", "history_unavailable"]), snapshots: z.array(z.object({ id: z.string(), fetched_at: z.string() })),
       from_id: z.string().optional(), to_id: z.string().optional(), results: z.array(z.object({ corpus: z.string(), id: z.number(),
         change: z.enum(["added", "updated", "deleted"]), title: z.string(), amira_url: z.string() })).optional(),
       count: z.number().optional(), total_matches: z.number().optional(), offset: z.number().optional(), has_more: z.boolean().optional(), next_offset: z.number().optional(),
-      requested_limit: z.number().optional(), effective_limit: z.number().optional(), response_limited: z.boolean().optional() }),
+      requested_limit: z.number().optional(), effective_limit: z.number().optional(), response_limited: z.boolean().optional() })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_snapshot_changes");
     const store = await ensureStore();

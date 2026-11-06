@@ -116,18 +116,60 @@ export function dropSafeIntegerBounds(json: unknown): unknown {
   return out;
 }
 
+/**
+ * Drop JSON Schema text that constrains nothing a model or client needs, about
+ * a thousand tokens per turn over the full surface:
+ *  - `$schema` (49 copies): MCP reads a schema without one as 2020-12, the
+ *    dialect zod writes;
+ *  - `propertyNames: {type: "string"}`: every JSON object key is a string;
+ *  - on OUTPUT schemas, `additionalProperties: false`: it constrains the
+ *    server, and a client validating a result gains nothing from it. Input
+ *    schemas keep it: it tells the model that no other argument exists.
+ * Validation is unchanged: the SDK still parses with the zod schema.
+ */
+export function dropSchemaNoise(json: unknown, opts: { output?: boolean } = {}): unknown {
+  if (Array.isArray(json)) return json.map((v) => dropSchemaNoise(v, opts));
+  if (!json || typeof json !== "object") return json;
+  const out: Json = {};
+  for (const [key, value] of Object.entries(json as Json)) {
+    if (key === "$schema") continue;
+    if (key === "propertyNames" && isStringType(value)) continue;
+    if (opts.output && key === "additionalProperties" && value === false) continue;
+    out[key] = dropSchemaNoise(value, opts);
+  }
+  return out;
+}
+const isStringType = (v: unknown): boolean =>
+  !!v && typeof v === "object" && Object.keys(v).length === 1 && (v as Json).type === "string";
+
+/** Advertised JSON per (tool, guidance, direction, target): the surface is fixed
+ * for the process, and the HTTP transport builds a server per request, so each
+ * `tools/list` re-converted every schema (9 ms) without this. */
+const advertisedJson = new Map<string, Json>();
+
 /** The same Standard Schema advertising `transform(jsonSchema)`; validation is
- * the original schema's (see withoutSchemaText). */
-export function withJsonSchema<T>(schema: T, transform: (json: unknown) => unknown): T {
+ * the original schema's (see withoutSchemaText). With `memoKey`, the result is
+ * computed once per process for that key. */
+export function withJsonSchema<T>(schema: T, transform: (json: unknown) => unknown, memoKey?: string): T {
   const std = (schema as unknown as StandardWithJson | undefined)?.["~standard"];
   if (!std?.jsonSchema) return schema;
   const { input, output } = std.jsonSchema;
+  const memo = (side: string, opts: { target: string }, build: () => Json): Json => {
+    if (!memoKey) return build();
+    const key = `${memoKey}:${side}:${opts.target}`;
+    let json = advertisedJson.get(key);
+    if (!json) {
+      json = build();
+      advertisedJson.set(key, json);
+    }
+    return json;
+  };
   return {
     "~standard": {
       ...std,
       jsonSchema: {
-        input: (opts: { target: string }) => transform(input(opts)) as Json,
-        output: (opts: { target: string }) => transform(output(opts)) as Json,
+        input: (opts: { target: string }) => memo("input", opts, () => transform(input(opts)) as Json),
+        output: (opts: { target: string }) => memo("output", opts, () => transform(output(opts)) as Json),
       },
     },
   } as unknown as T;

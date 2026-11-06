@@ -82,12 +82,25 @@ const seen = new Map(withSchema.map((t) => [t.name, { valid: 0, validAtFull: 0, 
 test("every declared outputSchema is draft 2020-12 and has representative arguments here", () => {
   assert.ok(withSchema.length >= 11, `expected the 11 schema-carrying tools, saw ${withSchema.map((t) => t.name)}`);
   for (const tool of withSchema) {
-    assert.equal(tool.outputSchema.$schema, "https://json-schema.org/draft/2020-12/schema", tool.name);
+    // No `$schema`: MCP reads a schema without one as 2020-12, the dialect ajv
+    // compiles it as here, and 49 copies of the URI cost ~700 tokens a turn.
+    assert.equal(tool.outputSchema.$schema, undefined, tool.name);
     assert.equal(tool.outputSchema.type, "object", tool.name);
     assert.ok(CASES[tool.name], `${tool.name} declares an outputSchema but output-schemas.test.mjs has no CASES entry for it`);
   }
   // A stale entry here (a tool lost its schema or was renamed) is a test bug too.
   for (const name of Object.keys(CASES)) assert.ok(validators.has(name), `CASES.${name} names no schema-carrying tool`);
+});
+
+test("tools/list carries no schema noise, and every input stays closed to unknown arguments", () => {
+  const listed = JSON.stringify(tools);
+  assert.ok(!listed.includes('"$schema"'), "no $schema anywhere");
+  assert.ok(!listed.includes('"propertyNames":{"type":"string"}'), "no propertyNames: string");
+  for (const tool of tools) {
+    // The input keeps additionalProperties: false — it tells the model no other argument exists.
+    assert.equal(tool.inputSchema.additionalProperties, false, `${tool.name}: input is a closed object`);
+    assert.ok(!JSON.stringify(tool.outputSchema ?? {}).includes('"additionalProperties":false'), `${tool.name}: output schema not closed`);
+  }
 });
 
 test("the compiled validators are not vacuous", () => {

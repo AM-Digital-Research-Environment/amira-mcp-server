@@ -29,7 +29,7 @@ export const READ_ONLY = {
  * of trusting every future snapshot; the IWAC server does the same.
  */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is this regex's purpose
-const STRIP_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/gu;
+const STRIP_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uE000-\uF8FF\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/gu;
 
 /** A copy of `value` with STRIP_CHARS removed from every string it holds. */
 export function scrub<T>(value: T): T {

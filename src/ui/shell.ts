@@ -97,7 +97,10 @@ export interface AppView {
   /** Document title while the view is shown. */
   title: string;
   css: string;
-  script: string;
+  /** Its script, in src/ui/views/ (read by scripts/build.mjs, typechecked by tsconfig.views.json). */
+  file: string;
+  /** A build-time edit of the script (the map view injects its outline). */
+  prepare?: (source: string) => string;
 }
 
 /**
@@ -221,6 +224,26 @@ function pickerMount(p, load, shown) {
     el.replaceWith(next);
     pickerSettle(next);
   });
+}
+`;
+
+/**
+ * A page of records behind a mark (a graph edge, a place, a span of years):
+ * heading, numbered list, "Next records". Three views wrote this out by hand.
+ * `heading` is markup (escape data in it); `item` renders one record's markup.
+ */
+export const EVIDENCE_JS = String.raw`
+function citationLink(r) {
+  var esc = window.amiraApp.esc;
+  return '<a data-citation href="' + esc(r.amira_url) + '">' + esc(r.title) + '</a>';
+}
+function evidenceList(target, heading, data, item, moreId, onMore) {
+  target.innerHTML = '<h2 tabindex="-1">' + heading + '</h2><ol start="' + (data.offset + 1) + '">' +
+    data.results.map(function (r) { return '<li>' + item(r) + '</li>'; }).join('') + '</ol>' +
+    (data.has_more ? '<button id="' + moreId + '">Next records</button>' : '');
+  target.querySelector('h2').focus();
+  var more = document.getElementById(moreId);
+  if (more) more.onclick = function () { onMore(data.next_offset); };
 }
 `;
 

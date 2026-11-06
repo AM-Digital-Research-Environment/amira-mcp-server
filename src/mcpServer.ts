@@ -4,12 +4,18 @@
 // and the tool surface differ: HTTP additionally registers the OpenAI-compatible
 // `search`/`fetch` tools for ChatGPT.
 import { McpServer, SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/server";
-import { resolveToolProfile, type ToolProfile } from "./toolProfiles.js";
+import { allowedTools, resolveToolProfile, type ToolProfile } from "./toolProfiles.js";
 import { registerTools } from "./tools/register.js";
 import { registerPrompts } from "./prompts.js";
 import { registerDataResources } from "./resources.js";
 import { registerSkills, skillsEnabled } from "./skills.js";
 import { guidanceEnabled } from "./guidance.js";
+import { setStoreWarmup } from "./data.js";
+import { warmIndexes } from "./warm.js";
+
+// Every entry point that serves builds its server here, so this is where the
+// store learns how to warm its indexes (src/warm.ts).
+setStoreWarmup(warmIndexes);
 
 export const VERSION = typeof __SERVER_VERSION__ !== "undefined" ? __SERVER_VERSION__ : "dev";
 
@@ -156,7 +162,7 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
   );
   const tools = registerTools(server, opts.profile ?? resolveToolProfile(), { openai: opts.openai, guidance });
   if (guidance) registerPrompts(server);
-  registerDataResources(server, tools, { guidance });
+  registerDataResources(server, tools, { guidance, servedTools: allowedTools(opts.profile ?? resolveToolProfile()) });
   // SEP-2640: the SDK extension declares its capability as it attaches, so a
   // host never sees the capability without `skills/list` behind it.
   if (skills) registerSkills(server);

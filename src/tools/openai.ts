@@ -1,5 +1,3 @@
-import type { ToolMap } from "./policy.js";
-import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
 // OpenAI / ChatGPT compatibility tools: `search` and `fetch`.
 //
 // ChatGPT's Deep Research + connector contract calls exactly two tools, with
@@ -9,21 +7,26 @@ import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
 // Both must return `structuredContent` alongside the JSON content array — which
 // our `textResult` helper already does. These adapters sit OVER the same
 // in-memory store the rich tools use; they are registered only on the remote
-// HTTP transport (src/http.ts), so the stdio .mcpb keeps its 34-tool surface.
+// HTTP transport (src/http.ts), so the stdio .mcpb keeps its smaller surface.
 //
 // `id` is typed as `<kind>:<omeka_o_id>` (item:9902, pub:30001, video:39218,
 // podcast:39121, project:37700, section:218) so fetch can route back and a
 // human can reconstruct the Omeka URL from the final number. fetch also accepts
 // the research tools' vocabulary (research_item:9902, publication:30001).
+import { schemaOnce } from "./schemaOnce.js";
 import { z } from "zod";
+import type { ToolMap } from "./policy.js";
+import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import type { DataStore } from "../data.js";
 import { allowDescriptive, allowStructured } from "../exposure.js";
 import { guidanceEnabled } from "../guidance.js";
 import {
   READ_ONLY,
+  capLimit,
   capText,
   CHARACTER_LIMIT,
+  creditLabel,
   dateStatus,
   refLabels,
   textResult,
@@ -35,6 +38,7 @@ import {
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
 import { parseTypedId } from "../typedIds.js";
+import { findRecord, type RecordTypes } from "../recordKinds.js";
 import { limitEcho } from "./pagination.js";
 
 const DEFAULT_SEARCH_LIMIT = 10;
@@ -104,23 +108,13 @@ interface FetchOpts {
   fulltextMaxChars?: number;
 }
 
-/** The adapter's own id prefixes for each record kind fetch can render. */
-const FETCH_KINDS: Record<string, string> = {
-  research_item: "item", publication: "pub", video: "video", podcast: "podcast", project: "project", section: "section",
-};
+/** What a fetch renderer reads besides its record. */
+interface FetchCtx { store: DataStore; id: string; opts: FetchOpts; desc: boolean; struct: boolean }
+type FetchKind = "research_item" | "publication" | "video" | "podcast" | "project" | "section";
 
-function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string, unknown> {
-  const parsed = parseTypedId(id);
-  const kind = parsed ? FETCH_KINDS[parsed.kind] ?? parsed.kind : id;
-  const key = parsed?.key ?? "";
-  const notFound = { error: { code: "not_found", message: `No record with id '${id}'.`, ...(guidanceEnabled() ? { suggested_tool: "search" } : {}) } };
-
-  const desc = allowDescriptive();
-  const struct = allowStructured();
-
-  if (kind === "item") {
-    const it = store.getItem(key);
-    if (!it) return notFound;
+/** One renderer per kind `fetch` serves; the id's kind (src/recordKinds.ts) picks it. */
+const FETCH_RENDERERS: { [K in FetchKind]: (rec: RecordTypes[K], ctx: FetchCtx) => Record<string, unknown> } = {
+  research_item: (it, { store, id, opts, desc, struct }) => {
     const project = store.projectOf(it);
     const text = joinLines(
       `Title: ${it.title}`,
@@ -130,7 +124,7 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
       struct && `University: ${UNIVERSITY_LABELS[it.university]}`,
       struct && (project ? `Project: ${project.name}` : it.project ? `Project: ${it.project.label}` : null),
       struct && it.contributors.length
-        ? `Contributors: ${it.contributors.map((c) => (c.role ? `${c.name} (${c.role})` : c.name)).join("; ")}`
+        ? `Contributors: ${it.contributors.map(creditLabel).join("; ")}`
         : null,
       yearLabel(it) ? `Date: ${yearLabel(it)}` : null,
       struct && it.subjects.length ? `Subjects: ${refLabels(it.subjects).join("; ")}` : null,
@@ -167,11 +161,9 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         truncated: truncated || undefined,
       }),
     };
-  }
+  },
 
-  if (kind === "pub") {
-    const p = store.getPublication(key);
-    if (!p) return notFound;
+  publication: (p, { id, opts, desc, struct }) => {
     const cite = [p.volume && `Vol. ${p.volume}`, p.issue && `No. ${p.issue}`, p.pages && `pp. ${p.pages}`]
       .filter(Boolean)
       .join(", ");
@@ -223,11 +215,9 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         truncated: truncated || undefined,
       }),
     };
-  }
+  },
 
-  if (kind === "video") {
-    const v = store.getVideo(Number(key));
-    if (!v) return notFound;
+  video: (v, { id, opts, desc, struct }) => {
     const { body, truncated, meta: tw } = docBody(
       [
         `Title: ${v.title}`,
@@ -263,11 +253,9 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         truncated: truncated || undefined,
       }),
     };
-  }
+  },
 
-  if (kind === "podcast") {
-    const p = store.getPodcast(Number(key));
-    if (!p) return notFound;
+  podcast: (p, { id, opts, desc, struct }) => {
     const { body, truncated, meta: tw } = docBody(
       [
         `Title: ${p.title}`,
@@ -275,7 +263,7 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         struct && p.series ? `Series: ${p.series.label}` : null,
         p.episode != null ? `Episode: ${p.episode}` : null,
         p.date ? `Date: ${p.date}` : null,
-        struct && p.people.length ? `People: ${p.people.map((c) => (c.role ? `${c.name} (${c.role})` : c.name)).join("; ")}` : null,
+        struct && p.people.length ? `People: ${p.people.map(creditLabel).join("; ")}` : null,
         p.url ? `Listen: ${p.url}` : null,
         desc && p.abstract ? `\nDescription:\n${p.abstract}` : null,
       ],
@@ -305,11 +293,9 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         truncated: truncated || undefined,
       }),
     };
-  }
+  },
 
-  if (kind === "project") {
-    const p = store.getProject(key);
-    if (!p) return notFound;
+  project: (p, { store, id, opts, desc, struct }) => {
     const itemCount = store.itemsForProject(p.o_id).length;
     const text = joinLines(
       `Project: ${p.name}`,
@@ -338,11 +324,9 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         truncated: truncated || undefined,
       }),
     };
-  }
+  },
 
-  if (kind === "section") {
-    const s = store.getSectionByOId(Number(key));
-    if (!s) return notFound;
+  section: (s, { id, opts, desc, struct }) => {
     const text = joinLines(
       `Research section: ${s.name}`,
       `AMIRA record: ${itemUrl(s.o_id)}`,
@@ -359,9 +343,22 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
       url: itemUrl(s.o_id),
       metadata: compact({ kind: "research_section", omeka_id: s.o_id, amira_url: itemUrl(s.o_id), dates: s.date, truncated: truncated || undefined }),
     };
-  }
+  },
+};
 
-  return notFound;
+const isFetchKind = (kind: string): kind is FetchKind => Object.hasOwn(FETCH_RENDERERS, kind);
+
+function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string, unknown> {
+  // Both vocabularies parse to one kind: item:9902 = research_item:9902, pub: = publication:.
+  const parsed = parseTypedId(id);
+  const notFound = { error: { code: "not_found", message: `No record with id '${id}'.`, ...(guidanceEnabled() ? { suggested_tool: "search" } : {}) } };
+  if (!parsed || !isFetchKind(parsed.kind)) return notFound;
+  return renderRecord(parsed.kind, store, parsed.key, { store, id, opts, desc: allowDescriptive(), struct: allowStructured() }) ?? notFound;
+}
+
+function renderRecord<K extends FetchKind>(kind: K, store: DataStore, key: string, ctx: FetchCtx): Record<string, unknown> | null {
+  const rec = findRecord(store, kind, key);
+  return rec ? FETCH_RENDERERS[kind](rec, ctx) : null;
 }
 
 export function registerOpenAITools(server: Server, tools: ToolMap): void {
@@ -372,7 +369,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
       title: "Search the AMIRA collection",
       description: "Ranked search across items, publications, videos, podcasts, projects and sections. Returns typed IDs, titles and citation URLs. Fetch selected records for evidence.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("search:in", () => z.strictObject({
         query: z
           .string().max(1000)
           .describe(
@@ -381,8 +378,8 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
           ),
         limit: z.number().int().min(1).optional().describe("Default 10, max 50"),
         types: z.array(z.enum(SEARCH_TYPES)).optional().describe("Restrict to these record kinds"),
-      }),
-      outputSchema: z.object({
+      })),
+      outputSchema: schemaOnce("search:out", () => z.object({
         results: z.array(
           z.object({
             id: z.string().describe("Typed record id, e.g. 'item:9902'"),
@@ -392,11 +389,11 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
         ),
         requested_limit: z.number().optional(),
         effective_limit: z.number().optional(),
-      }),
+      })),
     },
     async ({ query, limit, types }) => {
       const store = await ensureStore();
-      const capped = Math.max(1, Math.min(Math.floor(limit ?? DEFAULT_SEARCH_LIMIT), MAX_SEARCH_LIMIT));
+      const capped = capLimit(limit, DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT);
       const results = runSearch(store, query, capped, types as SearchType[] | undefined).map((h) => ({
         id: h.id,
         title: h.title,
@@ -413,7 +410,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
       title: "Fetch one AMIRA record",
       description: "Read a typed search result as a cited document. Full text/transcripts are opt-in and pageable; metadata and text respect exposure policy. Unknown ID returns an error.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("fetch:in", () => z.strictObject({
         id: z
           .string().max(1000)
           .describe("A typed record id from search (item:9902, pub:30001, video:…, podcast:…, project:…, section:…) or resolve_entity"),
@@ -424,8 +421,8 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
         fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
         fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
         max_chars: z.number().int().optional().describe("Cap on the whole returned text body, default/max 25000"),
-      }),
-      outputSchema: z.object({
+      })),
+      outputSchema: schemaOnce("fetch:out", () => z.object({
         id: z.string().optional(),
         title: z.string().optional(),
         text: z.string().optional(),
@@ -435,11 +432,11 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
           .object({ code: z.string(), message: z.string(), suggested_tool: z.string().optional() })
           .optional()
           .describe("Present instead of the record when the id is unknown"),
-      }),
+      })),
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_fulltext, fulltext_offset, fulltext_max_chars, max_chars }) => {
       const store = await ensureStore();
-      const maxChars = Math.max(1, Math.min(Math.floor(max_chars ?? CHARACTER_LIMIT), CHARACTER_LIMIT));
+      const maxChars = capLimit(max_chars, CHARACTER_LIMIT, CHARACTER_LIMIT);
       const payload = fetchDoc(store, id, {
         includeTranscript: include_transcript ?? false,
         includeFulltext: include_fulltext ?? false,

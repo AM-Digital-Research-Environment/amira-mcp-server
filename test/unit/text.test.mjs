@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import { hermeticEnv } from "../helpers/env.mjs";
 
 hermeticEnv();
-const { clearFoldCache, fold, foldCached, foldedIndexOf } = await import("../../server/lib.js");
+const { clearFoldCache, fold, foldCached, foldedIndexOf, DataStore, withStore, SNAPSHOT_SCHEMA_VERSION } = await import("../../server/lib.js");
+const { buildFixture } = await import("../fixtures/fixture-data.mjs");
 
 test("fold: lowercases and strips diacritics, both directions", () => {
   assert.equal(fold("Côte d'Ivoire"), "cote d'ivoire");
@@ -71,4 +72,16 @@ test("foldedIndexOf: sparse offsets survive balanced expansions, accents and cac
     assert.equal(foldedIndexOf(text, "😀"), text.indexOf("😀"));
     clearFoldCache();
   }
+});
+
+test("folded copies belong to the snapshot a call serves, not to the module", async () => {
+  const fx = buildFixture(SNAPSHOT_SCHEMA_VERSION);
+  const a = new DataStore("bundled", fx.data, fx.manifest);
+  const b = new DataStore("bundled", fx.data, fx.manifest);
+  const long = "Côte d'Ivoire ".repeat(400);
+  withStore(a, () => foldCached(long));
+  // Across an await too: a call that started on `a` keeps writing to `a` after a swap.
+  await withStore(a, async () => { await new Promise((r) => setImmediate(r)); foldedIndexOf(`${long}x`, "x"); });
+  assert.equal(a.folds.folded.size, 2);
+  assert.equal(b.folds.folded.size, 0, "a refreshed store starts empty; the old one's copies go with it");
 });

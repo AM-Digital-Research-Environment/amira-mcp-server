@@ -11,7 +11,9 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede stale PR runs, but let every push to main finish so each main
+  # commit keeps a CI result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Every action is pinned to a full commit SHA; the trailing comment names the
 # release. Dependabot (github-actions ecosystem) bumps both together.
@@ -25,11 +27,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: "24"
-          cache: npm
-      - run: npm ci
       # Type errors do not depend on the Node runtime, so this runs once here
       # rather than in every unit-test lane. @types/node tracks the declared
       # floor (Node 22), so code cannot typecheck against APIs the floor lacks.
@@ -57,61 +57,71 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: ${{ matrix.node }}
-          cache: npm
-      - run: npm ci
       # --strict: an invalid skill fails CI instead of being dropped from the
       # catalog with a warning, which is what a plain local build does.
       - run: npm run build:strict
       - run: node scripts/test.mjs unit
+      # bash, not the Windows default pwsh: pwsh exits with the LAST command's
+      # code only, so a failing fixture-snapshot was hidden by a passing pack.
       - name: Windows fixture packaging check
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           node scripts/fixture-snapshot.mjs
           npm run validate:manifest
           node scripts/mcpb.mjs pack . windows-fixture.mcpb
-      # Inspect the archive that was actually packed, not what .mcpbignore
-      # implies: the runtime entry point and manifest must be there, and the
-      # HTTP-only bundles, docs and container files must not.
-      - name: Inspect the packed fixture bundle
+          node scripts/mcpb.mjs list windows-fixture.mcpb
+      # The real-bundle allowlist test skips without data/, which the unit run
+      # above never has. Run it again now that the fixture snapshot exists;
+      # AMIRA_REQUIRE_REAL_BUNDLE turns that skip into a failure.
+      - name: Real-bundle allowlist (fixture snapshot)
         if: runner.os == 'Windows'
         shell: bash
-        run: |
-          node scripts/mcpb.mjs list windows-fixture.mcpb > bundle-entries.txt
-          node -e '
-            const entries = require("fs").readFileSync("bundle-entries.txt", "utf8").split(/\r?\n/).filter(Boolean);
-            const have = new Set(entries);
-            const required = ["manifest.json", "package.json", "icon.png", "server/index.js"];
-            const forbidden = [/^docs\//, /^Dockerfile$/, /^server\/http\.js$/, /^server\/lib\.js$/];
-            const missing = required.filter((name) => !have.has(name));
-            const shipped = entries.filter((name) => forbidden.some((re) => re.test(name)));
-            console.log(`${entries.length} entries in windows-fixture.mcpb`);
-            for (const name of missing) console.log(`::error::missing from the bundle: ${name}`);
-            for (const name of shipped) console.log(`::error::must not ship in the bundle: ${name}`);
-            if (missing.length || shipped.length) process.exit(1);
-          '
+        env:
+          AMIRA_REQUIRE_REAL_BUNDLE: "1"
+        run: node --test test/unit/packaging.test.mjs
 
   smoke:
     name: Protocol and package smoke tests
-    needs: [typecheck, test]
+    # Only the typecheck: the crawl and smoke chain need not wait for every
+    # unit-test lane (the slow Windows one included).
+    needs: [typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: "26"
-          cache: npm
-      - run: npm ci
+      # The crawl hits the public Omeka API, so CI reuses one per ISO week and
+      # per version of the crawl code; a change to it crawls afresh. Release and
+      # refresh-data always crawl, so a cached snapshot never ships.
+      - name: Snapshot cache key
+        id: week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore this week's crawled snapshot
+        id: data-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data
+          key: snapshot-${{ steps.week.outputs.week }}-${{ hashFiles('src/snapshot.ts', 'src/transform.ts', 'src/omekaJSON.ts', 'src/types.ts', 'src/semantic.ts', 'src/fulltextMaps.ts') }}
       - run: npm run fetch-data
+        if: steps.data-cache.outputs.cache-hit != 'true'
         env:
           # Read-only: lists DRE Visualizations' corpus-vector releases without
           # the anonymous API rate limit (sent to api.github.com only).
           GITHUB_TOKEN: ${{ github.token }}
+      - run: npm run build
+        if: steps.data-cache.outputs.cache-hit == 'true'
+      - name: Real-bundle allowlist (crawled snapshot)
+        env:
+          AMIRA_REQUIRE_REAL_BUNDLE: "1"
+        run: node --test test/unit/packaging.test.mjs
       - run: npm run smoke
       - run: npm run smoke:http
       # Response weight at every tool's maximum limit. Needs the real snapshot,
@@ -148,11 +158,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: "24"
-          cache: npm
-      - run: npm ci
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci-bundle
@@ -170,18 +178,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: "24"
-          cache: npm
-      - run: npm ci
       - run: npm run build:strict
       - run: node scripts/fixture-snapshot.mjs
       - run: docker build --build-arg SNAPSHOT_STAGE=bundled -t amira-test .
       - run: |
           docker run -d --name amira-test -p 8787:8787 -e AMIRA_LIVE_REFRESH=0 amira-test
           for attempt in $(seq 1 20); do
-            if curl --fail http://127.0.0.1:8787/healthz; then exit 0; fi
+            if curl --silent --fail --max-time 2 http://127.0.0.1:8787/healthz; then exit 0; fi
             sleep 1
           done
           docker logs amira-test
@@ -207,11 +213,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/setup-node-deps
         with:
           node-version: "26"
-          cache: npm
-      - run: npm ci
       - run: npm run build:strict
       # Offline fixture snapshot: no Omeka crawl, deterministic data.
       - run: node scripts/fixture-snapshot.mjs
@@ -227,7 +231,7 @@ jobs:
           export AMIRA_CACHE_DIR="$RUNNER_TEMP/amira-cache"
           nohup node server/http.js > "$RUNNER_TEMP/amira-http.log" 2>&1 &
           for attempt in $(seq 1 30); do
-            if curl --silent --fail http://127.0.0.1:8787/healthz; then exit 0; fi
+            if curl --silent --fail --max-time 2 http://127.0.0.1:8787/healthz; then exit 0; fi
             sleep 1
           done
           cat "$RUNNER_TEMP/amira-http.log"

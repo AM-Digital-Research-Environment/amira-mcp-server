@@ -1,3 +1,5 @@
+import { schemaOnce } from "./schemaOnce.js";
+import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 // The cluster bibliography (ERef/EPub harvest) + the Journal venue authority.
 // Open-access publications carry extracted PDF full text (bibo:content):
@@ -34,7 +36,6 @@ import { publicationExportPage } from "./publicationExport.js";
 import { languagesOf, publicationFilters, publicationFilterError, selectPublications } from "../publicationQuery.js";
 import { queryErrorResult } from "./responses.js";
 import { exportLink, EXPORT_FORMATS } from "../resources.js";
-import { stripTypedId } from "../typedIds.js";
 import { fold } from "../text.js";
 import { APP_UI_META } from "./apps.js";
 
@@ -47,13 +48,13 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       description: "AND-filtered bibliography, newest first. Keyword includes PDF text and returns match snippets. citation_format returns citations per page; export links every match as one file. Cite amira_url.",
       annotations: READ_ONLY,
       _meta: APP_UI_META,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("search_publications:in", () => z.strictObject({
         ...publicationFilters,
         citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Omit for summaries; pages carry bibtex, ris or csl_json"),
         export: z.enum(EXPORT_FORMATS.publications).optional().describe("Return a file link instead of rows"),
         limit: z.number().int().min(1).optional().describe("Default 25; max 100 summaries or 25 exports, also byte-bounded"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();
@@ -94,21 +95,21 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       title: "Get publication detail",
       description: "Publication metadata and citation export (BibTeX default). Full text is opt-in and paginated. Cite amira_url; DOI/repository links are additional sources.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("get_publication:in", () => z.strictObject({
         id: z.union([z.string().max(1000), z.number()]).describe("Publication Omeka id or typed id publication:29919"),
         citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Default bibtex; selects bibtex, ris or csl_json field"),
         include_fulltext: z.boolean().optional().describe("Default false — set true to include the extracted full text"),
         fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
         fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
         include_similar: includeSimilarSchema,
-      }),
+      })),
     },
     async ({ id, citation_format, include_fulltext, fulltext_offset, fulltext_max_chars, include_similar }) => {
       const store = await ensureStore();
-      const p = store.getPublication(stripTypedId(String(id), ["publication"]));
-      if (!p) {
-        return errorResult("not_found", `No publication with id '${id}'.`, { suggested_tool: "search_publications" });
-      }
+      const found = recordArg(store, id, "publication",
+        () => errorResult("not_found", `No publication with id '${id}'.`, { suggested_tool: "search_publications" }));
+      if ("error" in found) return found.error;
+      const p = found.record;
       if (include_fulltext && !allowFullText()) return textAccessDisabledResult("fulltext");
       const journal = p.venue_ref?.o_id != null ? store.getJournal(p.venue_ref.o_id) : undefined;
       const citation = publicationCitation(p, citation_format);
@@ -193,13 +194,13 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       title: "Publication facets",
       description: "Ranked facets for the entire filtered bibliography before pagination. Uses the same selection rules as search_publications.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("list_publication_facets:in", () => z.strictObject({
         facet: z.enum(["type", "year", "language", "subject", "author", "venue"]),
         ...publicationFilters,
         limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
-      outputSchema: z.object({
+      })),
+      outputSchema: schemaOnce("list_publication_facets:out", () => z.object({
         facet: z.string(),
         total_publications: z.number(),
         missing_values: z.number(),
@@ -217,7 +218,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
           publication_count: z.number(),
           amira_url: z.string().optional(),
         })),
-      }),
+      })),
     },
     async ({ facet, limit: rawLimit, offset: rawOffset, ...filters }) => {
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_publication_facets");
@@ -264,11 +265,11 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       title: "List journals",
       description: "Publication venues ranked by linked bibliography records, with ISSN and catalogue links.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("list_journals:in", () => z.strictObject({
         keyword: z.string().max(1000).optional().describe("Substring filter on the journal title"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();
