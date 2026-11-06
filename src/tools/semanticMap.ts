@@ -5,6 +5,7 @@
 // most frequent subjects, countries and projects, and the records closest to
 // its centre, so an agent characterises a group from its contents instead of
 // inventing a label. Group ids hold for one snapshot only.
+import { schemaOnce } from "./schemaOnce.js";
 import { z } from "zod";
 import type { ToolMap } from "./policy.js";
 import { ensureStore, type DataStore } from "../data.js";
@@ -57,13 +58,13 @@ export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
     description: "The collection as unnamed groups of records close in meaning (k-means over EmbeddingGemma 2 vectors): size, type mix, " +
       "top subjects, countries and projects, records nearest the centre. `group` lists one; `id` finds a record's group.",
     annotations: READ_ONLY,
-    inputSchema: z.strictObject({
+    inputSchema: schemaOnce("get_semantic_map:in", () => z.strictObject({
       group: z.number().int().min(1).optional().describe("A group id: list its records, nearest the centre first"),
       id: z.union([z.string().min(1).max(256), z.number().int().positive()]).optional().describe("A record (omeka_id or typed id): its group"),
       types: z.array(z.enum(SEMANTIC_KINDS)).min(1).max(SEMANTIC_KINDS.length).optional().describe("With group/id: only these record types"),
       limit: z.number().int().min(1).optional().describe("Groups (default 10, max 30) or records (default 20, max 100)"),
       offset: z.number().int().min(0).max(100_000).optional(),
-    }),
+    })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_semantic_map");
     const store = await ensureStore();

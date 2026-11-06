@@ -3,6 +3,7 @@
 // person, project), the full-text pivot (./fulltext.ts) and the pivot by
 // meaning (./meaning.ts). All count what their matched records share through
 // RelatedLists (./lists.ts).
+import { schemaOnce } from "../schemaOnce.js";
 import { z } from "zod";
 import { ensureStore, type DataStore } from "../../data.js";
 import { resolveEntities } from "../../entityGraph.js";
@@ -32,7 +33,7 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
       _meta: APP_UI_META,
       description: "Subjects, people, places and projects connected through shared records. Per-corpus counts deduplicate each record; subject/person seeds also include publications. Returns ambiguity and cited samples.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("find_related:in", () => z.strictObject({
         entity_type: z
           .enum(["subject", "location", "person", "project", "research_item", "record"])
           .describe("What the value denotes. Tags are merged into subjects. research_item: an ILAM African Music article, by full text. " +
@@ -46,7 +47,7 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
               "or a substring of the project label. record: an omeka_id or typed id ('publication:29919')",
           ),
         limit: z.number().int().min(1).optional().describe("Per-list cap, default 20, max 50"),
-      }),
+      })),
     },
     async (args) => {
       if (!allowStructured()) return exposureRestrictedResult("structured", "find_related");

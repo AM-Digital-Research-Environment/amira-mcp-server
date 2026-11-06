@@ -1,3 +1,4 @@
+import { schemaOnce } from "./schemaOnce.js";
 import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { isoDate, researchFilterError, selectResearchItems } from "../researchItemQuery.js";
@@ -42,7 +43,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       title: "Search research items",
       description: "Search digitised research items. Filters are AND-combined; empty results suggest a filter to relax or a stored place name. export links all matches as a file.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("search_research_items:in", () => z.strictObject({
         keyword: z.string().max(1000).optional()
           .describe("Every word must occur in the title, description, abstract, contents or identifiers; quote a phrase to match it exactly"),
         subject: z.string().max(1000).optional()
@@ -70,7 +71,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
         export: z.enum(EXPORT_FORMATS.research_items).optional().describe("Return a file link instead of rows"),
         limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();
@@ -115,7 +116,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       title: "Get research item detail",
       description: "Research-item metadata, linked entities, rights, media files, IIIF manifest and a generated citation (BibTeX/RIS/CSL-JSON). Long fields cap at 25,000 characters.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("get_research_item:in", () => z.strictObject({
         id: z
           .union([z.string().max(1000), z.number()])
           .describe("Omeka id (the number ending its amira_url, e.g. 9902) or a typed id such as research_item:9902"),
@@ -124,7 +125,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
           .optional()
           .describe("Export format for the generated citation: bibtex (default) → `bibtex`, ris → `ris`, csl-json → `csl_json`"),
         include_similar: includeSimilarSchema,
-      }),
+      })),
     },
     async ({ id, citation_format, include_similar }) => {
       const store = await ensureStore();

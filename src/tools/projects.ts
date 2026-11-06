@@ -1,3 +1,4 @@
+import { schemaOnce } from "./schemaOnce.js";
 import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
@@ -37,7 +38,7 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       title: "Search research projects",
       description: "Search project names, descriptions and membership. Returns cited summaries and item counts; use get_project for detail.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("search_projects:in", () => z.strictObject({
         keyword: z.string().max(1000).optional().describe("Matches the project name, an acronym or the description"),
         university: z
           .string().max(1000)
@@ -49,7 +50,7 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
         institution: z.string().max(1000).optional().describe("Funding/affiliated institution name, partial"),
         limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
         offset: z.number().int().min(0).max(100_000).optional(),
-      }),
+      })),
     },
     async (args) => {
       const store = await ensureStore();
@@ -94,10 +95,10 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       title: "Get project detail",
       description: "Project description, team, sections, funders, item counts by type, top subjects and ten sample research items, with citation links.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("get_project:in", () => z.strictObject({
         id: z.union([z.string().max(256), z.number()]).describe("Project Omeka id (e.g. 37700) or typed id project:37700"),
         include_similar: includeSimilarSchema,
-      }),
+      })),
     },
     async ({ id, include_similar }) => {
       const store = await ensureStore();

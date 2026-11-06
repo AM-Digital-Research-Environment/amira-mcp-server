@@ -1,3 +1,4 @@
+import { schemaOnce } from "./schemaOnce.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore, refreshStatus, UNIVERSITY_LABELS } from "../data.js";
@@ -28,8 +29,8 @@ export function registerOverviewTools(server: Server, tools: ToolMap): void {
       _meta: APP_UI_META,
       description: "Start here: corpus counts, text coverage, breakdowns, dates, snapshot freshness and refresh status.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({}),
-      outputSchema: overviewSchema,
+      inputSchema: schemaOnce("get_collection_overview:in", () => z.strictObject({})),
+      outputSchema: schemaOnce("get_collection_overview:out", () => overviewSchema),
     },
     async () => {
       const store = await ensureStore();

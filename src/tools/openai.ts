@@ -13,6 +13,7 @@
 // podcast:39121, project:37700, section:218) so fetch can route back and a
 // human can reconstruct the Omeka URL from the final number. fetch also accepts
 // the research tools' vocabulary (research_item:9902, publication:30001).
+import { schemaOnce } from "./schemaOnce.js";
 import { z } from "zod";
 import type { ToolMap } from "./policy.js";
 import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
@@ -368,7 +369,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
       title: "Search the AMIRA collection",
       description: "Ranked search across items, publications, videos, podcasts, projects and sections. Returns typed IDs, titles and citation URLs. Fetch selected records for evidence.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("search:in", () => z.strictObject({
         query: z
           .string().max(1000)
           .describe(
@@ -377,8 +378,8 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
           ),
         limit: z.number().int().min(1).optional().describe("Default 10, max 50"),
         types: z.array(z.enum(SEARCH_TYPES)).optional().describe("Restrict to these record kinds"),
-      }),
-      outputSchema: z.object({
+      })),
+      outputSchema: schemaOnce("search:out", () => z.object({
         results: z.array(
           z.object({
             id: z.string().describe("Typed record id, e.g. 'item:9902'"),
@@ -388,7 +389,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
         ),
         requested_limit: z.number().optional(),
         effective_limit: z.number().optional(),
-      }),
+      })),
     },
     async ({ query, limit, types }) => {
       const store = await ensureStore();
@@ -409,7 +410,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
       title: "Fetch one AMIRA record",
       description: "Read a typed search result as a cited document. Full text/transcripts are opt-in and pageable; metadata and text respect exposure policy. Unknown ID returns an error.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("fetch:in", () => z.strictObject({
         id: z
           .string().max(1000)
           .describe("A typed record id from search (item:9902, pub:30001, video:…, podcast:…, project:…, section:…) or resolve_entity"),
@@ -420,8 +421,8 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
         fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
         fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
         max_chars: z.number().int().optional().describe("Cap on the whole returned text body, default/max 25000"),
-      }),
-      outputSchema: z.object({
+      })),
+      outputSchema: schemaOnce("fetch:out", () => z.object({
         id: z.string().optional(),
         title: z.string().optional(),
         text: z.string().optional(),
@@ -431,7 +432,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
           .object({ code: z.string(), message: z.string(), suggested_tool: z.string().optional() })
           .optional()
           .describe("Present instead of the record when the id is unknown"),
-      }),
+      })),
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_fulltext, fulltext_offset, fulltext_max_chars, max_chars }) => {
       const store = await ensureStore();

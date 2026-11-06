@@ -10,6 +10,7 @@
 // `basis: "wording_only"` when the pair shares none of them. Research sections
 // are left out: with 13 broad ones, nearly every pair shares one. An agent
 // can then weigh a recommendation instead of taking similar wording for a link.
+import { schemaOnce } from "./schemaOnce.js";
 import { z } from "zod";
 import type { ToolMap } from "./policy.js";
 import { ensureStore, type DataStore } from "../data.js";
@@ -154,11 +155,11 @@ export function registerSimilarTools(server: Server, tools: ToolMap): void {
     description: "Records whose catalogue descriptions read most alike (EmbeddingGemma 2 vectors), across research items, publications, " +
       "videos, podcasts, projects and sections. Each says what else it shares (subjects, places, people, project) or wording_only.",
     annotations: READ_ONLY,
-    inputSchema: z.strictObject({
+    inputSchema: schemaOnce("get_similar_items:in", () => z.strictObject({
       id: z.union([z.string().min(1).max(256), z.number().int().positive()]).describe("omeka_id, or a typed id such as publication:29919"),
       types: z.array(z.enum(SEMANTIC_KINDS)).min(1).max(SEMANTIC_KINDS.length).optional().describe("Only these record types"),
       limit: z.number().int().min(1).optional().describe("Default 5, max 10"),
-    }),
+    })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_similar_items");
     const store = await ensureStore();

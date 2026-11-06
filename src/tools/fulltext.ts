@@ -4,6 +4,7 @@
 // the countries articles name, and word frequencies per year. Per-article
 // readings live on get_research_item, find_related (research_item) and the
 // `mentions_country` research-item filter. No article text is ever returned.
+import { schemaOnce } from "./schemaOnce.js";
 import { z } from "zod";
 import type { ToolMap } from "./policy.js";
 import { ensureStore } from "../data.js";
@@ -27,13 +28,13 @@ export function registerFulltextTools(server: Server, tools: ToolMap): void {
         "ILAM's journal African Music by its private full text, from public derived counts: AI-labelled content groups, " +
         "countries named, word rates per year. Never returns text.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("get_fulltext_map:in", () => z.strictObject({
         words: z.array(z.string().min(1).max(60)).min(1).max(6).optional()
           .describe("Single words: yearly rates per 10,000 words instead of the overview"),
         group: z.number().int().min(1).optional().describe("Group id: list its articles"),
         year_from: z.number().int().min(0).max(2200).optional(),
         year_to: z.number().int().min(0).max(2200).optional(),
-      }),
+      })),
     },
     async (args) => {
       if (!allowDescriptive()) return exposureRestrictedResult("descriptive", "get_fulltext_map");

@@ -1,3 +1,4 @@
+import { schemaOnce } from "./schemaOnce.js";
 import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 // Podcasts + YouTube videos — content that exists only in Omeka. Both can carry
@@ -96,14 +97,14 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       title: "Search podcasts",
       description: "Search podcast metadata and transcripts. Text-only hits include snippets; full transcripts require get_podcast with opt-in.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("search_podcasts:in", () => z.strictObject({
         keyword: keywordParam,
         series: z.string().max(1000).optional().describe("Series title, partial (e.g. 'Cluster Conversations')"),
         person: z.string().max(1000).optional().describe("A speaker/host name; either name order works"),
         language: z.string().max(1000).optional().describe("Name or ISO code — 'French', 'fr', 'fra' all match"),
         ...yearParams,
         ...pageParams,
-      }),
+      })),
     },
     async (args) => {
       if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
@@ -136,11 +137,11 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       title: "Get podcast episode detail",
       description: "Podcast detail, duration, audio file and citation link; says which model generated the transcript. Transcript is opt-in, bounded and pageable.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("get_podcast:in", () => z.strictObject({
         id: z.union([z.string().max(1000), z.number()]).describe("Podcast id from search_podcasts, e.g. 39121, or podcast:39121"),
         ...transcriptParams,
         include_similar: includeSimilarSchema,
-      }),
+      })),
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_similar }) => {
       const store = await ensureStore();
@@ -187,14 +188,14 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       title: "Search YouTube videos",
       description: "Search video metadata and transcripts. Text-only hits include snippets; full transcripts require get_video with opt-in.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("search_videos:in", () => z.strictObject({
         keyword: keywordParam,
         playlist: z.string().max(1000).optional().describe("Playlist title, partial"),
         speaker: z.string().max(1000).optional().describe("A speaker name; either name order works"),
         language: z.string().max(1000).optional().describe("Name or ISO code — 'French', 'fr', 'fra' all match"),
         ...yearParams,
         ...pageParams,
-      }),
+      })),
     },
     async (args) => {
       if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
@@ -227,11 +228,11 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       title: "Get YouTube video detail",
       description: "Video detail, thumbnail and citation link; says how the transcript was produced when recorded. Transcript is opt-in, bounded and pageable.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("get_video:in", () => z.strictObject({
         id: z.union([z.string().max(1000), z.number()]).describe("Video id from search_videos, e.g. 39218, or video:39218"),
         ...transcriptParams,
         include_similar: includeSimilarSchema,
-      }),
+      })),
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_similar }) => {
       const store = await ensureStore();

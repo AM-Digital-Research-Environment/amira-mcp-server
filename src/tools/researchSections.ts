@@ -1,3 +1,4 @@
+import { schemaOnce } from "./schemaOnce.js";
 import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
@@ -29,7 +30,7 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
       _meta: APP_UI_META,
       description: "Cluster research sections, funding phases, project/item counts and citation links. Includes the external-collection grouping.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({}),
+      inputSchema: schemaOnce("list_research_sections:in", () => z.strictObject({})),
     },
     async () => {
       const store = await ensureStore();
@@ -52,10 +53,10 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
       title: "Get research section detail",
       description: "One research section's description, team and projects, each with its research-item count.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({
+      inputSchema: schemaOnce("get_research_section:in", () => z.strictObject({
         name: z.string().max(1000).optional().describe("Section name, e.g. 'Arts & Aesthetics'"),
         id: z.union([z.string().max(64), z.number()]).optional().describe("Section Omeka id or typed id section:218"),
-      }),
+      })),
     },
     async ({ name, id }) => {
       const store = await ensureStore();
