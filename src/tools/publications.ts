@@ -4,6 +4,7 @@ import type { ToolMap } from "./policy.js";
 // searchable here (with a match snippet), never included in summaries, and
 // opt-in + windowable in get_publication — the same discipline as transcripts.
 import { z } from "zod";
+import { includeSimilarSchema, similarBlock } from "./similar.js";
 import { ensureStore } from "../data.js";
 import type { LinkedRef } from "../types.js";
 import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
@@ -99,9 +100,10 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
         include_fulltext: z.boolean().optional().describe("Default false — set true to include the extracted full text"),
         fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
         fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
+        include_similar: includeSimilarSchema,
       }),
     },
-    async ({ id, citation_format, include_fulltext, fulltext_offset, fulltext_max_chars }) => {
+    async ({ id, citation_format, include_fulltext, fulltext_offset, fulltext_max_chars, include_similar }) => {
       const store = await ensureStore();
       const p = store.getPublication(stripTypedId(String(id), ["publication"]));
       if (!p) {
@@ -178,6 +180,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
           maxChars: fulltext_max_chars,
         }),
         [citation.field]: citation.export,
+        ...(include_similar ? { similar: similarBlock(store, "publication", p.o_id) } : {}),
         amira_url: itemUrl(p.o_id),
       });
     },

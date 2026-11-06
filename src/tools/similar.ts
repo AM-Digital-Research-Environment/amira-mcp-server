@@ -1,23 +1,137 @@
-// get_similar_items (#12, phase 1): nearest neighbours by meaning, from the
-// semantic neighbours the crawl computed out of DRE Visualizations' corpus
-// vectors (src/semantic.ts). Cross-type: a research item can surface a
-// publication, a podcast episode or a project. Every neighbour is a record in
-// the served snapshot and is cited by its amira_url.
+// Semantic neighbours (#12): get_similar_items, and the opt-in `include_similar`
+// block of the detail tools. Neighbours come from the semantic neighbours the
+// crawl computed out of DRE Visualizations' corpus vectors (src/semantic.ts).
+// Cross-type: a research item can surface a publication, a podcast episode or a
+// project. Every neighbour is a record in the served snapshot, cited by its
+// amira_url.
+//
+// Each neighbour is explained (phase 2): the subjects, places, people or
+// project it ALSO shares with the source, read from the catalogue links, or
+// `basis: "wording_only"` when the pair shares none of them. Research sections
+// are left out: with 13 broad ones, nearly every pair shares one. An agent
+// can then weigh a recommendation instead of taking similar wording for a link.
 import { z } from "zod";
 import type { ToolMap } from "./policy.js";
-import { ensureStore } from "../data.js";
+import { ensureStore, type DataStore } from "../data.js";
 import { allowStructured } from "../exposure.js";
 import { guidanceEnabled } from "../guidance.js";
-import { SEMANTIC_KINDS, semanticIndex, semanticRecord, type SemanticKind } from "../semantic.js";
+import { SEMANTIC_KINDS, semanticIndex, semanticRecord, type SemanticIndex, type SemanticKind, type SemanticRecord } from "../semantic.js";
+import { fold } from "../text.js";
 import { parseTypedId } from "../typedIds.js";
+import type { LinkedRef } from "../types.js";
 import { itemUrl } from "../urls.js";
 import { READ_ONLY, capLimit, errorResult, exposureRestrictedResult, limitEcho, textResult, type Server } from "./_shared.js";
+
+/** Neighbours an `include_similar` block lists; get_similar_items goes to 10. */
+const DETAIL_LIMIT = 5;
+/** Labels named per shared category; `shared_counts` gives the full numbers. */
+const SHARED_LABELS = 3;
+
+const CATEGORIES = ["subjects", "places", "people", "project"] as const;
+type Category = (typeof CATEGORIES)[number];
+type Links = Record<Category, Map<string, string>>;
+
+/** The catalogue links of a record, keyed by Omeka id (or folded label when unlinked). */
+function linksOf(store: DataStore, r: SemanticRecord): Links {
+  return store.cachedRecent(`semantic-links:${r.o_id}`, () => {
+    const links: Links = { subjects: new Map(), places: new Map(), people: new Map(), project: new Map() };
+    const add = (category: Category, refs: (LinkedRef | { label: string; o_id: number | null } | null | undefined)[]) => {
+      for (const ref of refs) {
+        if (!ref?.label && ref?.o_id == null) continue;
+        links[category].set(ref.o_id != null ? `id:${ref.o_id}` : `label:${fold(ref.label)}`, ref.label);
+      }
+    };
+    const person = (c: { name: string; o_id: number | null }) => ({ label: c.name, o_id: c.o_id });
+    if (r.kind === "research_item") {
+      const it = store.getItem(String(r.o_id))!;
+      add("subjects", it.subjects);
+      // A place shares its country: Lagos and Ibadan items both name Nigeria.
+      add("places", it.places.flatMap((p) => store.placeChainRefs(p)));
+      add("people", it.contributors.map(person));
+      add("project", [it.project]);
+    } else if (r.kind === "publication") {
+      const p = store.getPublication(String(r.o_id))!;
+      add("subjects", p.subjects);
+      add("people", [...p.authors, ...p.editors]);
+    } else if (r.kind === "podcast") {
+      add("people", store.getPodcast(r.o_id)!.people.map(person));
+    } else if (r.kind === "video") {
+      add("people", store.getVideo(r.o_id)!.speakers.map(person));
+    } else if (r.kind === "project") {
+      const p = store.getProjectByOId(r.o_id)!;
+      add("people", [...p.pis, ...p.members]);
+      add("project", [{ label: p.name, o_id: p.o_id }]);
+    } else {
+      const s = store.getSectionByOId(r.o_id)!;
+      add("people", [...s.pis, ...s.members]);
+    }
+    return links;
+  }, 256);
+}
+
+/** What a neighbour shares with the source beyond wording. */
+function explain(store: DataStore, source: SemanticRecord, neighbour: SemanticRecord) {
+  const a = linksOf(store, source), b = linksOf(store, neighbour);
+  const shared: Partial<Record<Category, string[]>> = {};
+  const counts: Partial<Record<Category, number>> = {};
+  for (const category of CATEGORIES) {
+    const labels = [...a[category]].filter(([key]) => b[category].has(key)).map(([, label]) => label);
+    if (!labels.length) continue;
+    shared[category] = labels.slice(0, SHARED_LABELS);
+    if (labels.length > SHARED_LABELS) counts[category] = labels.length;
+  }
+  return Object.keys(shared).length
+    ? { basis: "shared_metadata" as const, shared, ...(Object.keys(counts).length ? { shared_counts: counts } : {}) }
+    : { basis: "wording_only" as const };
+}
+
+const view = (r: SemanticRecord) => ({ id: String(r.o_id), omeka_id: r.o_id, type: r.kind, title: r.title, amira_url: itemUrl(r.o_id) });
+
+/**
+ * A record's neighbours, explained, or the reason it has none. The shape both
+ * get_similar_items and the detail tools' `similar` block return.
+ */
+function neighbours(store: DataStore, index: SemanticIndex, record: SemanticRecord, limit: number, types?: readonly string[]) {
+  if (index.lowSignal.has(record.o_id)) {
+    return { count: 0, results: [], no_neighbours: "low_signal" as const,
+      reason: "Too little own text (title, abstract or description, subjects, places) to compare reliably, so it has no neighbours." };
+  }
+  const list = index.neighbours.get(record.o_id);
+  if (!list) {
+    return { count: 0, results: [], no_neighbours: "not_in_release" as const,
+      reason: `Not in corpus-vector build ${index.source.tag} (generated ${index.source.generated_at}), probably added since.` };
+  }
+  const wanted = types ? new Set<string>(types) : null;
+  const results = list.filter((n) => !wanted || wanted.has(n.record.kind)).slice(0, limit)
+    .map((n) => ({ ...view(n.record), score: n.score, ...explain(store, record, n.record) }));
+  return { count: results.length, results };
+}
+
+const NOTE = "Scores are cosine similarities of catalogue descriptions. `shared` lists what a pair also shares in the catalogue; " +
+  "`wording_only` means similar wording and nothing more: not evidence of a documented relation.";
+
+/**
+ * The `similar` block of a detail tool (`include_similar: true`): up to five
+ * explained neighbours, or why there are none. Never an error: the record
+ * itself was found.
+ */
+export function similarBlock(store: DataStore, kind: SemanticKind, oId: number): Record<string, unknown> {
+  if (!allowStructured()) return { unavailable: "Similar records need the structured exposure level." };
+  const index = semanticIndex(store);
+  if (!index) return { unavailable: "This snapshot carries no semantic neighbours." };
+  const record = semanticRecord(store, oId, [kind]);
+  if (!record) return { unavailable: "This record is not embedded." };
+  return { release: index.source.tag, ...neighbours(store, index, record, DETAIL_LIMIT), ...(guidanceEnabled() ? { note: NOTE } : {}) };
+}
+
+/** The opt-in flag the detail tools share. */
+export const includeSimilarSchema = z.boolean().optional().describe("Add up to 5 similar records, each explained");
 
 export function registerSimilarTools(server: Server, tools: ToolMap): void {
   tools.get_similar_items = server.registerTool("get_similar_items", {
     title: "Find similar records",
     description: "Records whose catalogue descriptions read most alike (EmbeddingGemma 2 vectors), across research items, publications, " +
-      "videos, podcasts, projects and sections. Similar wording, not a documented link.",
+      "videos, podcasts, projects and sections. Each says what else it shares (subjects, places, people, project) or wording_only.",
     annotations: READ_ONLY,
     inputSchema: z.strictObject({
       id: z.union([z.string().min(1).max(256), z.number().int().positive()]).describe("omeka_id, or a typed id such as publication:29919"),
@@ -51,27 +165,13 @@ export function registerSimilarTools(server: Server, tools: ToolMap): void {
       });
     }
     const limit = capLimit(args.limit, 5, 10);
-    const view = (r: { kind: SemanticKind; o_id: number; title: string }) =>
-      ({ id: String(r.o_id), omeka_id: r.o_id, type: r.kind, title: r.title, amira_url: itemUrl(r.o_id) });
-    const head = {
+    const found = neighbours(store, index, record, limit, args.types);
+    return textResult({
       source: view(record),
       space: { release: index.source.tag, model: index.source.model, generated_at: index.source.generated_at },
-    };
-    const note = guidanceEnabled()
-      ? { note: "Scores are cosine similarities of catalogue descriptions. Similar wording is not evidence of a documented relation." }
-      : {};
-    if (index.lowSignal.has(record.o_id)) {
-      return textResult({ ...head, count: 0, results: [], no_neighbours: "low_signal",
-        reason: "Too little own text (title, abstract or description, subjects, places) to compare reliably, so it has no neighbours." });
-    }
-    const list = index.neighbours.get(record.o_id);
-    if (!list) {
-      return textResult({ ...head, count: 0, results: [], no_neighbours: "not_in_release",
-        reason: `Not in corpus-vector build ${index.source.tag} (generated ${index.source.generated_at}), probably added since.` });
-    }
-    const wanted = args.types ? new Set<string>(args.types) : null;
-    const results = list.filter((n) => !wanted || wanted.has(n.record.kind)).slice(0, limit)
-      .map((n) => ({ ...view(n.record), score: n.score }));
-    return textResult({ ...head, count: results.length, results, ...limitEcho(args.limit, 10, limit), ...note });
+      ...found,
+      ...(found.count ? limitEcho(args.limit, 10, limit) : {}),
+      ...(found.count && guidanceEnabled() ? { note: NOTE } : {}),
+    });
   });
 }

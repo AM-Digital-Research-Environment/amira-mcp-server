@@ -5,6 +5,22 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## [Unreleased]
+
+- **Explained recommendations** (#12, phase 2). Every neighbour that
+  `get_similar_items` returns now says what the pair also shares in the
+  catalogue: `shared` names up to three subjects, places (a place shares its
+  country), people or the project, with `shared_counts` when there are more
+  (research sections are too broad to count: nearly every pair shares one), and `basis: "wording_only"` marks a pair
+  linked by wording alone. An agent can weigh a recommendation instead of
+  reading similar wording as a link.
+- **`include_similar`** on `get_research_item`, `get_publication`,
+  `get_podcast`, `get_video` and `get_project` adds the same five explained
+  neighbours as a `similar` block. A record without neighbours carries the
+  reason there (`low_signal`, `not_in_release`, or the space unavailable at
+  this exposure level or in this snapshot) instead of an error.
+- **Surface:** stdio `tools/list` 12,541 → 12,674 estimated tokens (+1.1%).
+
 ## 1.33.0 — 2026-11-06
 
 Similarity by meaning across the whole collection, collections cited by their

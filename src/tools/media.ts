@@ -5,6 +5,7 @@ import type { ToolMap } from "./policy.js";
 // tools via the shared textWindowFields helper. The two corpora share one
 // search predicate and one detail shape; only their filters differ.
 import { z } from "zod";
+import { includeSimilarSchema, similarBlock } from "./similar.js";
 import { ensureStore } from "../data.js";
 import type { LinkedRef, MediaRec, PodcastRec, VideoRec } from "../types.js";
 import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
@@ -138,9 +139,10 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       inputSchema: z.strictObject({
         id: z.union([z.string().max(1000), z.number()]).describe("Podcast id from search_podcasts, e.g. 39121, or podcast:39121"),
         ...transcriptParams,
+        include_similar: includeSimilarSchema,
       }),
     },
-    async ({ id, include_transcript, transcript_offset, transcript_max_chars }) => {
+    async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_similar }) => {
       const store = await ensureStore();
       const p = store.getPodcast(Number(stripTypedId(String(id), ["podcast"])));
       if (!p) return errorResult("not_found", `No podcast with id ${id}.`, { suggested_tool: "search_podcasts" });
@@ -170,6 +172,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
           offset: transcript_offset,
           maxChars: transcript_max_chars,
         }),
+        ...(include_similar ? { similar: similarBlock(store, "podcast", p.o_id) } : {}),
         amira_url: itemUrl(p.o_id),
       });
     },
@@ -225,9 +228,10 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       inputSchema: z.strictObject({
         id: z.union([z.string().max(1000), z.number()]).describe("Video id from search_videos, e.g. 39218, or video:39218"),
         ...transcriptParams,
+        include_similar: includeSimilarSchema,
       }),
     },
-    async ({ id, include_transcript, transcript_offset, transcript_max_chars }) => {
+    async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_similar }) => {
       const store = await ensureStore();
       const v = store.getVideo(Number(stripTypedId(String(id), ["video"])));
       if (!v) return errorResult("not_found", `No video with id ${id}.`, { suggested_tool: "search_videos" });
@@ -255,6 +259,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
           offset: transcript_offset,
           maxChars: transcript_max_chars,
         }),
+        ...(include_similar ? { similar: similarBlock(store, "video", v.o_id) } : {}),
         amira_url: itemUrl(v.o_id),
       });
     },

@@ -1,5 +1,6 @@
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
+import { includeSimilarSchema, similarBlock } from "./similar.js";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import { allowStructured } from "../exposure.js";
 import {
@@ -93,9 +94,12 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       title: "Get project detail",
       description: "Project description, team, sections, funders, item counts by type, top subjects and ten sample research items, with citation links.",
       annotations: READ_ONLY,
-      inputSchema: z.strictObject({ id: z.union([z.string().max(256), z.number()]).describe("Project Omeka id (e.g. 37700) or typed id project:37700") }),
+      inputSchema: z.strictObject({
+        id: z.union([z.string().max(256), z.number()]).describe("Project Omeka id (e.g. 37700) or typed id project:37700"),
+        include_similar: includeSimilarSchema,
+      }),
     },
-    async ({ id }) => {
+    async ({ id, include_similar }) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_project");
       const p = store.getProject(stripTypedId(String(id), ["project"]));
@@ -138,6 +142,7 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
         items_by_resource_type: Object.fromEntries(Object.entries(byType).sort((a, b) => b[1] - a[1])),
         top_subjects: topSubjects,
         sample_items: items.slice(0, 10).map(itemRef),
+        ...(include_similar ? { similar: similarBlock(store, "project", p.o_id) } : {}),
         amira_url: itemUrl(p.o_id),
       });
     },

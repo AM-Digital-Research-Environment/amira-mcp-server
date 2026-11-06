@@ -98,7 +98,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `get_data_quality` | Snapshot coverage, missing metadata and unresolved-reference counts |
 | `get_snapshot_changes` | Page added, updated or deleted records across retained snapshots from the same instance |
 | `get_fulltext_map` | The ILAM journal *African Music* read through its private full text, from public derived counts: content groups (AI-labelled) with their articles, the countries articles name, and word rates per year for up to six words |
-| `get_similar_items` | Records whose catalogue descriptions read most alike, across research items, publications, videos, podcasts, projects and sections, with cosine scores and `amira_url`s; `types` narrows the result, and a record without neighbours says why (`low_signal`, `not_in_release`). See [Semantic neighbours](#semantic-neighbours) |
+| `get_similar_items` | Records whose catalogue descriptions read most alike, across research items, publications, videos, podcasts, projects and sections, with cosine scores and `amira_url`s, each saying what the pair also shares (`shared` subjects, places, people, project) or `basis: "wording_only"`; `types` narrows the result, and a record without neighbours says why (`low_signal`, `not_in_release`). The detail tools take `include_similar` for the same, five at a time. See [Semantic neighbours](#semantic-neighbours) |
 
 ### Prompts and resources
 
@@ -507,7 +507,14 @@ coverage per type: records with neighbours, low-signal records (too little
 own text, excluded by design) and records the build predates.
 
 Scores are cosine similarities of descriptions: similar wording is not
-evidence of a documented relation.
+evidence of a documented relation. So every neighbour is explained from the
+catalogue links: `shared` names up to three subjects, places (a place shares
+its country), people or the project the pair also shares (research sections
+are too broad to count), with `shared_counts` when there are more, and `basis: "wording_only"`
+marks a pair that shares none of them. `get_research_item`, `get_publication`,
+`get_podcast`, `get_video` and `get_project` add the same five neighbours as a
+`similar` block with `include_similar: true`; a record without neighbours
+carries the reason there instead of an error.
 
 ## Configuration (environment / extension settings)
 

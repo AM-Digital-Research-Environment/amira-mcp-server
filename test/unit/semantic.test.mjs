@@ -144,19 +144,27 @@ test("a stored list naming a record the snapshot no longer holds is filtered at 
 const SPACE = { release: TAG, model: "google/embeddinggemma-2", generated_at: "2026-11-06T08:04:17Z" };
 const ref = (id, type, title) => ({ id: String(id), omeka_id: id, type, title, amira_url: url(id) });
 
-test("get_similar_items: cross-type neighbours with scores and amira_url, best first", async () => {
+// What 500 (Architecture, Islam; Lagos → Nigeria; Beier; Fixture Art Worlds)
+// shares with each neighbour, beyond wording (phase 2). Sections never count.
+const NEIGHBOURS_OF_500 = [
+  { ...ref(501, "research_item", "Mosque Photograph Series"), score: cos(10), basis: "shared_metadata",
+    shared: { subjects: ["Islam"], places: ["Nigeria"], project: ["Fixture Art Worlds"] } },
+  { ...ref(510, "publication", "Decolonial Architecture Futures"), score: cos(20), basis: "shared_metadata",
+    shared: { subjects: ["Architecture"] } },
+  { ...ref(300, "project", "Fixture Art Worlds"), score: cos(30), basis: "shared_metadata",
+    shared: { people: ["Beier, Ulli"], project: ["Fixture Art Worlds"] } },
+  // Another project, place and person: similar wording and nothing else.
+  { ...ref(502, "research_item", "Radio Interview Recording"), score: cos(40), basis: "wording_only" },
+  { ...ref(540, "video", "A Fixture Lecture"), score: cos(60), basis: "shared_metadata", shared: { people: ["Beier, Ulli"] } },
+];
+
+test("get_similar_items: cross-type neighbours with scores, amira_url and what each also shares, best first", async () => {
   const result = await call("get_similar_items", { id: 500 });
   assert.deepEqual(result.source, ref(500, "research_item", "Yoruba Architecture Study"));
   assert.deepEqual(result.space, SPACE);
   assert.equal(result.count, 5);
-  assert.deepEqual(result.results, [
-    { ...ref(501, "research_item", "Mosque Photograph Series"), score: cos(10) },
-    { ...ref(510, "publication", "Decolonial Architecture Futures"), score: cos(20) },
-    { ...ref(300, "project", "Fixture Art Worlds"), score: cos(30) },
-    { ...ref(502, "research_item", "Radio Interview Recording"), score: cos(40) },
-    { ...ref(540, "video", "A Fixture Lecture"), score: cos(60) },
-  ]);
-  assert.match(result.note, /not evidence of a documented relation/);
+  assert.deepEqual(result.results, NEIGHBOURS_OF_500);
+  assert.match(result.note, /wording_only/);
 });
 
 test("get_similar_items: types and limit, typed ids, and a project as the source", async () => {
@@ -183,6 +191,38 @@ test("get_similar_items: no neighbours come with an explicit reason, never a bar
   assert.deepEqual([person.error.code, person.error.suggested_tool], ["not_embedded", "find_related"]);
   assert.equal((await call("get_similar_items", { id: 100 })).error.code, "not_found");
   assert.equal((await call("get_similar_items", { id: 9999 })).error.code, "not_found");
+});
+
+test("include_similar adds the same explained neighbours to every detail tool, and only on request", async () => {
+  const item = await call("get_research_item", { id: 500, include_similar: true });
+  assert.deepEqual(item.similar, { release: TAG, count: 5, results: NEIGHBOURS_OF_500, note: item.similar.note });
+  assert.equal((await call("get_research_item", { id: 500 })).similar, undefined);
+
+  const project = await call("get_project", { id: 300, include_similar: true });
+  assert.deepEqual(project.similar.results.slice(0, 2).map((r) => [r.omeka_id, r.basis, r.shared]), [
+    // Both at 10°: another project's item and a publication, linked through a team member.
+    [502, "shared_metadata", { people: ["Fendler, Ute"] }],
+    [510, "shared_metadata", { people: ["Fendler, Ute"] }],
+  ]);
+  assert.deepEqual(project.similar.results.find((r) => r.omeka_id === 501).shared, { project: ["Fixture Art Worlds"] });
+  // Membership of a research section is never counted, only the people they share.
+  const section = await call("get_similar_items", { id: "project:300", types: ["section"] });
+  assert.deepEqual(section.results.map((r) => [r.omeka_id, Object.keys(r.shared ?? {})]), [[400, ["people"]]]);
+  assert.equal((await call("get_podcast", { id: 530, include_similar: true })).similar.results[0].omeka_id, 400);
+  assert.equal((await call("get_video", { id: 540, include_similar: true })).similar.results[0].omeka_id, 502);
+  // The record exists, so missing neighbours are a reason inside the block, never an error.
+  const pub = await call("get_publication", { id: 511, include_similar: true });
+  assert.deepEqual([pub.title, pub.similar.count, pub.similar.no_neighbours], ["Fixture Working Paper on Migration", 0, "not_in_release"]);
+  assert.equal((await call("get_research_item", { id: 503, include_similar: true })).similar.no_neighbours, "low_signal");
+
+  process.env.AMIRA_EXPOSURE = "descriptive";
+  try {
+    const restricted = await call("get_research_item", { id: 500, include_similar: true });
+    assert.equal(restricted.title, "Yoruba Architecture Study");
+    assert.match(restricted.similar.unavailable, /structured exposure/);
+  } finally {
+    delete process.env.AMIRA_EXPOSURE;
+  }
 });
 
 test("get_similar_items needs structured exposure: the space is built from subjects and places too", async () => {

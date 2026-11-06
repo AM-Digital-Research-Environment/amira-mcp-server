@@ -184,8 +184,10 @@ claim to have read an ILAM article.
 
 `get_similar_items` adds similarity by meaning across corpora: the records whose catalogue
 descriptions read most alike (a project → related podcasts, a publication → research items), with
-cosine scores. Present these as "described in similar terms", never as a documented link, and
-check shared subjects, places or projects before claiming a connection. A record with too little
+cosine scores. Each neighbour says what it also shares in the catalogue (`shared`: subjects,
+places, people, project) or `basis: "wording_only"`. Present a `wording_only` pair as
+"described in similar terms", never as a documented link; name what is shared when it is. The
+detail tools take `include_similar: true` to add five explained neighbours to one record. A record with too little
 own text (`low_signal`) or newer than the vector build (`not_in_release`) has no neighbours; that
 says nothing about the record itself.
 

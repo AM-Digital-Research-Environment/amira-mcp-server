@@ -167,6 +167,12 @@ check(similar?.count > 0 && similar.results.every((r, i, all) => r.amira_url ===
 if (similar?.count) {
   const media = await call("get_similar_items", { id: similar.source.omeka_id, types: ["podcast", "video"] });
   check(media.results.every((r) => ["podcast", "video"].includes(r.type)), "get_similar_items: types filter honoured");
+  // Phase 2: each neighbour says what it also shares, or that only the wording is alike.
+  check(similar.results.every((r) => r.basis === "wording_only" ? !r.shared : r.basis === "shared_metadata" && Object.keys(r.shared).length),
+    "get_similar_items: every neighbour is explained");
+  const detail = await call("get_research_item", { id: similar.source.omeka_id, include_similar: true });
+  check(detail.similar?.results?.length > 0 && detail.similar.results[0].omeka_id === similar.results[0].omeka_id,
+    "get_research_item include_similar: the same explained neighbours");
 }
 await call("search_persons", { keyword: "Beier", limit: 3 }, { expect: [AMIRA] });
 

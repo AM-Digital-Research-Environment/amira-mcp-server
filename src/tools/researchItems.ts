@@ -1,6 +1,7 @@
 import type { ToolMap } from "./policy.js";
 import { isoDate, researchFilterError, selectResearchItems } from "../researchItemQuery.js";
 import { z } from "zod";
+import { includeSimilarSchema, similarBlock } from "./similar.js";
 import type { ResearchItemRec } from "../types.js";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import {
@@ -121,9 +122,10 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
           .enum(["bibtex", "ris", "csl-json"])
           .optional()
           .describe("Export format for the generated citation: bibtex (default) → `bibtex`, ris → `ris`, csl-json → `csl_json`"),
+        include_similar: includeSimilarSchema,
       }),
     },
-    async ({ id, citation_format }) => {
+    async ({ id, citation_format, include_similar }) => {
       const store = await ensureStore();
       const key = stripTypedId(String(id), ["research_item"]);
       const it = store.getItem(key);
@@ -213,6 +215,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
         created: it.created ?? null,
         modified: it.modified ?? null,
         ...fulltext,
+        ...(include_similar ? { similar: similarBlock(store, "research_item", it.o_id) } : {}),
         amira_url: itemUrl(it.o_id),
       });
     },

@@ -280,4 +280,7 @@ test("without a full-text map, its tool and filter say so instead of answering e
 test("get_similar_items without semantic neighbours says so and points to find_related", async () => {
   const error = errorOf(await raw("get_similar_items", { id: 500 }));
   assert.deepEqual([error.code, error.suggested_tool], ["semantic_unavailable", "find_related"]);
+  // A detail tool still answers; its similar block says why it is empty.
+  const item = await call("get_research_item", { id: 500, include_similar: true });
+  assert.deepEqual([item.omeka_id, item.similar], [500, { unavailable: "This snapshot carries no semantic neighbours." }]);
 });
