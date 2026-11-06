@@ -28,6 +28,17 @@
           "suspicious": { "noTemplateCurlyInString": "off" }
         }
       }
+    },
+    {
+      "includes": ["src/ui/views/**"],
+      "linter": {
+        "rules": {
+          "style": { "useTemplate": "off" },
+          "complexity": { "useArrowFunction": "off", "useOptionalChain": "off" },
+          "correctness": { "noInnerDeclarations": "off" },
+          "suspicious": { "noExplicitAny": "off" }
+        }
+      }
     }
   ],
   "assist": { "enabled": false }

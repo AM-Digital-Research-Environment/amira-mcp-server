@@ -39,7 +39,7 @@
   ],
   "scripts": {
     "fetch-data": "npm run build && node server/fetchCli.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.views.json",
     "lint": "biome lint .",
     "build": "node scripts/build.mjs",
     "build:strict": "node scripts/build.mjs --strict",

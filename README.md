@@ -662,7 +662,9 @@ session. `npm run weigh` measures both and the baseline records them.
 
   The modules live in `src/ui/`: `shell.ts` holds the design tokens and shared
   helpers, `bridge.ts` bundles the official Apps SDK, each view module supplies its
-  own CSS and render function, and `page.ts` assembles them at build time. The page
+  own CSS and names its script in `src/ui/views/` (plain browser JavaScript, linted
+  and typechecked with `tsconfig.views.json`), and `page.ts` assembles them at
+  build time. The page
   loads **nothing** from the network — no scripts, styles, fonts or tiles — so it
   needs no `_meta.ui.csp` grants and runs in the strictest sandbox. App controls
   call an allowlisted set of read-only tools through the host; filter dropdowns are

@@ -8,6 +8,7 @@
 // cleanly, so nothing is required from node_modules at runtime. The package
 // version is injected as __SERVER_VERSION__ (single source: package.json).
 import * as esbuild from "esbuild";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { buildSkillsSnapshot } from "./skills.mjs";
 
@@ -60,7 +61,9 @@ const bridgeJs = bridge.outputFiles[0].text;
 const assembler = await esbuild.build({ entryPoints: ["./src/ui/page.ts"], bundle: true,
   platform: "node", format: "esm", target: "node22", write: false, legalComments: "none" });
 const { appPage } = await import(`data:text/javascript;base64,${Buffer.from(assembler.outputFiles[0].text).toString("base64")}`);
-const app = appPage(bridgeJs, (js) =>
+// The views' scripts live as plain files in src/ui/views/ (linted and typechecked there).
+const viewFile = (file) => readFileSync(new URL(`../src/ui/views/${file}`, import.meta.url), "utf8");
+const app = appPage(bridgeJs, viewFile, (js) =>
   esbuild.transformSync(js, { minifyWhitespace: true, minifySyntax: true, legalComments: "none", target: "es2022" }).code);
 // The page rides in the server bundles as a string, so esbuild's summary below
 // hides it; print it, as the one artefact a new view can quietly grow.
