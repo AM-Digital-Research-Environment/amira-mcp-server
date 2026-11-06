@@ -187,7 +187,7 @@ export function selectResearchItems(store: DataStore, args: ResearchFilters) {
     preds.project_id = (it) =>
       project ? it.project?.o_id === project.o_id : equalsCI(it.project?.label, String(args.project_id));
   if (args.research_section) {
-    const section = store.getSection(args.research_section) ?? store.getSectionByOId(Number(stripTypedId(args.research_section, ["section"])));
+    const section = store.resolveSection(args.research_section);
     preds.research_section = (it) => section
       ? store.sectionRefsOfItem(it).some((s) => s.o_id === section.o_id || equalsCI(s.label, section.name))
       : store.sectionRefsOfItem(it).some((s) => equalsCI(s.label, args.research_section!));

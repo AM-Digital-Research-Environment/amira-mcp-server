@@ -15,6 +15,7 @@ import { itemUrl, itemSetUrl } from "../urls.js";
 import { canonicalTypedId, parseTypedId, stripTypedId } from "../typedIds.js";
 import { itemsOfCollection, resolveCollection } from "../collections.js";
 import { semanticCoverage } from "../semantic.js";
+import { findRecord } from "../recordKinds.js";
 import { READ_ONLY, capLimit, capOffset, limitEcho, queryErrorResult, textResult, errorResult, exposureRestrictedResult, pageOf, type Server } from "./_shared.js";
 import { refreshSchema } from "./outputSchemas.js";
 import { personSuggestions } from "./people.js";
@@ -167,9 +168,8 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     let capped = false;
     for (const raw of new Set(args.ids)) {
       const parsed = parseTypedId(raw);
-      const rec = parsed?.kind === "publication" ? store.getPublication(parsed.key)
-        : parsed?.kind === "video" ? store.getVideo(Number(parsed.key))
-        : parsed?.kind === "podcast" ? store.getPodcast(Number(parsed.key)) : undefined;
+      const rec = parsed && (parsed.kind === "publication" || parsed.kind === "video" || parsed.kind === "podcast")
+        ? findRecord(store, parsed.kind, parsed.key) : undefined;
       const text = rec && ("fulltext" in rec ? rec.fulltext : rec.transcript);
       if (!text || !rec || !parsed) { unavailable.push(raw); continue; }
       const id = `${parsed.kind}:${parsed.key}`;

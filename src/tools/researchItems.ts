@@ -1,3 +1,4 @@
+import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { isoDate, researchFilterError, selectResearchItems } from "../researchItemQuery.js";
 import { z } from "zod";
@@ -127,13 +128,10 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
     },
     async ({ id, citation_format, include_similar }) => {
       const store = await ensureStore();
-      const key = stripTypedId(String(id), ["research_item"]);
-      const it = store.getItem(key);
-      if (!it) {
-        return errorResult("not_found", `No research item with id '${key}'.`, {
-          suggested_tool: "search_research_items",
-        });
-      }
+      const found = recordArg(store, id, "research_item", () => errorResult("not_found",
+        `No research item with id '${stripTypedId(String(id), ["research_item"])}'.`, { suggested_tool: "search_research_items" }));
+      if ("error" in found) return found.error;
+      const it = found.record;
       const project = store.projectOf(it);
       // The citation names the collection the item is filed under: a real
       // item-set title only, never the project name standing in for one.

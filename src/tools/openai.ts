@@ -37,6 +37,7 @@ import {
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
 import { parseTypedId } from "../typedIds.js";
+import { findRecord, type RecordTypes } from "../recordKinds.js";
 import { limitEcho } from "./pagination.js";
 
 const DEFAULT_SEARCH_LIMIT = 10;
@@ -106,23 +107,13 @@ interface FetchOpts {
   fulltextMaxChars?: number;
 }
 
-/** The adapter's own id prefixes for each record kind fetch can render. */
-const FETCH_KINDS: Record<string, string> = {
-  research_item: "item", publication: "pub", video: "video", podcast: "podcast", project: "project", section: "section",
-};
+/** What a fetch renderer reads besides its record. */
+interface FetchCtx { store: DataStore; id: string; opts: FetchOpts; desc: boolean; struct: boolean }
+type FetchKind = "research_item" | "publication" | "video" | "podcast" | "project" | "section";
 
-function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string, unknown> {
-  const parsed = parseTypedId(id);
-  const kind = parsed ? FETCH_KINDS[parsed.kind] ?? parsed.kind : id;
-  const key = parsed?.key ?? "";
-  const notFound = { error: { code: "not_found", message: `No record with id '${id}'.`, ...(guidanceEnabled() ? { suggested_tool: "search" } : {}) } };
-
-  const desc = allowDescriptive();
-  const struct = allowStructured();
-
-  if (kind === "item") {
-    const it = store.getItem(key);
-    if (!it) return notFound;
+/** One renderer per kind `fetch` serves; the id's kind (src/recordKinds.ts) picks it. */
+const FETCH_RENDERERS: { [K in FetchKind]: (rec: RecordTypes[K], ctx: FetchCtx) => Record<string, unknown> } = {
+  research_item: (it, { store, id, opts, desc, struct }) => {
     const project = store.projectOf(it);
     const text = joinLines(
       `Title: ${it.title}`,
@@ -169,11 +160,9 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         truncated: truncated || undefined,
       }),
     };
-  }
+  },
 
-  if (kind === "pub") {
-    const p = store.getPublication(key);
-    if (!p) return notFound;
+  publication: (p, { id, opts, desc, struct }) => {
     const cite = [p.volume && `Vol. ${p.volume}`, p.issue && `No. ${p.issue}`, p.pages && `pp. ${p.pages}`]
       .filter(Boolean)
       .join(", ");
@@ -225,11 +214,9 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         truncated: truncated || undefined,
       }),
     };
-  }
+  },
 
-  if (kind === "video") {
-    const v = store.getVideo(Number(key));
-    if (!v) return notFound;
+  video: (v, { id, opts, desc, struct }) => {
     const { body, truncated, meta: tw } = docBody(
       [
         `Title: ${v.title}`,
@@ -265,11 +252,9 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         truncated: truncated || undefined,
       }),
     };
-  }
+  },
 
-  if (kind === "podcast") {
-    const p = store.getPodcast(Number(key));
-    if (!p) return notFound;
+  podcast: (p, { id, opts, desc, struct }) => {
     const { body, truncated, meta: tw } = docBody(
       [
         `Title: ${p.title}`,
@@ -307,11 +292,9 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         truncated: truncated || undefined,
       }),
     };
-  }
+  },
 
-  if (kind === "project") {
-    const p = store.getProject(key);
-    if (!p) return notFound;
+  project: (p, { store, id, opts, desc, struct }) => {
     const itemCount = store.itemsForProject(p.o_id).length;
     const text = joinLines(
       `Project: ${p.name}`,
@@ -340,11 +323,9 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
         truncated: truncated || undefined,
       }),
     };
-  }
+  },
 
-  if (kind === "section") {
-    const s = store.getSectionByOId(Number(key));
-    if (!s) return notFound;
+  section: (s, { id, opts, desc, struct }) => {
     const text = joinLines(
       `Research section: ${s.name}`,
       `AMIRA record: ${itemUrl(s.o_id)}`,
@@ -361,9 +342,22 @@ function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string,
       url: itemUrl(s.o_id),
       metadata: compact({ kind: "research_section", omeka_id: s.o_id, amira_url: itemUrl(s.o_id), dates: s.date, truncated: truncated || undefined }),
     };
-  }
+  },
+};
 
-  return notFound;
+const isFetchKind = (kind: string): kind is FetchKind => Object.hasOwn(FETCH_RENDERERS, kind);
+
+function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string, unknown> {
+  // Both vocabularies parse to one kind: item:9902 = research_item:9902, pub: = publication:.
+  const parsed = parseTypedId(id);
+  const notFound = { error: { code: "not_found", message: `No record with id '${id}'.`, ...(guidanceEnabled() ? { suggested_tool: "search" } : {}) } };
+  if (!parsed || !isFetchKind(parsed.kind)) return notFound;
+  return renderRecord(parsed.kind, store, parsed.key, { store, id, opts, desc: allowDescriptive(), struct: allowStructured() }) ?? notFound;
+}
+
+function renderRecord<K extends FetchKind>(kind: K, store: DataStore, key: string, ctx: FetchCtx): Record<string, unknown> | null {
+  const rec = findRecord(store, kind, key);
+  return rec ? FETCH_RENDERERS[kind](rec, ctx) : null;
 }
 
 export function registerOpenAITools(server: Server, tools: ToolMap): void {

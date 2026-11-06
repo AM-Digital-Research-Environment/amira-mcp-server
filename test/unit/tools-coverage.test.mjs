@@ -157,11 +157,15 @@ test("get_institution: partner category from an isPartOf link; groups get item c
 });
 
 test("get_institution: not_found and missing_entity are text-only errors", async () => {
-  for (const args of [{ name: "Nowhere University" }, { id: 999999 }, { id: "organisation:abc" }, { id: "person:100" }]) {
+  for (const args of [{ name: "Nowhere University" }, { id: 999999 }, { id: "organisation:abc" }]) {
     const error = await errorOf("get_institution", args);
     assert.equal(error.code, "not_found", JSON.stringify(args));
     assert.equal(error.suggested_tool, "list_institutions");
   }
+  // A typed id of another kind names the tool that reads it.
+  const wrongKind = await errorOf("get_institution", { id: "person:100" });
+  assert.deepEqual([wrongKind.code, wrongKind.suggested_tool], ["not_found", "get_person"]);
+  assert.equal(wrongKind.message, "'person:100' is a person id, not an institution id.");
   assert.equal((await errorOf("get_institution", { name: "Nowhere University" })).message,
     "No institution or group matching 'Nowhere University'.");
   assert.equal((await errorOf("get_institution", {})).code, "missing_entity");
@@ -399,10 +403,12 @@ test("get_project: detail, sample items, media count, every id form", async () =
     items_by_resource_type: { Sound: 1 }, top_subjects: [{ subject: "Music", item_count: 1 }],
     sample_items: [itemRef(504, "Ouagadougou Street Recording", "Sound", "2021")], amira_url: url(302),
   });
-  for (const id of [999999, "project:999", "pub:510"]) {
+  for (const id of [999999, "project:999"]) {
     const error = await errorOf("get_project", { id });
     assert.deepEqual([error.code, error.suggested_tool], ["not_found", "search_projects"], String(id));
   }
+  const wrongKind = await errorOf("get_project", { id: "pub:510" });
+  assert.deepEqual([wrongKind.code, wrongKind.suggested_tool], ["not_found", "get_publication"]);
   assert.equal((await errorOf("get_project", { id: 999999 })).message, "No project with id '999999'.");
 });
 
@@ -604,10 +610,12 @@ test("get_podcast: detail, every id form, transcript windowing, media, generated
     transcript_hint: "Set include_transcript=true for the text (page long ones with transcript_offset / transcript_max_chars).",
     amira_url: url(531),
   });
-  for (const id of [999999, "video:540", "podcast:abc"]) {
+  for (const id of [999999, "podcast:abc"]) {
     const error = await errorOf("get_podcast", { id });
     assert.deepEqual([error.code, error.suggested_tool], ["not_found", "search_podcasts"], String(id));
   }
+  const wrongKind = await errorOf("get_podcast", { id: "video:540" });
+  assert.deepEqual([wrongKind.code, wrongKind.suggested_tool], ["not_found", "get_video"]);
 });
 
 // --- fetch: every record kind -------------------------------------------------------------

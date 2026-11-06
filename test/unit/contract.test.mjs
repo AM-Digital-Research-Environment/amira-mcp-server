@@ -100,6 +100,23 @@ test("cachedRecent bounds each namespace on its own", () => {
   assert.equal(built, 1, "297 was cached, 0 had been evicted");
 });
 
+test("every record kind round-trips: typed id → lookup → kind, and the record resource serves it", async () => {
+  const store = await lib.ensureStore();
+  for (const [kind, def] of Object.entries(lib.RECORD_KINDS)) {
+    const row = def.rows(store)[0];
+    if (!row) continue; // the fixture holds no record of this kind
+    const parsed = lib.parseTypedId(`${kind}:${row.o_id}`);
+    assert.equal(parsed?.kind, kind, `${kind}: its own prefix parses back to it`);
+    assert.equal(lib.findRecord(store, kind, String(row.o_id)), row, `${kind}: found by Omeka id`);
+    assert.equal(lib.recordByOId(store, row.o_id)?.kind, kind, `${kind}: one id map across kinds`);
+    assert.equal(typeof lib.recordTitle(row), "string");
+    if (def.detail) {
+      const read = await conn.client.readResource({ uri: `amira://record/${kind}/${row.o_id}` });
+      assert.match(read.contents[0].text, new RegExp(`/item/${row.o_id}"`), `${kind}: served by ${def.detail.tool}`);
+    }
+  }
+});
+
 // Error codes are a client contract: a model or host branches on them. One
 // tool shipped `invalid_arguments` beside everyone else's `invalid_argument`.
 // A new code is added here on purpose, never by a typo.

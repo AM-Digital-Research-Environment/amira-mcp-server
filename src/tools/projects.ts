@@ -1,3 +1,4 @@
+import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { includeSimilarSchema, similarBlock } from "./similar.js";
@@ -58,7 +59,7 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       const offset = capOffset(args.offset);
       // A section by name or id; projects link to it by id (their label may be stale).
       const section = args.research_section
-        ? store.getSection(args.research_section) ?? store.getSectionByOId(Number(stripTypedId(args.research_section, ["section"])))
+        ? store.resolveSection(args.research_section)
         : undefined;
 
       const filtered = store.projects.filter((p) => {
@@ -102,10 +103,10 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
     async ({ id, include_similar }) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_project");
-      const p = store.getProject(stripTypedId(String(id), ["project"]));
-      if (!p) {
-        return errorResult("not_found", `No project with id '${id}'.`, { suggested_tool: "search_projects" });
-      }
+      const found = recordArg(store, id, "project",
+        () => errorResult("not_found", `No project with id '${id}'.`, { suggested_tool: "search_projects" }));
+      if ("error" in found) return found.error;
+      const p = found.record;
       const items = store.itemsForProject(p.o_id);
 
       const byType: Record<string, number> = {};

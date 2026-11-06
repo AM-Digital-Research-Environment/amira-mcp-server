@@ -1,3 +1,4 @@
+import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore } from "../data.js";
@@ -239,9 +240,10 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_institution");
       if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
-      let record = id != null
-        ? store.getOrganisationByOId(Number(stripTypedId(String(id), ["organisation"])))
-        : store.getOrganisation(name!);
+      const byId = id != null ? recordArg(store, id, "organisation",
+        () => errorResult("not_found", `No institution or group with id '${id}'.`, { suggested_tool: "list_institutions" })) : undefined;
+      if (byId && "error" in byId) return byId.error;
+      let record = byId ? byId.record : store.getOrganisation(name!);
       // Not an exact name or recorded variant: accept whole words of one name,
       // so an acronym in parentheses ("LACC") resolves the way list_institutions
       // finds it. Several matches are named, never guessed between.

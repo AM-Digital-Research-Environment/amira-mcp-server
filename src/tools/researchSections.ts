@@ -1,3 +1,4 @@
+import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore } from "../data.js";
@@ -61,13 +62,14 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_research_section");
       if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
-      const s = id != null ? store.getSectionByOId(Number(stripTypedId(String(id), ["section"]))) : store.getSection(name!);
-      if (!s) {
-        return errorResult("not_found", `No research section ${id != null ? `with id '${id}'` : `named '${name}'`}.`, {
-          suggested_tool: "list_research_sections",
-          available_values: store.sections.map((x) => x.name),
-        });
-      }
+      const notFound = () => errorResult("not_found", `No research section ${id != null ? `with id '${id}'` : `named '${name}'`}.`, {
+        suggested_tool: "list_research_sections",
+        available_values: store.sections.map((x) => x.name),
+      });
+      const found = id != null ? recordArg(store, id, "section", notFound) : undefined;
+      if (found && "error" in found) return found.error;
+      const s = found ? found.record : store.getSection(name!);
+      if (!s) return notFound();
       const projects = store.projectsOfSection(s);
       const itemCount = projects.reduce((acc, p) => acc + store.itemsForProject(p.o_id).length, 0);
 

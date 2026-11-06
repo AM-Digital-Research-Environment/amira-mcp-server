@@ -17,6 +17,7 @@ import type { SemanticNeighbours } from "./semantic.js";
 import { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshotAtomic, type CrawlOutput } from "./snapshot.js";
 import { LanguageIndex } from "./languages.js";
 import { clearFoldCache, fold } from "./text.js";
+import { stripTypedId } from "./typedIds.js";
 import * as path from "node:path";
 import { assertSnapshotSource, snapshotCacheDir } from "./snapshotIdentity.js";
 import type {
@@ -241,6 +242,13 @@ export class DataStore {
   }
   getSectionByOId(oId: number): SectionRec | undefined {
     return this.sectionByOId.get(oId);
+  }
+  /** A section by exact (folded) name, Omeka id or typed id (`section:218`). */
+  resolveSection(nameOrId: string): SectionRec | undefined {
+    const byName = this.getSection(nameOrId);
+    if (byName) return byName;
+    const id = Number(stripTypedId(nameOrId, ["section"]));
+    return Number.isSafeInteger(id) ? this.sectionByOId.get(id) : undefined;
   }
   getPublication(pubIdOrOId: string): PublicationRec | undefined {
     const k = fold(pubIdOrOId.trim());

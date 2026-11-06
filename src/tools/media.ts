@@ -1,3 +1,4 @@
+import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 // Podcasts + YouTube videos — content that exists only in Omeka. Both can carry
 // full transcripts (bibo:content): searchable here (with a match snippet),
@@ -144,8 +145,10 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_similar }) => {
       const store = await ensureStore();
-      const p = store.getPodcast(Number(stripTypedId(String(id), ["podcast"])));
-      if (!p) return errorResult("not_found", `No podcast with id ${id}.`, { suggested_tool: "search_podcasts" });
+      const found = recordArg(store, id, "podcast",
+        () => errorResult("not_found", `No podcast with id ${id}.`, { suggested_tool: "search_podcasts" }));
+      if ("error" in found) return found.error;
+      const p = found.record;
       if (include_transcript && !allowFullText()) return textAccessDisabledResult("transcript");
       return textResult({
         id: String(p.o_id),
@@ -233,8 +236,10 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_similar }) => {
       const store = await ensureStore();
-      const v = store.getVideo(Number(stripTypedId(String(id), ["video"])));
-      if (!v) return errorResult("not_found", `No video with id ${id}.`, { suggested_tool: "search_videos" });
+      const found = recordArg(store, id, "video",
+        () => errorResult("not_found", `No video with id ${id}.`, { suggested_tool: "search_videos" }));
+      if ("error" in found) return found.error;
+      const v = found.record;
       if (include_transcript && !allowFullText()) return textAccessDisabledResult("transcript");
       return textResult({
         id: String(v.o_id),

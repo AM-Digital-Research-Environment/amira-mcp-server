@@ -1,3 +1,4 @@
+import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 // The cluster bibliography (ERef/EPub harvest) + the Journal venue authority.
 // Open-access publications carry extracted PDF full text (bibo:content):
@@ -105,10 +106,10 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
     },
     async ({ id, citation_format, include_fulltext, fulltext_offset, fulltext_max_chars, include_similar }) => {
       const store = await ensureStore();
-      const p = store.getPublication(stripTypedId(String(id), ["publication"]));
-      if (!p) {
-        return errorResult("not_found", `No publication with id '${id}'.`, { suggested_tool: "search_publications" });
-      }
+      const found = recordArg(store, id, "publication",
+        () => errorResult("not_found", `No publication with id '${id}'.`, { suggested_tool: "search_publications" }));
+      if ("error" in found) return found.error;
+      const p = found.record;
       if (include_fulltext && !allowFullText()) return textAccessDisabledResult("fulltext");
       const journal = p.venue_ref?.o_id != null ? store.getJournal(p.venue_ref.o_id) : undefined;
       const citation = publicationCitation(p, citation_format);

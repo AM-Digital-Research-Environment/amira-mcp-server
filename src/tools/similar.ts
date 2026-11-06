@@ -16,6 +16,7 @@ import { ensureStore, type DataStore } from "../data.js";
 import { allowStructured } from "../exposure.js";
 import { guidanceEnabled } from "../guidance.js";
 import { SEMANTIC_KINDS, semanticIndex, semanticRecord, type SemanticIndex, type SemanticKind, type SemanticRecord } from "../semantic.js";
+import { findRecord } from "../recordKinds.js";
 import { fold } from "../text.js";
 import { parseTypedId } from "../typedIds.js";
 import type { LinkedRef } from "../types.js";
@@ -135,10 +136,12 @@ export function resolveSemanticSeed(store: DataStore, value: string | number, ot
       suggested_tool: otherTool,
     }) };
   }
+  // A typed id resolves through its kind's own key rules (a publication's
+  // repository id, a research item's dre:id); a bare value is an Omeka id or,
+  // failing that, a research item's dre:id.
   const kinds = typed ? [typed.kind as SemanticKind] : SEMANTIC_KINDS;
-  const key = typed?.key ?? raw;
-  // A research item's dre:id also identifies it.
-  const oId = /^\d+$/.test(key) ? Number(key) : store.getItem(key)?.o_id;
+  const oId = typed ? findRecord(store, typed.kind as SemanticKind, typed.key)?.o_id
+    : /^\d+$/.test(raw) ? Number(raw) : store.getItem(raw)?.o_id;
   const record = oId == null ? undefined : semanticRecord(store, oId, kinds);
   if (!record) {
     return { error: errorResult("not_found", `No research item, publication, video, podcast, project or section with id '${raw}'.`, {
