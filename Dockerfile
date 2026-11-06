@@ -11,7 +11,7 @@
 # never silently goes stale.
 
 ARG SNAPSHOT_STAGE=fetch
-FROM node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0 AS build
+FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -33,7 +33,7 @@ RUN node --input-type=module -e "import {loadSnapshot} from './server/lib.js'; a
 
 FROM ${SNAPSHOT_STAGE} AS snapshot
 
-FROM node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0 AS run
+FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS run
 # Releases push this image to ghcr.io (.github/workflows/release.yml).
 LABEL org.opencontainers.image.source="https://github.com/AM-Digital-Research-Environment/amira-mcp-server" \
       io.modelcontextprotocol.server.name="io.github.AM-Digital-Research-Environment/amira-mcp-server"
