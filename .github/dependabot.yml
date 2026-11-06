@@ -9,6 +9,12 @@ updates:
       mcp-sdk:
         patterns:
           - "@modelcontextprotocol/*"
+    ignore:
+      # @types/node tracks the supported Node floor (engines ">=22"), not the
+      # Node 26 runtime, so typecheck rejects APIs newer than the floor. Raise
+      # it by hand together with engines, manifest.json and the CI floor lane.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   # Workflows pin every action to a full commit SHA with a `# vX.Y.Z` comment;
   # Dependabot bumps the SHA and the comment together.
   - package-ecosystem: github-actions
