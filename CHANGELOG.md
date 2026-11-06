@@ -19,7 +19,15 @@ force and what comes next.
   neighbours as a `similar` block. A record without neighbours carries the
   reason there (`low_signal`, `not_in_release`, or the space unavailable at
   this exposure level or in this snapshot) instead of an error.
-- **Surface:** stdio `tools/list` 12,541 → 12,674 estimated tokens (+1.1%).
+- **`find_related entity_type=record`**: a semantic pivot next to the
+  subject, place, person and project pivots. The seed is any embedded record
+  (an `omeka_id` or typed id); its 20 closest records by meaning, of any
+  type, stand in for the matched records, and the `related_*` lists
+  count what they share, per corpus (`video_count`, `podcast_count`,
+  `project_count` and `section_count` join the usual research-item and
+  publication counts on this pivot only). A seed without neighbours is a
+  `no_neighbours` error that says why.
+- **Surface:** stdio `tools/list` 12,541 → 12,700 estimated tokens (+1.3%).
 
 ## 1.33.0 — 2026-11-06
 

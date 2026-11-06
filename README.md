@@ -88,7 +88,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `search_publications` / `get_publication` | Filter the bibliography by author, subject, language, type, venue, year, date added and full-text availability; search abstracts in every language and extracted PDF text. Detail adds every abstract with its language, linked authorities, conference/extent/access/thesis metadata. `citation_format` selects BibTeX/RIS/CSL-JSON per page; `export` links the whole result as one file |
 | `list_publication_facets` | Counts by type, year, language, subject, author/editor or venue across the complete filtered bibliography; ranked and paginated |
 | `list_journals` | The journals the cluster publishes in, ranked by publication count, with ISSN and country — pair with the `venue` filter |
-| `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications), or from an ILAM *African Music* article (`entity_type=research_item`) to its closest articles by full text |
+| `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications), from an ILAM *African Music* article (`entity_type=research_item`) to its closest articles by full text, or from any embedded record (`entity_type=record`) to its closest records by meaning and what they share |
 | `search_podcasts` / `get_podcast` | Cluster podcast episodes with searchable transcripts, filterable by language; detail gives the duration, audio file and the **model that generated the transcript**; transcript text is opt-in |
 | `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; thumbnail; transcript opt-in on detail) |
 | `resolve_entity` | Resolve names or typed IDs (either vocabulary: `item:9902` = `research_item:9902`); return separate candidates for homonyms and unreconciled literals. A query that resolves to nothing, untyped or with `type=person`, returns near-miss person `suggestions` |
@@ -514,7 +514,10 @@ are too broad to count), with `shared_counts` when there are more, and `basis: "
 marks a pair that shares none of them. `get_research_item`, `get_publication`,
 `get_podcast`, `get_video` and `get_project` add the same five neighbours as a
 `similar` block with `include_similar: true`; a record without neighbours
-carries the reason there instead of an error.
+carries the reason there instead of an error. `find_related entity_type=record`
+pivots on the same neighbours: the projects, sections, subjects, people,
+countries and formats that the seed's 20 closest records share, counted per
+corpus.
 
 ## Configuration (environment / extension settings)
 

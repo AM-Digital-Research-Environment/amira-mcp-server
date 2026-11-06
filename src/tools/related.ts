@@ -23,8 +23,10 @@ import { fold } from "../text.js";
 import { limitEcho, yearLabel } from "./_shared.js";
 import { allowDescriptive } from "../exposure.js";
 import { fulltextIndex, groupLabelNote, inMappedCollection, neighboursNote, sourceRef } from "../fulltextMaps.js";
+import { semanticIndex } from "../semantic.js";
+import { noNeighboursReason, resolveSemanticSeed } from "./similar.js";
 
-type EntityType = "subject" | "location" | "person" | "project" | "research_item";
+type EntityType = "subject" | "location" | "person" | "project" | "research_item" | "record";
 
 /** How `value` is matched for each pivot — surfaced in the response and the tool
  * description so the (sometimes surprising) counts are self-explaining (report §8). */
@@ -42,18 +44,28 @@ const MATCHING: Record<EntityType, string> = {
   research_item:
     "The seed article's closest articles in the ILAM journal African Music by full-text embedding (DRE Visualizations' map); " +
     "the related_* lists count what those articles share. Only articles on the full-text map can be seeds.",
+  record:
+    "The seed record's 20 closest records by meaning, of any type (EmbeddingGemma 2 vectors of catalogue descriptions: " +
+    "research items, publications, videos, podcasts, projects, sections); the related_* lists count what those records share. " +
+    "Similar wording, not documented links.",
 };
 
-interface Count { name: string; omeka_id: number | null; count: number; research_item_count: number; publication_count: number; amira_url: string | null }
+interface Count {
+  name: string; omeka_id: number | null; count: number; research_item_count: number; publication_count: number;
+  /** Only the `record` pivot reaches these corpora. */
+  video_count?: number; podcast_count?: number; project_count?: number; section_count?: number;
+  amira_url: string | null;
+}
+type CountField = "research_item_count" | "publication_count" | "video_count" | "podcast_count" | "project_count" | "section_count";
 const topN = (map: Map<string, Count>, n: number) => [...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, n);
-function countRecord(map: Map<string, Count>, refs: { label: string; o_id: number | null }[], corpus: "research_item_count" | "publication_count") {
+function countRecord(map: Map<string, Count>, refs: { label: string; o_id: number | null }[], corpus: CountField) {
   const seen = new Set<string>();
   for (const ref of refs) {
     const key = ref.o_id == null ? `label:${fold(ref.label)}` : `id:${ref.o_id}`;
     if (!ref.label || seen.has(key)) continue;
     seen.add(key);
     const row = map.get(key) ?? { name: ref.label, omeka_id: ref.o_id, count: 0, research_item_count: 0, publication_count: 0, amira_url: itemUrlOrNull(ref.o_id) };
-    row[corpus]++; row.count++; map.set(key, row);
+    row[corpus] = (row[corpus] ?? 0) + 1; row.count++; map.set(key, row);
   }
 }
 
@@ -68,15 +80,16 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
       annotations: READ_ONLY,
       inputSchema: z.strictObject({
         entity_type: z
-          .enum(["subject", "location", "person", "project", "research_item"])
-          .describe("What the value denotes. Tags are merged into subjects. research_item: an ILAM African Music article, by full text"),
+          .enum(["subject", "location", "person", "project", "research_item", "record"])
+          .describe("What the value denotes. Tags are merged into subjects. research_item: an ILAM African Music article, by full text. " +
+            "record: any embedded record, by meaning"),
         value: z
           .string().max(1000)
           .describe(
             "The entity to pivot on. subject: substring of a heading ('Islam'). location: any level of " +
               "the city→country hierarchy ('Nigeria' includes Lagos items). person: a name in either " +
               "order, accent-insensitive ('Beier, Ulli'). project: an Omeka id ('37700'), a legacy key, " +
-              "or a substring of the project label",
+              "or a substring of the project label. record: an omeka_id or typed id ('publication:29919')",
           ),
         limit: z.number().int().min(1).optional().describe("Per-list cap, default 20, max 50"),
       }),
@@ -92,6 +105,7 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
         if (!allowDescriptive()) return exposureRestrictedResult("descriptive", "find_related by full text");
         return relatedByFullText(store, value, limit, args.limit);
       }
+      if (type === "record") return relatedByMeaning(store, value, limit, args.limit);
 
       // A person pivot needs one person: "Vierke" used to pool Clarissa and Ulf
       // Vierke into one set of counts. Several authority matches are named and
@@ -189,6 +203,84 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
 }
 
 type Store = Awaited<ReturnType<typeof ensureStore>>;
+
+/** Records the `record` pivot counts: the seed's closest by meaning, of any type. */
+const PIVOT_RECORDS = 20;
+
+/**
+ * The semantic pivot (#12, phase 2): the seed's closest records by meaning
+ * stand in for the matched records, across every embedded type, and the
+ * related_* lists count what they share.
+ */
+function relatedByMeaning(store: Store, value: string, limit: number, requested: number | undefined) {
+  const index = semanticIndex(store);
+  if (!index) {
+    return errorResult("semantic_unavailable", "This snapshot carries no semantic neighbours (no verified corpus-vector release).", {
+      suggested_tool: "find_related",
+    });
+  }
+  const seed = resolveSemanticSeed(store, value, "find_related");
+  if ("error" in seed) return seed.error;
+  const { record } = seed;
+  const reason = noNeighboursReason(index, record.o_id);
+  if (reason) return errorResult("no_neighbours", reason, { suggested_tool: "find_related" });
+  // The closest overall, not the stored ten of EVERY type: those would add the
+  // few sections and podcasts however weakly they match, at equal weight. Taken
+  // from the stored lists, so one type still contributes at most ten.
+  const neighbours = index.neighbours.get(record.o_id)!.slice(0, PIVOT_RECORDS);
+
+  const maps = { projects: new Map<string, Count>(), sections: new Map<string, Count>(), subjects: new Map<string, Count>(),
+    people: new Map<string, Count>(), countries: new Map<string, Count>(), formats: new Map<string, Count>() };
+  const person = (c: { name: string; o_id: number | null }) => ({ label: c.name, o_id: c.o_id });
+  const byType: Record<string, number> = {};
+  for (const { record: n } of neighbours) {
+    byType[n.kind] = (byType[n.kind] ?? 0) + 1;
+    if (n.kind === "research_item") {
+      const it = store.getItem(String(n.o_id))!;
+      countRecord(maps.projects, it.project ? [it.project] : [], "research_item_count");
+      countRecord(maps.sections, store.projectOf(it)?.sections ?? [], "research_item_count");
+      countRecord(maps.subjects, it.subjects, "research_item_count");
+      countRecord(maps.people, it.contributors.map(person), "research_item_count");
+      countRecord(maps.countries, it.places.map((p) => store.placeChainRefs(p).at(-1)!), "research_item_count");
+      countRecord(maps.formats, it.formats, "research_item_count");
+    } else if (n.kind === "publication") {
+      const p = store.getPublication(String(n.o_id))!;
+      countRecord(maps.subjects, p.subjects, "publication_count");
+      countRecord(maps.people, [...p.authors, ...p.editors], "publication_count");
+    } else if (n.kind === "video") {
+      countRecord(maps.people, store.getVideo(n.o_id)!.speakers.map(person), "video_count");
+    } else if (n.kind === "podcast") {
+      countRecord(maps.people, store.getPodcast(n.o_id)!.people.map(person), "podcast_count");
+    } else if (n.kind === "project") {
+      const p = store.getProjectByOId(n.o_id)!;
+      countRecord(maps.projects, [{ label: p.name, o_id: p.o_id }], "project_count");
+      countRecord(maps.sections, p.sections, "project_count");
+      countRecord(maps.people, [...p.pis, ...p.members], "project_count");
+    } else {
+      countRecord(maps.sections, [{ label: n.title, o_id: n.o_id }], "section_count");
+    }
+  }
+  return textResult({
+    entity_type: "record",
+    value,
+    seed_label: record.title,
+    seed: { id: String(record.o_id), omeka_id: record.o_id, type: record.kind, title: record.title, amira_url: itemUrl(record.o_id) },
+    matching: MATCHING.record,
+    amira_url: itemUrl(record.o_id),
+    space: { release: index.source.tag, model: index.source.model, generated_at: index.source.generated_at },
+    ...limitEcho(requested, 50, limit),
+    matched_records: neighbours.length,
+    matched_by_type: byType,
+    closest: neighbours.slice(0, 10).map(({ record: n, score }) =>
+      ({ title: n.title, type: n.kind, score, omeka_id: n.o_id, amira_url: itemUrl(n.o_id) })),
+    related_projects: topN(maps.projects, limit),
+    related_research_sections: topN(maps.sections, limit),
+    related_subjects: topN(maps.subjects, limit),
+    related_people: topN(maps.people, limit),
+    related_countries: topN(maps.countries, limit),
+    related_formats: topN(maps.formats, limit),
+  });
+}
 
 /** The full-text pivot: the seed's map neighbours stand in for the matched items. */
 function relatedByFullText(store: Store, value: string, limit: number, requested: number | undefined) {

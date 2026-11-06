@@ -92,14 +92,11 @@ const view = (r: SemanticRecord) => ({ id: String(r.o_id), omeka_id: r.o_id, typ
  * get_similar_items and the detail tools' `similar` block return.
  */
 function neighbours(store: DataStore, index: SemanticIndex, record: SemanticRecord, limit: number, types?: readonly string[]) {
-  if (index.lowSignal.has(record.o_id)) {
-    return { count: 0, results: [], no_neighbours: "low_signal" as const,
-      reason: "Too little own text (title, abstract or description, subjects, places) to compare reliably, so it has no neighbours." };
-  }
+  const reason = noNeighboursReason(index, record.o_id);
   const list = index.neighbours.get(record.o_id);
-  if (!list) {
-    return { count: 0, results: [], no_neighbours: "not_in_release" as const,
-      reason: `Not in corpus-vector build ${index.source.tag} (generated ${index.source.generated_at}), probably added since.` };
+  if (reason || !list) {
+    return { count: 0, results: [], no_neighbours: index.lowSignal.has(record.o_id) ? "low_signal" as const : "not_in_release" as const,
+      reason: reason! };
   }
   const wanted = types ? new Set<string>(types) : null;
   const results = list.filter((n) => !wanted || wanted.has(n.record.kind)).slice(0, limit)
@@ -122,6 +119,40 @@ export function similarBlock(store: DataStore, kind: SemanticKind, oId: number):
   const record = semanticRecord(store, oId, [kind]);
   if (!record) return { unavailable: "This record is not embedded." };
   return { release: index.source.tag, ...neighbours(store, index, record, DETAIL_LIMIT), ...(guidanceEnabled() ? { note: NOTE } : {}) };
+}
+
+/**
+ * An embedded record from an omeka_id, a typed id (`publication:29919`) or a
+ * research item's dre:id, or the error to return. Shared by get_similar_items
+ * and find_related's `record` pivot.
+ */
+export function resolveSemanticSeed(store: DataStore, value: string | number, otherTool: string):
+  { record: SemanticRecord } | { error: ReturnType<typeof errorResult> } {
+  const raw = String(value).trim();
+  const typed = parseTypedId(raw);
+  if (typed && !(SEMANTIC_KINDS as readonly string[]).includes(typed.kind)) {
+    return { error: errorResult("not_embedded", `Only ${SEMANTIC_KINDS.join(", ")} records are embedded, not ${typed.kind} records.`, {
+      suggested_tool: otherTool,
+    }) };
+  }
+  const kinds = typed ? [typed.kind as SemanticKind] : SEMANTIC_KINDS;
+  const key = typed?.key ?? raw;
+  // A research item's dre:id also identifies it.
+  const oId = /^\d+$/.test(key) ? Number(key) : store.getItem(key)?.o_id;
+  const record = oId == null ? undefined : semanticRecord(store, oId, kinds);
+  if (!record) {
+    return { error: errorResult("not_found", `No research item, publication, video, podcast, project or section with id '${raw}'.`, {
+      suggested_tool: "resolve_entity",
+    }) };
+  }
+  return { record };
+}
+
+/** Why a record has no neighbours, or null when it has some. */
+export function noNeighboursReason(index: SemanticIndex, oId: number): string | null {
+  if (index.lowSignal.has(oId)) return "Too little own text (title, abstract or description, subjects, places) to compare reliably, so it has no neighbours.";
+  if (!index.neighbours.has(oId)) return `Not in corpus-vector build ${index.source.tag} (generated ${index.source.generated_at}), probably added since.`;
+  return null;
 }
 
 /** The opt-in flag the detail tools share. */
@@ -147,23 +178,9 @@ export function registerSimilarTools(server: Server, tools: ToolMap): void {
         suggested_tool: "find_related",
       });
     }
-    const raw = String(args.id).trim();
-    const typed = parseTypedId(raw);
-    if (typed && !(SEMANTIC_KINDS as readonly string[]).includes(typed.kind)) {
-      return errorResult("not_embedded", `Only ${SEMANTIC_KINDS.join(", ")} records are embedded, not ${typed.kind} records.`, {
-        suggested_tool: "find_related",
-      });
-    }
-    const kinds = typed ? [typed.kind as SemanticKind] : SEMANTIC_KINDS;
-    const key = typed?.key ?? raw;
-    // A research item's dre:id also identifies it.
-    const oId = /^\d+$/.test(key) ? Number(key) : store.getItem(key)?.o_id;
-    const record = oId == null ? undefined : semanticRecord(store, oId, kinds);
-    if (!record) {
-      return errorResult("not_found", `No research item, publication, video, podcast, project or section with id '${raw}'.`, {
-        suggested_tool: "resolve_entity",
-      });
-    }
+    const seed = resolveSemanticSeed(store, args.id, "find_related");
+    if ("error" in seed) return seed.error;
+    const { record } = seed;
     const limit = capLimit(args.limit, 5, 10);
     const found = neighbours(store, index, record, limit, args.types);
     return textResult({

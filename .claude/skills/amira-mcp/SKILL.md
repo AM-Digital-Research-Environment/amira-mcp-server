@@ -187,7 +187,9 @@ descriptions read most alike (a project → related podcasts, a publication → 
 cosine scores. Each neighbour says what it also shares in the catalogue (`shared`: subjects,
 places, people, project) or `basis: "wording_only"`. Present a `wording_only` pair as
 "described in similar terms", never as a documented link; name what is shared when it is. The
-detail tools take `include_similar: true` to add five explained neighbours to one record. A record with too little
+detail tools take `include_similar: true` to add five explained neighbours to one record, and
+`find_related entity_type=record` counts the projects, subjects, people and countries those
+neighbours share: the themes around a record rather than a list of look-alikes. A record with too little
 own text (`low_signal`) or newer than the vector build (`not_in_release`) has no neighbours; that
 says nothing about the record itself.
 

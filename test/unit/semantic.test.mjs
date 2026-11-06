@@ -247,3 +247,36 @@ test("get_data_quality and amira://dataset name the space and its coverage", asy
     model: "google/embeddinggemma-2", model_revision: "914f7f8", generated_at: "2026-11-06T08:04:17Z",
     vectors_sha256: verified.manifest.vectorsSha256 });
 });
+
+// --- find_related, the record pivot (phase 2) ------------------------------------------
+
+test("find_related entity_type=record: the closest records by meaning stand in for the matched records", async () => {
+  const r = await call("find_related", { entity_type: "record", value: "500" });
+  assert.deepEqual([r.entity_type, r.seed_label, r.amira_url, r.space], ["record", "Yoruba Architecture Study", url(500), SPACE]);
+  assert.deepEqual(r.seed, ref(500, "research_item", "Yoruba Architecture Study"));
+  assert.equal(r.matched_records, 7);
+  assert.deepEqual(r.matched_by_type, { research_item: 2, publication: 1, project: 1, video: 1, podcast: 1, section: 1 });
+  assert.deepEqual(r.closest.map((c) => [c.omeka_id, c.type]),
+    [[501, "research_item"], [510, "publication"], [300, "project"], [502, "research_item"], [540, "video"], [530, "podcast"], [400, "section"]]);
+  // Counted per corpus: Fixture Art Worlds is 501's project AND a neighbour itself.
+  const art = r.related_projects.find((p) => p.omeka_id === 300);
+  assert.deepEqual([art.count, art.research_item_count, art.project_count], [2, 1, 1]);
+  // Fendler: 502's contributor, 510's author, 530's host and a member of project 300.
+  const fendler = r.related_people.find((p) => p.omeka_id === 101);
+  assert.deepEqual([fendler.count, fendler.research_item_count, fendler.publication_count, fendler.podcast_count, fendler.project_count],
+    [4, 1, 1, 1, 1]);
+  assert.equal(r.related_research_sections[0].name, "Arts & Aesthetics");
+  // A typed id names the same seed; other pivots keep their shape (no per-type counts).
+  assert.deepEqual((await call("find_related", { entity_type: "record", value: "research_item:500" })).closest, r.closest);
+  const subject = await call("find_related", { entity_type: "subject", value: "Architecture" });
+  assert.ok(subject.related_people.every((p) => !("video_count" in p) && !("project_count" in p)));
+});
+
+test("find_related entity_type=record: no neighbours and unknown seeds are explained errors", async () => {
+  const low = await call("find_related", { entity_type: "record", value: "503" });
+  assert.equal(low.error.code, "no_neighbours");
+  assert.match(low.error.message, /Too little own text/);
+  assert.equal((await call("find_related", { entity_type: "record", value: "511" })).error.code, "no_neighbours");
+  assert.equal((await call("find_related", { entity_type: "record", value: "person:100" })).error.code, "not_embedded");
+  assert.equal((await call("find_related", { entity_type: "record", value: "9999" })).error.code, "not_found");
+});

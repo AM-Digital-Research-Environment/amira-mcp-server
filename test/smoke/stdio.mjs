@@ -173,6 +173,9 @@ if (similar?.count) {
   const detail = await call("get_research_item", { id: similar.source.omeka_id, include_similar: true });
   check(detail.similar?.results?.length > 0 && detail.similar.results[0].omeka_id === similar.results[0].omeka_id,
     "get_research_item include_similar: the same explained neighbours");
+  const pivot = await call("find_related", { entity_type: "record", value: String(similar.source.omeka_id) });
+  check(pivot.matched_records > 0 && pivot.closest?.[0]?.omeka_id === similar.results[0].omeka_id && pivot.related_subjects?.length > 0,
+    "find_related entity_type=record: pivots on the same neighbours");
 }
 await call("search_persons", { keyword: "Beier", limit: 3 }, { expect: [AMIRA] });
 

@@ -9,8 +9,8 @@
   "surface": {
     "stdio": {
       "tool_count": 35,
-      "total_chars": 50599,
-      "total_tokens": 12674,
+      "total_chars": 50704,
+      "total_tokens": 12700,
       "tools": {
         "get_entity_graph": 980,
         "search_research_items": 803,
@@ -24,7 +24,7 @@
         "get_text_passages": 497,
         "search_publications": 492,
         "get_data_quality": 410,
-        "find_related": 326,
+        "find_related": 352,
         "search_projects": 325,
         "get_publication": 307,
         "search_podcasts": 306,
@@ -51,8 +51,8 @@
     },
     "http": {
       "tool_count": 37,
-      "total_chars": 54156,
-      "total_tokens": 13567,
+      "total_chars": 54261,
+      "total_tokens": 13593,
       "tools": {
         "get_entity_graph": 980,
         "search_research_items": 803,
@@ -68,7 +68,7 @@
         "search_publications": 492,
         "get_data_quality": 410,
         "search": 367,
-        "find_related": 326,
+        "find_related": 352,
         "search_projects": 325,
         "get_publication": 307,
         "search_podcasts": 306,
@@ -95,8 +95,8 @@
     },
     "stdio_guidance_off": {
       "tool_count": 35,
-      "total_chars": 35010,
-      "total_tokens": 8765,
+      "total_chars": 35019,
+      "total_tokens": 8768,
       "tools": {
         "get_entity_graph": 876,
         "compare_collections": 686,
@@ -115,7 +115,7 @@
         "search_podcasts": 163,
         "get_publication": 150,
         "get_similar_items": 146,
-        "find_related": 139,
+        "find_related": 142,
         "get_podcast": 133,
         "get_video": 132,
         "get_fulltext_map": 131,
@@ -137,8 +137,8 @@
     },
     "http_guidance_off": {
       "tool_count": 37,
-      "total_chars": 37052,
-      "total_tokens": 9276,
+      "total_chars": 37061,
+      "total_tokens": 9279,
       "tools": {
         "get_entity_graph": 876,
         "compare_collections": 686,
@@ -159,7 +159,7 @@
         "search_podcasts": 163,
         "get_publication": 150,
         "get_similar_items": 146,
-        "find_related": 139,
+        "find_related": 142,
         "get_podcast": 133,
         "get_video": 132,
         "get_fulltext_map": 131,
@@ -380,10 +380,10 @@
       "wire_bytes": 7848
     },
     "get_similar_items@max": {
-      "tokens": 1401,
-      "chars": 5604,
-      "text_bytes": 5604,
-      "wire_bytes": 6265
+      "tokens": 1339,
+      "chars": 5354,
+      "text_bytes": 5354,
+      "wire_bytes": 5975
     },
     "get_person": {
       "tokens": 485,

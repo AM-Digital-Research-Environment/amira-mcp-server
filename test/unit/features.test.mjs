@@ -283,4 +283,5 @@ test("get_similar_items without semantic neighbours says so and points to find_r
   // A detail tool still answers; its similar block says why it is empty.
   const item = await call("get_research_item", { id: 500, include_similar: true });
   assert.deepEqual([item.omeka_id, item.similar], [500, { unavailable: "This snapshot carries no semantic neighbours." }]);
+  assert.equal(errorOf(await raw("find_related", { entity_type: "record", value: "500" })).code, "semantic_unavailable");
 });
