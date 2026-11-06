@@ -31,7 +31,7 @@ digitised **research items**, **people**, **institutions**, **groups**,
 **collections**, the cluster **bibliography with searchable full text** (extracted
 from the open-access PDFs) and its **journals**, **podcast episodes with
 transcripts**, and the cluster's **YouTube videos with searchable transcripts** —
-as 35 core tools an LLM can query, five research-workflow prompts, and resources
+as 36 core tools an LLM can query, five research-workflow prompts, and resources
 for citable records and bulk exports. From one MCP interface, clients can move
 across records and the places, languages, and subjects that connect them.
 
@@ -99,6 +99,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `get_snapshot_changes` | Page added, updated or deleted records across retained snapshots from the same instance |
 | `get_fulltext_map` | The ILAM journal *African Music* read through its private full text, from public derived counts: content groups (AI-labelled) with their articles, the countries articles name, and word rates per year for up to six words |
 | `get_similar_items` | Records whose catalogue descriptions read most alike, across research items, publications, videos, podcasts, projects and sections, with cosine scores and `amira_url`s, each saying what the pair also shares (`shared` subjects, places, people, project) or `basis: "wording_only"`; `types` narrows the result, and a record without neighbours says why (`low_signal`, `not_in_release`). The detail tools take `include_similar` for the same, five at a time. See [Semantic neighbours](#semantic-neighbours) |
+| `get_semantic_map` | The collection as unnamed groups of records close in meaning: each group's size, type mix, top subjects, countries and projects, and the records nearest its centre; `group` lists one group's records, `id` finds the group a record falls in |
 
 ### Prompts and resources
 
@@ -125,7 +126,7 @@ add nothing to the per-turn tool payload.
 
 ### Profiles and research workflows
 
-`AMIRA_TOOL_PROFILE=full` is the default: 35 core tools, or 37 over HTTP.
+`AMIRA_TOOL_PROFILE=full` is the default: 36 core tools, or 38 over HTTP.
 `research`, `discovery` and `visualization` expose smaller documented subsets
 (23/12/14 core tools respectively; HTTP adds `search` and `fetch`). Profiles are
 fixed at startup; they reduce discovery cost, not access permissions. Tools
@@ -281,7 +282,7 @@ The `.mcpb` is the local, offline option for Claude Desktop. The same server can
 also run as a **remote Streamable HTTP endpoint** — one HTTPS URL that ChatGPT,
 Claude (web + desktop remote connectors), the OpenAI and Anthropic APIs, Cursor,
 VS Code and other clients connect to by pasting a URL (no download, always-fresh
-data). The remote surface serves the same 35 tools **plus** the
+data). The remote surface serves the same 36 tools **plus** the
 OpenAI-compatible `search` / `fetch` tools for ChatGPT research integrations (36
 total). Access is unauthenticated — the data is public and read-only.
 
@@ -518,6 +519,15 @@ carries the reason there instead of an error. `find_related entity_type=record`
 pivots on the same neighbours: the projects, sections, subjects, people,
 countries and formats that the seed's 20 closest records share, counted per
 corpus.
+
+The same vectors give `get_semantic_map`: the crawl groups the records by
+seeded spherical k-means (about a hundred per group, at most 30 groups, low-
+signal records left out) and stores each group's member ids, nearest the
+centre first. The groups are unnamed on purpose. The tool describes each one
+by its type mix and its most frequent subjects, countries and projects, with
+the records nearest its centre, so a group is characterised from its contents
+rather than given an invented label. Group ids are renumbered per build
+(1 = the largest).
 
 ## Configuration (environment / extension settings)
 

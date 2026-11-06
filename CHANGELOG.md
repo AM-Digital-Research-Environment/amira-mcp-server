@@ -27,7 +27,22 @@ force and what comes next.
   `project_count` and `section_count` join the usual research-item and
   publication counts on this pivot only). A seed without neighbours is a
   `no_neighbours` error that says why.
-- **Surface:** stdio `tools/list` 12,541 → 12,700 estimated tokens (+1.3%).
+- **`get_semantic_map`**, a new tool: the collection as unnamed groups of
+  records close in meaning. The crawl groups the clustered records by seeded
+  spherical k-means over the same verified vectors (k-means++ starts, about a
+  hundred records per group, at most 30 groups, low-signal records left out)
+  and stores each group's member ids, nearest the centre first, in
+  `semantic_neighbours.json`; `map.php` is not used, since the release
+  checksum does not cover it. Without arguments the tool lists the groups,
+  largest first, each with its type mix, most frequent subjects, countries
+  and projects, and the records nearest its centre; `group` lists one
+  group's records and `id` finds the group a record falls in. Groups are
+  described by their contents, never named, and their ids hold for one
+  snapshot. `get_data_quality` reports the number of groups. 36 core tools on
+  stdio, 38 over HTTP; it joins the `discovery` profile.
+- **Surface:** stdio `tools/list` 12,541 → 13,003 estimated tokens (+3.7%);
+  the `discovery` profile's ceiling moves from 6,500 to 6,800 for its new
+  tool. The token baseline is re-measured on the 6 November snapshot.
 
 ## 1.33.0 — 2026-11-06
 

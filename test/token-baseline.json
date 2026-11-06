@@ -1,16 +1,16 @@
 {
   "_comment": "Token baseline for the AMIRA tool layer, in bytes/4 estimated tokens. Regenerate with `npm run weigh -- --update` and commit the diff: the cost of a schema or summary change belongs in code review. See scripts/weigh.mjs for the two budgets and why drift is fatal for the surface but only a warning for responses. `snapshot` names the data/ snapshot the responses were measured against.",
   "snapshot": {
-    "snapshot_id": "e6630294f42520228cc7f980",
-    "fetchedAt": "2026-11-06T12:43:32.749Z",
-    "maxModified": "2026-11-06T12:36:36+00:00",
+    "snapshot_id": "39739fbc9ac9612188c283d1",
+    "fetchedAt": "2026-11-06T13:30:13.714Z",
+    "maxModified": "2026-11-06T13:09:16+00:00",
     "schemaVersion": 5
   },
   "surface": {
     "stdio": {
-      "tool_count": 35,
-      "total_chars": 50704,
-      "total_tokens": 12700,
+      "tool_count": 36,
+      "total_chars": 51913,
+      "total_tokens": 13003,
       "tools": {
         "get_entity_graph": 980,
         "search_research_items": 803,
@@ -28,6 +28,7 @@
         "search_projects": 325,
         "get_publication": 307,
         "search_podcasts": 306,
+        "get_semantic_map": 303,
         "search_videos": 298,
         "get_podcast": 273,
         "get_video": 270,
@@ -50,9 +51,9 @@
       }
     },
     "http": {
-      "tool_count": 37,
-      "total_chars": 54261,
-      "total_tokens": 13593,
+      "tool_count": 38,
+      "total_chars": 55470,
+      "total_tokens": 13896,
       "tools": {
         "get_entity_graph": 980,
         "search_research_items": 803,
@@ -72,6 +73,7 @@
         "search_projects": 325,
         "get_publication": 307,
         "search_podcasts": 306,
+        "get_semantic_map": 303,
         "search_videos": 298,
         "get_podcast": 273,
         "get_video": 270,
@@ -94,9 +96,9 @@
       }
     },
     "stdio_guidance_off": {
-      "tool_count": 35,
-      "total_chars": 35019,
-      "total_tokens": 8768,
+      "tool_count": 36,
+      "total_chars": 35677,
+      "total_tokens": 8933,
       "tools": {
         "get_entity_graph": 876,
         "compare_collections": 686,
@@ -111,6 +113,7 @@
         "search_research_items": 341,
         "search_publications": 263,
         "search_projects": 165,
+        "get_semantic_map": 165,
         "search_videos": 164,
         "search_podcasts": 163,
         "get_publication": 150,
@@ -136,9 +139,9 @@
       }
     },
     "http_guidance_off": {
-      "tool_count": 37,
-      "total_chars": 37061,
-      "total_tokens": 9279,
+      "tool_count": 38,
+      "total_chars": 37719,
+      "total_tokens": 9444,
       "tools": {
         "get_entity_graph": 876,
         "compare_collections": 686,
@@ -155,6 +158,7 @@
         "search_publications": 263,
         "search": 227,
         "search_projects": 165,
+        "get_semantic_map": 165,
         "search_videos": 164,
         "search_podcasts": 163,
         "get_publication": 150,
@@ -278,22 +282,22 @@
       "wire_bytes": 83992
     },
     "search_publications@bibtex": {
-      "tokens": 4789,
-      "chars": 19110,
-      "text_bytes": 19154,
-      "wire_bytes": 39155
+      "tokens": 4801,
+      "chars": 19160,
+      "text_bytes": 19204,
+      "wire_bytes": 39259
     },
     "search_publications@ris": {
-      "tokens": 5295,
-      "chars": 21132,
-      "text_bytes": 21178,
-      "wire_bytes": 43455
+      "tokens": 5307,
+      "chars": 21182,
+      "text_bytes": 21228,
+      "wire_bytes": 43559
     },
     "search_publications@csl-json": {
-      "tokens": 6259,
-      "chars": 24989,
-      "text_bytes": 25035,
-      "wire_bytes": 52893
+      "tokens": 6272,
+      "chars": 25039,
+      "text_bytes": 25085,
+      "wire_bytes": 52997
     },
     "list_publication_facets@type": {
       "tokens": 187,
@@ -326,16 +330,16 @@
       "wire_bytes": 27102
     },
     "list_publication_facets@venue": {
-      "tokens": 3672,
-      "chars": 14658,
-      "text_bytes": 14687,
-      "wire_bytes": 30390
+      "tokens": 3691,
+      "chars": 14735,
+      "text_bytes": 14764,
+      "wire_bytes": 30548
     },
     "list_journals@max": {
-      "tokens": 10048,
-      "chars": 40172,
-      "text_bytes": 40191,
-      "wire_bytes": 43844
+      "tokens": 9966,
+      "chars": 39840,
+      "text_bytes": 39864,
+      "wire_bytes": 43485
     },
     "search_podcasts@max": {
       "tokens": 6093,
@@ -350,10 +354,10 @@
       "wire_bytes": 43665
     },
     "get_data_quality": {
-      "tokens": 286,
-      "chars": 1143,
-      "text_bytes": 1143,
-      "wire_bytes": 2478
+      "tokens": 292,
+      "chars": 1168,
+      "text_bytes": 1168,
+      "wire_bytes": 2530
     },
     "get_snapshot_changes@max": {
       "tokens": 30,
@@ -366,6 +370,12 @@
       "chars": 14393,
       "text_bytes": 14405,
       "wire_bytes": 15546
+    },
+    "get_semantic_map@max": {
+      "tokens": 10068,
+      "chars": 40227,
+      "text_bytes": 40269,
+      "wire_bytes": 43630
     },
     "search@max": {
       "tokens": 2487,

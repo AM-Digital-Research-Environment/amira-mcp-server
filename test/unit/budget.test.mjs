@@ -105,7 +105,8 @@ for (const [label, opts] of VARIANTS) {
 // The ILAM full-text map (get_fulltext_map, the shared `mentions_country`
 // filter, find_related's research_item pivot) took it to 10,219 in 1.32.0.
 // get_similar_items (#12, research and discovery) took research to 10,537.
-for (const [profile, budget] of [["research", 10_700], ["discovery", 6_500], ["visualization", 9_500]]) {
+// get_semantic_map (#12 phase 2, discovery) took discovery to 6,695.
+for (const [profile, budget] of [["research", 10_700], ["discovery", 6_800], ["visualization", 9_500]]) {
   test(`${profile} profile stays within its deliberate discovery budget`, async () => {
     const surface = await surfaceOf({ openai: true, profile });
     assert.ok(surface.total_tokens <= budget, `${profile}: ${surface.total_tokens} > ${budget}`);

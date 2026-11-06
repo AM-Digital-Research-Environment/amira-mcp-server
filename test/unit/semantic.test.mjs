@@ -241,6 +241,7 @@ test("get_data_quality and amira://dataset name the space and its coverage", asy
     with_neighbours: { research_item: 3, publication: 1, video: 1, podcast: 1, project: 1, section: 1 },
     low_signal: { research_item: 1, publication: 0, video: 0, podcast: 0, project: 0, section: 0 },
     not_in_release: { research_item: 0, publication: 1, video: 1, podcast: 0, project: 1, section: 1 },
+    semantic_map_groups: 2,
   });
   const dataset = JSON.parse((await conn.client.readResource({ uri: "amira://dataset" })).contents[0].text);
   assert.deepEqual(dataset["amira:semantic_space"], { repository: lib.SEMANTIC_SOURCE.repository, release: TAG,
@@ -279,4 +280,56 @@ test("find_related entity_type=record: no neighbours and unknown seeds are expla
   assert.equal((await call("find_related", { entity_type: "record", value: "511" })).error.code, "no_neighbours");
   assert.equal((await call("find_related", { entity_type: "record", value: "person:100" })).error.code, "not_embedded");
   assert.equal((await call("find_related", { entity_type: "record", value: "9999" })).error.code, "not_found");
+});
+
+// --- the semantic map (phase 2) -----------------------------------------------------------
+
+const ANGLE = Object.fromEntries(ROWS.map(([id, , deg]) => [id, deg]));
+
+test("the semantic map partitions the clustered records into contiguous, size-ordered groups", () => {
+  const { members, algorithm, seed } = semantic.clusters;
+  assert.deepEqual([algorithm, seed, members.length], ["spherical-kmeans", 42, 2]);
+  // Every non-low-signal record the snapshot holds, once; never 9999, 503 or the person row.
+  assert.deepEqual(members.flat().sort((a, b) => a - b), [300, 400, 500, 501, 502, 510, 530, 540]);
+  assert.ok(members[0].length >= members[1].length);
+  // On one arc, a group is a contiguous run of angles.
+  const spans = members.map((g) => g.map((id) => ANGLE[id])).map((a) => [Math.min(...a), Math.max(...a)]);
+  assert.ok(spans[0][1] < spans[1][0] || spans[1][1] < spans[0][0], JSON.stringify(spans));
+  assert.throws(() => lib.parseSemanticNeighbours({ ...semantic, clusters: { ...semantic.clusters, members: [[500, 501], [501]] } }),
+    /two groups/);
+});
+
+test("get_semantic_map: unnamed groups described by their contents, then one group's records", async () => {
+  const overview = await call("get_semantic_map");
+  assert.deepEqual([overview.groups, overview.records_on_map, overview.low_signal_records, overview.space], [2, 8, 1, SPACE]);
+  assert.equal(overview.results.reduce((n, g) => n + g.size, 0), 8);
+  const first = overview.results[0];
+  assert.deepEqual(Object.keys(first), ["group", "size", "by_type", "top_subjects", "top_countries", "top_projects", "closest_to_centre"]);
+  assert.match(overview.note, /unnamed/);
+
+  const listed = await call("get_semantic_map", { group: 1 });
+  assert.deepEqual(listed.results.map((r) => r.omeka_id), semantic.clusters.members[0]);
+  assert.equal(listed.size, first.size);
+  assert.ok(listed.results.every((r) => r.amira_url === url(r.omeka_id)));
+  const projects = await call("get_semantic_map", { group: 1, types: ["project"] });
+  assert.ok(projects.results.every((r) => r.type === "project"));
+});
+
+test("get_semantic_map: a record's group, and the cases without one", async () => {
+  const mine = await call("get_semantic_map", { id: "research_item:500" });
+  const group = semantic.clusters.members.findIndex((g) => g.includes(500)) + 1;
+  assert.deepEqual([mine.group, mine.record.omeka_id, mine.record.rank_in_group],
+    [group, 500, semantic.clusters.members[group - 1].indexOf(500) + 1]);
+  const low = await call("get_semantic_map", { id: 503 });
+  assert.equal(low.error.code, "not_on_map");
+  assert.match(low.error.message, /Too little own text/);
+  assert.equal((await call("get_semantic_map", { id: 511 })).error.code, "not_on_map");
+  assert.equal((await call("get_semantic_map", { group: 99 })).error.code, "not_found");
+  assert.equal((await call("get_semantic_map", { group: 1, id: 500 })).error.code, "invalid_arguments");
+  process.env.AMIRA_EXPOSURE = "descriptive";
+  try {
+    assert.equal((await call("get_semantic_map")).error.code, "exposure_restricted");
+  } finally {
+    delete process.env.AMIRA_EXPOSURE;
+  }
 });

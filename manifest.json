@@ -192,6 +192,10 @@
     {
       "name": "get_similar_items",
       "description": "Records whose catalogue descriptions read most alike, across research items, publications, videos, podcasts, projects and sections."
+    },
+    {
+      "name": "get_semantic_map",
+      "description": "The collection as unnamed groups of records close in meaning, each with its type mix, top subjects, countries and projects."
     }
   ],
   "prompts": [

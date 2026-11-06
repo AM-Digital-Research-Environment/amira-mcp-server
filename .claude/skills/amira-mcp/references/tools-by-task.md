@@ -1,6 +1,6 @@
 # Tools by task
 
-All 35 core tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
+All 36 core tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
 `{ count, total_matches, offset, has_more, next_offset?, results[] }` (plus a `filters` echo of the
 filters you actually passed). Every tool clamps an excess `limit` and echoes `requested_limit` /
 `effective_limit`; a page that would exceed 40,000 characters stops early with `response_limited: true`
@@ -124,6 +124,7 @@ re-run a search in a second spelling.
 | Task | Tool | Key params |
 | --- | --- | --- |
 | What connects to X? | `find_related` | `entity_type` (subject/location/person/project) + `value`; a person is a full name or `person:<id>` (a surname shared by several people returns their ids) |
+| What themes does the collection fall into? | `get_semantic_map` | No arguments: the groups (largest first) with size, `by_type`, `top_subjects`, `top_countries`, `top_projects` and `closest_to_centre`; `group` lists one group's records (nearest the centre first, `types` to narrow); `id` finds the group a record falls in, with its `rank_in_group`. Groups are unnamed and renumbered per build |
 | What surrounds this record, by meaning? | `find_related` | `entity_type=record`, `value` = an `omeka_id` or typed id: its 20 closest records by meaning, of any type, stand in for the matched set; `related_*` counts what they share, per corpus (`research_item_count`, `publication_count`, `video_count`, `podcast_count`, `project_count`, `section_count`) |
 | Which ILAM articles are closest in content? | `find_related` | `entity_type=research_item`, `value` = an *African Music* article id: its closest articles by full text (`closest_in_content`), with what they share in the `related_*` lists |
 | What reads like this record, in any corpus? | `get_similar_items` | `id` = an `omeka_id` or typed id (`publication:29919`) of a research item, publication, video, podcast, project or section; `types` to narrow (e.g. `["podcast","video"]`); `limit` ≤ 10. Cosine scores over EmbeddingGemma 2 vectors of catalogue descriptions. Each result has `basis`: `shared_metadata` with `shared` {subjects, places, people, project} it also shares, or `wording_only`. No neighbours → `no_neighbours` = `low_signal` (too little own text) or `not_in_release` (newer than the vector build) |

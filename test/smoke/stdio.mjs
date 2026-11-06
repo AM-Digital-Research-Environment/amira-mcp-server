@@ -176,6 +176,11 @@ if (similar?.count) {
   const pivot = await call("find_related", { entity_type: "record", value: String(similar.source.omeka_id) });
   check(pivot.matched_records > 0 && pivot.closest?.[0]?.omeka_id === similar.results[0].omeka_id && pivot.related_subjects?.length > 0,
     "find_related entity_type=record: pivots on the same neighbours");
+  const map = await call("get_semantic_map", {});
+  check(map.groups >= 2 && map.results?.[0]?.size >= map.results?.at(-1)?.size && map.results[0].closest_to_centre?.length > 0,
+    "get_semantic_map: groups largest first, each with records nearest its centre");
+  const home = await call("get_semantic_map", { id: similar.source.omeka_id, limit: 5 });
+  check(home.record?.omeka_id === similar.source.omeka_id && home.results?.length > 0, "get_semantic_map: a record's group");
 }
 await call("search_persons", { keyword: "Beier", limit: 3 }, { expect: [AMIRA] });
 

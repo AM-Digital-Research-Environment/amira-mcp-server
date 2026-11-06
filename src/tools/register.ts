@@ -13,12 +13,13 @@ import { registerResearchTools } from "./research.js";
 import { registerOpenAITools } from "./openai.js";
 import { registerFulltextTools } from "./fulltext.js";
 import { registerSimilarTools } from "./similar.js";
+import { registerSemanticMapTools } from "./semanticMap.js";
 import { applyToolPolicy, type ToolMap } from "./policy.js";
 import { allowedTools, type ToolProfile } from "../toolProfiles.js";
 import type { Server } from "./_shared.js";
 
 /**
- * Register every AMIRA tool (35 on stdio; 37 with the HTTP-only OpenAI
+ * Register every AMIRA tool (36 on stdio; 38 with the HTTP-only OpenAI
  * `search`/`fetch`), then apply the shared policy: profile filtering, argument
  * trimming, error shaping, discovery hints and, with `guidance: false`, the
  * removal of every title and description. App resources follow the tools: an
@@ -39,6 +40,7 @@ export function registerTools(server: Server, profile: ToolProfile = "full", opt
   registerResearchTools(server, tools); // resolve_entity, get_entity_graph, get_text_passages, compare_collections, get_data_quality, get_snapshot_changes
   registerFulltextTools(server, tools); // get_fulltext_map
   registerSimilarTools(server, tools); // get_similar_items
+  registerSemanticMapTools(server, tools); // get_semantic_map
   if (opts.openai) registerOpenAITools(server, tools); // search, fetch (HTTP only)
   const allowed = allowedTools(profile);
   applyToolPolicy(tools, allowed, { guidance: opts.guidance });

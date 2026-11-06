@@ -9,7 +9,7 @@ export const TOOL_PROFILES = {
     "list_subjects", "list_locations", "list_collections", "get_fulltext_map", "get_similar_items", "search", "fetch"],
   discovery: ["get_collection_overview", "resolve_entity", "get_entity_graph", "find_related", "search_projects", "get_project",
     "search_persons", "get_person", "list_subjects", "list_locations", "search_research_items", "get_research_item", "get_similar_items",
-    "search", "fetch"],
+    "get_semantic_map", "search", "fetch"],
   visualization: ["get_collection_overview", "resolve_entity", "get_entity_graph", "find_related", "list_locations", "list_years",
     "list_research_sections", "search_research_items", "get_research_item", "search_publications", "get_publication", "list_publication_facets",
     "compare_collections", "get_data_quality", "search", "fetch"],

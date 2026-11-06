@@ -11,6 +11,11 @@
 // present in the snapshot and stores those, never the vectors themselves
 // (~15 MB): no model and no vector runs at request time.
 //
+// The same verified vectors also give the semantic map (get_semantic_map):
+// seeded spherical k-means groups of the records, stored as member ids ordered
+// by closeness to their group's centre. Groups are unnamed and renumbered per
+// build (1 = the largest).
+//
 // Low-signal records (too little own text: title, abstract or description,
 // subjects and places) are excluded as sources and as neighbours, by the
 // producer's rule. Similarity measures how alike two catalogue descriptions
@@ -124,6 +129,13 @@ const neighboursFileSchema = z.object({
   low_signal: z.array(omekaId).max(1_000_000),
   /** Source id → [neighbour id, round(score × 10⁴), …], best first. */
   neighbours: z.record(idKey, z.array(z.number().int().min(-10_000)).max(SEMANTIC_KINDS.length * 100 * 2)),
+  /** The semantic map: group g + 1 is `members[g]`, closest to its centre first. Optional: absent before 1.34.0. */
+  clusters: z.object({
+    algorithm: z.literal("spherical-kmeans"),
+    seed: z.number().int(),
+    iterations: z.number().int().positive(),
+    members: z.array(z.array(omekaId).min(1).max(1_000_000)).min(1).max(500),
+  }).optional(),
 });
 export type SemanticNeighbours = z.infer<typeof neighboursFileSchema>;
 
@@ -132,6 +144,8 @@ export interface SemanticManifestEntry { repository: string; tag: string; model:
 
 export function parseSemanticNeighbours(raw: unknown): SemanticNeighbours {
   const out = neighboursFileSchema.parse(raw);
+  const grouped = out.clusters?.members.flat() ?? [];
+  if (new Set(grouped).size !== grouped.length) throw new Error("semantic clusters: a record sits in two groups");
   for (const [id, flat] of Object.entries(out.neighbours)) {
     if (flat.length % 2) throw new Error(`semantic neighbours: '${id}' has an odd-length list`);
     for (let i = 0; i < flat.length; i += 2) {
@@ -162,7 +176,7 @@ function snapshotIds(data: SnapshotData): Record<SemanticKind, Set<number>> {
  * refresh runs this inside a serving process.
  */
 export async function computeNeighbours(release: VerifiedRelease, data: SnapshotData,
-  opts: { signal?: AbortSignal; perType?: number } = {}): Promise<SemanticNeighbours> {
+  opts: { signal?: AbortSignal; perType?: number; clusters?: number } = {}): Promise<SemanticNeighbours> {
   const perType = opts.perType ?? NEIGHBOURS_PER_TYPE;
   const present = snapshotIds(data);
   const dims = release.manifest.dimensions;
@@ -213,7 +227,106 @@ export async function computeNeighbours(release: VerifiedRelease, data: Snapshot
       vectors_sha256: release.manifest.vectorsSha256, neighbours_per_type: perType },
     low_signal: lowSignal.sort((x, y) => x - y),
     neighbours,
+    ...(rows.length ? { clusters: await clusterRows(v, dims, rows, opts.clusters ?? defaultClusterCount(rows.length), opts.signal) } : {}),
   };
+}
+
+/** About a hundred records per group, between 2 and 30 groups. */
+export const defaultClusterCount = (n: number): number => Math.min(n, 30, Math.max(2, Math.round(n / 100)));
+const CLUSTER_SEED = 42;
+const MAX_ITERATIONS = 30;
+
+/** Deterministic PRNG (mulberry32), so a build is reproducible. */
+function prng(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Seeded spherical k-means over L2-normalised rows (cosine similarity): k-means++
+ * starts, then assign / re-centre until no record moves. Groups are renumbered
+ * by size (largest first) and their members ordered by closeness to the centre.
+ */
+async function clusterRows(v: Float32Array, dims: number, rows: { row: number; id: number }[], k: number,
+  signal?: AbortSignal): Promise<NonNullable<SemanticNeighbours["clusters"]>> {
+  const n = rows.length;
+  k = Math.max(1, Math.min(k, n));
+  const centres = new Float32Array(k * dims);
+  const dot = (i: number, c: number) => {
+    const o = rows[i]!.row * dims, oc = c * dims;
+    let s = 0;
+    for (let d = 0; d < dims; d++) s += v[o + d]! * centres[oc + d]!;
+    return s;
+  };
+  const setCentre = (c: number, i: number) => centres.set(v.subarray(rows[i]!.row * dims, rows[i]!.row * dims + dims), c * dims);
+  const pause = async () => { await new Promise((resolve) => setImmediate(resolve)); signal?.throwIfAborted(); };
+
+  // k-means++: each next start is drawn in proportion to its squared distance from the nearest start.
+  const random = prng(CLUSTER_SEED);
+  setCentre(0, Math.floor(random() * n));
+  const nearest = new Float64Array(n).fill(Infinity);
+  for (let c = 1; c < k; c++) {
+    let total = 0;
+    for (let i = 0; i < n; i++) {
+      const d = Math.max(0, 1 - dot(i, c - 1));
+      if (d * d < nearest[i]!) nearest[i] = d * d;
+      total += nearest[i]!;
+    }
+    let pick = random() * total, chosen = n - 1;
+    for (let i = 0; i < n; i++) { pick -= nearest[i]!; if (pick <= 0) { chosen = i; break; } }
+    setCentre(c, chosen);
+    if (c % 4 === 0) await pause();
+  }
+
+  const assign = new Int32Array(n).fill(-1);
+  const closeness = new Float64Array(n);
+  let iterations = 0;
+  for (; iterations < MAX_ITERATIONS; iterations++) {
+    let moved = 0;
+    for (let i = 0; i < n; i++) {
+      let best = 0, bestScore = -Infinity;
+      for (let c = 0; c < k; c++) { const s = dot(i, c); if (s > bestScore) { bestScore = s; best = c; } }
+      if (assign[i] !== best) { assign[i] = best; moved++; }
+      closeness[i] = bestScore;
+      if (i % 256 === 255) await pause();
+    }
+    if (!moved) break;
+    // Re-centre: the normalised mean of each group's members.
+    centres.fill(0);
+    const counts = new Int32Array(k);
+    for (let i = 0; i < n; i++) {
+      const o = rows[i]!.row * dims, oc = assign[i]! * dims;
+      for (let d = 0; d < dims; d++) centres[oc + d]! += v[o + d]!;
+      counts[assign[i]!] = counts[assign[i]!]! + 1;
+    }
+    for (let c = 0; c < k; c++) {
+      if (!counts[c]) {
+        // An empty group restarts on the record furthest from its own centre.
+        let worst = 0;
+        for (let i = 1; i < n; i++) if (closeness[i]! < closeness[worst]!) worst = i;
+        setCentre(c, worst);
+        closeness[worst] = 1;
+        continue;
+      }
+      let norm = 0;
+      for (let d = c * dims; d < (c + 1) * dims; d++) norm += centres[d]! * centres[d]!;
+      norm = Math.sqrt(norm) || 1;
+      for (let d = c * dims; d < (c + 1) * dims; d++) centres[d]! /= norm;
+    }
+    await pause();
+  }
+  const groups = Array.from({ length: k }, () => [] as number[]);
+  for (let i = 0; i < n; i++) groups[assign[i]!]!.push(i);
+  const members = groups.filter((g) => g.length)
+    .map((g) => g.sort((a, b) => closeness[b]! - closeness[a]! || rows[a]!.id - rows[b]!.id).map((i) => rows[i]!.id))
+    .sort((a, b) => b.length - a.length || a[0]! - b[0]!);
+  // Assignment passes run: one more than the re-centrings when it converged early.
+  return { algorithm: "spherical-kmeans", seed: CLUSTER_SEED, iterations: Math.min(iterations + 1, MAX_ITERATIONS), members };
 }
 
 // --- request time ------------------------------------------------------------------
@@ -242,6 +355,9 @@ export interface SemanticIndex {
   lowSignal: Set<number>;
   /** Restricted to records present in the served snapshot. */
   neighbours: Map<number, { record: SemanticRecord; score: number }[]>;
+  /** The semantic map: group id (1-based) → present members, closest to the centre first. */
+  groups: Map<number, SemanticRecord[]>;
+  groupOf: Map<number, number>;
 }
 
 /** The stored neighbours, filtered at load to records the served snapshot holds. */
@@ -259,7 +375,15 @@ export function semanticIndex(store: DataStore): SemanticIndex | null {
       }
       neighbours.set(Number(key), list);
     }
-    return { source: semantic.source, lowSignal: new Set(semantic.low_signal), neighbours };
+    const groups = new Map<number, SemanticRecord[]>();
+    const groupOf = new Map<number, number>();
+    (semantic.clusters?.members ?? []).forEach((ids, g) => {
+      const present = ids.map((id) => semanticRecord(store, id)).filter((r): r is SemanticRecord => !!r);
+      if (!present.length) return;
+      groups.set(g + 1, present);
+      for (const r of present) groupOf.set(r.o_id, g + 1);
+    });
+    return { source: semantic.source, lowSignal: new Set(semantic.low_signal), neighbours, groups, groupOf };
   });
 }
 
@@ -277,5 +401,6 @@ export function semanticCoverage(store: DataStore) {
   return {
     release: index.source.tag, model: index.source.model, generated_at: index.source.generated_at,
     with_neighbours: withNeighbours, low_signal: lowSignal, not_in_release: notInRelease,
+    semantic_map_groups: index.groups.size,
   };
 }

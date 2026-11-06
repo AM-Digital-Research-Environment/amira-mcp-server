@@ -94,7 +94,7 @@ Every entity is an Omeka item with a stable public page: its **`amira_url`**
 number in that URL; use that when an identifier is needed.
 
 See [references/data-model.md](references/data-model.md) for field-level detail, and
-[references/tools-by-task.md](references/tools-by-task.md) for the full 35-tool catalogue (37 over HTTP),
+[references/tools-by-task.md](references/tools-by-task.md) for the full 36-tool catalogue (38 over HTTP),
 the five prompts and the resources.
 
 ## Workflow
@@ -189,7 +189,10 @@ places, people, project) or `basis: "wording_only"`. Present a `wording_only` pa
 "described in similar terms", never as a documented link; name what is shared when it is. The
 detail tools take `include_similar: true` to add five explained neighbours to one record, and
 `find_related entity_type=record` counts the projects, subjects, people and countries those
-neighbours share: the themes around a record rather than a list of look-alikes. A record with too little
+neighbours share: the themes around a record rather than a list of look-alikes.
+`get_semantic_map` gives the whole collection as unnamed groups of records close in meaning.
+Characterise a group from its `top_subjects`, `top_countries`, `top_projects` and records; never
+present it as a curated category, and do not cite a group id across snapshots. A record with too little
 own text (`low_signal`) or newer than the vector build (`not_in_release`) has no neighbours; that
 says nothing about the record itself.
 
@@ -295,6 +298,6 @@ link.
 
 13. **Exact place identity.** `location` is a label search and may match homonyms.
     Use `location_id` from `list_locations` for one authority and its descendants.
-14. **Profiles.** Full mode has 35 core tools (37 over HTTP). Some deployments expose
+14. **Profiles.** Full mode has 36 core tools (38 over HTTP). Some deployments expose
     `research`, `discovery` or `visualization` subsets. Use the advertised catalogue;
     do not assume an omitted tool exists.
