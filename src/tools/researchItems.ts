@@ -1,6 +1,7 @@
 import type { ToolMap } from "./policy.js";
 import { isoDate, researchFilterError, selectResearchItems } from "../researchItemQuery.js";
 import { z } from "zod";
+import type { ResearchItemRec } from "../types.js";
 import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
 import {
   READ_ONLY,
@@ -19,7 +20,8 @@ import {
   yearLabel,
   type Server,
 } from "./_shared.js";
-import { iiifManifestUrl, itemSetUrl, itemUrl, itemUrlOrNull } from "../urls.js";
+import { iiifManifestUrl, itemUrl, itemUrlOrNull } from "../urls.js";
+import { collectionFields, collectionsOfItem } from "../collections.js";
 import { allowDescriptive, allowStructured } from "../exposure.js";
 import { guidanceEnabled } from "../guidance.js";
 import { generateItemCitation } from "../citation.js";
@@ -54,7 +56,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
         university: z.string().max(1000).optional().describe("ubt | unilag | ujkz | ufba | external — code or full name"),
         resource_type: z.string().max(1000).optional().describe("e.g. 'Image', 'Text', 'Audio', 'Moving image'"),
         genre: z.string().max(1000).optional().describe("Format/genre descriptor, partial (e.g. 'interview', 'letter', 'photograph')"),
-        collection: z.string().max(1000).optional().describe("Item-set title (partial) or id from list_collections"),
+        collection: z.string().max(1000).optional().describe("Collection id, code or partial title from list_collections"),
         language: z.string().max(1000).optional().describe("Name or ISO code — 'French', 'fr', 'fra' and legacy 'fre' all match"),
         mentions_country: z.string().max(1000).optional()
           .describe("ILAM African Music articles whose full text names this country 3+ times"),
@@ -131,12 +133,12 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
         });
       }
       const project = store.projectOf(it);
-      // The citation names the collection the item is filed under — the real
-      // item-set title only, never the `Collection <id>` placeholder below.
+      // The citation names the collection the item is filed under: a real
+      // item-set title only, never the project name standing in for one.
       const cite = generateItemCitation(
         it,
         {
-          collection: it.item_sets.map((setId) => store.getItemSet(setId)?.title).find(Boolean) ?? null,
+          collection: collectionsOfItem(store, it).flatMap((c) => c.sets.map((s) => s.title))[0] ?? null,
           project: project?.name ?? null,
         },
         citation_format ?? "bibtex",
@@ -184,12 +186,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
                 title: r.ref.label,
                 amira_url: itemUrlOrNull(r.ref.o_id),
               })),
-              collections: it.item_sets.map((setId) => ({
-                title: store.getItemSet(setId)?.title ?? `Collection ${setId}`,
-                id: String(setId),
-                omeka_id: setId,
-                amira_url: itemSetUrl(setId),
-              })),
+              collections: collectionsOfItem(store, it).map((c) => ({ title: c.title, ...collectionFields(c) })),
             }
           : {}),
         access_rights: it.access_rights,
@@ -227,9 +224,9 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
  * articles by full text, its content group and the countries its text names.
  * Derived numbers only; the text itself is private and never read here.
  */
-function fulltextFields(store: Awaited<ReturnType<typeof ensureStore>>, it: { o_id: number; item_sets: number[] }): Record<string, unknown> {
+function fulltextFields(store: Awaited<ReturnType<typeof ensureStore>>, it: ResearchItemRec): Record<string, unknown> {
   const index = fulltextIndex(store);
-  if (!index || !inMappedCollection(index, it.item_sets)) return {};
+  if (!index || !inMappedCollection(index, it)) return {};
   const article = index.articles.get(it.o_id);
   const source = sourceRef(index);
   if (!article) {

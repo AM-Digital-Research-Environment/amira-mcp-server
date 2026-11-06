@@ -1,24 +1,24 @@
 {
   "_comment": "Token baseline for the AMIRA tool layer, in bytes/4 estimated tokens. Regenerate with `npm run weigh -- --update` and commit the diff: the cost of a schema or summary change belongs in code review. See scripts/weigh.mjs for the two budgets and why drift is fatal for the surface but only a warning for responses. `snapshot` names the data/ snapshot the responses were measured against.",
   "snapshot": {
-    "snapshot_id": "e7e8cb050e424d00bf6b89da",
-    "fetchedAt": "2026-11-04T09:34:01.205Z",
-    "maxModified": "2026-11-03T13:11:56+00:00",
+    "snapshot_id": "217e622cd3b7a76de1d5d24b",
+    "fetchedAt": "2026-11-06T12:21:55.540Z",
+    "maxModified": "2026-11-04T11:57:30+00:00",
     "schemaVersion": 5
   },
   "surface": {
     "stdio": {
       "tool_count": 34,
-      "total_chars": 48801,
-      "total_tokens": 12223,
+      "total_chars": 48926,
+      "total_tokens": 12255,
       "tools": {
         "get_entity_graph": 980,
-        "search_research_items": 802,
+        "search_research_items": 803,
         "list_years": 793,
-        "compare_collections": 741,
+        "compare_collections": 744,
         "list_publication_facets": 635,
         "get_collection_overview": 623,
-        "list_locations": 590,
+        "list_locations": 602,
         "resolve_entity": 545,
         "get_snapshot_changes": 507,
         "get_text_passages": 497,
@@ -37,7 +37,7 @@
         "get_person": 207,
         "search_persons": 196,
         "list_subjects": 196,
-        "list_collections": 165,
+        "list_collections": 181,
         "get_institution": 161,
         "get_research_section": 159,
         "list_institutions": 158,
@@ -50,16 +50,16 @@
     },
     "http": {
       "tool_count": 36,
-      "total_chars": 52358,
-      "total_tokens": 13116,
+      "total_chars": 52483,
+      "total_tokens": 13148,
       "tools": {
         "get_entity_graph": 980,
-        "search_research_items": 802,
+        "search_research_items": 803,
         "list_years": 793,
-        "compare_collections": 741,
+        "compare_collections": 744,
         "list_publication_facets": 635,
         "get_collection_overview": 623,
-        "list_locations": 590,
+        "list_locations": 602,
         "resolve_entity": 545,
         "fetch": 526,
         "get_snapshot_changes": 507,
@@ -80,7 +80,7 @@
         "get_person": 207,
         "search_persons": 196,
         "list_subjects": 196,
-        "list_collections": 165,
+        "list_collections": 181,
         "get_institution": 161,
         "get_research_section": 159,
         "list_institutions": 158,
@@ -208,10 +208,10 @@
       "wire_bytes": 19683
     },
     "list_institutions@max": {
-      "tokens": 8718,
-      "chars": 34854,
-      "text_bytes": 34872,
-      "wire_bytes": 38291
+      "tokens": 8723,
+      "chars": 34872,
+      "text_bytes": 34890,
+      "wire_bytes": 38311
     },
     "list_cluster_partners": {
       "tokens": 1866,
@@ -232,16 +232,16 @@
       "wire_bytes": 44496
     },
     "list_locations@max": {
-      "tokens": 10032,
-      "chars": 40108,
-      "text_bytes": 40126,
-      "wire_bytes": 84756
+      "tokens": 10039,
+      "chars": 40136,
+      "text_bytes": 40154,
+      "wire_bytes": 85112
     },
     "list_collections@max": {
-      "tokens": 3069,
-      "chars": 12259,
-      "text_bytes": 12273,
-      "wire_bytes": 13096
+      "tokens": 4063,
+      "chars": 16236,
+      "text_bytes": 16249,
+      "wire_bytes": 17564
     },
     "list_categories@formats": {
       "tokens": 4101,
@@ -268,10 +268,10 @@
       "wire_bytes": 32658
     },
     "search_publications@max": {
-      "tokens": 10042,
-      "chars": 40077,
-      "text_bytes": 40168,
-      "wire_bytes": 83968
+      "tokens": 10007,
+      "chars": 39921,
+      "text_bytes": 40027,
+      "wire_bytes": 83672
     },
     "search_publications@bibtex": {
       "tokens": 4778,
@@ -299,9 +299,9 @@
     },
     "list_publication_facets@year": {
       "tokens": 125,
-      "chars": 497,
-      "text_bytes": 497,
-      "wire_bytes": 1124
+      "chars": 498,
+      "text_bytes": 498,
+      "wire_bytes": 1126
     },
     "list_publication_facets@language": {
       "tokens": 110,
@@ -310,34 +310,34 @@
       "wire_bytes": 992
     },
     "list_publication_facets@subject": {
-      "tokens": 3128,
-      "chars": 12510,
-      "text_bytes": 12510,
-      "wire_bytes": 26104
+      "tokens": 3129,
+      "chars": 12516,
+      "text_bytes": 12516,
+      "wire_bytes": 26116
     },
     "list_publication_facets@author": {
-      "tokens": 3244,
-      "chars": 12964,
-      "text_bytes": 12976,
-      "wire_bytes": 27036
+      "tokens": 3248,
+      "chars": 12975,
+      "text_bytes": 12989,
+      "wire_bytes": 27062
     },
     "list_publication_facets@venue": {
-      "tokens": 3615,
-      "chars": 14446,
-      "text_bytes": 14460,
-      "wire_bytes": 29932
+      "tokens": 3640,
+      "chars": 14539,
+      "text_bytes": 14557,
+      "wire_bytes": 30130
     },
     "list_journals@max": {
-      "tokens": 9990,
-      "chars": 39943,
-      "text_bytes": 39960,
-      "wire_bytes": 43593
+      "tokens": 9989,
+      "chars": 39939,
+      "text_bytes": 39956,
+      "wire_bytes": 43589
     },
     "search_podcasts@max": {
-      "tokens": 6092,
-      "chars": 24350,
-      "text_bytes": 24368,
-      "wire_bytes": 26369
+      "tokens": 6093,
+      "chars": 24351,
+      "text_bytes": 24369,
+      "wire_bytes": 26370
     },
     "search_videos@max": {
       "tokens": 9939,
@@ -358,10 +358,10 @@
       "wire_bytes": 314
     },
     "get_fulltext_map": {
-      "tokens": 3598,
-      "chars": 14377,
-      "text_bytes": 14389,
-      "wire_bytes": 15528
+      "tokens": 3602,
+      "chars": 14393,
+      "text_bytes": 14405,
+      "wire_bytes": 15546
     },
     "search@max": {
       "tokens": 2487,
@@ -370,10 +370,10 @@
       "wire_bytes": 20594
     },
     "get_research_item": {
-      "tokens": 1776,
-      "chars": 7091,
-      "text_bytes": 7102,
-      "wire_bytes": 7671
+      "tokens": 1816,
+      "chars": 7252,
+      "text_bytes": 7263,
+      "wire_bytes": 7848
     },
     "get_person": {
       "tokens": 485,
@@ -442,16 +442,16 @@
       "wire_bytes": 46636
     },
     "resolve_entity@max": {
-      "tokens": 3515,
-      "chars": 13999,
-      "text_bytes": 14057,
-      "wire_bytes": 29232
+      "tokens": 3490,
+      "chars": 13897,
+      "text_bytes": 13958,
+      "wire_bytes": 29034
     },
     "get_entity_graph@max": {
-      "tokens": 6582,
-      "chars": 26326,
-      "text_bytes": 26326,
-      "wire_bytes": 55776
+      "tokens": 6580,
+      "chars": 26318,
+      "text_bytes": 26318,
+      "wire_bytes": 55760
     },
     "get_text_passages@max": {
       "tokens": 6119,

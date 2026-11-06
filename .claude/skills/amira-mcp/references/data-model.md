@@ -33,7 +33,7 @@ The central artefact (image, text, audio, moving image, …). Returned in full b
 | `citation[]` | The record's own `dcterms:bibliographicCitation`, when curators supplied one — **31 items of ~4,000 do**. |
 | `generated_citation` + `bibtex` | Built by the server from the fields above (creator + role, medium, date, collection, holding repository, `amira_url`) because `citation[]` is almost always empty. `citation_format=ris` / `csl-json` returns `ris` / `csl_json` instead of `bibtex`. |
 | `has_media` / `thumbnail` | Whether digitised media is attached; large-thumbnail URL when it is (open `amira_url` to view the full media). |
-| `collections[]` | The item sets the item belongs to `{ title, amira_url }` — browsable collection pages. |
+| `collections[]` | The collection the item belongs to: its project, `{ title, omeka_id, project (when it differs from the title), project_id, item_sets[] { id, code }, amira_url }`, cited by the project page (the item-set page redirects there). |
 | `closest_in_content[]` / `full_text_map` | ILAM *African Music* articles only (collection 27724), from DRE Visualizations' offline full-text map: up to 8 closest articles `{ title, date, score, omeka_id, amira_url }`, and `{ on_map, group { id, label, label_ai_generated, articles }, countries_named[] { country, mentions }, notes, source }`. The text itself is private and never served; group labels are AI-generated. |
 
 Search results are slimmer (no long text); profile views (`get_person`, `get_institution`,

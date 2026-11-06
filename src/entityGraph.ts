@@ -5,6 +5,7 @@ import type { LinkedRef } from "./types.js";
 import { fold } from "./text.js";
 import { nameMatchesQuery } from "./names.js";
 import { itemSetUrl, itemUrl } from "./urls.js";
+import { collectionOfItemSet } from "./collections.js";
 import { snapshotId } from "./snapshotIdentity.js";
 import { canonicalTypedId } from "./typedIds.js";
 
@@ -32,12 +33,14 @@ export interface GraphIndex {
 export function graphIndex(store: DataStore): GraphIndex {
   return store.cached("entity-graph", () => {
     const entities = new Map<string, Entity>();
+    // A collection node keeps its item-set id but cites the project page (#18).
+    const collectionUrl = (setId: number) => collectionOfItemSet(store, setId)?.amira_url ?? itemSetUrl(setId);
     const explicit = new Map<string, Link[]>();
     const records = new Map<string, RecordLinks[]>();
     const entity = (type: EntityType, label: string, id: number | null, resolved = true) => {
       const key = id == null ? `literal:${type}:${createHash("sha256").update(fold(label)).digest("hex").slice(0, 16)}` : `${type}:${id}`;
       if (!entities.has(key)) entities.set(key, { id: key, type, label, omeka_id: id,
-        amira_url: id == null ? null : type === "collection" ? itemSetUrl(id) : itemUrl(id), resolved: id != null && resolved });
+        amira_url: id == null ? null : type === "collection" ? collectionUrl(id) : itemUrl(id), resolved: id != null && resolved });
       return key;
     };
     for (const [type, rows] of [

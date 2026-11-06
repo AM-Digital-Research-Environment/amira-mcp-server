@@ -68,8 +68,8 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Task | Tool | Notes |
 | --- | --- | --- |
 | Subjects ranked by item count | `list_subjects` | Tags merged in; each subject links to its own authority page and says whether it is an LCSH heading (with `authority_uri`) or a free tag; `vocabulary=lcsh|tag` filters |
-| Places ranked by item count | `list_locations` | Flat list of every place — countries and cities together (hierarchy rolled up, so an item from Lagos counts toward both Lagos and Nigeria); optional exact `country`, `near: {latitude, longitude, km}` or `bbox: [west, south, east, north]`; returns coordinates and Wikidata ids |
-| Collections ranked by item count | `list_collections` | Per-project + external item sets with IIIF collection links; feed the title/id into the `collection` filter of search_research_items |
+| Places ranked by item count | `list_locations` | Flat list of every place — countries and the places under them together (hierarchy rolled up, so an item from Lagos counts toward both Lagos and Nigeria); `level` is `country` or `place` (city, region or site); optional exact `country`, `near: {latitude, longitude, km}` or `bbox: [west, south, east, north]`; returns coordinates and Wikidata ids |
+| Collections ranked by item count | `list_collections` | One row per project collection (cluster and external), cited by the project page, with its item set(s), collection `code` and IIIF links; feed the id, code or title into the `collection` filter of search_research_items |
 | Formats / languages / resource types | `list_categories` | `category` ∈ formats (alias: genres) / languages / resource_types |
 | Coverage over time (date histogram) | `list_years` | `bucket` = year/decade; `from`/`to` window; `sort` = chronological/count; ranged items count in every year they span; rights/admin dates are not used. Renders as an interactive chart in MCP Apps hosts (`ui://amira/timeline`); the JSON is identical everywhere else |
 
@@ -200,7 +200,7 @@ Arguments autocomplete from the snapshot's authority names in hosts that support
 | Follow one entity's relationships | `get_entity_graph` | `seed` from resolver (or `item:`/`pub:` ids); optional `types` keeps only those neighbour types, applied before the bounds (`neighbour_types` counts all); ≤100 nodes, ≤200 edges, 42,000 JSON bytes. Edges distinguish explicit links from per-corpus co-occurrence; one source sample each, `truncated` marks omitted edges |
 | Read all evidence for an edge | `get_entity_graph` | Same `seed`, `edge_id`, returned `snapshot_id`, `offset`, `limit` ≤50. `snapshot_changed` means restart from a new graph |
 | Find cited passages in chosen documents | `get_text_passages` | `ids` (1–10 typed publication/video/podcast IDs; `pub:` works too), `keyword`, context `radius` ≤500, `limit` ≤20. Original UTF-16 offsets; every match reachable via `next_offset` (10,000 per document cap, flagged); requires full exposure |
-| Compare projects or item sets | `compare_collections` | `cohorts` (2–4 `{type: project/collection, id}` objects), common `filters`. Each cohort has total/matched items, missingness, date range and top type/language counts |
+| Compare projects or collections | `compare_collections` | `cohorts` (2–4 `{type: project/collection, id}` objects), common `filters`. Each cohort has total/matched items, missingness, date range and top type/language counts |
 | Check metadata coverage | `get_data_quality` | No args; snapshot provenance, missingness, text availability, unresolved references and refresh state |
 | Inspect local snapshot changes | `get_snapshot_changes` | Optional `from_id`, `to_id`, `corpus`, `offset`, `limit` ≤100; pin IDs for paging. `history_unavailable` is expected with fewer than two retained same-source snapshots |
 

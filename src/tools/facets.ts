@@ -17,7 +17,8 @@ import {
   textResult,
   type Server,
 } from "./_shared.js";
-import { iiifCollectionUrl, itemSetUrl, itemUrlOrNull } from "../urls.js";
+import { itemUrlOrNull } from "../urls.js";
+import { allCollections, collectionFields, itemsOfCollection } from "../collections.js";
 import { APP_UI_META } from "./apps.js";
 import { researchFilterError, researchFilters, selectResearchItems } from "../researchItemQuery.js";
 import { placeAliases } from "../matching.js";
@@ -108,7 +109,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
     "list_locations",
     {
       title: "List locations",
-      description: "Research places with coordinates and ancestor rollups. One item can count under both city and country. Feed a name into search_research_items.location.",
+      description: "Research places with coordinates and ancestor rollups. Two tiers: level \"country\" or \"place\" (city, region or site); one item counts under both. Feed a name into search_research_items.location.",
       annotations: READ_ONLY,
       _meta: APP_UI_META,
       inputSchema: z.strictObject({
@@ -190,6 +191,9 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
               name: r.label,
               ...(r.o_id != null ? { id: String(r.o_id) } : {}),
               omeka_id: r.o_id,
+              // Two tiers only: a hierarchy root is a country; everything under it
+              // (city, region, province, park) is one "place" tier. Flat on purpose.
+              level: r.country ? "place" : "country",
               coordinate_scope: r.country ? "place" : "hierarchy_root",
               ...(r.country ? { country: r.country } : {}),
               item_count: r.count,
@@ -216,10 +220,10 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
     "list_collections",
     {
       title: "List collections",
-      description: "Omeka item sets ranked by research-item count, with catalogue links. Feed an ID into search_research_items.collection.",
+      description: "Research collections, one per project, ranked by research-item count and cited by the project page. Feed an id or code into search_research_items.collection.",
       annotations: READ_ONLY,
       inputSchema: z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Substring filter on the collection title"),
+        keyword: z.string().max(1000).optional().describe("Substring filter on the collection title, project name or code"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
       }),
@@ -230,21 +234,22 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       const limit = capLimit(args.limit, 50, 200);
       const offset = capOffset(args.offset);
 
-      const counts = new Map<number, number>();
-      for (const it of store.items) for (const id of it.item_sets) counts.set(id, (counts.get(id) ?? 0) + 1);
-
-      let ranked = [...counts.entries()]
-        .map(([oId, count]) => ({ oId, title: store.getItemSet(oId)?.title ?? `Collection ${oId}`, count }))
-        .sort((a, b) => b.count - a.count);
-      if (args.keyword) ranked = ranked.filter((r) => containsCI(r.title, args.keyword!));
+      let ranked = store.cached("facets:collections", () => allCollections(store)
+        .map((c) => ({ c, count: itemsOfCollection(store, c).length }))
+        .filter((r) => r.count > 0)
+        .sort((a, b) => b.count - a.count || a.c.title.localeCompare(b.c.title)));
+      if (args.keyword) {
+        const kw = args.keyword;
+        ranked = ranked.filter(({ c }) => containsCI(c.title, kw) || containsCI(c.project?.name, kw) ||
+          containsCI(c.project?.dre_id, kw) || c.sets.some((s) => containsCI(s.title, kw) || containsCI(s.code, kw)));
+      }
 
       return textResult(
         pageOf(
           ranked,
           offset,
           limit,
-          (r) => ({ collection: r.title, id: String(r.oId), omeka_id: r.oId, item_count: r.count,
-            iiif_collection: iiifCollectionUrl(r.oId), amira_url: itemSetUrl(r.oId) }),
+          ({ c, count }) => ({ collection: c.title, item_count: count, ...collectionFields(c) }),
           { distinct_collections: ranked.length, ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
         ),
       );

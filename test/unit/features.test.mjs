@@ -122,6 +122,9 @@ test("subjects carry their vocabulary and authority URI", async () => {
 test("list_locations: Wikidata ids and geographic filters", async () => {
   const nigeria = (await call("list_locations", { keyword: "Nigeria" })).results[0];
   assert.equal(nigeria.wikidata, "http://www.wikidata.org/entity/Q1033");
+  // #3: two explicit tiers; a place names its country.
+  const lagos = (await call("list_locations", { keyword: "Lagos" })).results[0];
+  assert.deepEqual([nigeria.level, lagos.level, lagos.country], ["country", "place", "Nigeria"]);
   const near = await call("list_locations", { near: { latitude: 6.5, longitude: 3.4, km: 50 } });
   assert.deepEqual(near.results.map((r) => r.name), ["Lagos"]);
   const box = await call("list_locations", { bbox: [5, 45, 15, 55] });
@@ -132,7 +135,8 @@ test("organisations resolve by acronym and list rows carry ids", async () => {
   assert.equal((await call("get_institution", { name: "UBT" })).omeka_id, 200);
   const rows = (await call("list_institutions", { keyword: "UBT" })).results;
   assert.deepEqual(rows.map((r) => [r.id, r.omeka_id]), [["200", 200]]);
-  assert.deepEqual((await call("list_collections")).results.map((r) => r.id), ["800"]);
+  // A collection is its project (#18): set 800 files project 300's records; 301 has no set.
+  assert.deepEqual((await call("list_collections")).results.map((r) => r.id), ["300", "301"]);
 });
 
 test("search_podcasts filters by language; podcasts and videos return string ids", async () => {

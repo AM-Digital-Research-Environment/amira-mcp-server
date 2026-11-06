@@ -198,7 +198,7 @@ function relatedByFullText(store: Store, value: string, limit: number, requested
   if (!item) return errorResult("not_found", `No research item with id '${value}'.`, { suggested_tool: "search_research_items" });
   const article = index.articles.get(item.o_id);
   if (!article) {
-    return errorResult("not_on_fulltext_map", inMappedCollection(index, item.item_sets)
+    return errorResult("not_on_fulltext_map", inMappedCollection(index, item)
       ? `'${item.title}' is not on the full-text map (no full text, or excluded as shared section text, journal furniture or under 300 words).`
       : "Only articles of the ILAM journal African Music (collection 27724) are on the full-text map.", {
       suggested_tool: "search_research_items",

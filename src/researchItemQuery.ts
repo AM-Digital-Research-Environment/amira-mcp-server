@@ -12,6 +12,7 @@ import { personMatches } from "./names.js";
 import { allowDescriptive, allowStructured } from "./exposure.js";
 import { fold } from "./text.js";
 import { stripTypedId } from "./typedIds.js";
+import { collectionsOfItem, inCollection, resolveCollection } from "./collections.js";
 import { countryNames, countrySuggestions, fulltextIndex } from "./fulltextMaps.js";
 
 const query = z.string().max(1000).optional();
@@ -197,9 +198,13 @@ export function selectResearchItems(store: DataStore, args: ResearchFilters) {
     preds.genre = (it) =>
       anyContainsCI(refLabels(it.formats), args.genre!) || anyContainsCI(it.format_notes, args.genre!);
   if (args.collection) {
-    const q = stripTypedId(args.collection.trim(), ["collection"]);
-    const asId = Number(q);
-    preds.collection = (it) => it.item_sets.some((id) => id === asId || containsCI(store.getItemSet(id)?.title, q));
+    // An exact project id, project dre:id, item-set id or collection code picks
+    // one collection; anything else is a substring of a collection or project title.
+    const q = stripTypedId(args.collection.trim(), ["collection", "project"]);
+    const target = resolveCollection(store, q);
+    preds.collection = target
+      ? (it) => inCollection(it, target)
+      : (it) => collectionsOfItem(store, it).some((c) => containsCI(c.title, q) || containsCI(c.project?.name, q));
   }
   if (args.language) preds.language = (it) => store.languageIndex.matches(it.languages, args.language!);
   if (args.mentions_country) {

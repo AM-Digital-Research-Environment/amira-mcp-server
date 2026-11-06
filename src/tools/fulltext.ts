@@ -72,8 +72,12 @@ export function registerFulltextTools(server: Server, tools: ToolMap): void {
 function header(store: DataStore, index: FulltextIndex) {
   const set = store.getItemSet(index.itemSetId);
   const c = index.maps.map.counts;
+  // Cited by the collection's project page when known (#18); the set page redirects there.
+  const collection = index.collection
+    ? { title: index.collection.title, omeka_id: index.collection.omeka_id, item_set_id: index.itemSetId, amira_url: index.collection.amira_url }
+    : { title: set?.title ?? `Collection ${index.itemSetId}`, omeka_id: index.itemSetId, amira_url: itemSetUrl(index.itemSetId) };
   return {
-    collection: { title: set?.title ?? `Collection ${index.itemSetId}`, omeka_id: index.itemSetId, amira_url: itemSetUrl(index.itemSetId) },
+    collection,
     source: sourceRef(index),
     coverage: {
       articles: c.items, with_full_text: c.withText, on_map: index.articles.size,

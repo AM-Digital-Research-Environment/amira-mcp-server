@@ -21,7 +21,11 @@ const lib = await import("../../server/lib.js");
 const ILAM = 27724;
 const fixture = buildFixture(lib.SNAPSHOT_SCHEMA_VERSION);
 const d = fixture.data;
-d.item_sets.push({ o_id: ILAM, title: "ILAM" });
+// As live: the ILAM set is filed under its own project item (#18), which is
+// what the articles' project link names too.
+const ILAM_PROJECT = { label: "International Library of African Music", o_id: 37700 };
+d.projects.push({ ...structuredClone(d.projects[1]), o_id: ILAM_PROJECT.o_id, dre_id: "Ext_ILAM", name: ILAM_PROJECT.label, alt_names: [] });
+d.item_sets.push({ o_id: ILAM, title: "ILAM", project: ILAM_PROJECT, code: "ILAM" });
 const articles = [
   [520, "Mbira tunings in Zimbabwe", 1962],
   [521, "Kalimba and mbira names", 1975],
@@ -32,7 +36,7 @@ const articles = [
 for (const [o_id, title, year] of articles) {
   d.research_items.push({
     ...structuredClone(d.research_items[1]),
-    o_id, dre_id: `ilam-${o_id}`, title, alt_titles: [], item_sets: [ILAM], places: [], subjects: [{ label: "Music", o_id: 603 }],
+    o_id, dre_id: `ilam-${o_id}`, title, alt_titles: [], item_sets: [ILAM], project: ILAM_PROJECT, places: [], subjects: [{ label: "Music", o_id: 603 }],
     dates: { created: `${year}-01-01` }, year_min: year, year_max: year,
   });
 }
@@ -224,7 +228,8 @@ test("mentions_country is refused below the descriptive level", async () => {
 
 test("get_fulltext_map overview: groups with members, AI-label caveat, countries and coverage", async () => {
   const o = await call("get_fulltext_map", {});
-  assert.deepEqual(o.collection, { title: "ILAM", omeka_id: ILAM, amira_url: lib.itemUrl(ILAM).replace("/item/", "/item-set/") });
+  // Cited by the ILAM project page; the item set stays available as item_set_id (#18).
+  assert.deepEqual(o.collection, { title: "ILAM", omeka_id: ILAM_PROJECT.o_id, item_set_id: ILAM, amira_url: lib.itemUrl(ILAM_PROJECT.o_id) });
   assert.deepEqual(o.coverage, { articles: 5, with_full_text: 5, on_map: 4, not_on_map_with_full_text: 1, exclusion_reasons: { furniture: 1, short: 1 } });
   assert.deepEqual(o.groups.map((g) => [g.id, g.articles, g.label_ai_generated]), [[1, 2, true], [2, 1, true]], "group 3 has no article in the snapshot");
   assert.deepEqual(o.groups[0].sample, [{ title: "Mbira tunings in Zimbabwe", amira_url: url(520) }, { title: "Kalimba and mbira names", amira_url: url(521) }]);

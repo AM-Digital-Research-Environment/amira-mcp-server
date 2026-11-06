@@ -49,7 +49,9 @@ d.projects.push({
   funded_by: [{ label: "Université Joseph Ki-Zerbo", o_id: 202 }], date: { start: "2021-01-01", end: null },
   url: "https://example.org/osa", university: "ujkz", alt_names: ["OSA"],
 });
-d.item_sets.push({ o_id: 801, title: "Sound Collection" });
+// Linked to its project the way the live sets are (dcterms:isPartOf + dre:id);
+// set 800 has no link, so its project is inferred from its members (#18).
+d.item_sets.push({ o_id: 801, title: "Sound Collection", project: { label: "Ouaga Sound Archive", o_id: 302 }, code: "UJKZ_Sound2021" });
 d.research_items.push({
   ...structuredClone(d.research_items[1]),
   o_id: 504, dre_id: "ujkz-fx-0504", title: "Ouagadougou Street Recording", type: "Sound",
@@ -250,19 +252,36 @@ test("list_cluster_partners: all four categories, each filter form, invalid_cate
 
 // --- facets ----------------------------------------------------------------------
 
-test("list_collections: ranked item sets with string id, omeka_id, IIIF and item-set links", async () => {
-  const row = (id, collection, count) => ({ collection, id: String(id), omeka_id: id, item_count: count,
-    iiif_collection: `${SITE}/iiif/3/collection/${id}`, amira_url: `${SITE}/s/amira/item-set/${id}` });
+test("list_collections: one row per project, cited by the project page, with its item sets (#18)", async () => {
+  const row = (id, collection, count, project, projectId, sets) => ({ collection, item_count: count, id: String(id), omeka_id: id,
+    ...(project !== collection ? { project } : {}), project_id: projectId, item_sets: sets.map(([setId, code]) => ({ id: setId, code })),
+    iiif_collection: sets.length ? `${SITE}/iiif/3/collection/${sets[0][0]}` : null, amira_url: url(id) });
+  // Item 504 sits in sets 800, 801 and 899 but belongs to project 302 only;
+  // set 899 is missing from the snapshot and no longer shows as "Collection 899".
+  const art = row(300, "Fixture Collection", 2, "Fixture Art Worlds", "UBT_Fixture2019", [[800, null]]);
+  const music = row(301, "Fixture Music Library", 1, "Fixture Music Library", "Ext_FixtureMusic", []);
+  const sound = row(302, "Sound Collection", 1, "Ouaga Sound Archive", "UJKZ_Sound2021", [[801, "UJKZ_Sound2021"]]);
   assert.deepEqual(await call("list_collections"), {
-    distinct_collections: 3, count: 3, total_matches: 3, offset: 0, has_more: false,
-    results: [row(800, "Fixture Collection", 3), row(801, "Sound Collection", 1), row(899, "Collection 899", 1)],
+    distinct_collections: 3, count: 3, total_matches: 3, offset: 0, has_more: false, results: [art, music, sound],
   });
-  assert.deepEqual(await call("list_collections", { keyword: "sound" }), {
-    distinct_collections: 1, filters: { keyword: "sound" }, count: 1, total_matches: 1, offset: 0, has_more: false,
-    results: [row(801, "Sound Collection", 1)],
-  });
+  for (const keyword of ["sound", "Ouaga", "ujkz_sound"]) {
+    assert.deepEqual(await call("list_collections", { keyword }), {
+      distinct_collections: 1, filters: { keyword }, count: 1, total_matches: 1, offset: 0, has_more: false, results: [sound],
+    }, keyword);
+  }
   const paged = await call("list_collections", { limit: 1, offset: 1 });
-  assert.deepEqual([omekaIds(paged), paged.next_offset], [[801], 2]);
+  assert.deepEqual([omekaIds(paged), paged.next_offset], [[301], 2]);
+
+  // Every collection key resolves to the same project-scoped records.
+  for (const collection of ["801", "302", "UJKZ_Sound2021", "collection:801", "project:302", "Sound Coll", "Ouaga Sound"]) {
+    assert.deepEqual(omekaIds(await call("search_research_items", { collection })), [504], collection);
+  }
+  assert.deepEqual(omekaIds(await call("search_research_items", { collection: "800" })), [500, 501]);
+  const cohorts = await call("compare_collections", { cohorts: [{ type: "collection", id: "UJKZ_Sound2021" }, { type: "collection", id: "800" }] });
+  assert.deepEqual(cohorts.cohorts.map((c) => [c.id, c.name, c.amira_url, c.total_items]),
+    [[302, "Sound Collection", url(302), 1], [300, "Fixture Collection", url(300), 2]]);
+  assert.deepEqual((await call("get_research_item", { id: "504" })).collections,
+    [{ title: "Sound Collection", ...Object.fromEntries(Object.entries(sound).filter(([k]) => !["collection", "item_count"].includes(k))) }]);
   const clamped = await call("list_collections", { limit: 201 });
   assert.deepEqual([clamped.requested_limit, clamped.effective_limit], [201, 200]);
 });

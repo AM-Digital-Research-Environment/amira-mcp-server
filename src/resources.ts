@@ -19,7 +19,8 @@ import { allowDescriptive, allowStructured } from "./exposure.js";
 import { guidanceEnabled } from "./guidance.js";
 import { API_BASE, SITE_BASE } from "./config.js";
 import { snapshotId } from "./snapshotIdentity.js";
-import { itemSetUrl, itemUrl } from "./urls.js";
+import { itemUrl } from "./urls.js";
+import { collectionFields, collectionsOfItem, itemsOfCollection, resolveCollection } from "./collections.js";
 import { refLabels } from "./matching.js";
 import { researchFilterError, researchFilters, selectResearchItems } from "./researchItemQuery.js";
 import { abstractsOf, languagesOf, publicationFilterError, publicationFilters, selectPublications } from "./publicationQuery.js";
@@ -85,7 +86,7 @@ function itemRow(store: DataStore, it: ResearchItemRec): Record<string, unknown>
       project: it.project?.label ?? null, university: UNIVERSITY_LABELS[it.university],
       contributors: it.contributors.map((c) => `${c.name}${c.role ? ` (${c.role})` : ""}`),
       subjects: refLabels(it.subjects), places: refLabels(it.places), languages: refLabels(it.languages),
-      collections: it.item_sets.map((id) => store.getItemSet(id)?.title ?? String(id)),
+      collections: collectionsOfItem(store, it).map((c) => c.title),
     } : {}),
     ...(allowDescriptive() ? { description: it.description, abstract: it.abstract } : {}),
     license: it.license, access_rights: it.access_rights,
@@ -170,9 +171,9 @@ function authorityRecord(store: DataStore, kind: RecordKind, oId: number): Recor
     return s && { kind, omeka_id: s.o_id, name: s.name, vocabulary: s.vocabulary, authority_uri: s.uri, amira_url: itemUrl(s.o_id) };
   }
   if (kind === "collection") {
-    const s = store.getItemSet(oId);
-    return s && { kind, omeka_id: s.o_id, title: s.title, research_items: store.items.filter((it) => it.item_sets.includes(oId)).length,
-      iiif_collection: `${SITE_BASE}/iiif/3/collection/${s.o_id}`, amira_url: itemSetUrl(s.o_id) };
+    // By item-set or project id; cited by the project page (#18).
+    const c = resolveCollection(store, String(oId));
+    return c && { kind, title: c.title, research_items: itemsOfCollection(store, c).length, ...collectionFields(c) };
   }
   if (kind === "journal") {
     const j = store.getJournal(oId);

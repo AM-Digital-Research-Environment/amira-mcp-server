@@ -13,6 +13,7 @@ import { assertSnapshotSource, snapshotId } from "../snapshotIdentity.js";
 import { loadSnapshot, readSnapshotPointer } from "../snapshot.js";
 import { itemUrl, itemSetUrl } from "../urls.js";
 import { canonicalTypedId, parseTypedId, stripTypedId } from "../typedIds.js";
+import { itemsOfCollection, resolveCollection } from "../collections.js";
 import { READ_ONLY, capLimit, capOffset, limitEcho, queryErrorResult, textResult, errorResult, exposureRestrictedResult, pageOf, type Server } from "./_shared.js";
 import { refreshSchema } from "./outputSchemas.js";
 import { personSuggestions } from "./people.js";
@@ -76,8 +77,10 @@ function snapshotDiff(before: Loaded, after: Loaded, corpora: readonly CorpusNam
     for (const id of [...new Set([...old.keys(), ...current.keys()])].sort((a, b) => a - b)) {
       const prev = old.get(id), next = current.get(id), rec = next ?? prev!;
       const change = !prev ? "added" as const : !next ? "deleted" as const : JSON.stringify(prev) !== JSON.stringify(next) ? "updated" as const : null;
+      // A collection item set is cited by its project page (#18); the set page redirects there.
+      const setProject = corpus === "item_sets" && "project" in rec ? rec.project?.o_id : undefined;
       if (change) changes.push({ corpus, id, change, title: "name" in rec ? rec.name : rec.title,
-        amira_url: corpus === "item_sets" ? itemSetUrl(id) : itemUrl(id) });
+        amira_url: corpus !== "item_sets" ? itemUrl(id) : setProject != null ? itemUrl(setProject) : itemSetUrl(id) });
     }
   }
   diffCache.set(key, changes);
@@ -195,7 +198,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
 
   tools.compare_collections = server.registerTool("compare_collections", {
     title: "Compare project collections", annotations: READ_ONLY,
-    description: "Compare 2–4 projects or item sets with identical research-item filters. Reports denominators, missingness, dates and top types/languages; collections can overlap.",
+    description: "Compare 2–4 projects or collections (id or code from list_collections) with identical research-item filters. Reports denominators, missingness, dates and top types/languages.",
     inputSchema: z.strictObject({ cohorts: z.array(z.strictObject({ type: z.enum(["project", "collection"]), id: z.string().min(1).max(256) })).min(2).max(4),
       filters: researchFilters.optional() }),
     outputSchema: z.object({ snapshot_id: z.string(), overlap_note: z.string(), cohorts: z.array(z.object({ type: z.string(), id: z.number(), name: z.string(),
@@ -209,10 +212,15 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     const selected = new Set(selectResearchItems(store, args.filters ?? {}).filtered.map((it) => it.o_id));
     const cohorts = [];
     for (const cohort of args.cohorts) {
-      const key = stripTypedId(cohort.id, cohort.type === "project" ? ["project"] : ["collection"]);
-      const rec = cohort.type === "project" ? store.getProject(key) : store.getItemSet(Number(key));
+      // A collection resolves to its project (by project id, dre:id, item-set id
+      // or code), so both cohort types count the same records and cite the project page.
+      const key = stripTypedId(cohort.id, cohort.type === "project" ? ["project"] : ["collection", "project"]);
+      const collection = cohort.type === "collection" ? resolveCollection(store, key) : undefined;
+      const project = cohort.type === "project" ? store.getProject(key) : undefined;
+      const rec = project ? { o_id: project.o_id, name: project.name, amira_url: itemUrl(project.o_id) }
+        : collection && { o_id: collection.omeka_id, name: collection.title, amira_url: collection.amira_url };
       if (!rec) return errorResult("not_found", `Unknown ${cohort.type} id: ${cohort.id}`);
-      const all = cohort.type === "project" ? store.itemsForProject(rec.o_id) : store.items.filter((it) => it.item_sets.includes(rec.o_id));
+      const all = project ? store.itemsForProject(project.o_id) : itemsOfCollection(store, collection!);
       const items = all.filter((it) => selected.has(it.o_id));
       const types = new Map<string, number>(), languages = new Map<string, number>();
       const missing = { date: 0, language: 0, place: 0, resource_type: 0, media: 0 };
@@ -226,8 +234,8 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
         if (it.year_min == null) missing.date++; else years.push(it.year_min, it.year_max ?? it.year_min);
       }
       const ranked = (map: Map<string, number>) => Object.fromEntries([...map].sort((a, b) => b[1] - a[1]).slice(0, 30));
-      cohorts.push({ type: cohort.type, id: rec.o_id, name: "name" in rec ? rec.name : rec.title,
-        amira_url: cohort.type === "project" ? itemUrl(rec.o_id) : itemSetUrl(rec.o_id), total_items: all.length, matched_items: items.length,
+      cohorts.push({ type: cohort.type, id: rec.o_id, name: rec.name,
+        amira_url: rec.amira_url, total_items: all.length, matched_items: items.length,
         missing, resource_types: ranked(types), languages: ranked(languages), date_range: years.length ? { earliest: Math.min(...years), latest: Math.max(...years) } : null });
     }
     return textResult({ snapshot_id: snapshotId(store.manifest), cohorts, overlap_note: "Counts are distinct items within each cohort; cohorts may overlap. Language totals may exceed items; category lists show the top 30." });

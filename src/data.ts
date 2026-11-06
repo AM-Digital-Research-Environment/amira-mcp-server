@@ -194,6 +194,9 @@ export class DataStore {
     const k = fold(dreIdOrOId.trim());
     return this.projectByDreId.get(k) ?? (Number.isInteger(Number(k)) ? this.projectByOId.get(Number(k)) : undefined);
   }
+  getProjectByOId(oId: number): ProjectRec | undefined {
+    return this.projectByOId.get(oId);
+  }
   projectOf(item: ResearchItemRec): ProjectRec | undefined {
     return item.project?.o_id != null ? this.projectByOId.get(item.project.o_id) : undefined;
   }

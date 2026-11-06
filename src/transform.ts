@@ -26,6 +26,7 @@ import {
 import type {
   Contributor,
   ItemDates,
+  ItemSetRec,
   JournalRec,
   LanguageRec,
   LinkedRef,
@@ -216,8 +217,11 @@ export function transformResearchItem(
 }
 
 /** An item set (collection) — fetched from /api/item_sets, not /api/items. */
-export function transformItemSet(itemSet: OmekaItem): { o_id: number; title: string } {
-  return { o_id: oid(itemSet), title: omekaTitle(itemSet) };
+export function transformItemSet(itemSet: OmekaItem): ItemSetRec {
+  const project = linkedRefs(itemSet, "dcterms:isPartOf").find((ref) => ref.o_id != null) ?? null;
+  const code = firstString(itemSet, "dre:id");
+  // Registry sets ("Persons", "Languages") carry neither; keep their records minimal.
+  return { o_id: oid(itemSet), title: omekaTitle(itemSet), ...(project ? { project } : {}), ...(code ? { code } : {}) };
 }
 
 /** A media record and the item it belongs to (/api/media). */

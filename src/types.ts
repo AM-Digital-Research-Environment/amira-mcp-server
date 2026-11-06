@@ -202,6 +202,11 @@ export interface ResearchItemRec {
 export interface ItemSetRec {
   o_id: number;
   title: string;
+  /** dcterms:isPartOf → the research project whose records the set files (#18).
+   * Absent from older snapshots; the store then infers it from the members. */
+  project?: LinkedRef | null;
+  /** dre:id — the collection code, e.g. "UBT_ArtWorld2019" or "ILAM". */
+  code?: string | null;
 }
 
 export interface PublicationRec {

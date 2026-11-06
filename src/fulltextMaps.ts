@@ -15,6 +15,8 @@
 // citation remains an `amira_url` the snapshot can back.
 import { z } from "zod";
 import type { DataStore } from "./data.js";
+import type { ResearchItemRec } from "./types.js";
+import { collectionOfItemSet, inCollection, type Collection } from "./collections.js";
 import { fold } from "./text.js";
 
 /** Where the files come from. A new map ships by moving this pin in a release. */
@@ -108,6 +110,8 @@ export interface FulltextArticle { group: number; neighbours: Neighbour[]; count
 export interface FulltextIndex {
   maps: FulltextMaps;
   itemSetId: number;
+  /** The collection the map's item set belongs to; membership follows its project (#18). */
+  collection: Collection | null;
   articles: Map<number, FulltextArticle>;
   groups: Map<number, { id: number; label: string; members: number[] }>;
   /** Folded country name -> stored spelling. */
@@ -124,7 +128,11 @@ export function fulltextIndex(store: DataStore): FulltextIndex | null {
   if (!maps) return null;
   return store.cached("fulltext:index", () => {
     const setId = maps.map.itemSetId;
-    const present = (id: number) => store.getItem(String(id))?.item_sets.includes(setId) ?? false;
+    const collection = collectionOfItemSet(store, setId) ?? null;
+    const present = (id: number) => {
+      const it = store.getItem(String(id));
+      return !!it && (collection ? inCollection(it, collection) : it.item_sets.includes(setId));
+    };
     const articles = new Map<number, FulltextArticle>();
     const groups = new Map(maps.map.groups.map((g) => [g.id, { id: g.id, label: g.label, members: [] as number[] }]));
     const countries = new Map<string, string>();
@@ -141,12 +149,13 @@ export function fulltextIndex(store: DataStore): FulltextIndex | null {
       groups.get(group)?.members.push(id);
     }
     const words = new Map(Object.keys(maps.words.words).map((w) => [fold(w), w]));
-    return { maps, itemSetId: setId, articles, groups, countries, words, articlesByYear };
+    return { maps, itemSetId: setId, collection, articles, groups, countries, words, articlesByYear };
   });
 }
 
 /** True when the research item belongs to the collection the map describes. */
-export const inMappedCollection = (index: FulltextIndex, itemSets: number[]): boolean => itemSets.includes(index.itemSetId);
+export const inMappedCollection = (index: FulltextIndex, it: ResearchItemRec): boolean =>
+  index.collection ? inCollection(it, index.collection) : it.item_sets.includes(index.itemSetId);
 
 // --- provenance and caveats (curatorial text, shared by every surface) ----------
 

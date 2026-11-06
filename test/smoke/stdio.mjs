@@ -122,7 +122,12 @@ await call("list_research_sections", {}, { expect: ["funding_phase"] });
 await call("get_research_section", { name: "Translating" }, { expect: ["AM 2.0"] });
 await call("list_subjects", { limit: 5 }, { expect: [AMIRA] });
 const locs = await call("list_locations", { limit: 5 });
-check(locs.results?.[0]?.item_count > 0 && !("level" in (locs.results?.[0] ?? {})), "list_locations: flat, ranked by item count (no level)");
+check(locs.results?.[0]?.item_count > 0, "list_locations: flat, ranked by item count");
+// #3: an output field (not a filter) naming the two tiers the data has.
+const allLocs = (await call("list_locations", { limit: 300 })).results ?? [];
+check(allLocs.length > 0 && allLocs.every((r) => r.level === (r.country ? "place" : "country")), "list_locations: every row has level country|place");
+check(allLocs.find((r) => r.name === "Nigeria")?.level === "country" && allLocs.find((r) => r.name === "Lagos")?.level === "place",
+  "list_locations: Nigeria is a country, Lagos a place");
 const cappedLocs = await call("list_locations", { limit: 9999 });
 check(cappedLocs.requested_limit === 9999 && cappedLocs.effective_limit === 300, "list_locations: effective-limit echo when capped");
 await call("list_categories", { category: "formats", limit: 5 });
@@ -136,11 +141,16 @@ check(badYearFacet.error?.code === "invalid_range", "list_years: inverted year r
 const decades = await call("list_years", { bucket: "decade", limit: 3 });
 check(/^\d+s$/.test(decades.results?.[0]?.decade ?? ""), "list_years: decade label shape");
 
-const colls = await call("list_collections", { limit: 5 }, { expect: ["item-set"] });
+const colls = await call("list_collections", { limit: 5 }, { expect: [AMIRA] });
 check(colls.results?.[0]?.item_count > 0, "collections: ranked by item count");
-if (colls.results?.[0]?.collection) {
-  const byColl = await call("search_research_items", { collection: colls.results[0].collection, limit: 2 });
-  check(byColl.total_matches === colls.results[0].item_count, "collection filter round-trips the count");
+// #18: a collection is its project, cited by the project page, never the redirecting item-set page.
+check(colls.results?.every((r) => r.amira_url === `${AMIRA}${r.omeka_id}` && r.project_id), "collections: cited by their project page");
+const top = colls.results?.[0];
+if (top) {
+  for (const key of [top.id, top.project_id, ...top.item_sets.flatMap((s) => (s.code ? [String(s.id), s.code] : [String(s.id)]))]) {
+    const byColl = await call("search_research_items", { collection: key, limit: 2 });
+    check(byColl.total_matches === top.item_count, `collection filter round-trips the count (${key})`);
+  }
 }
 await call("search_persons", { keyword: "Beier", limit: 3 }, { expect: [AMIRA] });
 

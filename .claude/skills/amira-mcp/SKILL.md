@@ -128,7 +128,7 @@ Use the right entry point for the question:
   `matched_in: "transcript"` with a `transcript_snippet` around the match) and `search_podcasts`
   (transcripts searched the same way).
 - Discover vocabulary first when unsure of exact terms: `list_subjects` (tags are merged in),
-  `list_locations`, `list_collections` (item sets — pair with the `collection` filter),
+  `list_locations`, `list_collections` (one per project, cited by the project page — pair with the `collection` filter),
   `list_categories` (formats/languages/resource_types), all ranked by item count. Feed a returned
   value straight back into the matching filter. `list_years` gives the date distribution (by year or
   decade) for coverage-over-time and most-covered-year questions. For date ranges, pass `from <= to`
@@ -268,7 +268,8 @@ link.
    Absence of a transcript or full text is not an error. The detail tools omit the text unless you
    pass `include_transcript=true` / `include_fulltext=true` (see Drill).
 9. **Places: flat facet, hierarchy-aware filters.** `list_locations` is a flat, item-count-ranked list
-   (countries and cities together, hierarchy rolled up — no level to choose). On
+   (countries and the places under them together, hierarchy rolled up — no level to choose; each
+   row's `level` says `country` or `place`, the data having only those two tiers). On
    `search_research_items`, `location` matches a place at ANY level (a country *or* a city —
    `location=Nigeria` includes Lagos items), and `country` narrows to the country level specifically.
 10. **Dates carry a `date_status`.** Podcasts and videos label each date `published`, `scheduled`
