@@ -109,7 +109,9 @@ jobs:
   publish:
     name: Update the rolling pre-release
     needs: build
-    if: needs.build.outputs.changed == 'true'
+    # Only from main: a manual run on another branch is a dry run (crawl, test,
+    # pack), never a public bundle built from unmerged code.
+    if: needs.build.outputs.changed == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
