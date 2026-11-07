@@ -231,7 +231,8 @@ test("an unreachable vector release keeps the neighbours already served; AMIRA_S
   // Offline by construction: every GitHub request went to the stub.
   assert.ok(stub.paths().some((p) => p.startsWith("/github/api/repos/")), "the release listing was asked of the stub");
   const off = await runChild(stub, { extra: { semantic: SEMANTIC }, env: { AMIRA_SEMANTIC_RELEASE: "off" } });
-  assert.deepEqual([off.report.before.semantic, off.report.after.semantic], ["semantic-embeddings-v1-7", undefined]);
+  // Off is honoured from the first load, not only after a refresh: the stored neighbours are never served.
+  assert.deepEqual([off.report.before.semantic, off.report.after.semantic], [undefined, undefined]);
 });
 
 test("a failing crawl keeps serving the old store and records error_class", { timeout: 20_000 }, async (t) => {

@@ -7,7 +7,7 @@ export * from "./types.js";
 export { LanguageIndex } from "./languages.js";
 export { nameTokens, nameKey, samePerson, nameMatchesQuery, editDistance, nameNearMiss, nearMissNames } from "./names.js";
 export { fold, foldCached, foldedIndexOf, clearFoldCache } from "./text.js";
-export { ensureStore, currentStore, DataStore, withStore } from "./data.js";
+export { ensureStore, currentStore, chooseInitial, DataStore, withStore } from "./data.js";
 export { warmIndexes } from "./warm.js";
 export { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshot, writeSnapshotAtomic } from "./snapshot.js";
 export { itemUrl, itemUrlOrNull } from "./urls.js";
@@ -48,5 +48,6 @@ export { fetchFulltextMaps } from "./snapshot.js";
 export { FULLTEXT_SOURCE, parseFulltextMaps, fulltextIndex, wordTrends } from "./fulltextMaps.js";
 export { fetchSemanticRelease } from "./snapshot.js";
 export {
-  NEIGHBOURS_PER_TYPE, SEMANTIC_SOURCE, computeNeighbours, parseSemanticNeighbours, semanticIndex, verifySemanticRelease,
+  NEIGHBOURS_PER_TYPE, SEMANTIC_SOURCE, computeNeighbours, parseSemanticNeighbours, pickSemantic, semanticIndex, servableSemantic,
+  verifySemanticRelease,
 } from "./semantic.js";

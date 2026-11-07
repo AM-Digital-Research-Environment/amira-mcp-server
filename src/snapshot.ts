@@ -458,9 +458,9 @@ export async function readManifest(dir: string): Promise<SnapshotManifest> {
 }
 
 /** Load + validate a snapshot dir. Throws on schema/count mismatch. */
-export async function loadSnapshot(dir: string): Promise<CrawlOutput> {
+export async function loadSnapshot(dir: string, opts: { strict?: boolean } = {}): Promise<CrawlOutput> {
   const active = await readSnapshotPointer(dir);
-  if (active) return loadSnapshot(path.join(dir, "generations", active.current));
+  if (active) return loadSnapshot(path.join(dir, "generations", active.current), opts);
   const manifest = JSON.parse(await fs.readFile(path.join(dir, "manifest.json"), "utf8")) as SnapshotManifest;
   if (!(manifest.schemaVersion >= MIN_SNAPSHOT_SCHEMA_VERSION && manifest.schemaVersion <= SNAPSHOT_SCHEMA_VERSION)) {
     throw new Error(`snapshot schema v${manifest.schemaVersion}, expected v${MIN_SNAPSHOT_SCHEMA_VERSION}–v${SNAPSHOT_SCHEMA_VERSION}`);
@@ -494,11 +494,22 @@ export async function loadSnapshot(dir: string): Promise<CrawlOutput> {
   }
   let semantic: SemanticNeighbours | null = null;
   if (manifest.semanticNeighbours) {
-    semantic = parseSemanticNeighbours(JSON.parse(await fs.readFile(path.join(dir, SEMANTIC_FILE), "utf8")));
-    const entry = semanticManifestEntry(semantic);
-    if (entry.tag !== manifest.semanticNeighbours.tag || entry.sources !== manifest.semanticNeighbours.sources) {
-      throw new Error(`snapshot ${SEMANTIC_FILE}: ${entry.tag} with ${entry.sources} sources, manifest says ` +
-        `${manifest.semanticNeighbours.tag} with ${manifest.semanticNeighbours.sources}`);
+    try {
+      semantic = parseSemanticNeighbours(JSON.parse(await fs.readFile(path.join(dir, SEMANTIC_FILE), "utf8")));
+      const entry = semanticManifestEntry(semantic);
+      if (entry.tag !== manifest.semanticNeighbours.tag || entry.sources !== manifest.semanticNeighbours.sources) {
+        throw new Error(`${entry.tag} with ${entry.sources} sources, manifest says ` +
+          `${manifest.semanticNeighbours.tag} with ${manifest.semanticNeighbours.sources}`);
+      }
+    } catch (err) {
+      // The neighbours are an optional enrichment: an unreadable file (a torn
+      // write, a future format) must cost the semantic tools, not the snapshot.
+      // The writer verifies strictly, so a bad file is never published.
+      if (opts.strict) throw new Error(`snapshot ${SEMANTIC_FILE}: ${(err as Error).message}`);
+      console.error(`[amira] snapshot ${SEMANTIC_FILE} ignored: ${(err as Error).message}`);
+      semantic = null;
+      const { semanticNeighbours: _unread, ...rest } = manifest;
+      return { data, manifest: rest, fulltext, semantic };
     }
   }
   return { data, manifest, fulltext, semantic };
@@ -557,7 +568,7 @@ export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, sig
     // replace a newer successfully published generation.
     if (existing && Date.parse(existing.fetchedAt) > Date.parse(out.manifest.fetchedAt)) return null;
     await writeSnapshot(dir, out);
-    const written = await loadSnapshot(dir);
+    const written = await loadSnapshot(dir, { strict: true });
     let previous = await readSnapshotPointer(destDir);
     if (!previous) {
       // Preserve a pre-generation cache on the first successful publication.

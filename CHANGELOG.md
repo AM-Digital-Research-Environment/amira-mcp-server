@@ -12,6 +12,24 @@ copies had begun to disagree, less work and memory on the request path, a
 cheaper tool surface, and CI gates that actually run. No tool was added or
 renamed.
 
+- **Semantic tools no longer go dark behind a newer cache.** At startup the
+  newest snapshot wins, and a cache written by a server older than 1.33.0 (or
+  while GitHub was unreachable) carries no neighbours: being newer than the
+  bundled snapshot, it hid the bundled neighbours, and `get_similar_items`
+  answered `semantic_unavailable` until the next upstream change, since a
+  refresh only runs when Omeka changes. Startup now serves the best
+  neighbours either snapshot holds (one with the semantic map first, then the
+  newest build), and the next refresh writes them into the cache. Seen on a
+  v1.33.0 install whose cache a v1.32 server had refreshed minutes earlier.
+- **`AMIRA_SEMANTIC_RELEASE` is honoured at load.** `off` served the stored
+  neighbours anyway and a pinned tag served whichever build a snapshot held;
+  both now apply to every snapshot read, bundled or cached.
+- **An unreadable `semantic_neighbours.json` costs the semantic tools, not the
+  snapshot.** It used to reject the whole cache; the writer still verifies
+  strictly, so a bad file is never published.
+- **`get_semantic_map` explains neighbours without a map** (stored before
+  1.34.0) instead of saying no corpus-vector release exists, and points to
+  `get_similar_items`, which works.
 - **Tool surface: about 1,000 fewer tokens per turn** (stdio 13,003 → 12,042,
   HTTP 13,896 → 12,841) with every field still documented. `tools/list` no
   longer repeats `$schema` (MCP reads a schema without one as 2020-12) or

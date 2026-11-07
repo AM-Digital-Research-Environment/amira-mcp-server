@@ -125,7 +125,11 @@ test("the neighbours round-trip through the snapshot, and a mismatched manifest 
   const manifestPath = path.join(dir, "manifest.json");
   const onDisk = JSON.parse(await readFile(manifestPath, "utf8"));
   await writeFile(manifestPath, JSON.stringify({ ...onDisk, semanticNeighbours: { ...onDisk.semanticNeighbours, tag: "semantic-embeddings-v1-1" } }));
-  await assert.rejects(lib.loadSnapshot(dir), /semantic_neighbours\.json/);
+  await assert.rejects(lib.loadSnapshot(dir, { strict: true }), /semantic_neighbours\.json/);
+  // Outside the writer's check the snapshot still loads, without neighbours.
+  const tolerant = await lib.loadSnapshot(dir);
+  assert.equal(tolerant.semantic, null);
+  assert.equal(tolerant.manifest.semanticNeighbours, undefined);
 });
 
 test("a stored list naming a record the snapshot no longer holds is filtered at load", () => {

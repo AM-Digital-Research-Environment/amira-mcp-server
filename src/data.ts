@@ -13,7 +13,7 @@
 
 import { config } from "./config.js";
 import { FULLTEXT_SOURCE, type FulltextMaps } from "./fulltextMaps.js";
-import type { SemanticNeighbours } from "./semantic.js";
+import { pickSemantic, semanticManifestEntry, servableSemantic, type SemanticNeighbours } from "./semantic.js";
 import { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshotAtomic, type CrawlOutput } from "./snapshot.js";
 import { LanguageIndex } from "./languages.js";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -375,11 +375,13 @@ export function cacheSnapshotDir(): string {
   return snapshotCacheDir(config.cacheDir, config.apiBase);
 }
 
-async function tryLoad(dir: string, source: "bundled" | "cache"): Promise<DataStore | null> {
+interface Loaded { source: "bundled" | "cache"; out: CrawlOutput }
+
+async function tryLoad(dir: string, source: "bundled" | "cache"): Promise<Loaded | null> {
   try {
-    const { data, manifest, fulltext, semantic } = await loadSnapshot(dir);
-    assertSnapshotSource(manifest, config.apiBase);
-    return new DataStore(source, data, manifest, fulltext, semantic);
+    const out = await loadSnapshot(dir);
+    assertSnapshotSource(out.manifest, config.apiBase);
+    return { source, out };
   } catch (err) {
     if (source === "bundled") {
       console.error(`[amira] bundled snapshot unusable: ${(err as Error).message}`);
@@ -388,16 +390,42 @@ async function tryLoad(dir: string, source: "bundled" | "cache"): Promise<DataSt
   }
 }
 
+/**
+ * A store over `loaded`, serving `semantic` (already checked against the
+ * setting). The manifest entry is rewritten to match what is served, since the
+ * snapshot id names the semantic space.
+ */
+function storeOf(source: "bundled" | "cache", loaded: CrawlOutput, semantic: SemanticNeighbours | null): DataStore {
+  const { semanticNeighbours: _stored, ...manifest } = loaded.manifest;
+  return new DataStore(source, loaded.data, semantic ? { ...manifest, semanticNeighbours: semanticManifestEntry(semantic) } : manifest,
+    loaded.fulltext, semantic);
+}
+
+/**
+ * Pick the snapshot to serve at startup: the newest manifest, ties to the cache
+ * (it descends from a refresh). Its neighbours come from whichever candidate
+ * offers the best servable set: a cache written by a server older than 1.33.0,
+ * or while GitHub was unreachable, carries none, and being newer it used to hide
+ * the bundled neighbours until the next upstream change.
+ */
+export function chooseInitial(cache: Loaded | null, bundled: Loaded | null, semanticSetting: string): DataStore | null {
+  const winner = cache && bundled ? (cache.out.manifest.fetchedAt >= bundled.out.manifest.fetchedAt ? cache : bundled) : cache ?? bundled;
+  if (!winner) return null;
+  const other = winner === cache ? bundled : cache;
+  const semantic = pickSemantic([servableSemantic(winner.out.semantic, semanticSetting), servableSemantic(other?.out.semantic, semanticSetting)]);
+  if (semantic && semantic !== winner.out.semantic) {
+    console.error(`[amira] serving semantic neighbours ${semantic.source.tag} from the ${other!.source} snapshot`);
+  }
+  return storeOf(winner.source, winner.out, semantic);
+}
+
 async function loadInitial(): Promise<DataStore> {
   const [partitioned, bundled, legacy] = await Promise.all([
     tryLoad(cacheSnapshotDir(), "cache"),
     tryLoad(config.bundledDataDir, "bundled"),
     tryLoad(path.join(config.cacheDir, "current"), "cache"),
   ]);
-  const cache = partitioned ?? legacy;
-  // Newest manifest wins; ties go to the cache (it descends from a refresh).
-  if (cache && bundled) return cache.manifest.fetchedAt >= bundled.manifest.fetchedAt ? cache : bundled;
-  const store = cache ?? bundled;
+  const store = chooseInitial(partitioned ?? legacy, bundled, config.semanticRelease);
   if (!store) throw new Error("no usable data snapshot (bundled data missing or corrupt)");
   return store;
 }
@@ -476,12 +504,14 @@ async function backgroundRefresh(): Promise<void> {
     // The pinned full-text files never change: when GitHub was unreachable, keep the ones already served.
     if (!out.fulltext && current?.fulltextMaps?.source.tag === FULLTEXT_SOURCE.tag) out.fulltext = current.fulltextMaps;
     // No verified release this time: keep the neighbours already served (filtered to the new snapshot at load).
-    if (!out.semantic && current?.semantic && config.semanticRelease !== "off") out.semantic = current.semantic;
+    // `current.semantic` already satisfies the setting, so a pinned build is never replaced by another.
+    if (!out.semantic && current?.semantic) out.semantic = current.semantic;
     // The writer returns what it verified; only when another process published
     // a newer generation first is the served snapshot read back from disk.
     const published = (await writeSnapshotAtomic(cacheSnapshotDir(), out, signal)) ?? await loadSnapshot(cacheSnapshotDir());
     assertSnapshotSource(published.manifest, config.apiBase);
-    const next = new DataStore("cache", published.data, published.manifest, published.fulltext, published.semantic);
+    // Another process may have published first, under another setting or version.
+    const next = storeOf("cache", published, servableSemantic(published.semantic, config.semanticRelease));
     // Built before the swap, so no request on the new snapshot pays for an index.
     await warmup?.(next, signal);
     signal.throwIfAborted();

@@ -162,6 +162,35 @@ export function semanticManifestEntry(s: SemanticNeighbours): SemanticManifestEn
     sources: Object.keys(s.neighbours).length };
 }
 
+/**
+ * The neighbours a server may serve under AMIRA_SEMANTIC_RELEASE (`setting`):
+ * none when "off", only the pinned build when a tag is set, any build for
+ * "latest". Applied to every loaded snapshot, so a setting is honoured whatever
+ * snapshot (bundled, cached, or written by another version) happens to be read.
+ */
+export function servableSemantic(semantic: SemanticNeighbours | null | undefined, setting: string): SemanticNeighbours | null {
+  if (!semantic || setting === "off") return null;
+  if (setting !== "latest" && semantic.source.tag !== setting) return null;
+  return semantic;
+}
+
+/**
+ * The best of several servable neighbour sets: one carrying the semantic map
+ * (absent before 1.34.0) first, then the newest build, then the earliest
+ * candidate. Neighbours are filtered to the served snapshot at load, so a set
+ * computed against another snapshot of the same instance is safe to serve.
+ */
+export function pickSemantic(candidates: (SemanticNeighbours | null)[]): SemanticNeighbours | null {
+  let best: SemanticNeighbours | null = null;
+  for (const c of candidates) {
+    if (!c) continue;
+    if (!best) { best = c; continue; }
+    const mapGain = Number(!!c.clusters) - Number(!!best.clusters);
+    if (mapGain > 0 || (mapGain === 0 && (semanticBuild(c.source.tag) ?? -1) > (semanticBuild(best.source.tag) ?? -1))) best = c;
+  }
+  return best;
+}
+
 /** Snapshot ids per record kind: the only ids a neighbour list may reference. */
 function snapshotIds(data: SnapshotData): Record<SemanticKind, Set<number>> {
   const out = {} as Record<SemanticKind, Set<number>>;

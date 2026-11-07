@@ -69,7 +69,12 @@ export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_semantic_map");
     const store = await ensureStore();
     const index = semanticIndex(store);
-    if (!index?.groups.size) return semanticUnavailable("semantic map", "get_collection_overview");
+    if (!index) return semanticUnavailable("semantic map", "get_collection_overview");
+    if (!index.groups.size) {
+      // Neighbours without a map: a snapshot written before 1.34.0, kept because no newer release verified.
+      return errorResult("semantic_unavailable", `This snapshot's neighbours (${index.source.tag}) were stored without a semantic map; ` +
+        "get_similar_items works, and the map returns with the next verified corpus-vector release.", { suggested_tool: "get_similar_items" });
+    }
     if (args.group !== undefined && args.id !== undefined) {
       return errorResult("invalid_argument", "Pass `group` or `id`, not both.");
     }
