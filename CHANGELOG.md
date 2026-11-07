@@ -5,12 +5,17 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.35.0 — 2026-11-07
 
-A refactoring pass after the 1.33 and 1.34 semantic work: shared code where
-copies had begun to disagree, less work and memory on the request path, a
-cheaper tool surface, and CI gates that actually run. No tool was added or
-renamed.
+The first published release since 1.33.0: the 1.34.0 tag never produced
+release assets (its crawl ran while the upstream Omeka sync was writing), so
+this release also ships everything listed under 1.34.0 below: explained
+recommendations, `include_similar`, the `find_related` record pivot and
+`get_semantic_map`. On top of it, a fix that brings the semantic tools back
+on installs whose cache predates them, and a refactoring pass after the 1.33
+and 1.34 semantic work: shared code where copies had begun to disagree, less
+work and memory on the request path, a cheaper tool surface, and CI gates
+that actually run. The refactor added or renamed no tool.
 
 - **Semantic tools no longer go dark behind a newer cache.** At startup the
   newest snapshot wins, and a cache written by a server older than 1.33.0 (or
