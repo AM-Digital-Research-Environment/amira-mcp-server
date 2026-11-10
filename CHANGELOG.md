@@ -5,7 +5,10 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.35.1 — 2026-11-10
+
+A security release for the container image; the server itself is unchanged
+from 1.35.0. Deployments that run the GHCR image should move to this one.
 
 - **The container image ships without its fixable high and critical CVEs.**
   The 1.35.0 image carried ten, all inherited from `node:26-slim`: six in the
