@@ -192,6 +192,17 @@ jobs:
           done
           docker logs amira-test
           exit 1
+      # Fails on any high or critical vulnerability that already has a fix.
+      # The runtime stage applies Debian's security updates and drops npm, so
+      # a fresh build should come back clean; image-scan.yml watches the
+      # published image between releases.
+      - name: Scan for fixable high/critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: amira-test
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
       - if: always()
         run: docker rm -f amira-test || true
 

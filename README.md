@@ -365,7 +365,9 @@ docker build --build-arg SNAPSHOT_STAGE=bundled -t amira-mcp .
 ```
 
 The default `SNAPSHOT_STAGE=fetch` still crawls fresh data. Both stages validate the
-snapshot. The image pins its base digest; `npm ci` uses the committed lockfile.
+snapshot. The image pins its base digest and applies Debian's security updates
+on top of it; its runtime stage carries no npm. `npm ci` uses the committed
+lockfile.
 
 ## Develop / rebuild
 
@@ -455,8 +457,9 @@ workflows crawl the **public** API — no credentials):
   response at its maximum limit, and validates the MCPB manifest. The complete
   dependency audit fails on high or critical advisories. The packed `.mcpb` is
   then unpacked on Windows and macOS and smoke-tested there, so CI runs the bytes
-  users install. A separate container job builds an offline fixture image and
-  checks health. Windows CI also packs a fixture extension and checks its file
+  users install. A separate container job builds an offline fixture image,
+  checks health and fails on any fixable high or critical vulnerability Trivy
+  finds in it. Windows CI also packs a fixture extension and checks its file
   list. A non-blocking job runs the official MCP conformance suite against the
   HTTP server. Actions are pinned to commit SHAs; every job has a timeout.
 
@@ -472,6 +475,11 @@ workflows crawl the **public** API — no credentials):
   with an attestation and publish `server.json` to the
   [MCP Registry](https://registry.modelcontextprotocol.io) with a pinned,
   checksum-verified publisher.
+- **Image scan** (`.github/workflows/image-scan.yml`) — weekly and on demand;
+  scans the published `latest` image with Trivy and keeps one issue labelled
+  `image-vulnerabilities`, assigned to the maintainer, open while it has fixable
+  high or critical vulnerabilities. It comments when the findings change and
+  closes the issue after a clean scan.
 - **Refresh data snapshot** (`.github/workflows/refresh-data.yml`) — weekly and
   on demand; rebuilds **only when the transformed snapshot content hash changes**, including
   item-set and vocabulary changes, updating the rolling

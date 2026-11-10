@@ -5,6 +5,21 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+- **The container image ships without its fixable high and critical CVEs.**
+  The 1.35.0 image carried ten, all inherited from `node:26-slim`: six in the
+  copies of `brace-expansion` and `undici` that npm vendors, two in zlib and
+  one in apt (counted for `apt` and `libapt-pkg7.0`). The runtime stage now
+  applies Debian's security updates and removes npm, which the self-contained
+  bundle never loads, and the base digest moves to the 5 November build. Trivy
+  finds none left.
+- **CI scans the image.** The container job fails on any fixable high or
+  critical vulnerability, and a new weekly workflow (`image-scan.yml`) scans
+  the published `latest` image and keeps an issue assigned to the maintainer
+  open until a release clears it. Dependabot PRs are assigned to the
+  maintainer too.
+
 ## 1.35.0 — 2026-11-07
 
 The first published release since 1.33.0: the 1.34.0 tag never produced

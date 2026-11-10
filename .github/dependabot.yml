@@ -1,9 +1,12 @@
 version: 2
+# Every Dependabot PR is assigned to the maintainer, so GitHub notifies them
+# however they watch the repository.
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    assignees: [fmadore]
     open-pull-requests-limit: 5
     groups:
       mcp-sdk:
@@ -22,6 +25,7 @@ updates:
     directories: ["/", "/.github/actions/*"]
     schedule:
       interval: monthly
+    assignees: [fmadore]
     groups:
       actions:
         patterns:
@@ -32,3 +36,4 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    assignees: [fmadore]
