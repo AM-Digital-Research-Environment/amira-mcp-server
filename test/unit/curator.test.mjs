@@ -29,6 +29,11 @@ const BOB = "amira_cur_bob-test-token-0123456789abcdefghijklmnopqrs";
 
 const stub = await startOmekaStub();
 test.after(() => stub.close());
+// Links use the public site; requests go to the stub over another base, as a
+// deployment beside Omeka fetches from http://web/api (AMIRA_API_BASE).
+const SITE = "https://amira.example";
+const SITE_API = `${SITE}/api`;
+const STUB_HOST = new URL(stub.base).host;
 
 // Every line the server logs, for the secrets checks.
 const logs = [];
@@ -43,7 +48,8 @@ writeFileSync(tokensFile, TOKENS);
 
 Object.assign(process.env, {
   AMIRA_ACCESS: "curator",
-  AMIRA_SITE_BASE: stub.base,
+  AMIRA_SITE_BASE: SITE,
+  AMIRA_API_BASE: stub.api,
   AMIRA_OMEKA_KEY_FILE: keyFile,
   AMIRA_MCP_TOKENS_FILE: tokensFile,
   AMIRA_ENRICHMENT_BASE: `${stub.base}/github`,
@@ -67,8 +73,8 @@ const call = async (tool, args = {}) => keep(await conn.call(tool, args));
 const raw = async (tool, args = {}) => keep(await conn.raw(tool, args));
 const read = async (uri) => keep((await conn.client.readResource({ uri })).contents[0].text);
 
-const adminItem = (id) => `${stub.base}/admin/item/${id}`;
-const publicItem = (id) => `${stub.base}/s/amira/item/${id}`;
+const adminItem = (id) => `${SITE}/admin/item/${id}`;
+const publicItem = (id) => `${SITE}/s/amira/item/${id}`;
 
 test("the curator configuration is complete over HTTP and refused elsewhere", () => {
   assert.deepEqual(lib.accessConfigErrors("http"), []);
@@ -95,9 +101,9 @@ test("the crawl sends the key to the Omeka API only, and the manifest records cu
 
   const store = lib.currentStore();
   assert.equal(store.manifest.access, "curator");
-  assert.equal(store.manifest.apiBase, stub.api);
-  assert.equal(lib.cacheSnapshotDir(), lib.snapshotCacheDir(cacheDir, stub.api, "curator"));
-  assert.notEqual(lib.cacheSnapshotDir(), lib.snapshotCacheDir(cacheDir, stub.api), "the curator partition is not the public one");
+  assert.equal(store.manifest.apiBase, SITE_API, "the manifest names the public instance, not the fetch base");
+  assert.equal(lib.cacheSnapshotDir(), lib.snapshotCacheDir(cacheDir, SITE_API, "curator"));
+  assert.notEqual(lib.cacheSnapshotDir(), lib.snapshotCacheDir(cacheDir, SITE_API), "the curator partition is not the public one");
 });
 
 test("curator: the private item is served as private, with an admin URL and no public link", async () => {
@@ -142,6 +148,9 @@ test("curator: private values on a public item sit in `restricted`, never in the
   assert.equal(item.contributors.find((c) => c.name === "Visible, Person").visibility, "public");
   // The private media file is listed and marked.
   assert.deepEqual(item.media.map((m) => m.visibility ?? "public"), ["public", "private"]);
+  // URLs Omeka built from the internal request host point at the public site.
+  assert.equal(item.thumbnail, `${SITE}/files/large/public-recording.jpg`);
+  assert.equal(item.media[0].url, `${SITE}/files/original/public-recording.mp3`);
 });
 
 test("curator: the private ILAM-style full text is searchable and retrievable, paged like every long text", async () => {
@@ -238,10 +247,10 @@ test("curator: resources and exports carry the same marks", async () => {
 
 test("curator: a public-mode snapshot is refused, in both directions", async () => {
   const fixture = buildFixture(lib.SNAPSHOT_SCHEMA_VERSION);
-  assert.throws(() => lib.assertSnapshotSource({ ...fixture.manifest, apiBase: stub.api }, stub.api, "curator"), /crawled in public mode/);
+  assert.throws(() => lib.assertSnapshotSource({ ...fixture.manifest, apiBase: SITE_API }, SITE_API, "curator"), /crawled in public mode/);
   const manifest = JSON.parse(readFileSync(path.join(lib.cacheSnapshotDir(), "generations",
     JSON.parse(readFileSync(path.join(lib.cacheSnapshotDir(), "active.json"), "utf8")).current, "manifest.json"), "utf8"));
-  assert.throws(() => lib.assertSnapshotSource(manifest, stub.api, "public"), /crawled in curator mode/);
+  assert.throws(() => lib.assertSnapshotSource(manifest, SITE_API, "public"), /crawled in curator mode/);
   assert.notEqual(lib.snapshotId(manifest), lib.snapshotId({ ...manifest, access: undefined }), "the snapshot id names the mode");
 });
 
@@ -461,7 +470,7 @@ test("probeCuratorAuth fails closed on an empty array, a non-array or a public r
 
 // --- secrets ---------------------------------------------------------------------------------------
 
-test("the Omeka key never appears in logs, errors, health, the manifest, cache files or returned values", () => {
+test("neither the Omeka key nor the internal fetch host appears in logs, errors, health, the manifest, cache files or returned values", () => {
   assert.ok(logs.some((l) => /HTTP 401 to the curator key/.test(l)), "the refusal was logged");
   const files = [];
   const walk = (dir) => {
@@ -476,6 +485,7 @@ test("the Omeka key never appears in logs, errors, health, the manifest, cache f
   assert.ok(files.length > 5, "the cache was written");
   for (const [what, texts] of [["logs", logs], ["returned values", returned], ["cache files", files]]) {
     const joined = texts.join("\n");
+    assert.ok(!joined.includes(STUB_HOST), `the internal fetch host appears in ${what}`);
     assert.ok(!joined.includes(KEY.identity), `key_identity in ${what}`);
     assert.ok(!joined.includes(KEY.credential), `key_credential in ${what}`);
     assert.ok(!/key_(identity|credential)=/.test(joined), `a key parameter in ${what}`);
@@ -488,5 +498,6 @@ test("redactSecrets strips key parameters and any key value this process loaded"
   assert.equal(lib.redactSecrets(`cause: ${KEY.credential}`), "cause: [redacted]");
   assert.equal(lib.omekaKeyFor(`${stub.api}/items`)?.identity, KEY.identity);
   assert.equal(lib.omekaKeyFor("https://api.github.com/repos/x"), null, "only the configured Omeka API gets the key");
+  assert.equal(lib.omekaKeyFor(`${SITE_API}/items`), null, "never the public URL when the fetch base is internal");
   assert.equal(lib.omekaKeyFor(`${stub.base}/apiary/items`), null, "a prefix match must end at a path boundary");
 });

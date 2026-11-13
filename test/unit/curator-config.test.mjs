@@ -60,6 +60,10 @@ const REFUSALS = [
   ["public stdio holding a key", SERVER_STDIO, { AMIRA_OMEKA_KEY_FILE: keyFile }, /a public server never holds an Omeka key/],
   ["public HTTP with a tokens file", SERVER_HTTP, { AMIRA_MCP_TOKENS_FILE: tokensFile }, /curator-mode setting/],
   ["an unknown access mode", SERVER_HTTP, { AMIRA_ACCESS: "curater" }, /must be "public" or "curator"/],
+  ["curator with a relative AMIRA_API_BASE", SERVER_HTTP, { ...CURATOR, AMIRA_API_BASE: "web/api" }, /AMIRA_API_BASE must be an absolute http\(s\) URL/],
+  ["public with an AMIRA_API_BASE carrying a query", SERVER_HTTP, { AMIRA_API_BASE: "http://web/api?key_identity=x" },
+    /AMIRA_API_BASE must be an absolute http\(s\) URL/],
+  ["public stdio with a non-http AMIRA_API_BASE", SERVER_STDIO, { AMIRA_API_BASE: "ftp://web/api" }, /AMIRA_API_BASE must be an absolute/],
   ["curator with an absolute or keyed authentication probe", SERVER_HTTP,
     { ...CURATOR, AMIRA_CURATOR_AUTH_PROBE: "https://evil.example/items" }, /AMIRA_CURATOR_AUTH_PROBE must be an API path/],
 ];

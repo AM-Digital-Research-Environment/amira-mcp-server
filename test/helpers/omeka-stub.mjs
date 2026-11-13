@@ -9,6 +9,10 @@
 //   - `is_public=0` on /items filters to private items, so it returns `[]` to
 //     anyone who cannot see them: the curator server's authentication probe.
 //
+// Like Omeka, it builds the URLs it returns (`@id`, `o:original_url`,
+// thumbnails) from the request's Host, so a server fetching it over an internal
+// base sees internal URLs and must rewrite them to its public site.
+//
 // `state` changes that: `keyAccepted: false` treats even the right key as
 // unknown (revoked mid-life); `viewAll: false` lets the right key see only
 // public data (a user without view-all); mode "leak" serves private content to
@@ -40,7 +44,7 @@ export const PRIVATE = {
   pubTitle: "Private Working Paper",
   pubText: "pangolin-private-pubtext-token",
   setTitle: "Of Art Worlds (private set)",
-  mediaUrl: "https://files.example/private-scan.tif",
+  mediaUrl: "private-scan.tif",
 };
 
 export const IDS = { privateItem: 7101, publicItem: 7102, plainItem: 7103, project: 7001, privatePerson: 7401, publicPerson: 7402,
@@ -48,7 +52,10 @@ export const IDS = { privateItem: 7101, publicItem: 7102, plainItem: 7103, proje
 
 const MODIFIED = "2026-11-01T00:00:00+00:00";
 const lit = (v, extra = {}) => ({ type: "literal", "@value": v, is_public: true, ...extra });
-const res = (id, title, extra = {}) => ({ type: "resource:item", value_resource_id: id, display_title: title, is_public: true, ...extra });
+/** Replaced by `http://<request Host>` when served, as Omeka builds its URLs from the request. */
+const BASE = "{{BASE}}";
+const res = (id, title, extra = {}) => ({ type: "resource:item", "@id": `${BASE}/api/items/${id}`, value_resource_id: id,
+  display_title: title, is_public: true, ...extra });
 const stamp = { "o:created": { "@value": "2026-10-01T00:00:00+00:00" }, "o:modified": { "@value": MODIFIED } };
 
 /** [corpus query, raw item]. */
@@ -68,6 +75,7 @@ const ITEMS = [
   ["resource_template_id=10", { "o:id": IDS.publicItem, "o:is_public": true, "o:title": "Public Field Recording", ...stamp,
     "o:item_set": [{ "o:id": IDS.publicSet }],
     "o:media": [{ "o:id": IDS.publicMedia }, { "o:id": IDS.privateMedia }],
+    thumbnail_display_urls: { large: `${BASE}/files/large/public-recording.jpg` },
     "dcterms:title": [lit("Public Field Recording")], "dcterms:type": [lit("Audio")],
     "dcterms:description": [lit("A public description of the recording."), lit(`Curator note: ${PRIVATE.description}.`, { is_public: false })],
     "dcterms:isPartOf": [res(IDS.project, "Curator Fixture Project")], "dre:id": [lit("UBT_CuratorFixture2019_0002")],
@@ -100,10 +108,15 @@ const ITEM_SETS = [
 
 const MEDIA = [
   { "o:id": IDS.publicMedia, "o:is_public": true, "o:item": { "o:id": IDS.publicItem }, "o:media_type": "audio/mpeg",
-    "o:original_url": "https://files.example/public-recording.mp3", "o:source": "recording.mp3", "o:size": 1000 },
+    "o:original_url": `${BASE}/files/original/public-recording.mp3`, "o:source": "recording.mp3", "o:size": 1000 },
   { "o:id": IDS.privateMedia, "o:is_public": false, "o:item": { "o:id": IDS.publicItem }, "o:media_type": "image/tiff",
-    "o:original_url": PRIVATE.mediaUrl, "o:source": "private-scan.tif", "o:size": 2000 },
+    "o:original_url": `${BASE}/files/original/${PRIVATE.mediaUrl}`, "o:source": "private-scan.tif", "o:size": 2000 },
 ];
+
+// Every resource carries its own API URL, as Omeka's JSON-LD does.
+for (const [, item] of ITEMS) item["@id"] = `${BASE}/api/items/${item["o:id"]}`;
+for (const set of ITEM_SETS) set["@id"] = `${BASE}/api/item_sets/${set["o:id"]}`;
+for (const m of MEDIA) m["@id"] = `${BASE}/api/media/${m["o:id"]}`;
 
 /** A resource as an anonymous visitor sees it: private values (and private annotation values) removed. */
 function anonymous(item) {
@@ -143,7 +156,7 @@ export async function startOmekaStub(state = {}) {
     const reply = (status, body, total) => {
       res.writeHead(status, { "Content-Type": "application/json", Connection: "close",
         ...(total !== undefined ? { "Omeka-S-Total-Results": String(total) } : {}) });
-      res.end(JSON.stringify(body));
+      res.end(JSON.stringify(body).replaceAll(BASE, `http://${req.headers.host}`));
     };
     if (!url.pathname.startsWith("/api/")) return reply(404, {});
     if (keyed && state.mode === "deny") return reply(state.denyStatus, { errors: { error: "Invalid API key" } });
