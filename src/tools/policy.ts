@@ -24,10 +24,16 @@
 //     byte, doubling the wire size of the result. The IWAC server does the same.
 //   - Deadline: a call that has not answered after CALL_DEADLINE_MS returns a
 //     `deadline_exceeded` error instead of holding the client open.
+//   - Curator mode (#26): every result passes through src/tools/curator.ts,
+//     which marks visibility, swaps a private record's public URL for its admin
+//     URL and adds the restricted block to detail results.
 import type { RegisteredTool } from "@modelcontextprotocol/server";
 import { errorResult } from "./responses.js";
 import { currentStore, ensureStore, withStore } from "../data.js";
 import { dropSafeIntegerBounds, dropSchemaNoise, withJsonSchema, withoutSchemaText } from "../guidance.js";
+import { config } from "../config.js";
+import { curatorToolResult } from "./curator.js";
+import type { DataStore } from "../data.js";
 
 /** How long one tool call may run before the client gets an error. Every
  * query runs on the in-memory snapshot; the slowest measured calls (text
@@ -51,10 +57,11 @@ function withDeadline<T>(work: Promise<T>, ms: number, onTimeout: () => T): Prom
 }
 
 /** Run a handler bound to the snapshot being served when it starts, so a
- * refresh that swaps the store mid-call cannot mix two snapshots' caches. */
-async function inStore<T>(fn: () => T): Promise<Awaited<T>> {
+ * refresh that swaps the store mid-call cannot mix two snapshots' caches.
+ * The store comes back with the result (curator decoration reads it). */
+async function inStore<T>(fn: () => T): Promise<{ result: Awaited<T>; store: DataStore }> {
   const store = currentStore() ?? await ensureStore();
-  return await withStore(store, fn);
+  return { result: await withStore(store, fn), store };
 }
 
 function withoutStructured<T>(result: T): T {
@@ -137,8 +144,10 @@ export function applyToolPolicy(tools: ToolMap, allowed: ReadonlySet<string> | n
         if ("emptyRequired" in cleaned) {
           return withoutStructuredError(errorResult("invalid_argument", `\`${cleaned.emptyRequired}\` must not be empty.`));
         }
+        const run = inStore(() => handler(cleaned.args, ctx)).then(({ result, store }) =>
+          config.access === "curator" ? curatorToolResult(name, result, cleaned.args, store) : result);
         const result = withoutStructuredError(
-          await withDeadline(inStore(() => handler(cleaned.args, ctx)), CALL_DEADLINE_MS, () =>
+          await withDeadline(run, CALL_DEADLINE_MS, () =>
             errorResult("deadline_exceeded", `${name} did not answer within ${CALL_DEADLINE_MS / 1000} s; narrow the call and retry.`),
           ),
         );

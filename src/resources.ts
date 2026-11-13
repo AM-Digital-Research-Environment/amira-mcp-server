@@ -17,7 +17,8 @@ import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS, withStore, type DataStore } from "./data.js";
 import { allowDescriptive, allowStructured } from "./exposure.js";
 import { guidanceEnabled } from "./guidance.js";
-import { API_BASE, SITE_BASE } from "./config.js";
+import { API_BASE, SITE_BASE, config } from "./config.js";
+import { curatorText, curatorValue, visibilityCounts } from "./tools/curator.js";
 import { snapshotId } from "./snapshotIdentity.js";
 import { itemUrl } from "./urls.js";
 import { collectionFields, collectionsOfItem, itemsOfCollection, resolveCollection } from "./collections.js";
@@ -121,7 +122,15 @@ async function renderExport(uri: string, corpus: string, format: string, query: 
     throw new ResourceNotFoundError(uri, `Unknown export: ${corpus}/${format}`);
   }
   const store = await ensureStore();
-  return withStore(store, () => exportText(store, uri, corpus, format, query));
+  const out = withStore(store, () => exportText(store, uri, corpus, format, query));
+  // Curator mode: CSV/JSONL rows were marked in exportText; any public URL of a
+  // private record left in the text (a BibTeX note, a CSL field) becomes its admin URL.
+  return config.access === "curator" ? { ...out, text: curatorText(out.text, store) } : out;
+}
+
+/** Export rows as a curator sees them (visibility, admin_url for private records); unchanged in public mode. */
+function shownRows(store: DataStore, rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  return config.access === "curator" ? curatorValue(rows, store, { detail: false }) : rows;
 }
 
 function exportText(store: DataStore, uri: string, corpus: string, format: string, query: string): { mimeType: string; text: string } {
@@ -131,7 +140,7 @@ function exportText(store: DataStore, uri: string, corpus: string, format: strin
     if (!parsed.success) throw new ResourceNotFoundError(uri, "Invalid export filters.");
     const refused = researchFilterError(parsed.data, store);
     if (refused) throw new ResourceNotFoundError(uri, refused.message);
-    const rows = selectResearchItems(store, parsed.data).filtered.slice(0, MAX_EXPORT_ROWS).map((it) => itemRow(store, it));
+    const rows = shownRows(store, selectResearchItems(store, parsed.data).filtered.slice(0, MAX_EXPORT_ROWS).map((it) => itemRow(store, it)));
     return format === "csv"
       ? { mimeType: MIME.csv!, text: toCsv(rows) }
       : { mimeType: MIME.jsonl!, text: rows.map((r) => JSON.stringify(r)).join("\n") + "\n" };
@@ -143,8 +152,8 @@ function exportText(store: DataStore, uri: string, corpus: string, format: strin
   const records = selectPublications(store, parsed.data).records
     .sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title) || a.o_id - b.o_id)
     .slice(0, MAX_EXPORT_ROWS);
-  if (format === "csv") return { mimeType: MIME.csv!, text: toCsv(records.map(publicationRow)) };
-  if (format === "jsonl") return { mimeType: MIME.jsonl!, text: records.map((p) => JSON.stringify(publicationRow(p))).join("\n") + "\n" };
+  if (format === "csv") return { mimeType: MIME.csv!, text: toCsv(shownRows(store, records.map(publicationRow))) };
+  if (format === "jsonl") return { mimeType: MIME.jsonl!, text: shownRows(store, records.map(publicationRow)).map((r) => JSON.stringify(r)).join("\n") + "\n" };
   if (format === "csl-json") {
     return { mimeType: MIME["csl-json"]!, text: JSON.stringify(records.map((p) => publicationCitation(p, "csl-json").export)) };
   }
@@ -230,6 +239,11 @@ function datasetDescription(store: DataStore): Record<string, unknown> {
     "amira:semantic_space": store.semantic ? { repository: store.semantic.source.repository, release: store.semantic.source.tag,
       model: store.semantic.source.model, model_revision: store.semantic.source.model_revision,
       generated_at: store.semantic.source.generated_at, vectors_sha256: store.semantic.source.vectors_sha256 } : null,
+    // Curator mode: this snapshot includes private records, which are not freely accessible.
+    ...(config.access === "curator"
+      ? { isAccessibleForFree: false, conditionsOfAccess: "Includes private AMIRA records and values, visible to AMIRA curators only.",
+          "amira:access": "curator", "amira:visibility": visibilityCounts(store) }
+      : {}),
   };
 }
 
@@ -270,7 +284,7 @@ export function registerDataResources(server: McpServer, tools: ToolMap,
       const store = await ensureStore();
       const record = allowStructured() ? authorityRecord(store, parsed.kind, Number(parsed.key)) : null;
       if (!record) throw new ResourceNotFoundError(uri.href, `No ${parsed.kind} with id ${parsed.key}.`);
-      return json(uri.href, record);
+      return json(uri.href, config.access === "curator" ? curatorValue(record, store) : record);
     },
   );
 

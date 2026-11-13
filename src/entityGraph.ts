@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { citedUrl, citedUrlNullable } from "./visibility.js";
 import type { DataStore } from "./data.js";
 import type { LinkedRef } from "./types.js";
 import { fold } from "./text.js";
@@ -14,9 +15,9 @@ export const entityTypes = ["person", "project", "section", "organisation", "loc
   "collection", "research_item", "publication", "journal", "podcast", "video", "playlist"] as const;
 export type EntityType = typeof entityTypes[number];
 export const entitySchema = z.object({ id: z.string(), type: z.enum(entityTypes), label: z.string(),
-  omeka_id: z.number().nullable(), amira_url: z.string().nullable(), resolved: z.boolean() });
+  omeka_id: z.number().nullable(), amira_url: citedUrlNullable(), resolved: z.boolean() });
 export type Entity = z.infer<typeof entitySchema>;
-export const evidenceSchema = z.object({ id: z.string(), corpus: z.string(), title: z.string(), amira_url: z.string() });
+export const evidenceSchema = z.object({ id: z.string(), corpus: z.string(), title: z.string(), amira_url: citedUrl() });
 export type Evidence = z.infer<typeof evidenceSchema>;
 export const edgeSchema = z.object({ id: z.string(), source: z.string(), target: z.string(),
   kind: z.enum(["explicit", "cooccurrence"]), relation: z.string(), count: z.number(),

@@ -12,6 +12,7 @@ import { registerSkills, skillsEnabled } from "./skills.js";
 import { guidanceEnabled } from "./guidance.js";
 import { setStoreWarmup } from "./data.js";
 import { warmIndexes } from "./warm.js";
+import { config } from "./config.js";
 
 // Every entry point that serves builds its server here, so this is where the
 // store learns how to warm its indexes (src/warm.ts).
@@ -106,6 +107,33 @@ export const INSTRUCTIONS =
   "of the public Omeka S API; get_collection_overview reports its date. The collection is curated, not " +
   "exhaustive: absence of a result is not proof of absence.";
 
+/**
+ * Curator mode (#26): the private-record rules come first, then the public
+ * rules and workflow; the institutional paragraph is shortened so the whole
+ * text stays within the same 2,048-character limit (a unit test enforces it).
+ */
+const CURATOR_RULES =
+  "CURATOR MODE — this server also serves PRIVATE AMIRA records and values, for curators only:\n" +
+  "• A record with `visibility: \"private\"` has no public page: it carries `admin_url` (Omeka admin) and a " +
+  "`citation_note` instead of `amira_url`. Never cite or link it as a public source.\n" +
+  "• `restricted` holds private values (security level, MongoDB id, private full text): for curation work only.\n\n";
+const CURATOR_ABOUT =
+  "\n\nABOUT: AMIRA is the research-data platform of the Africa Multiple Cluster of Excellence, University of Bayreuth. " +
+  "Results come from an authenticated snapshot of its Omeka S API; get_collection_overview gives its date and the " +
+  "public/private split.";
+export function curatorInstructions(skills = true): string {
+  const rules = INSTRUCTIONS.slice(0, INSTRUCTIONS.indexOf("\n\nABOUT:"));
+  return CURATOR_RULES + (skills ? rules : rules.replace(SKILL_POINTER, "")) + CURATOR_ABOUT;
+}
+
+/** Curator results hold private data: no shared caching, whatever the method. */
+const CURATOR_CACHE_HINTS = {
+  "tools/list": { ttlMs: 0, cacheScope: "private" },
+  "resources/list": { ttlMs: 0, cacheScope: "private" },
+  "server/discover": { ttlMs: 0, cacheScope: "private" },
+  "resources/read": { ttlMs: 0, cacheScope: "private" },
+} as const;
+
 export interface CreateServerOptions {
   /** Also register the OpenAI-compatible `search`/`fetch` tools (HTTP transport). */
   openai?: boolean;
@@ -151,9 +179,11 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
       websiteUrl: "https://data.africamultiple.uni-bayreuth.de",
     },
     {
-      ...(guidance ? { instructions: skills ? INSTRUCTIONS : INSTRUCTIONS.replace(SKILL_POINTER, "") } : {}),
+      ...(guidance
+        ? { instructions: config.access === "curator" ? curatorInstructions(skills) : skills ? INSTRUCTIONS : INSTRUCTIONS.replace(SKILL_POINTER, "") }
+        : {}),
       supportedProtocolVersions: PROTOCOL_VERSIONS,
-      cacheHints: CACHE_HINTS,
+      cacheHints: config.access === "curator" ? CURATOR_CACHE_HINTS : CACHE_HINTS,
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
       capabilities: {
         ...(guidance ? FIXED_LISTS : { tools: FIXED_LISTS.tools, resources: FIXED_LISTS.resources }),

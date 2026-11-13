@@ -64,7 +64,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       const { citation_format, export: format, limit: _l, offset: _o, ...filters } = args;
       const invalid = publicationFilterError(filters);
       if (invalid) return queryErrorResult(invalid);
-      const { records: filtered, fulltextOnly } = selectPublications(store, filters);
+      const { records: filtered, fulltextOnly, restrictedOnly } = selectPublications(store, filters);
       if (format) return exportLink("publications", format, filters, filtered.length);
 
       filtered.sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title) || a.o_id - b.o_id);
@@ -80,7 +80,9 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
           (p) =>
             fulltextOnly.has(p.o_id)
               ? { ...publicationSummary(p), matched_in: "fulltext", fulltext_snippet: matchSnippet(p.fulltext, args.keyword!) }
-              : publicationSummary(p),
+              : restrictedOnly.has(p.o_id)
+                ? { ...publicationSummary(p), matched_in: "restricted_fulltext", fulltext_snippet: matchSnippet(p.restricted?.fulltext, args.keyword!) }
+                : publicationSummary(p),
           extra,
         ),
         ...hint,
@@ -172,7 +174,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
         external_links: p.external_links ?? [],
         identifiers: p.identifiers ?? [p.pub_id],
         has_media: p.has_media,
-        media: (p.media ?? []).map((m) => ({ type: m.type, url: m.url, size: m.size })),
+        media: (p.media ?? []).map((m) => ({ type: m.type, url: m.url, size: m.size, ...(m.visibility ? { visibility: m.visibility } : {}) })),
         thumbnail: p.thumbnail,
         created: p.created ?? null,
         ...textWindowFields("fulltext", p.fulltext, {
