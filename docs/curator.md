@@ -79,7 +79,8 @@ is in place, and prints every reason (never a secret).
 | `AMIRA_OMEKA_KEY_FILE` | yes | File with the Omeka service key: `key_identity=…` and `key_credential=…` lines (`#` comments allowed), or a JSON object with those two keys. Re-read at most once a minute, so a rotated key is picked up without a restart |
 | `AMIRA_MCP_TOKENS_FILE` | yes | Personal tokens, one `name sha256hex` line per curator (`#` comments allowed). Re-read every 2 s at most |
 | `AMIRA_CACHE_DIR` | yes | The curator cache, set explicitly. Put it on **tmpfs**: it holds private data |
-| `AMIRA_SITE_BASE` | usually | The Omeka instance. In the AMIRA stack, the internal address (`http://web`), so the crawl stays on the Docker network; admin URLs are built from it too |
+| `AMIRA_SITE_BASE` | no | The **public** site (default `https://data.africamultiple.uni-bayreuth.de`). Every returned link is built from it: `amira_url`, `admin_url`, citations, media and thumbnail URLs |
+| `AMIRA_API_BASE` | in the AMIRA stack | Where the crawl and refresh **fetch** the API: the full API URL including `/api`, e.g. `http://web/api`, so keyed requests stay on the Docker network and never pass the host's nginx, which logs query strings. Default: `AMIRA_SITE_BASE/api`. Must be an absolute http(s) URL, or the server refuses to start (in either mode) |
 | `AMIRA_CURATOR_MAX_STALE_HOURS` | no | Default `24`. Data not confirmed by Omeka for longer than this is refused |
 | `AMIRA_REFRESH_INTERVAL_HOURS` | no | Default `1` in curator mode (`24` in public mode). Must be greater than 0 and less than the staleness limit |
 | `AMIRA_CURATOR_AUTH_PROBE` | no | Default `items?is_public=0&per_page=1`. The keyed request (relative to the API base) that must return a non-empty array before any crawl or refresh; see below |
@@ -120,7 +121,9 @@ keyed request that returns a non-empty array only when authenticated.
 
 Omeka reads keys from the query string only, Omeka reads keys from the query string only,
 so the server adds `key_identity` and `key_credential` to a request at the last
-moment, inside the fetch, and only for requests to `AMIRA_SITE_BASE/api`. The
+moment, inside the fetch, and only for requests under the fetch base
+(`AMIRA_API_BASE`, else `AMIRA_SITE_BASE/api`): with an internal fetch base the
+key is never sent to the public URL. The
 key is never stored in the API base, the snapshot manifest, an error, a log
 line, `/healthz` or a returned URL; any URL or message that could carry it is
 redacted. Keyed requests never follow redirects.
@@ -165,6 +168,15 @@ claude mcp add --transport http amira-curator https://<host>/curator/mcp \
 - The curator server never loads the bundled public snapshot. At startup it
   serves the curator cache when it is within the staleness limit, and
   otherwise crawls the API with the key before serving.
+- **Fetch base and identity are separate.** The snapshot manifest, the cache
+  partition and the snapshot id name the instance by its public API
+  (`AMIRA_SITE_BASE/api`), never by `AMIRA_API_BASE`, so switching the fetch
+  path (internal network, public URL) neither orphans nor splits a cache, and
+  the overview and `amira://dataset` cite the public API. Omeka builds the URLs
+  it returns (`@id`, `o:original_url`, thumbnails) from the request host; every
+  URL under the fetch base's site is rewritten to `AMIRA_SITE_BASE` as the
+  response is read, so no internal address reaches a snapshot, a tool result, a
+  resource or a link. `/healthz` reports only the public site.
 - The manifest records the access mode (`access: "curator"`), and so does the
   cache partition: curator snapshots live under their own hash of the API base
   *and* the mode, so a public and a curator server can never share a directory,

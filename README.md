@@ -374,7 +374,8 @@ lockfile.
 The same image can run a second, internal endpoint for AMIRA's developers and
 data curators that also serves **private records and private values** (#26):
 `AMIRA_ACCESS=curator`. It crawls the Omeka API with a service key
-(`AMIRA_OMEKA_KEY_FILE`), serves over HTTP only, and admits only holders of a
+(`AMIRA_OMEKA_KEY_FILE`), fetching over `AMIRA_API_BASE` (e.g. the internal
+`http://web/api`) while every link keeps the public `AMIRA_SITE_BASE`, serves over HTTP only, and admits only holders of a
 personal token listed by SHA-256 hash in `AMIRA_MCP_TOKENS_FILE`; deleting a
 curator's line revokes them within seconds, and each request is audited by name.
 Private records carry `visibility: "private"` and an `admin_url` instead of
@@ -572,6 +573,7 @@ rather than given an invented label. Group ids are renumbered per build
 | `AMIRA_TOOL_PROFILE` | — | `full` | `full`, `research`, `discovery`, or `visualization`; restart to change |
 | `AMIRA_CACHE_DIR` | Refreshed-data cache directory | `~/.amira-mcp/cache` | Where refreshed snapshots are stored |
 | `AMIRA_SITE_BASE` | Site base URL (advanced) | `https://data.africamultiple.uni-bayreuth.de` | Base for citations + refresh (`AMIRA_DASHBOARD_BASE` is honoured with a deprecation warning) |
+| `AMIRA_API_BASE` | — | `AMIRA_SITE_BASE/api` | Where the crawl and refresh fetch the API from: the full API URL including `/api`, e.g. `http://web/api` beside Omeka. Links still use `AMIRA_SITE_BASE`; URLs Omeka builds from the internal host are rewritten to it, and the snapshot identity stays the public API. Must be an absolute http(s) URL, or the server refuses to start |
 | `AMIRA_SITE_SLUG` | — | `amira` | Omeka site slug used in `amira_url` |
 | `AMIRA_DATA_DIR` | — | bundled `data/` | Override the bundled snapshot path (dev) |
 | `AMIRA_ENRICHMENT_BASE` | — | — | **Tests only**: fetch the full-text map and the corpus-vector releases from `<base>/raw`, `<base>/api` and `<base>/download` instead of GitHub (no token is sent) |

@@ -44,6 +44,15 @@ force and what comes next.
   has not confirmed within the staleness limit, and drops its store, wipes its
   cache and refuses requests until a refresh succeeds when the key is not
   accepted. Its `/healthz` shows no counts.
+- **`AMIRA_API_BASE`: a fetch base apart from the link base.** The crawl and
+  refresh fetch from it (the full API URL, e.g. `http://web/api`), so a curator
+  server beside Omeka keeps keyed requests on the internal network, and the
+  key is only ever added to URLs under it. `AMIRA_SITE_BASE` remains the base
+  of every returned link and of the snapshot identity (manifest, cache
+  partition), so switching the fetch path orphans no cache; URLs Omeka builds
+  from the internal host (`@id`, media files, thumbnails) are rewritten to the
+  public site as they are read. An invalid value refuses to start. Unset, the
+  fetch base is `AMIRA_SITE_BASE/api` as before.
 - **A positive authentication probe.** Omeka answers an unknown, revoked or
   mistyped key with the anonymous data (HTTP 200), not an error, so a crawl
   alone would build a public-only snapshot labelled curator. Every curator
