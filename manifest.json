@@ -4,7 +4,7 @@
   "display_name": "AMIRA — Africa Multiple Research Data",
   "version": "1.35.1",
   "description": "Read-only access to AMIRA, the Africa Multiple research-data platform on Omeka S.",
-  "long_description": "The Africa Multiple Interactive Research Atlas (AMIRA) is the research-data platform of the Africa Multiple Cluster of Excellence at the University of Bayreuth. It is built and maintained by the Cluster's Digital Research Environment (DRE), its digital infrastructure unit, which connects researchers across the Africa Multiple Research Centres (AMRCs) and partner institutions worldwide.\n\nCuration and description are joint efforts with partners at the AMRCs in Université Joseph Ki-Zerbo, Rhodes University, the University of Lagos, and Moi University. Bayreuth hosts the coordinating DRE infrastructure and metadata layer. Federal University of Bahia is a privileged partner, not an AMRC. Storage stays distributed by default: research data remains in local repositories and becomes findable without being relocated.\n\nThis read-only MCP server exposes AMIRA's Omeka S metadata through well-described tools for research items, projects, research sections, people, institutions, groups, collections, publications (open-access ones with searchable extracted full text), journals, podcast episodes, YouTube videos and searchable transcripts, plus the places, languages and subjects that connect them. No API key, database, account or VPN is required. A complete data snapshot is bundled in the extension, so the server works fully offline; when enabled, it can refresh from the public Omeka S API.\n\nEvery record carries an `amira_url` — its public page on the Omeka S site — so results can be cited as links back to the source. AMIRA focuses on the Cluster's research data; for news, events and general information, visit https://www.africamultiple.uni-bayreuth.de/.",
+  "long_description": "The Africa Multiple Interactive Research Atlas (AMIRA) is the research-data platform of the Africa Multiple Cluster of Excellence at the University of Bayreuth. It is built and maintained by the Cluster's Digital Research Environment (DRE), its digital infrastructure unit, which connects researchers across the Africa Multiple Research Centres (AMRCs) and partner institutions worldwide.\n\nCuration and description are joint efforts with partners at the AMRCs in Université Joseph Ki-Zerbo, Rhodes University, the University of Lagos, and Moi University. Bayreuth hosts the coordinating DRE infrastructure and metadata layer. Federal University of Bahia is a privileged partner, not an AMRC. Storage stays distributed by default: research data remains in local repositories and becomes findable without being relocated.\n\nThis read-only MCP server exposes AMIRA's Omeka S metadata through well-described tools for research items, projects, research sections, people, institutions, groups, collections, publications (open-access ones with searchable extracted full text), journals, podcast episodes, YouTube videos and searchable transcripts, plus the places, languages and subjects that connect them. No API key, database, account or VPN is required. Authorised AMIRA curators can enter a personal curator token in the extension settings: the extension then relays to the AMIRA curator server, private records included, and stores nothing private locally. A complete data snapshot is bundled in the extension, so the server works fully offline; when enabled, it can refresh from the public Omeka S API.\n\nEvery record carries an `amira_url` — its public page on the Omeka S site — so results can be cited as links back to the source. AMIRA focuses on the Cluster's research data; for news, events and general information, visit https://www.africamultiple.uni-bayreuth.de/.",
   "author": {
     "name": "Frédérick Madore",
     "email": "frederick.madore@uni-bayreuth.de",
@@ -48,7 +48,9 @@
       "env": {
         "AMIRA_LIVE_REFRESH": "${user_config.live_refresh}",
         "AMIRA_CACHE_DIR": "${user_config.cache_dir}",
-        "AMIRA_SITE_BASE": "${user_config.site_base}"
+        "AMIRA_SITE_BASE": "${user_config.site_base}",
+        "AMIRA_CURATOR_TOKEN": "${user_config.curator_token}",
+        "AMIRA_CURATOR_URL": "${user_config.curator_url}"
       }
     }
   },
@@ -267,11 +269,26 @@
       "description": "Where to store data refreshed from the site. Leave default to use your home directory (~/.amira-mcp/cache).",
       "required": false
     },
+    "curator_token": {
+      "type": "string",
+      "title": "Curator token (authorised AMIRA curators only)",
+      "description": "Your personal AMIRA curator token. When set, the extension relays to the AMIRA curator server, which includes private records, instead of serving the bundled public dataset; nothing private is stored on this computer. Leave empty for the public dataset. Tokens are issued and revoked by the AMIRA team.",
+      "sensitive": true,
+      "required": false,
+      "default": ""
+    },
     "site_base": {
       "type": "string",
       "title": "Site base URL (advanced)",
       "description": "Override the Omeka S site base URL used for citations and refresh. Leave as-is unless you are pointing the extension at another Omeka S instance.",
       "default": "https://data.africamultiple.uni-bayreuth.de",
+      "required": false
+    },
+    "curator_url": {
+      "type": "string",
+      "title": "Curator server URL (advanced)",
+      "description": "The curator endpoint the curator token is sent to. Used only when a curator token is set; must be https. Leave as-is.",
+      "default": "https://data.africamultiple.uni-bayreuth.de/curator/mcp",
       "required": false
     }
   }

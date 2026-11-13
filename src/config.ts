@@ -25,7 +25,7 @@ export function isTemplatePlaceholder(raw: string | undefined): boolean {
   return !v || /^\$\{[^}]*\}$/.test(v);
 }
 
-function envValue(name: string): string | undefined {
+export function envValue(name: string): string | undefined {
   const raw = process.env[name]?.trim();
   return isTemplatePlaceholder(raw) ? undefined : raw;
 }
@@ -168,6 +168,9 @@ function readBearerToken(): string | undefined {
 const ACCESS_SETTING = envValue("AMIRA_ACCESS")?.toLowerCase() ?? "public";
 export const ACCESS: "public" | "curator" = ACCESS_SETTING === "curator" ? "curator" : "public";
 
+/** The hosted curator endpoint the .mcpb relay forwards to by default (#26). */
+export const DEFAULT_CURATOR_URL = "https://data.africamultiple.uni-bayreuth.de/curator/mcp";
+
 export const config = {
   siteBase: SITE_BASE,
   siteSlug: SITE_SLUG,
@@ -230,6 +233,12 @@ export const config = {
   curatorAuthProbe: envValue("AMIRA_CURATOR_AUTH_PROBE") ?? "items?is_public=0&per_page=1",
   /** Whether AMIRA_CACHE_DIR was set explicitly (curator mode requires it: point it at tmpfs). */
   cacheDirConfigured: envValue("AMIRA_CACHE_DIR") !== undefined,
+  /** Curator relay (stdio only): whether AMIRA_CURATOR_TOKEN is set. Empty, or
+   * the unsubstituted `${user_config.curator_token}` of an unset .mcpb setting,
+   * means public mode. The token is read by src/relay.ts and never copied here. */
+  curatorRelay: envValue("AMIRA_CURATOR_TOKEN") !== undefined,
+  /** Curator relay: the curator endpoint it forwards to (AMIRA_CURATOR_URL). */
+  curatorUrl: envValue("AMIRA_CURATOR_URL") ?? DEFAULT_CURATOR_URL,
   /** Whether a single shared bearer token is configured (refused in curator mode). */
   bearerTokenConfigured: envValue("AMIRA_MCP_TOKEN_FILE") !== undefined || envValue("AMIRA_MCP_BEARER_TOKEN") !== undefined,
 };

@@ -238,6 +238,29 @@ export function createTokenStore(file: string, opts: { reloadMs?: number; log?: 
   };
 }
 
+// --- curator relay (src/relay.ts) -------------------------------------------------
+
+/** Hosts allowed over plain http, for tests against a local curator server. */
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * Why AMIRA_CURATOR_URL is refused, or null when it is acceptable: https, or
+ * http to localhost / 127.0.0.1 / [::1] only, and no credentials in the URL.
+ * The message quotes at most the origin.
+ */
+export function curatorUrlError(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return "AMIRA_CURATOR_URL is not an absolute URL (expected https://…/curator/mcp)";
+  }
+  if (url.username || url.password) return "AMIRA_CURATOR_URL must not carry credentials; the token belongs in AMIRA_CURATOR_TOKEN";
+  if (url.protocol === "https:") return null;
+  if (url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname)) return null;
+  return `AMIRA_CURATOR_URL must use https:// (plain http:// is accepted for localhost and 127.0.0.1 only); refusing ${JSON.stringify(url.origin)}`;
+}
+
 // --- startup checks -----------------------------------------------------------------
 
 export type EntryPoint = "http" | "stdio" | "fetch";
@@ -260,13 +283,25 @@ export function accessConfigErrors(entry: EntryPoint, cfg: typeof config = confi
       errors.push("AMIRA_API_BASE must be an absolute http(s) URL without credentials, query or fragment, such as http://web/api");
     }
   }
+  if (cfg.curatorRelay) {
+    // The relay forwards to a curator server; it never serves HTTP, never
+    // crawls, and never holds an Omeka key itself.
+    if (entry !== "stdio") {
+      errors.push("AMIRA_CURATOR_TOKEN (the curator relay) is for the stdio server and the .mcpb only; remove it from this environment");
+    }
+    if (cfg.access === "curator") {
+      errors.push("AMIRA_CURATOR_TOKEN and AMIRA_ACCESS=curator exclude each other: the relay forwards to a curator server and never crawls Omeka itself");
+    }
+    const urlError = curatorUrlError(cfg.curatorUrl);
+    if (urlError) errors.push(urlError);
+  }
   if (cfg.access === "public") {
     if (cfg.omekaKeyFile) errors.push("AMIRA_OMEKA_KEY_FILE is set but AMIRA_ACCESS is public: a public server never holds an Omeka key");
     if (cfg.tokensFile) errors.push("AMIRA_MCP_TOKENS_FILE is a curator-mode setting; set AMIRA_ACCESS=curator or remove it");
     return errors;
   }
   if (entry === "stdio") {
-    errors.push("curator mode serves over HTTP only (server/http.js); the stdio server and the .mcpb are public");
+    errors.push("curator mode serves over HTTP only (server/http.js); the stdio server and the .mcpb are public, or relay to a curator server with AMIRA_CURATOR_TOKEN");
   }
   if (entry === "fetch") {
     errors.push("fetch-data builds the public bundled snapshot and never runs in curator mode");
