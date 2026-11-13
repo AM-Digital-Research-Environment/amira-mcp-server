@@ -39,6 +39,7 @@
   ],
   "scripts": {
     "fetch-data": "npm run build && node server/fetchCli.js",
+    "curator-token": "node server/tokenCli.js",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.views.json",
     "lint": "biome lint .",
     "build": "node scripts/build.mjs",

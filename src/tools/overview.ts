@@ -2,7 +2,8 @@ import { schemaOnce } from "./schemaOnce.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { ensureStore, refreshStatus, UNIVERSITY_LABELS } from "../data.js";
-import { SITE_BASE } from "../config.js";
+import { SITE_BASE, config } from "../config.js";
+import { visibilityCounts } from "./curator.js";
 import { allowStructured, exposureLevel } from "../exposure.js";
 import { READ_ONLY, textResult, type Server } from "./_shared.js";
 import { APP_UI_META } from "./apps.js";
@@ -80,14 +81,18 @@ export function registerOverviewTools(server: Server, tools: ToolMap): void {
           : { items_by_resource_type: tally(store.items, (it) => it.type) }),
         content_date_range: yearMin != null ? { earliest: yearMin, latest: yearMax } : null,
         ...(exposureLevel() !== "full" ? { metadata_exposure: exposureLevel() } : {}),
+        // Curator mode (#26): the counts above include private records; this splits them.
+        ...(config.access === "curator" ? { access: "curator", visibility: visibilityCounts(store) } : {}),
         data_snapshot: {
           source: store.source,
           fetched_at: store.manifest.fetchedAt,
           max_modified: store.manifest.maxModified,
           api_base: store.manifest.apiBase,
-          note:
-            "Data is a snapshot of the public Omeka S API (site 'amira'); the server contacts no database. " +
-            (store.source === "cache" ? "Loaded from a refreshed local cache." : "Loaded from the bundled snapshot."),
+          note: config.access === "curator"
+            ? "Curator mode: an authenticated snapshot of the Omeka S API, including private records and private values; " +
+              "the server contacts no database. Loaded from the curator cache."
+            : "Data is a snapshot of the public Omeka S API (site 'amira'); the server contacts no database. " +
+              (store.source === "cache" ? "Loaded from a refreshed local cache." : "Loaded from the bundled snapshot."),
         },
       };
       });

@@ -11,6 +11,12 @@
 // With a bearer token configured (AMIRA_MCP_BEARER_TOKEN / AMIRA_MCP_TOKEN_FILE)
 // /mcp and /metrics require it; /healthz stays open for the container check.
 //
+// Curator mode (#26, AMIRA_ACCESS=curator) replaces the single token with
+// personal tokens (AMIRA_MCP_TOKENS_FILE, src/access.ts), logs one audit line
+// per MCP request (the curator's name and the method/tool, never a token or an
+// argument), and reduces /healthz to liveness: no counts, since those would
+// reveal private records to anyone.
+//
 // Stateless: a fresh server instance per request, so concurrent clients can
 // never collide on JSON-RPC ids. The data lives in a process-wide singleton, so
 // per-request setup is just cheap handler wiring, not a data reload. Since
@@ -23,6 +29,7 @@ import { localhostHostValidation, originValidation, toNodeHandler } from "@model
 import { createAmiraServer, VERSION } from "./mcpServer.js";
 import { config } from "./config.js";
 import { currentStore, refreshStatus } from "./data.js";
+import { createTokenStore, type TokenStore } from "./access.js";
 
 export const MCP_PATH = "/mcp";
 const MAX_REQUEST_BYTES = 64 * 1024;
@@ -38,6 +45,14 @@ export interface HttpAppOptions {
   startupError?: () => string | null;
   /** Require this bearer token on /mcp and /metrics (default: config.bearerToken). */
   bearerToken?: string;
+  /** Access mode (default: config.access). Curator mode requires personal tokens. */
+  access?: "public" | "curator";
+  /** Curator mode: the personal-tokens file (default: config.tokensFile). */
+  tokensFile?: string;
+  /** Curator mode: re-read the tokens file at most this often (ms, default 2000). */
+  tokenReloadMs?: number;
+  /** Curator mode: where audit lines go (default: stderr). */
+  audit?: (line: string) => void;
 }
 
 /** Latency of the most recent /mcp requests, for /metrics. */
@@ -170,6 +185,72 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+/** Curator-mode health: liveness and freshness only. Counts would tell anyone
+ * how many private records exist, and the endpoint is unauthenticated. */
+function curatorHealthBody(startupError: string | null): Record<string, unknown> {
+  const store = currentStore();
+  const refresh = refreshStatus();
+  // Unavailable once anything was tried or served: a failed load, a refused key, or data past its staleness limit.
+  const tried = startupError || refresh.blocked || refresh.last_attempt || refresh.data_verified_at;
+  return {
+    name: "amira-mcp-server",
+    version: VERSION,
+    status: store ? "ok" : tried ? "unavailable" : "loading",
+    access: "curator",
+    transport: "streamable-http",
+    mcp_endpoint: MCP_PATH,
+    refresh,
+    ...(store ? { data_snapshot: { fetched_at: store.manifest.fetchedAt, schema_version: store.manifest.schemaVersion } } : {}),
+  };
+}
+
+const SAFE_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
+const safe = (v: unknown): string => (typeof v === "string" && SAFE_NAME.test(v) ? v : "?");
+
+/** What a resource URI is, without its arguments (an export URI embeds its filters). */
+function resourceKind(uri: unknown): string {
+  if (typeof uri !== "string") return "?";
+  const record = /^amira:\/\/record\/([a-z_]+)\//.exec(uri);
+  if (record) return `record/${safe(record[1])}`;
+  const exp = /^amira:\/\/export\/([a-z_]+)\/([a-z-]+)\//.exec(uri);
+  if (exp) return `export/${safe(exp[1])}/${safe(exp[2])}`;
+  if (uri === "amira://dataset") return "dataset";
+  const scheme = /^([a-z][a-z0-9+.-]*):/.exec(uri);
+  return scheme ? safe(scheme[1]) : "?";
+}
+
+/** One audit line: who, and which method/tool/resource kind. Never a token or an argument. */
+export function auditLine(curator: string, httpMethod: string | undefined, body: unknown): string {
+  const describe = (msg: unknown): string => {
+    const m = msg as { method?: unknown; params?: { name?: unknown; uri?: unknown } } | null;
+    if (!m || typeof m !== "object" || typeof m.method !== "string") return "message=?";
+    const method = /^[A-Za-z0-9_/.-]{1,64}$/.test(m.method) ? m.method : "?";
+    if (method === "tools/call") return `method=${method} tool=${safe(m.params?.name)}`;
+    if (method === "prompts/get") return `method=${method} prompt=${safe(m.params?.name)}`;
+    if (method === "resources/read") return `method=${method} resource=${resourceKind(m.params?.uri)}`;
+    return `method=${method}`;
+  };
+  const what = body === undefined ? `http=${safe(httpMethod)}` : Array.isArray(body) ? body.map(describe).join(" | ") : describe(body);
+  return `[amira] audit curator=${curator} ${what}`;
+}
+
+/** The request body, or null past `limit` bytes. */
+function readBody(req: IncomingMessage, limit: number): Promise<string | null> {
+  if (Number(req.headers["content-length"] ?? 0) > limit) return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let over = false;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) over = true;
+      else if (!over) chunks.push(chunk);
+    });
+    req.on("end", () => resolve(over ? null : Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
 function healthBody(startupError: string | null): Record<string, unknown> {
   // Read the store through currentStore() rather than caching a reference: the
   // background refresh hot-swaps it.
@@ -217,13 +298,47 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
   // When bound to loopback, also apply the SDK's Host-header guard.
   const validateOrigin = originValidation(opts.allowedOriginHostnames ?? config.allowedOriginHostnames);
   const validateHost = ["127.0.0.1", "localhost", "::1", "[::1]"].includes(host) ? localhostHostValidation() : null;
-  const authorized = bearerCheck(opts.bearerToken ?? config.bearerToken);
+  const access = opts.access ?? config.access;
+  let tokens: TokenStore | null = null;
+  if (access === "curator") {
+    // Fail closed: no personal tokens, no curator endpoint; one shared token is refused.
+    const file = opts.tokensFile ?? config.tokensFile;
+    if (!file) throw new Error("curator mode needs AMIRA_MCP_TOKENS_FILE");
+    if (opts.bearerToken ?? config.bearerToken) throw new Error("curator mode refuses a shared bearer token; use AMIRA_MCP_TOKENS_FILE");
+    tokens = createTokenStore(file, { reloadMs: opts.tokenReloadMs });
+    if (!tokens.size) throw new Error("curator mode: AMIRA_MCP_TOKENS_FILE holds no valid token");
+  }
+  const audit = opts.audit ?? ((line: string) => console.error(line));
+  const authorized = tokens ? null : bearerCheck(opts.bearerToken ?? config.bearerToken);
   const metrics = createRequestMetrics();
   const mcpEntry = createMcpHandler(() => createAmiraServer({ openai: true }), { maxRequestBodySize: MAX_REQUEST_BYTES });
   const mcpHandler = toNodeHandler(mcpEntry, {
     maxRequestBodySize: MAX_REQUEST_BYTES,
     onerror: (err) => console.error("[amira] mcp handler error:", err),
   });
+
+  /** Curator mode: read the body once, so the audit line can name the method and tool, then hand it to the SDK. */
+  const curatorRequest = async (req: IncomingMessage, res: ServerResponse, curator: string): Promise<void> => {
+    let body: unknown;
+    if (req.method === "POST") {
+      const raw = await readBody(req, MAX_REQUEST_BYTES);
+      if (raw === null) {
+        res.writeHead(413, { "Content-Type": "application/json", Connection: "close" });
+        res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message: "Request body too large" }, id: null }));
+        audit(`[amira] audit curator=${curator} rejected=body_too_large`);
+        return;
+      }
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        sendJson(res, 400, { jsonrpc: "2.0", error: { code: -32700, message: "Parse error" }, id: null });
+        audit(`[amira] audit curator=${curator} rejected=parse_error`);
+        return;
+      }
+    }
+    audit(auditLine(curator, req.method, body));
+    await mcpHandler(req, res, body);
+  };
 
   const listener = (req: IncomingMessage, res: ServerResponse): void => {
     if ((validateHost && !validateHost(req, res)) || !validateOrigin(req, res)) return;
@@ -236,8 +351,18 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
       return;
     }
     if (path === "/" || path === "/healthz") {
-      sendJson(res, currentStore() ? 200 : 503, healthBody(opts.startupError?.() ?? null));
+      const startupError = opts.startupError?.() ?? null;
+      sendJson(res, currentStore() ? 200 : 503, tokens ? curatorHealthBody(startupError) : healthBody(startupError));
       return;
+    }
+    let curator: string | null = null;
+    if ((path === MCP_PATH || path === "/metrics") && tokens) {
+      curator = tokens.check(req.headers.authorization);
+      if (!curator) {
+        res.setHeader("WWW-Authenticate", 'Bearer realm="amira-curator"');
+        sendJson(res, 401, { error: "unauthorized" });
+        return;
+      }
     }
     if ((path === MCP_PATH || path === "/metrics") && authorized && !authorized(req.headers.authorization)) {
       res.setHeader("WWW-Authenticate", "Bearer");
@@ -260,7 +385,7 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
       }
       const started = performance.now();
       res.once("finish", () => metrics.record(performance.now() - started));
-      void Promise.resolve(mcpHandler(req, res)).catch((err) => {
+      void (curator ? curatorRequest(req, res, curator) : Promise.resolve(mcpHandler(req, res))).catch((err) => {
         console.error("[amira] http request error:", err);
         if (!res.headersSent) sendJson(res, 500, { error: "internal error" });
       });

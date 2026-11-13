@@ -4,6 +4,7 @@ import type { PublicationRec } from "./types.js";
 import { allowStructured } from "./exposure.js";
 import { bibtexName, cslName, escBibtex, rawBibtex, type CitationFormat, type GeneratedCitation } from "./citation.js";
 import { itemUrl } from "./urls.js";
+import { isPrivateRecord, PRIVATE_CITATION_NOTE } from "./visibility.js";
 
 const BIBTEX_ENTRY: Record<string, string> = {
   article: "article",
@@ -85,7 +86,8 @@ const seriesTitle = (p: PublicationRec): string | null =>
   p.series?.length ? p.series.join("; ") :
     !VENUE_IS_JOURNAL.has(p.type) && !VENUE_IS_BOOKTITLE.has(p.type) ? p.venue : null;
 const bareDoi = (p: PublicationRec): string | undefined => p.doi?.replace(/^https?:\/\/(dx\.)?doi\.org\//i, "");
-const publicationUrl = (p: PublicationRec): string => p.doi ?? p.urls[0] ?? itemUrl(p.o_id);
+/** The cited link. A private record (curator mode) never falls back to its AMIRA page, which the public cannot open. */
+const publicationUrl = (p: PublicationRec): string | null => p.doi ?? p.urls[0] ?? (isPrivateRecord(p) ? null : itemUrl(p.o_id));
 
 function issuedParts(p: PublicationRec): number[] | null {
   if (p.year == null) return null;
@@ -102,7 +104,7 @@ function issuedParts(p: PublicationRec): number[] | null {
 
 function publicationNote(p: PublicationRec): string {
   const notes = [
-    `AMIRA: ${itemUrl(p.o_id)}`,
+    isPrivateRecord(p) ? PRIVATE_CITATION_NOTE.replace(/\.$/, "") : `AMIRA: ${itemUrl(p.o_id)}`,
     `Repository identifiers: ${[...new Set([p.pub_id, ...(p.identifiers ?? [])])].join("; ")}`,
   ];
   if (p.num_pages) notes.push(`Number of pages: ${p.num_pages}`);
@@ -171,10 +173,11 @@ const CSL_TYPES: Record<string, string> = {
 
 /** CSL input schema: https://resource.citationstyles.org/schema/v1.0/input/json/csl-data.json */
 function publicationCsl(p: PublicationRec): Record<string, unknown> {
+  const url = publicationUrl(p);
   const out: Record<string, unknown> = {
     id: `amira-${p.o_id}`, "citation-key": p.pub_id,
     type: CSL_TYPES[p.type] ?? "document", title: p.title, genre: p.type,
-    URL: publicationUrl(p), note: publicationNote(p),
+    ...(url ? { URL: url } : {}), note: publicationNote(p),
   };
   const add = (key: string, value: string | null | undefined) => { if (value) out[key] = value; };
   const dateParts = issuedParts(p);

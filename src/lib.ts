@@ -30,7 +30,7 @@ export { fetchJSON, readFingerprints, readManifest, readSnapshotPointer, snapsho
 export { foldedRanges } from "./text.js";
 export * from "./entityGraph.js";
 export { selectResearchItems } from "./researchItemQuery.js";
-export { INSTRUCTIONS } from "./mcpServer.js";
+export { INSTRUCTIONS, curatorInstructions } from "./mcpServer.js";
 export { createHttpApp, clientAddress, addressBucket, createRateLimiter } from "./httpApp.js";
 export { parseTypedId, canonicalTypedId, stripTypedId } from "./typedIds.js";
 export { RECORD_KINDS, findRecord, recordByOId, recordTitle } from "./recordKinds.js";
@@ -44,10 +44,19 @@ export { escBibtex } from "./citation.js";
 export { authorityIds } from "./omekaJSON.js";
 export { scrub } from "./tools/responses.js";
 export { describeMarkdown } from "./skills.js";
-export { fetchFulltextMaps } from "./snapshot.js";
+export { fetchFulltextMaps, probeCuratorAuth } from "./snapshot.js";
 export { FULLTEXT_SOURCE, parseFulltextMaps, fulltextIndex, wordTrends } from "./fulltextMaps.js";
 export { fetchSemanticRelease } from "./snapshot.js";
 export {
   NEIGHBOURS_PER_TYPE, SEMANTIC_SOURCE, computeNeighbours, parseSemanticNeighbours, pickSemantic, semanticIndex, servableSemantic,
   verifySemanticRelease,
 } from "./semantic.js";
+// Curator mode (#26).
+export {
+  accessConfigErrors, createTokenStore, generateToken, hashToken, omekaKeyFor, parseOmekaKey, parseTokensFile, redactSecrets,
+  resetOmekaKeyCache, withOmekaKey,
+} from "./access.js";
+export { publicView, splitVisibility, PRIVATE_CITATION_NOTE, RESTRICTED_NOTE } from "./visibility.js";
+export { cacheSnapshotDir, refreshNow, refreshStatus } from "./data.js";
+export { auditLine } from "./httpApp.js";
+export { adminItemUrl, adminItemSetUrl } from "./urls.js";

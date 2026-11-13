@@ -1,5 +1,6 @@
 import { schemaOnce } from "./schemaOnce.js";
 import type { ToolMap } from "./policy.js";
+import { citedUrl } from "../visibility.js";
 import { z } from "zod";
 import { ensureStore, refreshStatus, } from "../data.js";
 import { allowFullText, allowStructured } from "../exposure.js";
@@ -35,7 +36,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     inputSchema: schemaOnce("resolve_entity:in", () => z.strictObject({ query: querySchema, type: z.enum(entityTypes).optional(),
       limit: z.number().int().min(1).optional(), offset: offsetSchema })),
     outputSchema: schemaOnce("resolve_entity:out", () => z.object({ ...pageShape, results: z.array(entitySchema), ambiguous: z.boolean(), snapshot_id: z.string(),
-      suggestions: z.array(z.object({ id: z.string(), name: z.string(), amira_url: z.string() })).optional(), hint: z.string().optional() })),
+      suggestions: z.array(z.object({ id: z.string(), name: z.string(), amira_url: citedUrl() })).optional(), hint: z.string().optional() })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "resolve_entity");
     const store = await ensureStore();
@@ -89,7 +90,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     inputSchema: schemaOnce("get_text_passages:in", () => z.strictObject({ ids: z.array(z.string().max(64)).min(1).max(10).describe("publication:, video: or podcast: ids"),
       keyword: querySchema, radius: z.number().int().min(20).max(500).optional(), offset: offsetSchema,
       limit: z.number().int().min(1).optional().describe("Default 10, max 20") })),
-    outputSchema: schemaOnce("get_text_passages:out", () => z.object({ ...pageShape, results: z.array(z.object({ id: z.string(), title: z.string(), amira_url: z.string(),
+    outputSchema: schemaOnce("get_text_passages:out", () => z.object({ ...pageShape, results: z.array(z.object({ id: z.string(), title: z.string(), amira_url: citedUrl(),
       start: z.number(), end: z.number(), match_start: z.number(), match_end: z.number(), text: z.string() })),
       snapshot_id: z.string(), scanned_matches_capped: z.boolean(), unavailable_ids: z.array(z.string()) })),
   }, async (args) => {
@@ -141,7 +142,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     inputSchema: schemaOnce("compare_collections:in", () => z.strictObject({ cohorts: z.array(z.strictObject({ type: z.enum(["project", "collection"]), id: z.string().min(1).max(256) })).min(2).max(4),
       filters: researchFilters.optional() })),
     outputSchema: schemaOnce("compare_collections:out", () => z.object({ snapshot_id: z.string(), overlap_note: z.string(), cohorts: z.array(z.object({ type: z.string(), id: z.number(), name: z.string(),
-      amira_url: z.string(), total_items: z.number(), matched_items: z.number(), missing: counts, resource_types: counts, languages: counts,
+      amira_url: citedUrl(), total_items: z.number(), matched_items: z.number(), missing: counts, resource_types: counts, languages: counts,
       date_range: z.object({ earliest: z.number(), latest: z.number() }).nullable() })) })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "compare_collections");
@@ -216,7 +217,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       corpus: z.enum(CORPORA).optional(), offset: offsetSchema, limit: z.number().int().min(1).optional().describe("Default 30, max 100") })),
     outputSchema: schemaOnce("get_snapshot_changes:out", () => z.object({ status: z.enum(["ready", "history_unavailable"]), snapshots: z.array(z.object({ id: z.string(), fetched_at: z.string() })),
       from_id: z.string().optional(), to_id: z.string().optional(), results: z.array(z.object({ corpus: z.string(), id: z.number(),
-        change: z.enum(["added", "updated", "deleted"]), title: z.string(), amira_url: z.string() })).optional(),
+        change: z.enum(["added", "updated", "deleted"]), title: z.string(), amira_url: citedUrl() })).optional(),
       count: z.number().optional(), total_matches: z.number().optional(), offset: z.number().optional(), has_more: z.boolean().optional(), next_offset: z.number().optional(),
       requested_limit: z.number().optional(), effective_limit: z.number().optional(), response_limited: z.boolean().optional() })),
   }, async (args) => {

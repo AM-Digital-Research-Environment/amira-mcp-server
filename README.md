@@ -369,6 +369,29 @@ snapshot. The image pins its base digest and applies Debian's security updates
 on top of it; its runtime stage carries no npm. `npm ci` uses the committed
 lockfile.
 
+### Curator mode (internal, read-only)
+
+The same image can run a second, internal endpoint for AMIRA's developers and
+data curators that also serves **private records and private values** (#26):
+`AMIRA_ACCESS=curator`. It crawls the Omeka API with a service key
+(`AMIRA_OMEKA_KEY_FILE`), fetching over `AMIRA_API_BASE` (e.g. the internal
+`http://web/api`) while every link keeps the public `AMIRA_SITE_BASE`, serves over HTTP only, and admits only holders of a
+personal token listed by SHA-256 hash in `AMIRA_MCP_TOKENS_FILE`; deleting a
+curator's line revokes them within seconds, and each request is audited by name.
+Private records carry `visibility: "private"` and an `admin_url` instead of
+`amira_url`; private values sit in a separate `restricted` block, including the
+private ILAM OCR full text, which becomes searchable and readable. The cache
+(`AMIRA_CACHE_DIR`, on tmpfs) is partitioned by access mode, each mode refuses
+the other's snapshot, and data unconfirmed for 24 h is refused. Omeka answers
+an unknown key with the public data rather than an error, so every crawl and
+refresh first requires a keyed authentication probe (`items?is_public=0`) to
+return private items; when it does not, or Omeka answers 401/403, the server
+drops the data and wipes the cache. The service account needs `view-all`
+(a `reviewer` for now). The server refuses to start when any
+of this is missing, and a public server refuses a key. Generate a token with
+`node server/tokenCli.js <name>`. Configuration, revocation, cache handling and
+what "private" covers: [docs/curator.md](docs/curator.md).
+
 ## Develop / rebuild
 
 ```bash
@@ -550,6 +573,7 @@ rather than given an invented label. Group ids are renumbered per build
 | `AMIRA_TOOL_PROFILE` | — | `full` | `full`, `research`, `discovery`, or `visualization`; restart to change |
 | `AMIRA_CACHE_DIR` | Refreshed-data cache directory | `~/.amira-mcp/cache` | Where refreshed snapshots are stored |
 | `AMIRA_SITE_BASE` | Site base URL (advanced) | `https://data.africamultiple.uni-bayreuth.de` | Base for citations + refresh (`AMIRA_DASHBOARD_BASE` is honoured with a deprecation warning) |
+| `AMIRA_API_BASE` | — | `AMIRA_SITE_BASE/api` | Where the crawl and refresh fetch the API from: the full API URL including `/api`, e.g. `http://web/api` beside Omeka. Links still use `AMIRA_SITE_BASE`; URLs Omeka builds from the internal host are rewritten to it, and the snapshot identity stays the public API. Must be an absolute http(s) URL, or the server refuses to start |
 | `AMIRA_SITE_SLUG` | — | `amira` | Omeka site slug used in `amira_url` |
 | `AMIRA_DATA_DIR` | — | bundled `data/` | Override the bundled snapshot path (dev) |
 | `AMIRA_ENRICHMENT_BASE` | — | — | **Tests only**: fetch the full-text map and the corpus-vector releases from `<base>/raw`, `<base>/api` and `<base>/download` instead of GitHub (no token is sent) |
@@ -564,10 +588,16 @@ rather than given an invented label. Group ids are renumbered per build
 | `AMIRA_PROXY_HOPS` | — | `1` | Number of trusted proxies in front of the server, for reading `X-Forwarded-For` when `X-Real-IP` is absent. IPv6 clients are bucketed by /64 |
 | `AMIRA_MCP_BEARER_TOKEN` | — | unset | HTTP only: require `Authorization: Bearer <token>` on `/mcp` and `/metrics` (`/healthz` stays open). Set it when the reverse proxy adds the header, so the container is never reachable unauthenticated if the proxy is bypassed |
 | `AMIRA_MCP_TOKEN_FILE` | — | unset | HTTP only: read that token from a mounted secret file instead |
+| `AMIRA_ACCESS` | — | `public` | `curator` starts the internal curator mode (HTTP only), which requires the three settings below; see [docs/curator.md](docs/curator.md) |
+| `AMIRA_OMEKA_KEY_FILE` | — | unset | Curator mode only: file with the Omeka service key (`key_identity`, `key_credential`). A public server refuses to start with it |
+| `AMIRA_MCP_TOKENS_FILE` | — | unset | Curator mode only: personal tokens, one `name sha256hex` line per curator, re-read every 2 s. Replaces `AMIRA_MCP_BEARER_TOKEN`, which curator mode refuses |
+| `AMIRA_CURATOR_AUTH_PROBE` | — | `items?is_public=0&per_page=1` | Curator mode only: the keyed request that must return a non-empty array (proof that the key is accepted and has view-all) before any crawl or refresh |
+| `AMIRA_CURATOR_MAX_STALE_HOURS` | — | `24` | Curator mode only: refuse data Omeka has not confirmed for this long. Curator mode also requires `AMIRA_CACHE_DIR` (on tmpfs) and checks hourly by default |
 
 ### Snapshot layout and recovery
 
-The cache lives under `AMIRA_CACHE_DIR/<API identity hash>/`. `active.json` names
+The cache lives under `AMIRA_CACHE_DIR/<API identity hash>/` (curator mode hashes
+the access mode in too, so the two never share a directory). `active.json` names
 the current immutable `generations/<uuid>/` directory and two previous generations.
 Unreferenced generations have a 24-hour cleanup grace period. Existing flat
 snapshots and a same-source legacy `cache/current` remain readable; the first new

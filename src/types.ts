@@ -2,6 +2,8 @@
 // produces from Omeka S JSON-LD and the runtime serves from memory. Field
 // provenance is the census in scripts/census-report.json.
 
+import type { VisibilityFields } from "./visibility.js";
+
 export type University = "ubt" | "unilag" | "ujkz" | "ufba" | "external";
 
 /** Inline reference to a linked Omeka item (label always; o_id when linked). */
@@ -36,9 +38,11 @@ export interface MediaRec {
   /** o:source — the upstream file or page the media was ingested from. */
   source: string | null;
   size: number | null;
+  /** Curator mode only: present (and "private") when the media record is private. */
+  visibility?: "private";
 }
 
-export interface PersonRec {
+export interface PersonRec extends VisibilityFields {
   o_id: number;
   /** "Surname, Forename" — the stored canonical form. */
   name: string;
@@ -50,7 +54,7 @@ export interface PersonRec {
   alt_names?: string[];
 }
 
-export interface OrganisationRec {
+export interface OrganisationRec extends VisibilityFields {
   o_id: number;
   name: string;
   /** dcterms:type on the item: "Institution" (508) or "Group" (84). */
@@ -67,7 +71,7 @@ export interface OrganisationRec {
   identifiers?: AuthorityId[];
 }
 
-export interface LocationRec {
+export interface LocationRec extends VisibilityFields {
   o_id: number;
   name: string;
   latitude: number | null;
@@ -79,7 +83,7 @@ export interface LocationRec {
   place_type?: string | null;
 }
 
-export interface ProjectRec {
+export interface ProjectRec extends VisibilityFields {
   o_id: number;
   /** dre:id, e.g. "UBT_ArtWorld2019", "Ext_ILAM" — the public project key. */
   dre_id: string;
@@ -102,7 +106,7 @@ export interface ProjectRec {
   alt_names?: string[];
 }
 
-export interface SectionRec {
+export interface SectionRec extends VisibilityFields {
   o_id: number;
   name: string;
   /** dcterms:abstract. */
@@ -127,7 +131,7 @@ export interface RelatedRef {
   ref: LinkedRef;
 }
 
-export interface ResearchItemRec {
+export interface ResearchItemRec extends VisibilityFields {
   o_id: number;
   /** dre:id — 100% coverage; the public item key. */
   dre_id: string;
@@ -199,7 +203,7 @@ export interface ResearchItemRec {
   media?: MediaRec[];
 }
 
-export interface ItemSetRec {
+export interface ItemSetRec extends VisibilityFields {
   o_id: number;
   title: string;
   /** dcterms:isPartOf → the research project whose records the set files (#18).
@@ -209,7 +213,7 @@ export interface ItemSetRec {
   code?: string | null;
 }
 
-export interface PublicationRec {
+export interface PublicationRec extends VisibilityFields {
   o_id: number;
   /** dcterms:identifier, e.g. "eref-94882" — the public publication key. */
   pub_id: string;
@@ -276,7 +280,7 @@ export interface PublicationRec {
 }
 
 /** A publication venue (Journal authority item, template 23 / set 41268). */
-export interface JournalRec {
+export interface JournalRec extends VisibilityFields {
   o_id: number;
   title: string;
   /** bibo:issn. */
@@ -287,7 +291,7 @@ export interface JournalRec {
   url: string | null;
 }
 
-export interface PodcastRec {
+export interface PodcastRec extends VisibilityFields {
   o_id: number;
   title: string;
   /** dcterms:isPartOf → series authority item. */
@@ -313,7 +317,7 @@ export interface PodcastRec {
   media?: MediaRec[];
 }
 
-export interface VideoRec {
+export interface VideoRec extends VisibilityFields {
   o_id: number;
   title: string;
   abstract: string | null;
@@ -338,7 +342,7 @@ export interface VideoRec {
   modified?: string | null;
 }
 
-export interface PlaylistRec {
+export interface PlaylistRec extends VisibilityFields {
   o_id: number;
   title: string;
   /** dcterms:identifier (playlist URL). */
@@ -346,7 +350,7 @@ export interface PlaylistRec {
   description: string | null;
 }
 
-export interface LanguageRec {
+export interface LanguageRec extends VisibilityFields {
   o_id: number;
   /** English name, e.g. "French". */
   name: string;
@@ -355,7 +359,7 @@ export interface LanguageRec {
 }
 
 /** v5: a subject authority (item set 1852): a curated LCSH heading or a free tag. */
-export interface SubjectRec {
+export interface SubjectRec extends VisibilityFields {
   o_id: number;
   name: string;
   /** dcterms:type label, e.g. "Library of Congress Subject Headings" or "Tag". */
@@ -405,6 +409,9 @@ export interface SnapshotManifest {
   schemaVersion: number;
   fetchedAt: string;
   apiBase: string;
+  /** Access mode of the crawl that wrote the snapshot (#26). Absent in snapshots
+   * written before curator mode, which are public. Each mode refuses the other's. */
+  access?: "public" | "curator";
   /** Global /api/items max o:modified (same scope as the freshness probe). */
   maxModified: string | null;
   /** Unfiltered /api/items total at crawl time (freshness probe pair, D11). */
