@@ -408,11 +408,14 @@ const curator = {
   retryTimer: null as ReturnType<typeof setTimeout> | null,
   /** Initial-load throttle: a failed crawl is not retried by every request. */
   nextAttempt: 0,
+  /** Delay before the next timer-driven retry after a transient failure (backoff, reset on success). */
+  retryDelayMs: 0,
   lastError: null as Error | null,
 };
-/** After a 401/403 or a failed first crawl, retry this soon (capped by the refresh interval). */
+/** After a 401/403, retry this soon; transient failures back off up to it (capped by the refresh interval). */
 const CURATOR_RETRY_MS = 5 * 60_000;
-const INITIAL_RETRY_MS = 60_000;
+/** First retry after a transient failure with no store (AMIRA_CURATOR_RETRY_SECONDS; tests shorten it). */
+const INITIAL_RETRY_MS = config.curatorRetrySeconds * 1000;
 
 const maxStaleMs = (): number => config.curatorMaxStaleHours * 3_600_000;
 const curatorStale = (): boolean => config.access === "curator" && Date.now() - curator.verifiedAt > maxStaleMs();
@@ -437,13 +440,28 @@ async function revokeCuratorData(status: number | undefined): Promise<void> {
   scheduleCuratorRetry();
 }
 
-function scheduleCuratorRetry(): void {
+/**
+ * Retry on a timer, without waiting for a request (the container healthcheck
+ * sends none). A refused key retries after CURATOR_RETRY_MS; a transient
+ * failure with no store (Omeka unreachable, a 502 while php restarts) backs
+ * off from INITIAL_RETRY_MS, doubling up to the same cap. The retry is a
+ * background refresh, which crawls afresh when no store exists and publishes
+ * the result. One timer at most; a success resets the backoff.
+ */
+function scheduleCuratorRetry(kind: "auth" | "transient" = "auth"): void {
   if (stopped || !config.liveRefresh || curator.retryTimer) return;
   const interval = config.refreshIntervalHours > 0 ? config.refreshIntervalHours * 3_600_000 : CURATOR_RETRY_MS;
+  const cap = Math.min(CURATOR_RETRY_MS, interval);
+  let delay = cap;
+  if (kind === "transient") {
+    delay = Math.min(cap, curator.retryDelayMs || INITIAL_RETRY_MS);
+    curator.retryDelayMs = Math.min(cap, delay * 2);
+  }
+  console.error(`[amira] curator: retrying in ${Math.round(delay / 1000)} s`);
   curator.retryTimer = setTimeout(() => {
     curator.retryTimer = null;
     triggerBackgroundRefresh();
-  }, Math.min(CURATOR_RETRY_MS, interval));
+  }, delay);
   curator.retryTimer.unref?.();
 }
 
@@ -543,6 +561,8 @@ async function loadInitialCurator(): Promise<DataStore> {
     curator.lastError = safe;
     curator.nextAttempt = Date.now() + INITIAL_RETRY_MS;
     if ((err as { omekaAuth?: boolean }).omekaAuth) await revokeCuratorData((err as { status?: number }).status);
+    // A transient failure retries on its own: nothing else would until a request arrived.
+    else if (!current) scheduleCuratorRetry("transient");
     throw safe;
   }
 }
@@ -569,6 +589,12 @@ export async function ensureStore(): Promise<DataStore> {
     loading = loadInitial()
       .then((store) => {
         current = store;
+        if (config.access === "curator") {
+          // Loaded: a pending timer-driven retry is no longer needed.
+          if (curator.retryTimer) clearTimeout(curator.retryTimer);
+          curator.retryTimer = null;
+          curator.retryDelayMs = 0;
+        }
         // In the background: a request arriving first builds what it needs itself.
         void warmup?.(store).catch((err: Error) => console.error(`[amira] index warm-up failed: ${err.message}`));
         if (config.liveRefresh) startBackgroundRefresh();
@@ -677,6 +703,7 @@ async function backgroundRefresh(): Promise<void> {
       curator.verifiedAt = Date.now();
       curator.blocked = false;
       curator.lastError = null;
+      curator.retryDelayMs = 0;
       if (!refreshTimer && config.liveRefresh) startBackgroundRefresh();
     }
     refreshState.last_success = new Date().toISOString();
@@ -688,6 +715,6 @@ async function backgroundRefresh(): Promise<void> {
       : (err as Error).name === "TimeoutError" ? "timeout" : "refresh_failed";
     console.error(`[amira] live refresh skipped: ${redactSecrets((err as Error).message)}`);
     if (auth) await revokeCuratorData((err as { status?: number }).status);
-    else if (curatorMode && !current) scheduleCuratorRetry();
+    else if (curatorMode && !current) scheduleCuratorRetry("transient");
   }
 }

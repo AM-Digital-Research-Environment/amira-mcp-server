@@ -1,6 +1,6 @@
 {
   "name": "amira-mcp-server-bundle",
-  "version": "1.35.1",
+  "version": "1.36.0",
   "description": "Node MCP server for AMIRA, the Africa Multiple research-data platform on Omeka S, packaged as a Claude Desktop extension (.mcpb).",
   "private": true,
   "type": "module",
@@ -68,6 +68,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",
+    "@modelcontextprotocol/client": "^2.4.0",
     "@modelcontextprotocol/ext-apps": "^2.0.4",
     "@modelcontextprotocol/node": "^2.1.2",
     "@modelcontextprotocol/server": "^2.4.0",
@@ -75,7 +76,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.6",
-    "@modelcontextprotocol/client": "^2.4.0",
     "@types/node": "^22.20.5",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",

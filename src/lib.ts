@@ -60,3 +60,6 @@ export { publicView, splitVisibility, PRIVATE_CITATION_NOTE, RESTRICTED_NOTE } f
 export { cacheSnapshotDir, refreshNow, refreshStatus } from "./data.js";
 export { auditLine } from "./httpApp.js";
 export { adminItemUrl, adminItemSetUrl } from "./urls.js";
+// Curator relay (#26): the .mcpb's stdio-to-curator forwarder.
+export { curatorUrlError } from "./access.js";
+export { describeRelayError, normalizeCuratorToken, redactToken, startRelay } from "./relay.js";

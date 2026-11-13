@@ -5,11 +5,13 @@ developers and data curators ([#26](https://github.com/AM-Digital-Research-Envir
 It reads the Omeka S API with a service key, so it also sees **private records
 and private values**, and it serves them only to people holding a personal
 token. It is the same code and the same image as the public server, started with
-`AMIRA_ACCESS=curator`; nothing changes for the public server or the `.mcpb`.
+`AMIRA_ACCESS=curator`; nothing changes for the public server, and the `.mcpb`
+only gains an optional relay to it.
 
 This first step uses personal bearer tokens, which command-line clients (Claude
-Code, Gemini CLI, Codex) send as a header. OAuth sign-in for the chat
-applications (claude.ai, ChatGPT) is the next step and is not built yet.
+Code, Gemini CLI, Codex) send as a header, and which the `.mcpb` relays for
+Claude Desktop. OAuth sign-in for the chat applications (claude.ai, ChatGPT) is
+the next step and is not built yet. See [Client setup](#client-setup).
 
 ## What "private" covers
 
@@ -83,13 +85,16 @@ is in place, and prints every reason (never a secret).
 | `AMIRA_API_BASE` | in the AMIRA stack | Where the crawl and refresh **fetch** the API: the full API URL including `/api`, e.g. `http://web/api`, so keyed requests stay on the Docker network and never pass the host's nginx, which logs query strings. Default: `AMIRA_SITE_BASE/api`. Must be an absolute http(s) URL, or the server refuses to start (in either mode) |
 | `AMIRA_CURATOR_MAX_STALE_HOURS` | no | Default `24`. Data not confirmed by Omeka for longer than this is refused |
 | `AMIRA_REFRESH_INTERVAL_HOURS` | no | Default `1` in curator mode (`24` in public mode). Must be greater than 0 and less than the staleness limit |
+| `AMIRA_CURATOR_RETRY_SECONDS` | no | Default `60`. First retry after a transient failure leaves no data; it doubles up to five minutes |
 | `AMIRA_CURATOR_AUTH_PROBE` | no | Default `items?is_public=0&per_page=1`. The keyed request (relative to the API base) that must return a non-empty array before any crawl or refresh; see below |
 
 Curator mode also refuses:
 
 - the stdio server and the `.mcpb` (`server/index.js`): curator mode is HTTP
   only. A local bundle would cache the private snapshot on laptops, and each
-  install would need a key that travels in query strings;
+  install would need a key that travels in query strings. The `.mcpb` relays
+  to a curator server instead (`AMIRA_CURATOR_TOKEN`, see
+  [Client setup](#client-setup)), which holds neither data nor key locally;
 - `npm run fetch-data`: the bundled snapshot is public by definition;
 - `AMIRA_MCP_BEARER_TOKEN` / `AMIRA_MCP_TOKEN_FILE`: one shared token would
   defeat per-person revocation and the audit log.
@@ -156,12 +161,53 @@ generate a new one and replace the line.
   ignored (and reported by line number).
 - **Rotate** by generating a new token and replacing the line.
 
-Curators send `Authorization: Bearer <token>`, for example:
+Curators send `Authorization: Bearer <token>`; see [Client setup](#client-setup).
+
+## Client setup
+
+The hosted endpoint is `https://data.africamultiple.uni-bayreuth.de/curator/mcp`
+(Streamable HTTP, stateless). Every request needs `Authorization: Bearer
+<token>`: without one, or with an unknown or revoked one, it answers 401. A
+token belongs to one curator; do not share it, and ask for a new one if it
+leaks, since revocation is central.
+
+**Claude Code**:
 
 ```bash
-claude mcp add --transport http amira-curator https://<host>/curator/mcp \
-  --header "Authorization: Bearer amira_cur_…"
+claude mcp add --transport http amira-curator https://data.africamultiple.uni-bayreuth.de/curator/mcp \
+  --header "Authorization: Bearer <token>"
 ```
+
+**Claude Desktop**, through the `.mcpb` relay. Desktop's custom connectors can
+send no static header (only OAuth, which comes later), so the extension
+forwards instead. Install `amira-mcp-server.mcpb`, open **Settings →
+Extensions → AMIRA → Configure**, paste the token into **Curator token**, save,
+and restart the extension. The field is masked and the token is kept in the OS
+keychain. With a token, the extension's local process becomes a relay: a stdio
+server for Claude Desktop that forwards every message unchanged to the curator
+endpoint, with the token in the header, so Claude sees the curator server's
+own tools, instructions and private records. It loads no snapshot, writes no
+cache, never crawls Omeka and holds no Omeka key, so nothing private is stored
+on the computer. A rejected or revoked token, or an unreachable server, is
+reported as an error ("curator token rejected or revoked; check the token in
+the extension settings, or clear it for the public dataset"); it never falls
+back to public data. Clearing the field returns the extension to the bundled
+public dataset. The advanced **Curator server URL** setting
+(`AMIRA_CURATOR_URL`) must be `https://` (`http://` is accepted only for
+`localhost` and `127.0.0.1`, for tests). The same relay works from any stdio
+client: run `server/index.js` with `AMIRA_CURATOR_TOKEN` (and optionally
+`AMIRA_CURATOR_URL`) in its environment. It is refused together with
+`AMIRA_ACCESS=curator` and by the HTTP server.
+
+**Other header-capable clients** (Gemini CLI, Codex, VS Code, the MCP
+Inspector, …): add a Streamable HTTP server with the URL above and an
+`Authorization: Bearer <token>` header, in whatever form the client's MCP
+configuration takes for custom headers. Clients that cannot set a header but
+run local stdio servers can use the relay as above.
+
+**Chat applications** (claude.ai on the web, ChatGPT): their connectors accept
+OAuth or no authentication, not a personal token. They need the OAuth step
+(Pocket ID), which is not built yet.
 
 ## Snapshots and the cache
 
@@ -188,7 +234,11 @@ claude mcp add --transport http amira-curator https://<host>/curator/mcp \
 - **Transient Omeka failures**: the server keeps serving the data it has until it
   has gone `AMIRA_CURATOR_MAX_STALE_HOURS` without Omeka confirming it (a probe
   that finds nothing newer counts as a confirmation). Past that, requests are
-  refused until a refresh succeeds.
+  refused until a refresh succeeds. When there is no data yet (the first crawl
+  failed, e.g. Omeka answered 502 while php was restarting), the server retries
+  on a timer, without waiting for a request: after 60 s, then doubling up to
+  every five minutes, until a crawl succeeds and `/healthz` turns healthy.
+  `AMIRA_CURATOR_RETRY_SECONDS` sets the first delay.
 - **Key not accepted**: the authentication probe finds nothing private (the key
   is unknown, revoked, mistyped or lacks `view-all`), or Omeka answers 401 or
   403. The server drops the in-memory store, wipes the curator cache, writes no
@@ -223,7 +273,8 @@ and loading a snapshot drops any private record or `restricted` block again.
 
 ## Not yet
 
-- OAuth sign-in (Pocket ID) for claude.ai and ChatGPT; see the issue.
+- OAuth sign-in (Pocket ID) for claude.ai and ChatGPT (and Claude Desktop
+  custom connectors without the relay); see the issue.
 - A read-only Omeka role with `view-all`; the service account is a `reviewer`.
 - Private podcast and video transcripts are reported by length in `restricted`
   but not paged; `get_text_passages` does not search private full text.

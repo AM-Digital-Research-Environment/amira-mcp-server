@@ -139,7 +139,7 @@ function anonymous(item) {
 }
 
 /**
- * Start the stub. `state`: { mode: "auth" | "leak" | "deny", denyStatus }.
+ * Start the stub. `state`: { mode: "auth" | "leak" | "deny" | "down", denyStatus }.
  * Returns { base, api, state, requests, close() }; `requests` holds every
  * request target exactly as received (path and query).
  */
@@ -159,6 +159,8 @@ export async function startOmekaStub(state = {}) {
       res.end(JSON.stringify(body).replaceAll(BASE, `http://${req.headers.host}`));
     };
     if (!url.pathname.startsWith("/api/")) return reply(404, {});
+    // Omeka (or the proxy in front of it) briefly down: every API request fails.
+    if (state.mode === "down") return reply(502, { error: "Bad Gateway" });
     if (keyed && state.mode === "deny") return reply(state.denyStatus, { errors: { error: "Invalid API key" } });
     // An unknown key is silently ignored, as Omeka does: the request is served as anonymous.
     const validKey = state.keyAccepted && url.searchParams.get("key_identity") === KEY.identity &&
