@@ -146,6 +146,16 @@ function readBearerToken(): string | undefined {
   return envValue("AMIRA_MCP_BEARER_TOKEN");
 }
 
+/**
+ * Access mode (#26). `public` (default) serves the anonymous snapshot.
+ * `curator` crawls the Omeka API with a service key, serves private records and
+ * private values to holders of a personal token, and refuses to start unless
+ * it is fully configured (src/access.ts). An unknown value is kept as given so
+ * the entry points can refuse it; until then the server behaves as public.
+ */
+const ACCESS_SETTING = envValue("AMIRA_ACCESS")?.toLowerCase() ?? "public";
+export const ACCESS: "public" | "curator" = ACCESS_SETTING === "curator" ? "curator" : "public";
+
 export const config = {
   siteBase: SITE_BASE,
   siteSlug: SITE_SLUG,
@@ -154,8 +164,10 @@ export const config = {
   cacheDir: resolveCacheDir(),
   /** When true (default), refresh the snapshot from the public Omeka API. */
   liveRefresh: parseBool(envValue("AMIRA_LIVE_REFRESH"), true),
-  /** Periodic freshness check interval. 0 disables periodic checks. */
-  refreshIntervalHours: parseNonNegativeNumber(envValue("AMIRA_REFRESH_INTERVAL_HOURS"), 24),
+  /** Periodic freshness check interval. 0 disables periodic checks. Curator mode
+   * checks hourly by default: its data stops being served once unverified for
+   * longer than `curatorMaxStaleHours`. */
+  refreshIntervalHours: parseNonNegativeNumber(envValue("AMIRA_REFRESH_INTERVAL_HOURS"), ACCESS === "curator" ? 1 : 24),
   /** Refresh vocabularies even when item timestamps do not change (minimum one hour). */
   fullRefreshHours: Math.max(1, parseNonNegativeNumber(envValue("AMIRA_FULL_REFRESH_HOURS"), 168)),
   /** Corpus-vector release for semantic neighbours (src/semantic.ts): "latest"
@@ -185,6 +197,21 @@ export const config = {
   proxyHops: Math.max(1, Math.floor(parseNonNegativeNumber(envValue("AMIRA_PROXY_HOPS"), 1))),
   /** When set, /mcp and /metrics require `Authorization: Bearer <token>`. */
   bearerToken: readBearerToken(),
+  /** `public` or `curator` (AMIRA_ACCESS); see ACCESS. */
+  access: ACCESS,
+  /** AMIRA_ACCESS as given, so a typo can be refused at startup. */
+  accessSetting: ACCESS_SETTING,
+  /** Curator mode: file holding the Omeka service key (key_identity, key_credential).
+   * Only its path lives here; the key is read by src/access.ts and never copied into config. */
+  omekaKeyFile: envValue("AMIRA_OMEKA_KEY_FILE") ?? null,
+  /** Curator mode: file of personal tokens, one `name sha256hex` per line. */
+  tokensFile: envValue("AMIRA_MCP_TOKENS_FILE") ?? null,
+  /** Curator mode: stop serving data not verified against Omeka for this long (hours). */
+  curatorMaxStaleHours: parseNonNegativeNumber(envValue("AMIRA_CURATOR_MAX_STALE_HOURS"), 24),
+  /** Whether AMIRA_CACHE_DIR was set explicitly (curator mode requires it: point it at tmpfs). */
+  cacheDirConfigured: envValue("AMIRA_CACHE_DIR") !== undefined,
+  /** Whether a single shared bearer token is configured (refused in curator mode). */
+  bearerTokenConfigured: envValue("AMIRA_MCP_TOKEN_FILE") !== undefined || envValue("AMIRA_MCP_BEARER_TOKEN") !== undefined,
 };
 
 export type Config = typeof config;

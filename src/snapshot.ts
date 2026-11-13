@@ -29,6 +29,9 @@ import {
   type TransformContext,
 } from "./transform.js";
 import { classId, oid, systemDate, type OmekaItem } from "./omekaJSON.js";
+import { omekaKeyFor, redactSecrets, withOmekaKey } from "./access.js";
+import { splitVisibility, withVisibility } from "./visibility.js";
+import type { AccessMode } from "./snapshotIdentity.js";
 import { FULLTEXT_SOURCE, fulltextManifestEntry, parseFulltextMaps, type FulltextMaps } from "./fulltextMaps.js";
 import {
   SEMANTIC_SOURCE, computeNeighbours, parseSemanticNeighbours, semanticBuild, semanticManifestEntry, verifySemanticRelease,
@@ -72,22 +75,43 @@ export async function fetchJSON<T>(url: string, signal?: AbortSignal, timeoutMs 
     { signal, timeoutMs });
 }
 
-/** GET with bounded retries on transient failures; `read` consumes the body inside the retry. */
+/**
+ * An error safe to log or rethrow from a keyed request: the message with every
+ * trace of the key removed, no `cause` (whose message may quote the URL), and
+ * the fields callers branch on (`name`, `status`, `omekaAuth`) kept.
+ */
+function keySafeError(err: unknown): Error {
+  const e = err as { name?: string; message?: string; status?: number; omekaAuth?: boolean };
+  const safe = new Error(redactSecrets(String(e?.message ?? err)));
+  if (e?.name) safe.name = e.name;
+  return Object.assign(safe, e?.status !== undefined ? { status: e.status } : {}, e?.omekaAuth ? { omekaAuth: true } : {});
+}
+
+/** GET with bounded retries on transient failures; `read` consumes the body inside the retry.
+ *
+ * In curator mode a request to the Omeka API carries the service key, added
+ * here and only here: `url` (and every message built from it) stays key-free.
+ * Such a request never follows a redirect, and its 401/403 is flagged
+ * `omekaAuth` so the caller can drop the private data (src/data.ts). */
 async function fetchRetrying<T>(url: string, read: (res: Response) => Promise<T>,
   opts: { signal?: AbortSignal; timeoutMs?: number; headers?: Record<string, string> } = {}): Promise<T> {
   const { signal, timeoutMs = 30000 } = opts;
   for (let attempt = 1; ; attempt++) {
     signal?.throwIfAborted();
     let retryAfter = 0;
+    let keyed = false;
     try {
+      const key = omekaKeyFor(url);
+      keyed = key !== null;
       const timeout = AbortSignal.timeout(timeoutMs);
-      const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-        headers: { "User-Agent": USER_AGENT, ...opts.headers } });
+      const res = await fetch(key ? withOmekaKey(url, key) : url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+        headers: { "User-Agent": USER_AGENT, ...opts.headers }, ...(key ? { redirect: "error" as const } : {}) });
       if (!res.ok) {
         const header = res.headers.get("retry-after");
         retryAfter = header ? (Number.isFinite(Number(header)) ? Number(header) * 1000 : Date.parse(header) - Date.now()) : 0;
         await res.body?.cancel();
-        throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+        throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status },
+          keyed && (res.status === 401 || res.status === 403) ? { omekaAuth: true } : {});
       }
       return await read(res);
     } catch (err) {
@@ -95,7 +119,7 @@ async function fetchRetrying<T>(url: string, read: (res: Response) => Promise<T>
       const status = (err as { status?: number }).status;
       const transient = status ? [408, 429, 500, 502, 503, 504].includes(status)
         : err instanceof TypeError || (err as Error).name === "TimeoutError";
-      if (!transient || attempt >= 4) throw err;
+      if (!transient || attempt >= 4) throw keyed ? keySafeError(err) : err;
       await sleep(Math.min(30_000, Math.max(retryAfter || 0, 600 * 2 ** (attempt - 1) + Math.random() * 300)), signal);
     }
   }
@@ -271,9 +295,32 @@ export async function fetchSemanticRelease(setting: string, log: (msg: string) =
   throw lastError ?? new Error("semantic release: nothing to verify");
 }
 
-/** Crawl everything and transform to snapshot records. Throws on ANY shortfall. */
+/** Crawl everything and transform to snapshot records. Throws on ANY shortfall.
+ *
+ * Every resource passes through `splitVisibility` first, so private values never
+ * reach a public field. Public mode then drops private resources and private
+ * values (the anonymous API should not have sent any); curator mode keeps them,
+ * marked `visibility: "private"` and grouped under `restricted`. */
 export async function crawlSnapshot(apiBase: string, log: (msg: string) => void = () => {}, signal?: AbortSignal,
-  opts: { semanticRelease?: string } = {}): Promise<CrawlOutput> {
+  opts: { semanticRelease?: string; access?: AccessMode } = {}): Promise<CrawlOutput> {
+  const access = opts.access ?? config.access;
+  let droppedPrivate = 0;
+  /** Public mode: every private resource seen, so links to one are dropped too (filled once the crawl is complete). */
+  const hidden = new Set<number>();
+  /** Transform the resources a mode may hold, with their visibility. */
+  const visible = <T extends object>(items: OmekaItem[], transform: (it: OmekaItem) => T): T[] => {
+    const out: T[] = [];
+    for (const raw of items) {
+      const split = splitVisibility(raw, access === "public" ? hidden : undefined);
+      if (access === "public" && !split.isPublic) {
+        droppedPrivate++;
+        continue;
+      }
+      const rec = transform(split.item);
+      out.push(access === "curator" ? withVisibility(rec, split.isPublic, split.restricted) : rec);
+    }
+    return out;
+  };
   // The full-text map is an optional enrichment from another repository: a
   // failure there must never block an AMIRA refresh, so the snapshot ships without it.
   // Fetched before the first probe, so it cannot widen the Omeka consistency window.
@@ -330,8 +377,15 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   for (let p = 1; ; p++) {
     const { body } = await fetchJSON<OmekaItem[]>(`${apiBase}/media?sort_by=id&sort_order=asc&per_page=${PER_PAGE}&page=${p}`, signal);
     for (const raw of body) {
-      const { owner, record } = transformMedia(raw);
+      const isPublic = raw["o:is_public"] !== false;
+      if (access === "public" && !isPublic) {
+        droppedPrivate++;
+        hidden.add(oid(raw));
+        continue;
+      }
+      const { owner, record } = transformMedia(splitVisibility(raw).item);
       if (owner == null) continue;
+      if (!isPublic) record.visibility = "private";
       const list = mediaByOwner.get(owner);
       if (list) list.push(record); else mediaByOwner.set(owner, [record]);
       mediaCount++;
@@ -341,6 +395,10 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   }
   log(`crawled media: ${mediaCount}`);
   const mediaOf = (oId: number): MediaRec[] => mediaByOwner.get(oId) ?? [];
+
+  if (access === "public") {
+    for (const list of Object.values(raw)) for (const it of list) if (it["o:is_public"] === false) hidden.add(oid(it));
+  }
 
   // Resolve the publication fabio classes (a handful of ids).
   const pubClassIds = new Set<number>();
@@ -354,27 +412,28 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   }
 
   // Projects before items: items derive their university from their project.
-  const projects = raw.projects.map(transformProject);
+  const projects = visible(raw.projects, transformProject);
   const projectByOId = new Map<number, ProjectRec>(projects.map((p) => [p.o_id, p]));
   const universityOfProject = (oId: number | null): University =>
     (oId != null ? projectByOId.get(oId)?.university : undefined) ?? "external";
 
   const data: SnapshotData = {
-    persons: raw.persons.map(transformPerson),
-    organisations: raw.organisations.map(transformOrganisation),
-    locations: raw.locations.map(transformLocation),
+    persons: visible(raw.persons, transformPerson),
+    organisations: visible(raw.organisations, transformOrganisation),
+    locations: visible(raw.locations, transformLocation),
     projects,
-    research_sections: raw.research_sections.map(transformSection),
-    research_items: raw.research_items.map((it) => ({ ...transformResearchItem(it, ctx, universityOfProject), media: mediaOf(oid(it)) })),
-    publications: raw.publications.map((it) => ({ ...transformPublication(it, ctx, classId(it)), media: mediaOf(oid(it)) })),
-    journals: raw.journals.map(transformJournal),
-    podcasts: raw.podcasts.map((it) => ({ ...transformPodcast(it, ctx), media: mediaOf(oid(it)) })),
-    videos: raw.videos.map((it) => transformVideo(it, ctx)),
-    playlists: raw.playlists.map(transformPlaylist),
-    languages: raw.languages.map(transformLanguage),
-    item_sets: raw.item_sets.map(transformItemSet),
-    subjects: raw.subjects.map(transformSubject),
+    research_sections: visible(raw.research_sections, transformSection),
+    research_items: visible(raw.research_items, (it) => ({ ...transformResearchItem(it, ctx, universityOfProject), media: mediaOf(oid(it)) })),
+    publications: visible(raw.publications, (it) => ({ ...transformPublication(it, ctx, classId(it)), media: mediaOf(oid(it)) })),
+    journals: visible(raw.journals, transformJournal),
+    podcasts: visible(raw.podcasts, (it) => ({ ...transformPodcast(it, ctx), media: mediaOf(oid(it)) })),
+    videos: visible(raw.videos, (it) => transformVideo(it, ctx)),
+    playlists: visible(raw.playlists, transformPlaylist),
+    languages: visible(raw.languages, transformLanguage),
+    item_sets: visible(raw.item_sets, transformItemSet),
+    subjects: visible(raw.subjects, transformSubject),
   };
+  if (droppedPrivate) log(`public mode: dropped ${droppedPrivate} private resource(s) the API returned`);
 
   const probe = await probeRemote(apiBase, signal);
   if (before.maxModified !== probe.maxModified || before.totalItems !== probe.totalItems || before.itemSetsSignature !== probe.itemSetsSignature) {
@@ -387,6 +446,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     fetchedAt: new Date().toISOString(),
     apiBase,
+    access,
     // Compare like with like: the runtime probe covers ALL items, including
     // authorities outside the crawled corpora. A corpus-only max would cause
     // repeated full crawls whenever such an authority was modified last.

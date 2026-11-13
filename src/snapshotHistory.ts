@@ -33,7 +33,7 @@ const diffs = new Map<string, SnapshotChange[]>();
 async function retainedAt(directory: string): Promise<RetainedSnapshot | null> {
   try {
     const manifest = await readManifest(directory);
-    assertSnapshotSource(manifest, config.apiBase);
+    assertSnapshotSource(manifest, config.apiBase, config.access);
     const id = snapshotId(manifest);
     let prints = printsById.get(id);
     if (!prints) {
