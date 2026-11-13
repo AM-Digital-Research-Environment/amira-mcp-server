@@ -3,6 +3,11 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { createAmiraServer, VERSION } from "./mcpServer.js";
 import { config } from "./config.js";
 import { ensureStore, stopBackgroundRefresh } from "./data.js";
+import { refuseMisconfiguration } from "./access.js";
+
+// The stdio server (and the .mcpb) is public only (#26): it refuses curator
+// mode, and an Omeka key, before touching any data.
+refuseMisconfiguration("stdio");
 
 async function main(): Promise<void> {
   // Warm the in-memory snapshot (and kick off the background refresh) without

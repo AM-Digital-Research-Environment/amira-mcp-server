@@ -7,6 +7,10 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { API_BASE, config } from "./config.js";
 import { crawlSnapshot, loadSnapshot, writeSnapshotAtomic } from "./snapshot.js";
+import { refuseMisconfiguration } from "./access.js";
+
+// The bundled snapshot is public by definition (#26): never crawl it with a key.
+refuseMisconfiguration("fetch");
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const dest = path.resolve(process.argv[2] ?? path.resolve(MODULE_DIR, "..", "data"));
