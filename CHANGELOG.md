@@ -5,6 +5,54 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+- **Curator mode with personal tokens** (#26, step 1). `AMIRA_ACCESS=curator`
+  runs an internal, read-only endpoint for AMIRA's developers and data
+  curators that also serves private records and private values. It crawls the
+  Omeka API with a service key (`AMIRA_OMEKA_KEY_FILE`), added to each request
+  inside the fetch and kept out of the API base, the manifest, errors, logs,
+  `/healthz` and returned URLs. Clients authenticate with personal tokens:
+  `AMIRA_MCP_TOKENS_FILE` lists one `name sha256hex` line per curator, compared
+  in constant time and re-read every 2 s, so deleting a line revokes that
+  curator without a restart; `node server/tokenCli.js <name>` generates a
+  256-bit token. Each MCP request is audited with the curator's name and the
+  tool, never a token or an argument. OAuth sign-in for the chat applications
+  is the next step. See [docs/curator.md](docs/curator.md).
+- **Curator mode fails closed.** It refuses to start without the key, the
+  tokens, an explicit `AMIRA_CACHE_DIR` (meant for tmpfs) or a refresh interval
+  shorter than `AMIRA_CURATOR_MAX_STALE_HOURS` (default 24); it refuses stdio,
+  the `.mcpb`, `fetch-data` and a shared bearer token. A public server refuses
+  to start with an Omeka key or a tokens file.
+- **Private data is marked, never mixed in.** In curator mode every record
+  carries `visibility`; a private record gets `admin_url` and a
+  `citation_note` instead of `amira_url`, and its generated citation, BibTeX,
+  RIS and CSL-JSON say it is private and link nothing public. Private values
+  (`dre:mongoId`, `dre:security`, `dre:bitstream`, a private description, …)
+  sit in a separate `restricted` block on detail results, never in the public
+  fields. The private ILAM OCR full text (`bibo:content` on research items,
+  read for the first time) and private publication full texts are searchable
+  in `search_research_items` / `search_publications` and paged with
+  `include_fulltext` on `get_research_item` (curator-only parameters) and
+  `get_publication`. The overview and `amira://dataset` split counts into
+  public and private.
+- **Snapshots and caches are isolated by access mode.** The manifest records
+  `access` (`public` for every new public snapshot; absent means public), the
+  curator cache partition hashes the mode in (public partitions keep their
+  hash, so existing caches stay valid), and each mode refuses the other's
+  snapshot. Curator mode never loads the bundled snapshot, refuses data Omeka
+  has not confirmed within the staleness limit, and on a 401/403 from Omeka
+  drops its store, wipes its cache and refuses requests until a refresh
+  succeeds. Its `/healthz` shows no counts.
+- **Public mode drops private content even if it arrives.** The crawl now
+  splits every resource's private values off before transforming it and drops
+  private resources, private media and links to them; loading a snapshot drops
+  any private record or `restricted` block again. Omeka's anonymous API never
+  sends these, so public output is unchanged: tool results, resources, exports
+  and `tools/list` are byte-identical on the test fixture, and the new keys
+  appear only in curator mode. The one visible difference is the `access`
+  field in newly written snapshot manifests.
+
 ## 1.35.1 — 2026-11-10
 
 A security release for the container image; the server itself is unchanged

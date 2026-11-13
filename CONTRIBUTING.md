@@ -82,8 +82,15 @@ generation-based fixture on Windows.
   new tool needs an entry in both, plus a row in the README table.
 - **Every entity keeps its `amira_url`.** Citability is the point of this
   server — a result a user cannot link back to the source is a regression.
-- **Read-only stays read-only.** No tool writes to Omeka S, and nothing needs
-  a credential.
+  The one exception is a private record in curator mode, which gets an
+  `admin_url` instead ([docs/curator.md](docs/curator.md)).
+- **Read-only stays read-only.** No tool writes to Omeka S, and the public
+  server needs no credential. Curator mode reads with one service key; keep it
+  inside the fetch (`src/snapshot.ts`) and out of every log, error and URL.
+- **Private data stays curator-only.** New fields come from the record the
+  transforms see, which never holds a private value (`src/visibility.ts`);
+  a private value belongs in `restricted`. `test/unit/curator*.test.mjs`
+  check both modes through tools, resources, exports and counts.
 - **The bundled snapshot stays authoritative offline.** A code path that only
   works when the live API is reachable is a bug.
 
