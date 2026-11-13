@@ -56,8 +56,20 @@ export const SITE_BASE = resolveSiteBase();
 /** Omeka S site slug — item pages live at `<base>/s/<slug>/item/<o:id>`. */
 export const SITE_SLUG = envValue("AMIRA_SITE_SLUG") ?? "amira";
 
-/** Public REST API root. */
+/** Public REST API root: the instance's identity (snapshot manifest, cache
+ * partition) and the API named in output. Fetches go to FETCH_BASE. */
 export const API_BASE = `${SITE_BASE}/api`;
+
+/**
+ * Where the crawl and the refresh fetch the API from (AMIRA_API_BASE, the full
+ * API URL including `/api`, e.g. `http://web/api`). Unset, it is API_BASE, as
+ * before. A deployment beside Omeka points it at the internal network so that
+ * keyed requests never pass a proxy that logs query strings, while every
+ * returned link still uses AMIRA_SITE_BASE. An invalid value is kept as given
+ * so the entry points can refuse it (src/access.ts).
+ */
+const API_BASE_SETTING = envValue("AMIRA_API_BASE") ?? null;
+export const FETCH_BASE = API_BASE_SETTING ? API_BASE_SETTING.replace(/\/+$/, "") : API_BASE;
 
 /**
  * Directory holding the JSON snapshot shipped inside the bundle. The esbuild
@@ -160,6 +172,10 @@ export const config = {
   siteBase: SITE_BASE,
   siteSlug: SITE_SLUG,
   apiBase: API_BASE,
+  /** The API base the crawl and refresh fetch from (AMIRA_API_BASE; default apiBase). */
+  fetchBase: FETCH_BASE,
+  /** AMIRA_API_BASE as given (null when unset), for the startup check. */
+  apiBaseSetting: API_BASE_SETTING,
   bundledDataDir: resolveBundledDataDir(),
   cacheDir: resolveCacheDir(),
   /** When true (default), refresh the snapshot from the public Omeka API. */

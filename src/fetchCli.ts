@@ -15,9 +15,10 @@ refuseMisconfiguration("fetch");
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const dest = path.resolve(process.argv[2] ?? path.resolve(MODULE_DIR, "..", "data"));
 
-console.error(`[fetch] crawling ${API_BASE} -> ${dest}`);
+console.error(`[fetch] crawling ${config.fetchBase} -> ${dest}`);
 const started = Date.now();
-const out = await crawlSnapshot(API_BASE, (m) => console.error(`[fetch] ${m}`), undefined, { semanticRelease: config.semanticRelease });
+const out = await crawlSnapshot(API_BASE, (m) => console.error(`[fetch] ${m}`), undefined,
+  { semanticRelease: config.semanticRelease, fetchBase: config.fetchBase });
 // No verified corpus-vector release this time: keep the neighbours of the snapshot being replaced
 // (they are filtered to the new snapshot at load, so a deleted record is never cited).
 if (!out.semantic && config.semanticRelease !== "off") {

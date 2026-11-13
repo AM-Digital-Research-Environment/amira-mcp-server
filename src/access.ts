@@ -106,7 +106,9 @@ export function resetOmekaKeyCache(): void {
 /** The key for a request to the configured Omeka API, or null for anything else (GitHub, other hosts). */
 export function omekaKeyFor(url: string): OmekaKey | null {
   if (config.access !== "curator") return null;
-  const prefix = `${normalizeApiBase(config.apiBase)}/`;
+  // The fetch base, not the public one: a key must never be sent to the public
+  // URL when the deployment fetches over the internal network.
+  const prefix = `${normalizeApiBase(config.fetchBase)}/`;
   return url.startsWith(prefix) ? omekaKey() : null;
 }
 
@@ -250,6 +252,13 @@ export function accessConfigErrors(entry: EntryPoint, cfg: typeof config = confi
   const errors: string[] = [];
   if (cfg.accessSetting !== "public" && cfg.accessSetting !== "curator") {
     return [`AMIRA_ACCESS must be "public" or "curator" (got ${JSON.stringify(cfg.accessSetting.slice(0, 40))})`];
+  }
+  if (cfg.apiBaseSetting !== null) {
+    try {
+      normalizeApiBase(cfg.apiBaseSetting);
+    } catch {
+      errors.push("AMIRA_API_BASE must be an absolute http(s) URL without credentials, query or fragment, such as http://web/api");
+    }
   }
   if (cfg.access === "public") {
     if (cfg.omekaKeyFile) errors.push("AMIRA_OMEKA_KEY_FILE is set but AMIRA_ACCESS is public: a public server never holds an Omeka key");

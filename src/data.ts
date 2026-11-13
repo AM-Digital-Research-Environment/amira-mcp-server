@@ -451,7 +451,7 @@ function scheduleCuratorRetry(): void {
 async function curatorCrawl(signal?: AbortSignal): Promise<CrawlOutput> {
   omekaKey(); // throws (naming only the variable) when the key file is missing or malformed
   const out = await crawlSnapshot(config.apiBase, (m) => console.error(`[amira] refresh: ${m}`), signal,
-    { semanticRelease: config.semanticRelease, access: "curator" });
+    { semanticRelease: config.semanticRelease, access: "curator", fetchBase: config.fetchBase });
   const published = (await writeSnapshotAtomic(cacheSnapshotDir(), out, signal)) ?? await loadSnapshot(cacheSnapshotDir());
   assertSnapshotSource(published.manifest, config.apiBase, "curator");
   return published;
@@ -523,7 +523,7 @@ async function loadInitialCurator(): Promise<DataStore> {
       // A refused key drops it; an unreachable Omeka is a transient failure,
       // and the cache serves within the staleness limit.
       if (Date.now() - fetched > config.refreshIntervalHours * 3_600_000) {
-        await probeCuratorAuth(config.apiBase).catch((err: Error & { omekaAuth?: boolean }) => {
+        await probeCuratorAuth(config.fetchBase).catch((err: Error & { omekaAuth?: boolean }) => {
           if (err.omekaAuth) throw err;
           console.error(`[amira] curator authentication probe skipped: ${redactSecrets(err.message)}`);
         });
@@ -638,8 +638,8 @@ async function backgroundRefresh(): Promise<void> {
     if (local) {
       // Every curator refresh first proves the key still works: a key revoked
       // mid-life returns anonymous data, which the freshness probe alone would miss.
-      if (curatorMode) await probeCuratorAuth(config.apiBase, signal);
-      const probe = await probeRemote(config.apiBase, signal);
+      if (curatorMode) await probeCuratorAuth(config.fetchBase, signal);
+      const probe = await probeRemote(config.fetchBase, signal);
       const forced = Date.now() - Date.parse(local.fetchedAt) >= config.fullRefreshHours * 3_600_000;
       if (!isStale(local, probe) && !forced) {
         if (curatorMode) curator.verifiedAt = Date.now();
@@ -653,7 +653,7 @@ async function backgroundRefresh(): Promise<void> {
       published = await curatorCrawl(signal);
     } else {
       const out: CrawlOutput = await crawlSnapshot(config.apiBase, (m) => console.error(`[amira] refresh: ${m}`), signal,
-        { semanticRelease: config.semanticRelease });
+        { semanticRelease: config.semanticRelease, fetchBase: config.fetchBase });
       signal.throwIfAborted();
       // The pinned full-text files never change: when GitHub was unreachable, keep the ones already served.
       if (!out.fulltext && current?.fulltextMaps?.source.tag === FULLTEXT_SOURCE.tag) out.fulltext = current.fulltextMaps;

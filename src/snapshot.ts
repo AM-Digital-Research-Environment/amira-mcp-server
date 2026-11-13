@@ -31,7 +31,7 @@ import {
 import { classId, oid, systemDate, type OmekaItem } from "./omekaJSON.js";
 import { omekaKeyFor, redactSecrets, withOmekaKey } from "./access.js";
 import { splitVisibility, withVisibility } from "./visibility.js";
-import type { AccessMode } from "./snapshotIdentity.js";
+import { normalizeApiBase, type AccessMode } from "./snapshotIdentity.js";
 import { FULLTEXT_SOURCE, fulltextManifestEntry, parseFulltextMaps, type FulltextMaps } from "./fulltextMaps.js";
 import {
   SEMANTIC_SOURCE, computeNeighbours, parseSemanticNeighbours, semanticBuild, semanticManifestEntry, verifySemanticRelease,
@@ -71,8 +71,35 @@ interface FetchResult<T> {
 }
 
 export async function fetchJSON<T>(url: string, signal?: AbortSignal, timeoutMs = 30000): Promise<FetchResult<T>> {
-  return fetchRetrying(url, async (res) => ({ body: (await res.json()) as T, total: Number(res.headers.get("omeka-s-total-results") ?? NaN) }),
-    { signal, timeoutMs });
+  const internal = internalUrls(url);
+  return fetchRetrying(url, async (res) => {
+    const body = (await res.json()) as T;
+    return { body: internal ? internal(body) : body, total: Number(res.headers.get("omeka-s-total-results") ?? NaN) };
+  }, { signal, timeoutMs });
+}
+
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * When the API is fetched from an internal base (AMIRA_API_BASE, e.g.
+ * `http://web/api`), Omeka builds the URLs it returns (`@id`, `o:original_url`,
+ * thumbnails) from that request's host. For a response from the fetch base,
+ * this returns a rewrite of every such URL to the public site (AMIRA_SITE_BASE),
+ * so no internal address reaches a snapshot, a tool result or a link. Null
+ * when nothing needs rewriting (the default: fetch base = public API).
+ */
+function internalUrls(url: string): (<T>(body: T) => T) | null {
+  if (config.fetchBase === config.apiBase || !url.startsWith(`${config.fetchBase}/`)) return null;
+  const fetchBase = normalizeApiBase(config.fetchBase);
+  const root = fetchBase.endsWith("/api") ? fetchBase.slice(0, -"/api".length) : new URL(fetchBase).origin;
+  const pattern = new RegExp(`${escapeRe(root)}(?=[/?#\\s"'<>)]|$)`, "g");
+  const rewrite = (v: unknown): unknown => {
+    if (typeof v === "string") return v.includes(root) ? v.replace(pattern, config.siteBase) : v;
+    if (Array.isArray(v)) return v.map(rewrite);
+    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, rewrite(x)]));
+    return v;
+  };
+  return <T>(body: T) => rewrite(body) as T;
 }
 
 /**
@@ -323,8 +350,11 @@ export async function probeCuratorAuth(apiBase: string, signal?: AbortSignal, pr
  * values (the anonymous API should not have sent any); curator mode keeps them,
  * marked `visibility: "private"` and grouped under `restricted`. */
 export async function crawlSnapshot(apiBase: string, log: (msg: string) => void = () => {}, signal?: AbortSignal,
-  opts: { semanticRelease?: string; access?: AccessMode } = {}): Promise<CrawlOutput> {
+  opts: { semanticRelease?: string; access?: AccessMode; fetchBase?: string } = {}): Promise<CrawlOutput> {
   const access = opts.access ?? config.access;
+  // `apiBase` is the instance's public identity, recorded in the manifest;
+  // requests go to `fetchBase` (AMIRA_API_BASE), which may be internal.
+  const fetchBase = opts.fetchBase ?? apiBase;
   let droppedPrivate = 0;
   /** Public mode: every private resource seen, so links to one are dropped too (filled once the crawl is complete). */
   const hidden = new Set<number>();
@@ -363,9 +393,9 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
 
   // Curator mode: the key must be accepted before the crawl, and still after it
   // (a key revoked mid-crawl would otherwise mix anonymous pages in).
-  if (access === "curator") await probeCuratorAuth(apiBase, signal);
-  const before = await probeRemote(apiBase, signal);
-  const labels = await fetchPropertyLabels(apiBase, signal);
+  if (access === "curator") await probeCuratorAuth(fetchBase, signal);
+  const before = await probeRemote(fetchBase, signal);
+  const labels = await fetchPropertyLabels(fetchBase, signal);
   const classTerms = new Map<number, string>();
   const ctx: TransformContext = {
     roleLabel: (term) => labels[term] ?? null,
@@ -375,7 +405,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   const raw = {} as Record<CorpusName, OmekaItem[]>;
   for (const corpus of CORPORA) {
     if (corpus === "item_sets") continue;
-    const { items } = await crawlItems(apiBase, CORPUS_QUERIES[corpus], signal);
+    const { items } = await crawlItems(fetchBase, CORPUS_QUERIES[corpus], signal);
     raw[corpus] = items;
     log(`crawled ${corpus}: ${items.length}`);
   }
@@ -383,7 +413,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   // Item sets (collections) live on their own endpoint.
   const itemSetsRaw: OmekaItem[] = [];
   for (let p = 1; ; p++) {
-    const { body } = await fetchJSON<OmekaItem[]>(`${apiBase}/item_sets?sort_by=id&sort_order=asc&per_page=${PER_PAGE}&page=${p}`, signal);
+    const { body } = await fetchJSON<OmekaItem[]>(`${fetchBase}/item_sets?sort_by=id&sort_order=asc&per_page=${PER_PAGE}&page=${p}`, signal);
     itemSetsRaw.push(...body);
     if (body.length < PER_PAGE) break;
     await sleep(100, signal);
@@ -399,7 +429,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   const mediaByOwner = new Map<number, MediaRec[]>();
   let mediaCount = 0;
   for (let p = 1; ; p++) {
-    const { body } = await fetchJSON<OmekaItem[]>(`${apiBase}/media?sort_by=id&sort_order=asc&per_page=${PER_PAGE}&page=${p}`, signal);
+    const { body } = await fetchJSON<OmekaItem[]>(`${fetchBase}/media?sort_by=id&sort_order=asc&per_page=${PER_PAGE}&page=${p}`, signal);
     for (const raw of body) {
       const isPublic = raw["o:is_public"] !== false;
       if (access === "public" && !isPublic) {
@@ -431,7 +461,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     if (c != null) pubClassIds.add(c);
   }
   for (const id of pubClassIds) {
-    const { body } = await fetchJSON<Record<string, unknown>>(`${apiBase}/resource_classes/${id}`, signal);
+    const { body } = await fetchJSON<Record<string, unknown>>(`${fetchBase}/resource_classes/${id}`, signal);
     classTerms.set(id, String(body["o:term"]));
   }
 
@@ -459,8 +489,8 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   };
   if (droppedPrivate) log(`public mode: dropped ${droppedPrivate} private resource(s) the API returned`);
 
-  const probe = await probeRemote(apiBase, signal);
-  if (access === "curator") await probeCuratorAuth(apiBase, signal);
+  const probe = await probeRemote(fetchBase, signal);
+  if (access === "curator") await probeCuratorAuth(fetchBase, signal);
   if (before.maxModified !== probe.maxModified || before.totalItems !== probe.totalItems || before.itemSetsSignature !== probe.itemSetsSignature) {
     throw new Error("Omeka items changed during the crawl; keeping the previous snapshot. Retry after the upstream sync finishes.");
   }
