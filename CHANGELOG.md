@@ -5,8 +5,41 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.36.0 — 2026-11-13
 
+Curator access (#26, step 1): an internal, read-only curator mode that serves
+private records to holders of a personal token, and a relay that lets the
+Claude Desktop extension reach it. Without a curator token, the extension and
+the public endpoint behave exactly as in 1.35.1.
+
+- **The `.mcpb` relays to the curator server** (#26). Claude Desktop custom
+  connectors can send no static header, so the extension gains an optional
+  **Curator token** setting (`sensitive`: masked, kept in the OS keychain) and
+  an advanced **Curator server URL** (default
+  `https://data.africamultiple.uni-bayreuth.de/curator/mcp`), passed to the
+  server as `AMIRA_CURATOR_TOKEN` and `AMIRA_CURATOR_URL`. With a token, the
+  stdio process becomes a pure relay: a stdio MCP server on one side, a
+  Streamable HTTP client of the curator endpoint (`Authorization: Bearer
+  <token>`) on the other, forwarding every JSON-RPC message both ways
+  unchanged. The client sees the curator server's own tools, resources,
+  prompts, capabilities, instructions and `serverInfo`, in either protocol era,
+  with its progress, logging and list-changed notifications; a cancellation
+  aborts the forwarded request. It loads no snapshot, writes no cache and
+  crawls nothing, so nothing private touches disk and no Omeka key is ever
+  held locally.
+- **The relay fails closed.** A rejected or revoked token (HTTP 401/403)
+  answers the request, `initialize` included, with "curator token rejected or
+  revoked; check the token in the extension settings, or clear it for the
+  public dataset"; an unreachable server or another HTTP error gets its own
+  clear message. Neither falls back to public data. The token is sent only in
+  the header, removed from the process environment once read, and redacted
+  from every log line and error. The URL must be `https://` (plain `http://` is
+  accepted only for `localhost` and `127.0.0.1`, for tests) and carry no
+  credentials. `AMIRA_CURATOR_TOKEN` is refused with `AMIRA_ACCESS=curator`, by
+  the HTTP server and by `fetch-data`. An empty token, or the unsubstituted
+  `${user_config.curator_token}` of an unset setting, is public mode: tool
+  results, resources, prompts and `tools/list` are byte-identical to 1.35.1 on
+  the released 1.35.1 snapshot.
 - **Curator mode with personal tokens** (#26, step 1). `AMIRA_ACCESS=curator`
   runs an internal, read-only endpoint for AMIRA's developers and data
   curators that also serves private records and private values. It crawls the
@@ -21,8 +54,9 @@ force and what comes next.
   is the next step. See [docs/curator.md](docs/curator.md).
 - **Curator mode fails closed.** It refuses to start without the key, the
   tokens, an explicit `AMIRA_CACHE_DIR` (meant for tmpfs) or a refresh interval
-  shorter than `AMIRA_CURATOR_MAX_STALE_HOURS` (default 24); it refuses stdio,
-  the `.mcpb`, `fetch-data` and a shared bearer token. A public server refuses
+  shorter than `AMIRA_CURATOR_MAX_STALE_HOURS` (default 24); it refuses stdio
+  and the `.mcpb` (which relay instead, above), `fetch-data` and a shared
+  bearer token. A public server refuses
   to start with an Omeka key or a tokens file.
 - **Private data is marked, never mixed in.** In curator mode every record
   carries `visibility`; a private record gets `admin_url` and a
