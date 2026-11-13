@@ -6,11 +6,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { childEnv, hermeticEnv, REPO_ROOT, SERVER_HTTP, SERVER_STDIO, tempDir } from "../helpers/env.mjs";
 import { spawnHttpServer } from "../helpers/mcp.mjs";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
+import { startOmekaStub } from "../helpers/omeka-stub.mjs";
 
 hermeticEnv();
 const lib = await import("../../server/lib.js");
@@ -59,6 +60,8 @@ const REFUSALS = [
   ["public stdio holding a key", SERVER_STDIO, { AMIRA_OMEKA_KEY_FILE: keyFile }, /a public server never holds an Omeka key/],
   ["public HTTP with a tokens file", SERVER_HTTP, { AMIRA_MCP_TOKENS_FILE: tokensFile }, /curator-mode setting/],
   ["an unknown access mode", SERVER_HTTP, { AMIRA_ACCESS: "curater" }, /must be "public" or "curator"/],
+  ["curator with an absolute or keyed authentication probe", SERVER_HTTP,
+    { ...CURATOR, AMIRA_CURATOR_AUTH_PROBE: "https://evil.example/items" }, /AMIRA_CURATOR_AUTH_PROBE must be an API path/],
 ];
 
 for (const [name, entry, env, message] of REFUSALS) {
@@ -170,4 +173,56 @@ test("a curator cache older than the maximum staleness is never loaded", { timeo
   assert.equal(h.status, 503);
   assert.equal(h.body.status, "unavailable");
   assert.equal(h.body.access, "curator");
+});
+
+// --- a key Omeka silently ignores, at startup -------------------------------------------------------
+// Omeka serves an unknown key the anonymous data (HTTP 200). The stub does the
+// same; this configuration's key is not the stub's, so it is "bogus" there.
+
+/** Every file under `dir`, recursively (none when it does not exist). */
+function filesUnder(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? filesUnder(path.join(dir, e.name)) : [e.name]));
+}
+
+async function waitForHealth(base, status) {
+  let h;
+  for (const deadline = Date.now() + 10_000; Date.now() < deadline;) {
+    h = await health(base);
+    if (h.body.status === status) return h;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return h;
+}
+
+test("a bogus key at first start: refused, no corpus crawled, no curator snapshot written", { timeout: 30_000 }, async (t) => {
+  const stub = await startOmekaStub();
+  t.after(() => stub.close());
+  const cacheDir = tempDir("bogus-cache");
+  const server = await spawnHttpServer({ env: { ...CURATOR, AMIRA_LIVE_REFRESH: "1", AMIRA_SITE_BASE: stub.base, AMIRA_CACHE_DIR: cacheDir,
+    AMIRA_ENRICHMENT_BASE: `${stub.base}/github`, AMIRA_SEMANTIC_RELEASE: "off" } });
+  t.after(() => server.stop());
+  await server.waitForLog(/initial data load failed: curator snapshot unavailable: Omeka key not accepted or lacks view-all/);
+  assert.equal((await waitForHealth(server.base, "unavailable")).status, 503);
+  assert.deepEqual(filesUnder(cacheDir), [], "nothing was written");
+  assert.ok(stub.requests.some((r) => r.startsWith("/api/items?is_public=0&per_page=1&key_identity=")), "the probe ran");
+  assert.ok(!stub.requests.some((r) => /resource_template_id=|item_set_id=/.test(r)), "no corpus was crawled");
+  for (const secret of [IDENTITY, CREDENTIAL]) assert.ok(!server.logs().includes(secret));
+});
+
+test("a cached curator snapshot past the refresh interval is not trusted until the key is confirmed", { timeout: 30_000 }, async (t) => {
+  const stub = await startOmekaStub();
+  t.after(() => stub.close());
+  const cacheDir = tempDir("probe-cache");
+  const fx = buildFixture(lib.SNAPSHOT_SCHEMA_VERSION);
+  Object.assign(fx.manifest, { apiBase: stub.api, fetchedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(), access: "curator" });
+  const partition = lib.snapshotCacheDir(cacheDir, stub.api, "curator");
+  await lib.writeSnapshotAtomic(partition, fx);
+  assert.ok(filesUnder(partition).length > 0);
+  // Live refresh off: only the startup probe contacts Omeka.
+  const server = await spawnHttpServer({ env: { ...CURATOR, AMIRA_SITE_BASE: stub.base, AMIRA_CACHE_DIR: cacheDir } });
+  t.after(() => server.stop());
+  await server.waitForLog(/Omeka key not accepted or lacks view-all: dropped the in-memory snapshot and wiped the curator cache/);
+  assert.equal((await waitForHealth(server.base, "unavailable")).status, 503);
+  assert.equal(existsSync(partition), false, "the 2-hour-old cache was wiped, not served");
 });

@@ -362,7 +362,7 @@ test("a 401 from Omeka drops the store, wipes the curator cache and refuses requ
     assert.equal(lib.refreshStatus().error_class, "omeka_auth_refused");
     const refused = await raw("get_research_item", { id: IDS.publicItem });
     assert.equal(refused.isError, true);
-    assert.match(refused.content[0].text, /Omeka refused the service key/);
+    assert.match(refused.content[0].text, /Omeka key not accepted or lacks view-all/);
     await assert.rejects(conn.client.readResource({ uri: "amira://dataset" }));
     // A 403 on a later attempt keeps it refused.
     stub.state.denyStatus = 403;
@@ -375,6 +375,88 @@ test("a 401 from Omeka drops the store, wipes the curator cache and refuses requ
   assert.ok(lib.currentStore(), "a successful refresh restores service");
   assert.equal(lib.refreshStatus().blocked, false);
   assert.equal((await call("get_research_item", { id: IDS.privateItem })).visibility, "private");
+});
+
+// --- Omeka ignores the key ----------------------------------------------------------------------
+// Real Omeka answers an unknown key with the anonymous data (HTTP 200), never
+// an error. Only the authentication probe (`items?is_public=0`, keyed) tells.
+
+/** Requests the stub received after `mark` that crawled a corpus. */
+const crawlsSince = (mark) => stub.requests.slice(mark).filter((r) => /resource_template_id=|item_set_id=/.test(r));
+
+async function assertRefusedByProbe(mark) {
+  assert.equal(lib.currentStore(), null);
+  assert.equal(existsSync(lib.cacheSnapshotDir()), false, "the curator cache is wiped, and nothing new is written");
+  assert.equal(lib.refreshStatus().blocked, true);
+  assert.equal(lib.refreshStatus().error_class, "omeka_auth_refused");
+  assert.deepEqual(crawlsSince(mark), [], "no corpus is crawled with a key the probe did not accept");
+  assert.ok(stub.requests.slice(mark).some((r) => r.startsWith("/api/items?is_public=0&per_page=1&key_identity=")), "the probe ran");
+  assert.ok(logs.some((l) => /Omeka key not accepted or lacks view-all: dropped the in-memory snapshot and wiped the curator cache/.test(l)));
+  const refused = await raw("search_research_items", {});
+  assert.equal(refused.isError, true);
+  assert.match(refused.content[0].text, /Omeka key not accepted or lacks view-all/);
+}
+
+async function assertRestored() {
+  const mark = stub.requests.length;
+  await lib.refreshNow();
+  assert.ok(lib.currentStore(), "a later probe that succeeds restores service");
+  assert.equal(lib.refreshStatus().blocked, false);
+  assert.ok(crawlsSince(mark).length > 0);
+  assert.equal((await call("get_research_item", { id: IDS.privateItem })).visibility, "private");
+}
+
+test("a key revoked mid-life (Omeka now serves it anonymous data) wipes the cache at the next refresh", async () => {
+  assert.ok(lib.currentStore());
+  assert.ok(existsSync(lib.cacheSnapshotDir()));
+  const mark = stub.requests.length;
+  stub.state.keyAccepted = false;
+  try {
+    await lib.refreshNow();
+    await assertRefusedByProbe(mark);
+  } finally {
+    stub.state.keyAccepted = true;
+  }
+  await assertRestored();
+});
+
+test("a valid key whose user lacks view-all is refused the same way", async () => {
+  const mark = stub.requests.length;
+  stub.state.viewAll = false;
+  try {
+    await lib.refreshNow();
+    await assertRefusedByProbe(mark);
+  } finally {
+    stub.state.viewAll = true;
+  }
+  await assertRestored();
+});
+
+test("a bogus key is refused before any crawl, and no curator snapshot is written", async () => {
+  const valid = readFileSync(keyFile, "utf8");
+  writeFileSync(keyFile, "key_identity=bogusIdentity00000000000000000000\nkey_credential=bogusCredential000000000000000000\n");
+  lib.resetOmekaKeyCache();
+  // Start from nothing, as a fresh curator container would.
+  stub.state.mode = "deny";
+  await lib.refreshNow();
+  stub.state.mode = "auth";
+  assert.equal(existsSync(lib.cacheSnapshotDir()), false);
+  const mark = stub.requests.length;
+  try {
+    await lib.refreshNow();
+    await assertRefusedByProbe(mark);
+  } finally {
+    writeFileSync(keyFile, valid);
+    lib.resetOmekaKeyCache();
+  }
+  await assertRestored();
+});
+
+test("probeCuratorAuth fails closed on an empty array, a non-array or a public result", async () => {
+  await lib.probeCuratorAuth(stub.api);
+  for (const path of ["items?is_public=0&per_page=1&resource_template_id=999", "items?is_public=1&per_page=1", "media?per_page=10", "resource_classes/1"]) {
+    await assert.rejects(lib.probeCuratorAuth(stub.api, undefined, path), (err) => err.omekaAuth === true && /lacks view-all/.test(err.message), path);
+  }
 });
 
 // --- secrets ---------------------------------------------------------------------------------------

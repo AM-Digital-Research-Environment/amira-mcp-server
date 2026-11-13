@@ -4,12 +4,17 @@
 //   - anonymous requests never see a private resource (`o:is_public: false`) or
 //     a private value (`is_public: false`, also inside value annotations);
 //   - a request carrying the right key_identity/key_credential sees everything;
-//   - a wrong key is answered 403.
+//   - a wrong, revoked or mistyped key is NOT an error: like real Omeka, it gets
+//     the anonymous data with HTTP 200 (checked against production, Nov 2026);
+//   - `is_public=0` on /items filters to private items, so it returns `[]` to
+//     anyone who cannot see them: the curator server's authentication probe.
 //
-// `state.mode` changes that: "leak" serves private content to anonymous
-// requests too (the public server must still drop it: defence in depth);
-// "deny" answers every keyed request with `state.denyStatus` (401 by default),
-// as Omeka does once the service key is revoked.
+// `state` changes that: `keyAccepted: false` treats even the right key as
+// unknown (revoked mid-life); `viewAll: false` lets the right key see only
+// public data (a user without view-all); mode "leak" serves private content to
+// anonymous requests too (the public server must still drop it: defence in
+// depth); mode "deny" answers every keyed request with `state.denyStatus`
+// (401 by default), for proxies or future Omeka versions that do refuse.
 //
 // The fixtures are the ones the issue's validation plan asks for: one private
 // research item, and one public item with a private `dre:security` value, a
@@ -128,6 +133,8 @@ function anonymous(item) {
 export async function startOmekaStub(state = {}) {
   state.mode ??= "auth";
   state.denyStatus ??= 401;
+  state.keyAccepted ??= true;
+  state.viewAll ??= true;
   const requests = [];
   const server = createServer((req, res) => {
     requests.push(req.url);
@@ -140,9 +147,10 @@ export async function startOmekaStub(state = {}) {
     };
     if (!url.pathname.startsWith("/api/")) return reply(404, {});
     if (keyed && state.mode === "deny") return reply(state.denyStatus, { errors: { error: "Invalid API key" } });
-    const validKey = url.searchParams.get("key_identity") === KEY.identity && url.searchParams.get("key_credential") === KEY.credential;
-    if (keyed && !validKey) return reply(403, { errors: { error: "Invalid API key" } });
-    const sees = validKey || state.mode === "leak";
+    // An unknown key is silently ignored, as Omeka does: the request is served as anonymous.
+    const validKey = state.keyAccepted && url.searchParams.get("key_identity") === KEY.identity &&
+      url.searchParams.get("key_credential") === KEY.credential;
+    const sees = (validKey && state.viewAll) || state.mode === "leak";
     const show = (list) => (sees ? list : list.filter((r) => r["o:is_public"] !== false).map(anonymous));
     const page = Number(url.searchParams.get("page") ?? 1);
     const probe = url.searchParams.get("sort_by") === "modified";
@@ -152,11 +160,17 @@ export async function startOmekaStub(state = {}) {
           const all = show(ITEMS.map(([, item]) => item));
           return reply(200, all.slice(0, 1), all.length);
         }
-        const matching = show(ITEMS.filter(([query]) => {
+        const corpusKeys = ["resource_template_id", "item_set_id"].filter((k) => url.searchParams.has(k));
+        let matching = show(ITEMS.filter(([query]) => {
+          if (!corpusKeys.length) return true;
           const [k, v] = query.split("=");
           return url.searchParams.get(k) === v;
         }).map(([, item]) => item));
-        return reply(200, page === 1 ? matching : [], matching.length);
+        const isPublic = url.searchParams.get("is_public");
+        if (isPublic === "0") matching = matching.filter((r) => r["o:is_public"] === false);
+        if (isPublic === "1") matching = matching.filter((r) => r["o:is_public"] !== false);
+        const perPage = Number(url.searchParams.get("per_page") ?? 100);
+        return reply(200, page === 1 ? matching.slice(0, perPage) : [], matching.length);
       }
       case "/api/item_sets": {
         const sets = show(ITEM_SETS);
