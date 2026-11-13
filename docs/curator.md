@@ -5,11 +5,13 @@ developers and data curators ([#26](https://github.com/AM-Digital-Research-Envir
 It reads the Omeka S API with a service key, so it also sees **private records
 and private values**, and it serves them only to people holding a personal
 token. It is the same code and the same image as the public server, started with
-`AMIRA_ACCESS=curator`; nothing changes for the public server or the `.mcpb`.
+`AMIRA_ACCESS=curator`; nothing changes for the public server, and the `.mcpb`
+only gains an optional relay to it.
 
 This first step uses personal bearer tokens, which command-line clients (Claude
-Code, Gemini CLI, Codex) send as a header. OAuth sign-in for the chat
-applications (claude.ai, ChatGPT) is the next step and is not built yet.
+Code, Gemini CLI, Codex) send as a header, and which the `.mcpb` relays for
+Claude Desktop. OAuth sign-in for the chat applications (claude.ai, ChatGPT) is
+the next step and is not built yet. See [Client setup](#client-setup).
 
 ## What "private" covers
 
@@ -89,7 +91,9 @@ Curator mode also refuses:
 
 - the stdio server and the `.mcpb` (`server/index.js`): curator mode is HTTP
   only. A local bundle would cache the private snapshot on laptops, and each
-  install would need a key that travels in query strings;
+  install would need a key that travels in query strings. The `.mcpb` relays
+  to a curator server instead (`AMIRA_CURATOR_TOKEN`, see
+  [Client setup](#client-setup)), which holds neither data nor key locally;
 - `npm run fetch-data`: the bundled snapshot is public by definition;
 - `AMIRA_MCP_BEARER_TOKEN` / `AMIRA_MCP_TOKEN_FILE`: one shared token would
   defeat per-person revocation and the audit log.
@@ -156,12 +160,53 @@ generate a new one and replace the line.
   ignored (and reported by line number).
 - **Rotate** by generating a new token and replacing the line.
 
-Curators send `Authorization: Bearer <token>`, for example:
+Curators send `Authorization: Bearer <token>`; see [Client setup](#client-setup).
+
+## Client setup
+
+The hosted endpoint is `https://data.africamultiple.uni-bayreuth.de/curator/mcp`
+(Streamable HTTP, stateless). Every request needs `Authorization: Bearer
+<token>`: without one, or with an unknown or revoked one, it answers 401. A
+token belongs to one curator; do not share it, and ask for a new one if it
+leaks, since revocation is central.
+
+**Claude Code**:
 
 ```bash
-claude mcp add --transport http amira-curator https://<host>/curator/mcp \
-  --header "Authorization: Bearer amira_cur_…"
+claude mcp add --transport http amira-curator https://data.africamultiple.uni-bayreuth.de/curator/mcp \
+  --header "Authorization: Bearer <token>"
 ```
+
+**Claude Desktop**, through the `.mcpb` relay. Desktop's custom connectors can
+send no static header (only OAuth, which comes later), so the extension
+forwards instead. Install `amira-mcp-server.mcpb`, open **Settings →
+Extensions → AMIRA → Configure**, paste the token into **Curator token**, save,
+and restart the extension. The field is masked and the token is kept in the OS
+keychain. With a token, the extension's local process becomes a relay: a stdio
+server for Claude Desktop that forwards every message unchanged to the curator
+endpoint, with the token in the header, so Claude sees the curator server's
+own tools, instructions and private records. It loads no snapshot, writes no
+cache, never crawls Omeka and holds no Omeka key, so nothing private is stored
+on the computer. A rejected or revoked token, or an unreachable server, is
+reported as an error ("curator token rejected or revoked; check the token in
+the extension settings, or clear it for the public dataset"); it never falls
+back to public data. Clearing the field returns the extension to the bundled
+public dataset. The advanced **Curator server URL** setting
+(`AMIRA_CURATOR_URL`) must be `https://` (`http://` is accepted only for
+`localhost` and `127.0.0.1`, for tests). The same relay works from any stdio
+client: run `server/index.js` with `AMIRA_CURATOR_TOKEN` (and optionally
+`AMIRA_CURATOR_URL`) in its environment. It is refused together with
+`AMIRA_ACCESS=curator` and by the HTTP server.
+
+**Other header-capable clients** (Gemini CLI, Codex, VS Code, the MCP
+Inspector, …): add a Streamable HTTP server with the URL above and an
+`Authorization: Bearer <token>` header, in whatever form the client's MCP
+configuration takes for custom headers. Clients that cannot set a header but
+run local stdio servers can use the relay as above.
+
+**Chat applications** (claude.ai on the web, ChatGPT): their connectors accept
+OAuth or no authentication, not a personal token. They need the OAuth step
+(Pocket ID), which is not built yet.
 
 ## Snapshots and the cache
 
@@ -223,7 +268,8 @@ and loading a snapshot drops any private record or `restricted` block again.
 
 ## Not yet
 
-- OAuth sign-in (Pocket ID) for claude.ai and ChatGPT; see the issue.
+- OAuth sign-in (Pocket ID) for claude.ai and ChatGPT (and Claude Desktop
+  custom connectors without the relay); see the issue.
 - A read-only Omeka role with `view-all`; the service account is a `reviewer`.
 - Private podcast and video transcripts are reported by length in `restricted`
   but not paged; `get_text_passages` does not search private full text.

@@ -276,6 +276,26 @@ No further configuration is required. The latest tagged release carries the
 current data; the rolling `data-latest` pre-release always tracks the freshest
 site snapshot.
 
+### Curator access in Claude Desktop
+
+Authorised AMIRA curators can see private records in Claude Desktop with the
+same extension (#26):
+
+1. Install the `.mcpb` as above.
+2. Open **Settings → Extensions → AMIRA → Configure**.
+3. Paste your personal token into **Curator token**. The field is masked and
+   the token is kept in the operating system's keychain.
+4. Save, then disable and re-enable the extension (or restart Claude Desktop).
+
+The extension then relays to the AMIRA curator server
+(`https://data.africamultiple.uni-bayreuth.de/curator/mcp`) instead of serving
+the bundled snapshot. It stores nothing private on your computer, and it never
+falls back to public data: a rejected or revoked token, or an unreachable
+server, shows up as an error. Clear the field and restart the extension to
+return to the public dataset. Tokens are issued and revoked centrally by the
+AMIRA team, so a revoked token stops working on every device at once. Other
+clients: [docs/curator.md](docs/curator.md#client-setup).
+
 ## Use it from ChatGPT, the API, or any remote client
 
 The `.mcpb` is the local, offline option for Claude Desktop. The same server can
@@ -389,8 +409,10 @@ return private items; when it does not, or Omeka answers 401/403, the server
 drops the data and wipes the cache. The service account needs `view-all`
 (a `reviewer` for now). The server refuses to start when any
 of this is missing, and a public server refuses a key. Generate a token with
-`node server/tokenCli.js <name>`. Configuration, revocation, cache handling and
-what "private" covers: [docs/curator.md](docs/curator.md).
+`node server/tokenCli.js <name>`. Curators connect with a header-capable
+client, or from Claude Desktop through the `.mcpb` relay. Configuration,
+revocation, client setup, cache handling and what "private" covers:
+[docs/curator.md](docs/curator.md).
 
 ## Develop / rebuild
 
@@ -592,6 +614,8 @@ rather than given an invented label. Group ids are renumbered per build
 | `AMIRA_OMEKA_KEY_FILE` | — | unset | Curator mode only: file with the Omeka service key (`key_identity`, `key_credential`). A public server refuses to start with it |
 | `AMIRA_MCP_TOKENS_FILE` | — | unset | Curator mode only: personal tokens, one `name sha256hex` line per curator, re-read every 2 s. Replaces `AMIRA_MCP_BEARER_TOKEN`, which curator mode refuses |
 | `AMIRA_CURATOR_AUTH_PROBE` | — | `items?is_public=0&per_page=1` | Curator mode only: the keyed request that must return a non-empty array (proof that the key is accepted and has view-all) before any crawl or refresh |
+| `AMIRA_CURATOR_TOKEN` | Curator token | unset | stdio / `.mcpb` only: relay to the curator server with this personal token instead of serving the bundled snapshot (see [Curator access in Claude Desktop](#curator-access-in-claude-desktop)). Empty means public mode. Refused with `AMIRA_ACCESS=curator` and by the HTTP server |
+| `AMIRA_CURATOR_URL` | Curator server URL (advanced) | `https://data.africamultiple.uni-bayreuth.de/curator/mcp` | The endpoint the relay forwards to. Must be `https://` (`http://` only for `localhost` / `127.0.0.1`) |
 | `AMIRA_CURATOR_MAX_STALE_HOURS` | — | `24` | Curator mode only: refuse data Omeka has not confirmed for this long. Curator mode also requires `AMIRA_CACHE_DIR` (on tmpfs) and checks hourly by default |
 
 ### Snapshot layout and recovery
