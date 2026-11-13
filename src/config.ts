@@ -227,6 +227,9 @@ export const config = {
   tokensFile: envValue("AMIRA_MCP_TOKENS_FILE") ?? null,
   /** Curator mode: stop serving data not verified against Omeka for this long (hours). */
   curatorMaxStaleHours: parseNonNegativeNumber(envValue("AMIRA_CURATOR_MAX_STALE_HOURS"), 24),
+  /** Curator mode: first retry delay (seconds) after a transient failure leaves no data; it
+   * doubles up to 5 minutes. Default 60; tests shorten it. */
+  curatorRetrySeconds: Math.max(0.1, parseNonNegativeNumber(envValue("AMIRA_CURATOR_RETRY_SECONDS"), 60)),
   /** Curator mode: the keyed request that must return a non-empty array before
    * any crawl or refresh, proving the key is accepted and has view-all (Omeka
    * answers an unknown key with anonymous data, not an error). Relative to the API base. */

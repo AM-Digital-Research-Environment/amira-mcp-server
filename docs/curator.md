@@ -85,6 +85,7 @@ is in place, and prints every reason (never a secret).
 | `AMIRA_API_BASE` | in the AMIRA stack | Where the crawl and refresh **fetch** the API: the full API URL including `/api`, e.g. `http://web/api`, so keyed requests stay on the Docker network and never pass the host's nginx, which logs query strings. Default: `AMIRA_SITE_BASE/api`. Must be an absolute http(s) URL, or the server refuses to start (in either mode) |
 | `AMIRA_CURATOR_MAX_STALE_HOURS` | no | Default `24`. Data not confirmed by Omeka for longer than this is refused |
 | `AMIRA_REFRESH_INTERVAL_HOURS` | no | Default `1` in curator mode (`24` in public mode). Must be greater than 0 and less than the staleness limit |
+| `AMIRA_CURATOR_RETRY_SECONDS` | no | Default `60`. First retry after a transient failure leaves no data; it doubles up to five minutes |
 | `AMIRA_CURATOR_AUTH_PROBE` | no | Default `items?is_public=0&per_page=1`. The keyed request (relative to the API base) that must return a non-empty array before any crawl or refresh; see below |
 
 Curator mode also refuses:
@@ -233,7 +234,11 @@ OAuth or no authentication, not a personal token. They need the OAuth step
 - **Transient Omeka failures**: the server keeps serving the data it has until it
   has gone `AMIRA_CURATOR_MAX_STALE_HOURS` without Omeka confirming it (a probe
   that finds nothing newer counts as a confirmation). Past that, requests are
-  refused until a refresh succeeds.
+  refused until a refresh succeeds. When there is no data yet (the first crawl
+  failed, e.g. Omeka answered 502 while php was restarting), the server retries
+  on a timer, without waiting for a request: after 60 s, then doubling up to
+  every five minutes, until a crawl succeeds and `/healthz` turns healthy.
+  `AMIRA_CURATOR_RETRY_SECONDS` sets the first delay.
 - **Key not accepted**: the authentication probe finds nothing private (the key
   is unknown, revoked, mistyped or lacks `view-all`), or Omeka answers 401 or
   403. The server drops the in-memory store, wipes the curator cache, writes no

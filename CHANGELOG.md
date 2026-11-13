@@ -40,6 +40,14 @@ the public endpoint behave exactly as in 1.35.1.
   `${user_config.curator_token}` of an unset setting, is public mode: tool
   results, resources, prompts and `tools/list` are byte-identical to 1.35.1 on
   the released 1.35.1 snapshot.
+- **Fixed: a curator server whose first crawl fails now retries on its own.**
+  A transient failure with no data yet (Omeka unreachable, or a 502 while php
+  restarts) used to be retried only when a curator request arrived, and the
+  `/healthz` healthcheck sends none, so the container stayed unhealthy until
+  restarted. It now retries on a timer, after 60 s and then backing off to
+  every five minutes, and publishes the store once a crawl succeeds
+  (`AMIRA_CURATOR_RETRY_SECONDS` sets the first delay). Public mode, whose
+  first load reads local files only, is unchanged.
 - **Curator mode with personal tokens** (#26, step 1). `AMIRA_ACCESS=curator`
   runs an internal, read-only endpoint for AMIRA's developers and data
   curators that also serves private records and private values. It crawls the

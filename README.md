@@ -613,6 +613,7 @@ rather than given an invented label. Group ids are renumbered per build
 | `AMIRA_ACCESS` | — | `public` | `curator` starts the internal curator mode (HTTP only), which requires the three settings below; see [docs/curator.md](docs/curator.md) |
 | `AMIRA_OMEKA_KEY_FILE` | — | unset | Curator mode only: file with the Omeka service key (`key_identity`, `key_credential`). A public server refuses to start with it |
 | `AMIRA_MCP_TOKENS_FILE` | — | unset | Curator mode only: personal tokens, one `name sha256hex` line per curator, re-read every 2 s. Replaces `AMIRA_MCP_BEARER_TOKEN`, which curator mode refuses |
+| `AMIRA_CURATOR_RETRY_SECONDS` | — | `60` | Curator mode only: first timer-driven retry after a transient failure leaves no data (the first crawl failed); doubles up to five minutes |
 | `AMIRA_CURATOR_AUTH_PROBE` | — | `items?is_public=0&per_page=1` | Curator mode only: the keyed request that must return a non-empty array (proof that the key is accepted and has view-all) before any crawl or refresh |
 | `AMIRA_CURATOR_TOKEN` | Curator token | unset | stdio / `.mcpb` only: relay to the curator server with this personal token instead of serving the bundled snapshot (see [Curator access in Claude Desktop](#curator-access-in-claude-desktop)). Empty means public mode. Refused with `AMIRA_ACCESS=curator` and by the HTTP server |
 | `AMIRA_CURATOR_URL` | Curator server URL (advanced) | `https://data.africamultiple.uni-bayreuth.de/curator/mcp` | The endpoint the relay forwards to. Must be `https://` (`http://` only for `localhost` / `127.0.0.1`) |
