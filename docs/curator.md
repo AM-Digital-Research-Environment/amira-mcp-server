@@ -82,6 +82,7 @@ is in place, and prints every reason (never a secret).
 | `AMIRA_SITE_BASE` | usually | The Omeka instance. In the AMIRA stack, the internal address (`http://web`), so the crawl stays on the Docker network; admin URLs are built from it too |
 | `AMIRA_CURATOR_MAX_STALE_HOURS` | no | Default `24`. Data not confirmed by Omeka for longer than this is refused |
 | `AMIRA_REFRESH_INTERVAL_HOURS` | no | Default `1` in curator mode (`24` in public mode). Must be greater than 0 and less than the staleness limit |
+| `AMIRA_CURATOR_AUTH_PROBE` | no | Default `items?is_public=0&per_page=1`. The keyed request (relative to the API base) that must return a non-empty array before any crawl or refresh; see below |
 
 Curator mode also refuses:
 
@@ -97,9 +98,27 @@ Public mode, in turn, refuses `AMIRA_OMEKA_KEY_FILE` and
 
 ### The Omeka service key
 
-Create a dedicated Omeka user (the proof of concept uses a `reviewer` account,
-the lowest role with `view-all` on resources; only this server's code keeps it
-read-only) and an API key for it. Omeka reads keys from the query string only,
+Create a dedicated Omeka user and an API key for it. **The user needs
+`view-all` on resources**, or Omeka hides private records and private values
+from it: for now that means a `reviewer` account, the lowest role with
+`view-all` (it can also edit; only this server's code keeps it read-only). A
+read-only role is a follow-up.
+
+**Omeka does not reject a bad key.** An unknown, revoked or mistyped key is
+answered with the anonymous public data (HTTP 200), exactly like no key at all;
+`/api/users` answers 403 either way. A crawl alone would therefore build a
+public-only snapshot and label it curator. So before every crawl and every
+refresh (and after each crawl, in case the key was revoked during it), and
+before trusting a cached snapshot older than the refresh interval, the server
+sends one keyed **authentication probe**, `AMIRA_CURATOR_AUTH_PROBE` (default
+`items?is_public=0&per_page=1`). It must return a non-empty array with no
+public record in it, which only a key with `view-all` gets as long as private
+items exist (the *Of Art Worlds* items, the retired authority duplicates).
+Anything else fails closed, exactly like a 401/403: see "Key not accepted"
+below. A deployment without private items yet can point the probe at another
+keyed request that returns a non-empty array only when authenticated.
+
+Omeka reads keys from the query string only, Omeka reads keys from the query string only,
 so the server adds `key_identity` and `key_credential` to a request at the last
 moment, inside the fetch, and only for requests to `AMIRA_SITE_BASE/api`. The
 key is never stored in the API base, the snapshot manifest, an error, a log
@@ -158,10 +177,13 @@ claude mcp add --transport http amira-curator https://<host>/curator/mcp \
   has gone `AMIRA_CURATOR_MAX_STALE_HOURS` without Omeka confirming it (a probe
   that finds nothing newer counts as a confirmation). Past that, requests are
   refused until a refresh succeeds.
-- **Key revoked** (Omeka answers 401 or 403 to the key): the server drops the
-  in-memory store, wipes the curator cache and refuses requests. With live
-  refresh on it retries within five minutes, and serves again once a crawl
-  succeeds.
+- **Key not accepted**: the authentication probe finds nothing private (the key
+  is unknown, revoked, mistyped or lacks `view-all`), or Omeka answers 401 or
+  403. The server drops the in-memory store, wipes the curator cache, writes no
+  snapshot, logs `Omeka key not accepted or lacks view-all` (or the HTTP status)
+  and refuses requests. With live refresh on it retries within five minutes, and
+  serves again once the probe and a crawl succeed. A key revoked while the
+  server runs is caught at the next refresh, an hour later at most by default.
 
 ## Audit and health
 
@@ -190,7 +212,7 @@ and loading a snapshot drops any private record or `restricted` block again.
 ## Not yet
 
 - OAuth sign-in (Pocket ID) for claude.ai and ChatGPT; see the issue.
-- A read-only Omeka role; the service account is a `reviewer`.
+- A read-only Omeka role with `view-all`; the service account is a `reviewer`.
 - Private podcast and video transcripts are reported by length in `restricted`
   but not paged; `get_text_passages` does not search private full text.
 - The app views (map, graph, …) link records by `amira_url` and show private

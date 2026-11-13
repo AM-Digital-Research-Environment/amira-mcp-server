@@ -41,9 +41,17 @@ force and what comes next.
   curator cache partition hashes the mode in (public partitions keep their
   hash, so existing caches stay valid), and each mode refuses the other's
   snapshot. Curator mode never loads the bundled snapshot, refuses data Omeka
-  has not confirmed within the staleness limit, and on a 401/403 from Omeka
-  drops its store, wipes its cache and refuses requests until a refresh
-  succeeds. Its `/healthz` shows no counts.
+  has not confirmed within the staleness limit, and drops its store, wipes its
+  cache and refuses requests until a refresh succeeds when the key is not
+  accepted. Its `/healthz` shows no counts.
+- **A positive authentication probe.** Omeka answers an unknown, revoked or
+  mistyped key with the anonymous data (HTTP 200), not an error, so a crawl
+  alone would build a public-only snapshot labelled curator. Every curator
+  crawl and refresh, and every cached snapshot older than the refresh
+  interval, first requires a keyed `items?is_public=0&per_page=1`
+  (`AMIRA_CURATOR_AUTH_PROBE`) to return a non-empty array; an empty one is
+  treated like a 401/403 ("Omeka key not accepted or lacks view-all"). The
+  service account needs `view-all` (a `reviewer` for now).
 - **Public mode drops private content even if it arrives.** The crawl now
   splits every resource's private values off before transforming it and drops
   private resources, private media and links to them; loading a snapshot drops

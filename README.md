@@ -381,8 +381,12 @@ Private records carry `visibility: "private"` and an `admin_url` instead of
 `amira_url`; private values sit in a separate `restricted` block, including the
 private ILAM OCR full text, which becomes searchable and readable. The cache
 (`AMIRA_CACHE_DIR`, on tmpfs) is partitioned by access mode, each mode refuses
-the other's snapshot, data unconfirmed for 24 h is refused, and a 401/403 from
-Omeka drops the data and wipes the cache. The server refuses to start when any
+the other's snapshot, and data unconfirmed for 24 h is refused. Omeka answers
+an unknown key with the public data rather than an error, so every crawl and
+refresh first requires a keyed authentication probe (`items?is_public=0`) to
+return private items; when it does not, or Omeka answers 401/403, the server
+drops the data and wipes the cache. The service account needs `view-all`
+(a `reviewer` for now). The server refuses to start when any
 of this is missing, and a public server refuses a key. Generate a token with
 `node server/tokenCli.js <name>`. Configuration, revocation, cache handling and
 what "private" covers: [docs/curator.md](docs/curator.md).
@@ -585,6 +589,7 @@ rather than given an invented label. Group ids are renumbered per build
 | `AMIRA_ACCESS` | — | `public` | `curator` starts the internal curator mode (HTTP only), which requires the three settings below; see [docs/curator.md](docs/curator.md) |
 | `AMIRA_OMEKA_KEY_FILE` | — | unset | Curator mode only: file with the Omeka service key (`key_identity`, `key_credential`). A public server refuses to start with it |
 | `AMIRA_MCP_TOKENS_FILE` | — | unset | Curator mode only: personal tokens, one `name sha256hex` line per curator, re-read every 2 s. Replaces `AMIRA_MCP_BEARER_TOKEN`, which curator mode refuses |
+| `AMIRA_CURATOR_AUTH_PROBE` | — | `items?is_public=0&per_page=1` | Curator mode only: the keyed request that must return a non-empty array (proof that the key is accepted and has view-all) before any crawl or refresh |
 | `AMIRA_CURATOR_MAX_STALE_HOURS` | — | `24` | Curator mode only: refuse data Omeka has not confirmed for this long. Curator mode also requires `AMIRA_CACHE_DIR` (on tmpfs) and checks hourly by default |
 
 ### Snapshot layout and recovery
