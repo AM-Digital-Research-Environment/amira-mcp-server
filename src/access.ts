@@ -285,6 +285,9 @@ export function accessConfigErrors(entry: EntryPoint, cfg: typeof config = confi
       errors.push("AMIRA_MCP_TOKEN_FILE / AMIRA_MCP_BEARER_TOKEN (one shared token) are refused in curator mode; use AMIRA_MCP_TOKENS_FILE");
     }
   }
+  if (!/^[a-z_]+(\/\d+)?(\?[^\s#]*)?$/.test(cfg.curatorAuthProbe) || /key_(identity|credential)/i.test(cfg.curatorAuthProbe)) {
+    errors.push("AMIRA_CURATOR_AUTH_PROBE must be an API path relative to the API base, such as items?is_public=0&per_page=1, without key parameters");
+  }
   if (!cfg.cacheDirConfigured) errors.push("curator mode needs AMIRA_CACHE_DIR set explicitly, on tmpfs (private data is cached there)");
   if (!(cfg.curatorMaxStaleHours > 0)) errors.push("AMIRA_CURATOR_MAX_STALE_HOURS must be greater than 0");
   else if (cfg.liveRefresh && !(cfg.refreshIntervalHours > 0 && cfg.refreshIntervalHours < cfg.curatorMaxStaleHours)) {

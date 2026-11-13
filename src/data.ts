@@ -14,7 +14,9 @@
 import { config } from "./config.js";
 import { FULLTEXT_SOURCE, type FulltextMaps } from "./fulltextMaps.js";
 import { pickSemantic, semanticManifestEntry, servableSemantic, type SemanticNeighbours } from "./semantic.js";
-import { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshotAtomic, type CrawlOutput } from "./snapshot.js";
+import {
+  crawlSnapshot, isStale, KEY_NOT_ACCEPTED, loadSnapshot, probeCuratorAuth, probeRemote, writeSnapshotAtomic, type CrawlOutput,
+} from "./snapshot.js";
 import { LanguageIndex } from "./languages.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { fold, newFoldCaches, setFoldCacheProvider } from "./text.js";
@@ -417,20 +419,21 @@ const curatorStale = (): boolean => config.access === "curator" && Date.now() - 
 
 function curatorUnavailable(): Error {
   return new Error(curator.blocked
-    ? "Curator data unavailable: Omeka refused the service key. Private data was dropped; requests are refused until a refresh succeeds."
+    ? `Curator data unavailable: ${KEY_NOT_ACCEPTED}. Private data was dropped; requests are refused until a refresh succeeds.`
     : `Curator data unavailable: not verified against Omeka for more than ${config.curatorMaxStaleHours} h. ` +
       "Requests are refused until a refresh succeeds.");
 }
 
-/** 401/403 from Omeka to the curator key: drop the store, wipe the cache, refuse until a refresh succeeds. */
+/** The key was refused (401/403) or silently ignored (the authentication probe
+ * found nothing private): drop the store, wipe the cache, refuse until a refresh succeeds. */
 async function revokeCuratorData(status: number | undefined): Promise<void> {
   current = null;
   curator.blocked = true;
   curator.verifiedAt = 0;
   await fs.rm(cacheSnapshotDir(), { recursive: true, force: true })
     .catch((err: Error) => console.error(`[amira] curator cache could not be wiped: ${err.message}`));
-  console.error(`[amira] Omeka answered HTTP ${status ?? "401/403"} to the curator key: dropped the in-memory snapshot and ` +
-    "wiped the curator cache; refusing requests until a refresh succeeds");
+  console.error(`[amira] ${status ? `Omeka answered HTTP ${status} to the curator key` : KEY_NOT_ACCEPTED}: dropped the in-memory ` +
+    "snapshot and wiped the curator cache; refusing requests until a refresh succeeds");
   scheduleCuratorRetry();
 }
 
@@ -516,6 +519,15 @@ async function loadInitialCurator(): Promise<DataStore> {
     const cached = await tryLoad(cacheSnapshotDir(), "cache");
     const fetched = cached ? Date.parse(cached.out.manifest.fetchedAt) : NaN;
     if (cached && Date.now() - fetched <= maxStaleMs()) {
+      // Past the refresh interval, confirm the key before trusting the cache.
+      // A refused key drops it; an unreachable Omeka is a transient failure,
+      // and the cache serves within the staleness limit.
+      if (Date.now() - fetched > config.refreshIntervalHours * 3_600_000) {
+        await probeCuratorAuth(config.apiBase).catch((err: Error & { omekaAuth?: boolean }) => {
+          if (err.omekaAuth) throw err;
+          console.error(`[amira] curator authentication probe skipped: ${redactSecrets(err.message)}`);
+        });
+      }
       curator.verifiedAt = fetched;
       return chooseInitial(cached, null, config.semanticRelease)!;
     }
@@ -624,6 +636,9 @@ async function backgroundRefresh(): Promise<void> {
     refreshState.last_attempt = new Date().toISOString();
     const signal = AbortSignal.any([refreshController!.signal, AbortSignal.timeout(15 * 60_000)]);
     if (local) {
+      // Every curator refresh first proves the key still works: a key revoked
+      // mid-life returns anonymous data, which the freshness probe alone would miss.
+      if (curatorMode) await probeCuratorAuth(config.apiBase, signal);
       const probe = await probeRemote(config.apiBase, signal);
       const forced = Date.now() - Date.parse(local.fetchedAt) >= config.fullRefreshHours * 3_600_000;
       if (!isStale(local, probe) && !forced) {

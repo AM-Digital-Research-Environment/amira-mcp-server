@@ -208,6 +208,10 @@ export const config = {
   tokensFile: envValue("AMIRA_MCP_TOKENS_FILE") ?? null,
   /** Curator mode: stop serving data not verified against Omeka for this long (hours). */
   curatorMaxStaleHours: parseNonNegativeNumber(envValue("AMIRA_CURATOR_MAX_STALE_HOURS"), 24),
+  /** Curator mode: the keyed request that must return a non-empty array before
+   * any crawl or refresh, proving the key is accepted and has view-all (Omeka
+   * answers an unknown key with anonymous data, not an error). Relative to the API base. */
+  curatorAuthProbe: envValue("AMIRA_CURATOR_AUTH_PROBE") ?? "items?is_public=0&per_page=1",
   /** Whether AMIRA_CACHE_DIR was set explicitly (curator mode requires it: point it at tmpfs). */
   cacheDirConfigured: envValue("AMIRA_CACHE_DIR") !== undefined,
   /** Whether a single shared bearer token is configured (refused in curator mode). */

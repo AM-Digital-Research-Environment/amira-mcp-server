@@ -295,6 +295,27 @@ export async function fetchSemanticRelease(setting: string, log: (msg: string) =
   throw lastError ?? new Error("semantic release: nothing to verify");
 }
 
+/** Said when the authentication probe fails; quotes no secret. */
+export const KEY_NOT_ACCEPTED = "Omeka key not accepted or lacks view-all";
+
+/**
+ * Curator mode: prove the service key is accepted and can see private
+ * resources. Omeka answers an unknown, revoked or mistyped key with the
+ * anonymous data (HTTP 200), never an error, so a crawl alone cannot tell; the
+ * probe (AMIRA_CURATOR_AUTH_PROBE, by default `items?is_public=0&per_page=1`)
+ * must return a non-empty array, and no element marked public (that would mean
+ * the filter was ignored). Anything else fails closed, flagged `omekaAuth`
+ * like a 401/403, so the caller drops the private data (src/data.ts).
+ */
+export async function probeCuratorAuth(apiBase: string, signal?: AbortSignal, probePath = config.curatorAuthProbe): Promise<void> {
+  const { body } = await fetchJSON<unknown>(`${apiBase}/${probePath}`, signal);
+  const ok = Array.isArray(body) && body.length > 0 &&
+    !body.some((r) => r && typeof r === "object" && (r as Record<string, unknown>)["o:is_public"] === true);
+  if (!ok) {
+    throw Object.assign(new Error(`${KEY_NOT_ACCEPTED}: the authentication probe found no private resource`), { omekaAuth: true });
+  }
+}
+
 /** Crawl everything and transform to snapshot records. Throws on ANY shortfall.
  *
  * Every resource passes through `splitVisibility` first, so private values never
@@ -340,6 +361,9 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   });
   if (release) log(`verified corpus vectors ${release.tag}: ${release.manifest.count} rows, ${release.manifest.model}`);
 
+  // Curator mode: the key must be accepted before the crawl, and still after it
+  // (a key revoked mid-crawl would otherwise mix anonymous pages in).
+  if (access === "curator") await probeCuratorAuth(apiBase, signal);
   const before = await probeRemote(apiBase, signal);
   const labels = await fetchPropertyLabels(apiBase, signal);
   const classTerms = new Map<number, string>();
@@ -436,6 +460,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   if (droppedPrivate) log(`public mode: dropped ${droppedPrivate} private resource(s) the API returned`);
 
   const probe = await probeRemote(apiBase, signal);
+  if (access === "curator") await probeCuratorAuth(apiBase, signal);
   if (before.maxModified !== probe.maxModified || before.totalItems !== probe.totalItems || before.itemSetsSignature !== probe.itemSetsSignature) {
     throw new Error("Omeka items changed during the crawl; keeping the previous snapshot. Retry after the upstream sync finishes.");
   }
