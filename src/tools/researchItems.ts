@@ -11,6 +11,7 @@ import {
   capLimit,
   capOffset,
   capText,
+  emptyExportHint,
   emptySearchHint,
   errorResult,
   filtersEcho,
@@ -59,7 +60,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
         research_section: z.string().max(1000).optional().describe("e.g. 'Arts & Aesthetics', 'Mobilities'"),
         university: z.string().max(1000).optional().describe("ubt | unilag | ujkz | ufba | external — code or full name"),
         resource_type: z.string().max(1000).optional().describe("e.g. 'Image', 'Text', 'Audio', 'Moving image'"),
-        genre: z.string().max(1000).optional().describe("Format/genre descriptor, partial (e.g. 'interview', 'letter', 'photograph')"),
+        genre: z.string().max(1000).optional().describe("Format term or physical note, partial (e.g. 'interview', 'photograph')"),
         collection: z.string().max(1000).optional().describe("Collection id, code or partial title from list_collections"),
         language: z.string().max(1000).optional().describe("Name or ISO code — 'French', 'fr', 'fra' and legacy 'fre' all match"),
         mentions_country: z.string().max(1000).optional()
@@ -85,7 +86,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       if (refused) return queryErrorResult(refused);
 
       const { filtered, suggestions, did_you_mean, fulltextOnly } = selectResearchItems(store, filters);
-      if (format) return exportLink("research_items", format, filters, filtered.length);
+      if (format) return emptyExportHint(exportLink("research_items", format, filters, filtered.length), filtered.length);
 
       // Relaxation counts, spellings and the hint are guidance (AMIRA_GUIDANCE).
       const guided = guidanceEnabled();

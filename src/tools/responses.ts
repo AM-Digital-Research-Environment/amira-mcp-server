@@ -87,6 +87,17 @@ export function exposureRestrictedResult(needs: "descriptive" | "structured" | "
   return errorResult("exposure_restricted", `${what} is not available: ${exposureMessage(needs)}`);
 }
 
+/**
+ * An export link that matched nothing would hand over an empty file in
+ * silence: add a hint (guidance) to its JSON text and structured content.
+ */
+export function emptyExportHint<T extends { content: { type: string }[]; structuredContent: Record<string, unknown> }>(result: T, total: number): T {
+  if (total > 0 || !guidanceEnabled()) return result;
+  const summary = { ...result.structuredContent, hint: "No record matches these filters, so the export file is empty. Broaden or drop a filter." };
+  const [, ...rest] = result.content;
+  return { ...result, content: [{ type: "text" as const, text: JSON.stringify(summary) }, ...rest], structuredContent: summary };
+}
+
 /** Render a typed query-layer error (src/researchItemQuery.ts QueryError). */
 export function queryErrorResult(err: { code: string; message: string; needs?: "descriptive" | "structured" | "full" }) {
   return err.needs ? errorResult("exposure_restricted", `${err.message}: ${exposureMessage(err.needs)}`) : errorResult(err.code, err.message);

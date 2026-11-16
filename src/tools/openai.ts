@@ -10,7 +10,7 @@
 // HTTP transport (src/http.ts), so the stdio .mcpb keeps its smaller surface.
 //
 // `id` is typed as `<kind>:<omeka_o_id>` (item:9902, pub:30001, video:39218,
-// podcast:39121, project:37700, section:218) so fetch can route back and a
+// podcast:39121, project:37700, section:<id>) so fetch can route back and a
 // human can reconstruct the Omeka URL from the final number. fetch also accepts
 // the research tools' vocabulary (research_item:9902, publication:30001).
 import { schemaOnce } from "./schemaOnce.js";
@@ -38,8 +38,11 @@ import {
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
 import { parseTypedId } from "../typedIds.js";
-import { findRecord, type RecordTypes } from "../recordKinds.js";
+import { detailToolOf, findRecord, isStoredKind, RECORD_KINDS, recordByOId, type RecordTypes } from "../recordKinds.js";
 import { limitEcho } from "./pagination.js";
+import { errorResult } from "./responses.js";
+import { otherKindOfOId, toolForKind, wrongKindMessage } from "./records.js";
+import { config } from "../config.js";
 
 const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_SEARCH_LIMIT = 50;
@@ -348,12 +351,56 @@ const FETCH_RENDERERS: { [K in FetchKind]: (rec: RecordTypes[K], ctx: FetchCtx) 
 
 const isFetchKind = (kind: string): kind is FetchKind => Object.hasOwn(FETCH_RENDERERS, kind);
 
-function fetchDoc(store: DataStore, id: string, opts: FetchOpts): Record<string, unknown> {
+const FETCH_SERVES = "fetch reads research items, publications, videos, podcasts, projects and research sections";
+
+function fetchDoc(store: DataStore, id: string, opts: FetchOpts): ReturnType<typeof textResult> & { isError?: true } {
   // Both vocabularies parse to one kind: item:9902 = research_item:9902, pub: = publication:.
-  const parsed = parseTypedId(id);
-  const notFound = { error: { code: "not_found", message: `No record with id '${id}'.`, ...(guidanceEnabled() ? { suggested_tool: "search" } : {}) } };
-  if (!parsed || !isFetchKind(parsed.kind)) return notFound;
-  return renderRecord(parsed.kind, store, parsed.key, { store, id, opts, desc: allowDescriptive(), struct: allowStructured() }) ?? notFound;
+  const text = id.trim();
+  const ctx = { store, id, opts, desc: allowDescriptive(), struct: allowStructured() };
+  const notFound = () => errorResult("not_found", `No record with id '${id}'.`, { suggested_tool: "search" });
+  // A bare Omeka id: ids share one space across kinds, as in the get_* tools.
+  if (/^\d+$/.test(text)) {
+    const hit = recordByOId(store, Number(text));
+    if (!hit) return notFound();
+    if (isFetchKind(hit.kind)) return textResult(withOptNotes(hit.kind, renderRecord(hit.kind, store, text, ctx)!, opts));
+    const tool = toolForKind(hit.kind);
+    return errorResult("not_found", `'${id}' is ${articled(hit.kind)}. ${FETCH_SERVES}; use ${tool}.`, { suggested_tool: tool, terse: `'${id}' is ${articled(hit.kind)}.` });
+  }
+  const parsed = parseTypedId(text);
+  if (!parsed) return notFound();
+  if (!isFetchKind(parsed.kind)) {
+    const tool = detailToolOf(parsed.kind) ?? (isStoredKind(parsed.kind) ? toolForKind(parsed.kind) : "resolve_entity");
+    return errorResult("invalid_id", `${FETCH_SERVES}; '${id}' is ${articled(parsed.kind)} id: use ${tool}.`, { suggested_tool: tool, terse: `${FETCH_SERVES}.` });
+  }
+  const rendered = renderRecord(parsed.kind, store, parsed.key, ctx);
+  if (rendered) return textResult(withOptNotes(parsed.kind, rendered, opts));
+  const other = otherKindOfOId(store, parsed.key, parsed.kind);
+  if (other) {
+    const prefix = RECORD_KINDS[other.kind].fetchPrefix;
+    const hint = prefix ? `fetch ${prefix}:${parsed.key}` : `use ${other.tool}`;
+    return errorResult("not_found", `${wrongKindMessage(id, other.kind, parsed.kind)} ${hint[0]!.toUpperCase()}${hint.slice(1)}.`,
+      { suggested_tool: prefix ? "fetch" : other.tool, terse: wrongKindMessage(id, other.kind, parsed.kind) });
+  }
+  return notFound();
+}
+
+const articled = (kind: string) => {
+  const label = kind === "research_item" ? "research item" : kind === "section" ? "research section" : kind === "organisation" ? "institution" : kind;
+  return `${/^[aeiou]/.test(label) ? "an" : "a"} ${label}`;
+};
+
+/** Say when an opt-in text does not exist for this kind, rather than ignoring it. */
+function withOptNotes(kind: FetchKind, doc: Record<string, unknown>, opts: FetchOpts): Record<string, unknown> {
+  if (!guidanceEnabled()) return doc;
+  const notes: string[] = [];
+  if (opts.includeFulltext && kind !== "publication") {
+    notes.push(kind === "research_item" && config.access === "curator"
+      ? "include_fulltext applies to publications; fetch does not return private full text: use get_research_item with include_fulltext."
+      : "include_fulltext applies to publications only; this record has no public full text.");
+  }
+  if (opts.includeTranscript && kind !== "video" && kind !== "podcast") notes.push("include_transcript applies to videos and podcasts only.");
+  if (!notes.length) return doc;
+  return { ...doc, metadata: { ...(doc.metadata as Record<string, unknown>), note: notes.join(" ") } };
 }
 
 function renderRecord<K extends FetchKind>(kind: K, store: DataStore, key: string, ctx: FetchCtx): Record<string, unknown> | null {
@@ -384,7 +431,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
           z.object({
             id: z.string().describe("Typed record id, e.g. 'item:9902'"),
             title: z.string(),
-            url: z.string().describe("The AMIRA/Omeka public record page"),
+            url: z.string().describe("The AMIRA/Omeka record page"),
           }),
         ),
         requested_limit: z.number().optional(),
@@ -420,7 +467,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
         include_fulltext: z.boolean().optional().describe("Default false — set true to append a publication's extracted full text"),
         fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
         fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
-        max_chars: z.number().int().optional().describe("Cap on the whole returned text body, default/max 25000"),
+        max_chars: z.number().int().min(1).optional().describe("Cap on the whole returned text body, default/max 25000"),
       })),
       outputSchema: schemaOnce("fetch:out", () => z.object({
         id: z.string().optional(),
@@ -428,10 +475,6 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
         text: z.string().optional(),
         url: z.string().optional(),
         metadata: z.record(z.string(), z.unknown()).optional(),
-        error: z
-          .object({ code: z.string(), message: z.string(), suggested_tool: z.string().optional() })
-          .optional()
-          .describe("Present instead of the record when the id is unknown"),
       })),
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_fulltext, fulltext_offset, fulltext_max_chars, max_chars }) => {
@@ -446,7 +489,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
         fulltextOffset: fulltext_offset,
         fulltextMaxChars: fulltext_max_chars,
       });
-      return { ...textResult(payload), ...(payload.error ? { isError: true } : {}) };
+      return payload;
     },
   );
 }

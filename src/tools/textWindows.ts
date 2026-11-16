@@ -51,23 +51,37 @@ export function textWindowFields(field: WindowField, text: string | null, opts: 
     return { [`has_${field}`]: has, [`${field}_length`]: total, ...(has ? { [`${field}_access`]: "disabled" } : {}) };
   }
   if (!opts.include) {
+    const paged = opts.offset !== undefined || opts.maxChars !== undefined;
     return {
       [`has_${field}`]: has,
       [`${field}_length`]: total,
       ...(has && guidanceEnabled()
-        ? { [`${field}_hint`]: `Set include_${field}=true for the text (page long ones with ${field}_offset / ${field}_max_chars).` }
+        ? {
+            [`${field}_hint`]: paged
+              ? `${field}_offset / ${field}_max_chars apply only with include_${field}=true; set it to read the text.`
+              : `Set include_${field}=true for the text (page long ones with ${field}_offset / ${field}_max_chars).`,
+          }
         : {}),
     };
   }
   const { slice, offset } = windowSlice(text ?? "", opts);
+  const truncated = offset + slice.length < total;
   return {
     [`has_${field}`]: has,
     [field]: has ? slice : null,
     [`${field}_length`]: total,
     [`${field}_offset`]: offset,
     [`${field}_returned_chars`]: slice.length,
-    [`${field}_truncated`]: offset + slice.length < total || undefined,
+    [`${field}_truncated`]: truncated || undefined,
+    ...(truncated ? { [`${field}_next_offset`]: offset + slice.length } : {}),
+    ...pastEndHint(field, has, offset, total),
   };
+}
+
+/** `<field>_hint` when the offset lies at or past the end of a non-empty text. */
+function pastEndHint(field: WindowField, has: boolean, offset: number, total: number): Record<string, unknown> {
+  if (!has || offset < total || !guidanceEnabled()) return {};
+  return { [`${field}_hint`]: `${field}_offset ${offset} is past the end: the ${field} has ${total} characters (offsets 0–${total - 1}).` };
 }
 
 /**
@@ -122,15 +136,21 @@ export function textWindowAppend(
     };
   }
   const { slice, offset } = windowSlice(text ?? "", opts);
+  const truncated = offset + slice.length < total;
+  const pastEnd = offset >= total;
   return {
-    append: `\n${label}:\n${slice}`,
+    append: pastEnd
+      ? `\n[${label}: offset ${offset} is past the end (${total} chars).]`
+      : `\n${label}:\n${slice}`,
     meta: {
       [`has_${field}`]: true,
       [`${field}_included`]: true,
       [`${field}_length`]: total,
       [`${field}_offset`]: offset,
       [`${field}_returned_chars`]: slice.length,
-      [`${field}_truncated`]: offset + slice.length < total || undefined,
+      [`${field}_truncated`]: truncated || undefined,
+      ...(truncated ? { [`${field}_next_offset`]: offset + slice.length } : {}),
+      ...pastEndHint(field, true, offset, total),
     },
   };
 }

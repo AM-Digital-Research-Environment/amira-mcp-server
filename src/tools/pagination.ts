@@ -104,6 +104,10 @@ export function filtersEcho(filters: Record<string, unknown>): Record<string, un
  * matches, or one without filters, never carries it.
  */
 export function emptySearchHint(total: number, filters: Record<string, unknown>): Record<string, unknown> {
-  if (total > 0 || !guidanceEnabled() || !("filters" in filtersEcho(filters))) return {};
+  const echo = filtersEcho(filters).filters as Record<string, unknown> | undefined;
+  if (total > 0 || !guidanceEnabled() || !echo) return {};
+  if (Object.keys(echo).length === 1) {
+    return { hint: "No record matches this filter. Check its spelling or broaden it; did_you_mean, when present, lists stored values." };
+  }
   return { hint: "No record matches all these filters. Drop or broaden them one at a time to find the one that excludes everything." };
 }

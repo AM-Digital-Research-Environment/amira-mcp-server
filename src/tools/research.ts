@@ -15,6 +15,9 @@ import { itemUrl, } from "../urls.js";
 import { canonicalTypedId, parseTypedId, stripTypedId } from "../typedIds.js";
 import { itemsOfCollection, resolveCollection } from "../collections.js";
 import { semanticCoverage } from "../semantic.js";
+import { literalPhrase } from "../matching.js";
+import { config } from "../config.js";
+import { guidanceEnabled } from "../guidance.js";
 import { findRecord } from "../recordKinds.js";
 import { READ_ONLY, capLimit, capOffset, limitEcho, queryErrorResult, textResult, errorResult, exposureRestrictedResult, pageOf, type Server } from "./_shared.js";
 import { refreshSchema } from "./outputSchemas.js";
@@ -28,6 +31,18 @@ const counts = z.record(z.string(), z.number());
 
 /** Matches scanned per document; `scanned_matches_capped` says when it was hit. */
 const MATCH_CAP = 10_000;
+
+/** Why get_text_passages cannot read an id of another kind, and what to use instead. */
+function unsupportedNote(store: Awaited<ReturnType<typeof ensureStore>>, kind: string, key: string): string {
+  if (kind === "research_item") {
+    const item = findRecord(store, "research_item", key);
+    if (config.access === "curator" && item?.restricted?.fulltext) {
+      return "This tool does not search private full text; get_research_item with include_fulltext pages it.";
+    }
+    return "Research items carry no public full text; read the record with get_research_item.";
+  }
+  return "Only publication, video and podcast texts are searched.";
+}
 
 export function registerResearchTools(server: Server, tools: ToolMap): void {
   tools.resolve_entity = server.registerTool("resolve_entity", {
@@ -69,7 +84,15 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_entity_graph");
     const store = await ensureStore();
     const id = snapshotId(store.manifest);
-    if (args.snapshot_id && args.snapshot_id !== id) return errorResult("snapshot_changed", "The snapshot changed. Reload the graph before paging evidence.", { terse: "The snapshot changed." });
+    if (args.snapshot_id && args.snapshot_id !== id) {
+      // A string that is not a snapshot id, or one no retained snapshot carries, was never valid here.
+      const retained = /^[0-9a-f]{24}$/.test(args.snapshot_id) && (await retainedSnapshots(store)).some((s) => s.id === args.snapshot_id);
+      if (!retained) {
+        return errorResult("invalid_id", `Unknown snapshot id '${args.snapshot_id}'. Pass the snapshot_id a graph response returned (currently ${id}), or omit it.`,
+          { terse: `Unknown snapshot id '${args.snapshot_id}'.` });
+      }
+      return errorResult("snapshot_changed", "The snapshot changed. Reload the graph before paging evidence.", { terse: "The snapshot changed." });
+    }
     // `item:` / `pub:` ids from search and fetch work as seeds too.
     const seed = canonicalTypedId(args.seed);
     if (!graphIndex(store).entities.has(seed)) return errorResult("not_found", "Use a typed id returned by resolve_entity (e.g. person:123, research_item:9902).", { suggested_tool: "resolve_entity",
@@ -86,34 +109,47 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
 
   tools.get_text_passages = server.registerTool("get_text_passages", {
     title: "Find cited text passages", annotations: READ_ONLY,
-    description: "Find literal accent-insensitive keyword passages in selected publication/video/podcast IDs. Original UTF-16 offsets, bounded context, and citations. Requires full text exposure; no semantic ranking.",
+    description: "Find accent-insensitive passages of one literal phrase (quotes optional; words are not matched separately) in selected publication/video/podcast IDs. Original UTF-16 offsets, bounded context, citations. Requires full text exposure.",
     inputSchema: schemaOnce("get_text_passages:in", () => z.strictObject({ ids: z.array(z.string().max(64)).min(1).max(10).describe("publication:, video: or podcast: ids"),
       keyword: querySchema, radius: z.number().int().min(20).max(500).optional(), offset: offsetSchema,
       limit: z.number().int().min(1).optional().describe("Default 10, max 20") })),
     outputSchema: schemaOnce("get_text_passages:out", () => z.object({ ...pageShape, results: z.array(z.object({ id: z.string(), title: z.string(), amira_url: citedUrl(),
       start: z.number(), end: z.number(), match_start: z.number(), match_end: z.number(), text: z.string() })),
-      snapshot_id: z.string(), scanned_matches_capped: z.boolean(), unavailable_ids: z.array(z.string()) })),
+      snapshot_id: z.string(), scanned_matches_capped: z.boolean(), unavailable_ids: z.array(z.string()),
+      unavailable: z.array(z.object({ id: z.string(), reason: z.string(), note: z.string().optional() })).optional() })),
   }, async (args) => {
     if (!allowFullText()) return exposureRestrictedResult("full", "get_text_passages");
     const store = await ensureStore();
     const limit = capLimit(args.limit, 10, 20);
     const offset = capOffset(args.offset);
     const radius = args.radius ?? 160;
-    const needle = fold(args.keyword);
-    const unavailable: string[] = [];
+    // One literal phrase: quote marks are syntax, so `"oral arts"` = `oral arts`.
+    const phrase = literalPhrase(args.keyword);
+    if (!phrase) return errorResult("invalid_argument", "The keyword is empty once quote marks are removed.");
+    const needle = fold(phrase);
+    const unavailable: { id: string; reason: string; note?: string }[] = [];
+    const seen = new Set<string>();
     // Count every document's matches first (cheap: memoised folded copies),
     // then materialise offsets only for the requested page.
     const docs: { id: string; title: string; o_id: number; text: string; total: number }[] = [];
     let capped = false;
-    for (const raw of new Set(args.ids)) {
+    for (const raw of args.ids) {
       const parsed = parseTypedId(raw);
-      const rec = parsed && (parsed.kind === "publication" || parsed.kind === "video" || parsed.kind === "podcast")
-        ? findRecord(store, parsed.kind, parsed.key) : undefined;
-      const text = rec && ("fulltext" in rec ? rec.fulltext : rec.transcript);
-      if (!text || !rec || !parsed) { unavailable.push(raw); continue; }
+      if (!parsed) { unavailable.push({ id: raw, reason: "malformed_id", note: "Expected a typed id such as publication:123." }); continue; }
       const id = `${parsed.kind}:${parsed.key}`;
+      // Deduplicate on the parsed id: publication:41915 and pub:41915 are one document.
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (parsed.kind !== "publication" && parsed.kind !== "video" && parsed.kind !== "podcast") {
+        unavailable.push({ id: raw, reason: "unsupported_kind", note: unsupportedNote(store, parsed.kind, parsed.key) });
+        continue;
+      }
+      const rec = findRecord(store, parsed.kind, parsed.key);
+      if (!rec) { unavailable.push({ id: raw, reason: "not_found" }); continue; }
+      const text = "fulltext" in rec ? rec.fulltext : rec.transcript;
+      if (!text) { unavailable.push({ id: raw, reason: parsed.kind === "publication" ? "no_fulltext" : "no_transcript" }); continue; }
       if (!foldCached(text).includes(needle)) continue;
-      const { total, capped: hit } = foldedMatches(text, args.keyword, { take: 0, cap: MATCH_CAP });
+      const { total, capped: hit } = foldedMatches(text, phrase, { take: 0, cap: MATCH_CAP });
       capped ||= hit;
       docs.push({ id, title: rec.title, o_id: rec.o_id, text, total });
     }
@@ -123,7 +159,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     for (const doc of docs) {
       if (results.length >= limit) break;
       if (skip >= doc.total) { skip -= doc.total; continue; }
-      const { ranges } = foldedMatches(doc.text, args.keyword, { skip, take: limit - results.length, cap: MATCH_CAP });
+      const { ranges } = foldedMatches(doc.text, phrase, { skip, take: limit - results.length, cap: MATCH_CAP });
       skip = 0;
       for (const match of ranges) {
         const start = Math.max(0, match.start - radius), end = Math.min(doc.text.length, match.end + radius);
@@ -133,7 +169,8 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     const hasMore = offset + results.length < total;
     return textResult({ count: results.length, total_matches: total, offset, has_more: hasMore,
       ...(hasMore ? { next_offset: offset + results.length } : {}), ...limitEcho(args.limit, 20, limit),
-      results, snapshot_id: snapshotId(store.manifest), scanned_matches_capped: capped, unavailable_ids: unavailable });
+      results, snapshot_id: snapshotId(store.manifest), scanned_matches_capped: capped, unavailable_ids: unavailable.map((u) => u.id),
+      ...(unavailable.length ? { unavailable } : {}) });
   });
 
   tools.compare_collections = server.registerTool("compare_collections", {
@@ -216,8 +253,9 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     inputSchema: schemaOnce("get_snapshot_changes:in", () => z.strictObject({ from_id: z.string().max(64).optional(), to_id: z.string().max(64).optional(),
       corpus: z.enum(CORPORA).optional(), offset: offsetSchema, limit: z.number().int().min(1).optional().describe("Default 30, max 100") })),
     outputSchema: schemaOnce("get_snapshot_changes:out", () => z.object({ status: z.enum(["ready", "history_unavailable"]), snapshots: z.array(z.object({ id: z.string(), fetched_at: z.string() })),
+      reason: z.string().optional(), hint: z.string().optional(),
       from_id: z.string().optional(), to_id: z.string().optional(), results: z.array(z.object({ corpus: z.string(), id: z.number(),
-        change: z.enum(["added", "updated", "deleted"]), title: z.string(), amira_url: citedUrl() })).optional(),
+        change: z.enum(["added", "updated", "deleted"]), title: z.string(), amira_url: z.string().optional() })).optional(),
       count: z.number().optional(), total_matches: z.number().optional(), offset: z.number().optional(), has_more: z.boolean().optional(), next_offset: z.number().optional(),
       requested_limit: z.number().optional(), effective_limit: z.number().optional(), response_limited: z.boolean().optional() })),
   }, async (args) => {
@@ -225,10 +263,19 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     const store = await ensureStore();
     const available = await retainedSnapshots(store);
     const meta = available.map((s) => ({ id: s.id, fetched_at: s.fetchedAt }));
-    if (available.length < 2) return textResult({ status: "history_unavailable", snapshots: meta });
+    const unknown = [args.from_id, args.to_id].filter((v): v is string => !!v && !available.some((s) => s.id === v));
+    if (unknown.length) {
+      return errorResult("snapshot_unavailable",
+        `Unknown or no longer retained snapshot id${unknown.length > 1 ? "s" : ""}: ${[...new Set(unknown)].join(", ")}. Retained: ${meta.map((s) => s.id).join(", ") || "none"}.`,
+        { terse: `Unknown snapshot id: ${unknown.join(", ")}.` });
+    }
+    if (available.length < 2) {
+      return textResult({ status: "history_unavailable", snapshots: meta,
+        reason: "Only the served snapshot is retained here; a diff needs two (history accumulates as refreshes replace the snapshot).",
+        ...(guidanceEnabled() ? { hint: "For recent additions, use added_since (or modified_since) on search_research_items or search_publications." } : {}) });
+    }
     const toId = args.to_id ?? available[0]!.id, fromId = args.from_id ?? available[1]!.id;
-    const before = available.find((s) => s.id === fromId), after = available.find((s) => s.id === toId);
-    if (!before || !after) return errorResult("snapshot_unavailable", "One selected snapshot is no longer retained. Reload the snapshot list.", { terse: "One selected snapshot is no longer retained." });
+    const before = available.find((s) => s.id === fromId)!, after = available.find((s) => s.id === toId)!;
     const changes = snapshotDiff(before, after, args.corpus ? [args.corpus] : CORPORA);
     const limit = capLimit(args.limit, 30, 100);
     return textResult(pageOf(changes, capOffset(args.offset), limit, (c) => c,

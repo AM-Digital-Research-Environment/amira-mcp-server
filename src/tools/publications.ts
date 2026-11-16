@@ -15,7 +15,7 @@ import {
   capLimit,
   capOffset,
   capText,
-  containsCI,
+  emptyExportHint,
   emptySearchHint,
   errorResult,
   exposureRestrictedResult,
@@ -25,6 +25,7 @@ import {
   pageOf,
   publicationSummary,
   refLabels,
+  restrictedTextFlag,
   textAccessDisabledResult,
   textResult,
   textWindowFields,
@@ -33,7 +34,9 @@ import {
 import { itemUrl, itemUrlOrNull } from "../urls.js";
 import { publicationCitation } from "../publicationCitation.js";
 import { publicationExportPage } from "./publicationExport.js";
-import { languagesOf, publicationFilters, publicationFilterError, selectPublications } from "../publicationQuery.js";
+import { languagesOf, publicationDidYouMean, publicationFilters, publicationFilterError, selectPublications } from "../publicationQuery.js";
+import { keywordPredicate } from "../matching.js";
+import { guidanceEnabled } from "../guidance.js";
 import { queryErrorResult } from "./responses.js";
 import { exportLink, EXPORT_FORMATS } from "../resources.js";
 import { fold } from "../text.js";
@@ -52,7 +55,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
         ...publicationFilters,
         citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Omit for summaries; pages carry bibtex, ris or csl_json"),
         export: z.enum(EXPORT_FORMATS.publications).optional().describe("Return a file link instead of rows"),
-        limit: z.number().int().min(1).optional().describe("Default 25; max 100 summaries or 25 exports, also byte-bounded"),
+        limit: z.number().int().min(1).optional().describe("Default 25; max 100 summaries or 25 citation_format rows, also byte-bounded. export ignores it"),
         offset: z.number().int().min(0).max(100_000).optional(),
       })),
     },
@@ -65,10 +68,11 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       const invalid = publicationFilterError(filters);
       if (invalid) return queryErrorResult(invalid);
       const { records: filtered, fulltextOnly, restrictedOnly } = selectPublications(store, filters);
-      if (format) return exportLink("publications", format, filters, filtered.length);
+      if (format) return emptyExportHint(exportLink("publications", format, filters, filtered.length), filtered.length);
 
       filtered.sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title) || a.o_id - b.o_id);
-      const extra = { ...limitEcho(args.limit, maxLimit, limit), ...filtersEcho(filters) };
+      const didYouMean = !filtered.length && guidanceEnabled() ? publicationDidYouMean(store, filters) : [];
+      const extra = { ...limitEcho(args.limit, maxLimit, limit), ...filtersEcho(filters), ...(didYouMean.length ? { did_you_mean: didYouMean } : {}) };
       const hint = emptySearchHint(filtered.length, filters);
       if (citation_format) return publicationExportPage(filtered, offset, limit, citation_format, extra, hint);
 
@@ -113,6 +117,21 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       if ("error" in found) return found.error;
       const p = found.record;
       if (include_fulltext && !allowFullText()) return textAccessDisabledResult("fulltext");
+      const window = textWindowFields("fulltext", p.fulltext, {
+        include: include_fulltext,
+        offset: fulltext_offset,
+        maxChars: fulltext_max_chars,
+      });
+      // A later full-text page: a compact header with the window. The metadata
+      // and abstract (~5 KB) came with the first page and are not re-sent.
+      if (include_fulltext && (fulltext_offset ?? 0) > 0) {
+        return textResult({
+          id: String(p.o_id), omeka_id: p.o_id, title: p.title, year: p.year, doi: p.doi,
+          ...window,
+          ...restrictedTextFlag(p),
+          amira_url: itemUrl(p.o_id),
+        });
+      }
       const journal = p.venue_ref?.o_id != null ? store.getJournal(p.venue_ref.o_id) : undefined;
       const citation = publicationCitation(p, citation_format);
       const linkedDetail = (ref: LinkedRef) => ({
@@ -177,11 +196,8 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
         media: (p.media ?? []).map((m) => ({ type: m.type, url: m.url, size: m.size, ...(m.visibility ? { visibility: m.visibility } : {}) })),
         thumbnail: p.thumbnail,
         created: p.created ?? null,
-        ...textWindowFields("fulltext", p.fulltext, {
-          include: include_fulltext,
-          offset: fulltext_offset,
-          maxChars: fulltext_max_chars,
-        }),
+        ...window,
+        ...restrictedTextFlag(p),
         [citation.field]: citation.export,
         ...(include_similar ? { similar: similarBlock(store, "publication", p.o_id) } : {}),
         amira_url: itemUrl(p.o_id),
@@ -268,7 +284,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       description: "Publication venues ranked by linked bibliography records, with ISSN and catalogue links.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_journals:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Substring filter on the journal title"),
+        keyword: z.string().max(1000).optional().describe("Filter on the journal title; every word must match, quote a phrase"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
       })),
@@ -287,7 +303,10 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       let ranked = store.journals
         .map((j) => ({ j, count: pubCounts.get(j.o_id) ?? 0 }))
         .sort((a, b) => b.count - a.count || a.j.title.localeCompare(b.j.title));
-      if (args.keyword) ranked = ranked.filter((r) => containsCI(r.j.title, args.keyword!));
+      if (args.keyword) {
+        const matches = keywordPredicate(args.keyword);
+        ranked = ranked.filter((r) => matches([r.j.title]));
+      }
 
       return textResult(
         pageOf(

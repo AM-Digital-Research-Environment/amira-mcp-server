@@ -6,7 +6,8 @@ import { z } from "zod";
 import { type DataStore, UNIVERSITY_LABELS } from "./data.js";
 import type { LinkedRef, ResearchItemRec, University } from "./types.js";
 import {
-  anyContainsCI, containsCI, emptyKeyword, equalsCI, keywordMatchesFolded, parseKeyword, placeAliases, refLabels, wordPrefixMatch,
+  anyContainsCI, closestValues, containsCI, emptyKeyword, equalsCI, keywordMatchesFolded, parseKeyword, placeAliases, refLabels,
+  wordPrefixMatch,
 } from "./matching.js";
 import { personMatches } from "./names.js";
 import { allowDescriptive, allowFullText, allowStructured } from "./exposure.js";
@@ -78,6 +79,24 @@ export function invalidYearRange(from?: number, to?: number): boolean {
 /** University code or (partial) label: "ujkz" or "Joseph Ki-Zerbo". */
 export function matchesUniversity(code: University, query: string): boolean {
   return code === query.trim().toLowerCase() || containsCI(UNIVERSITY_LABELS[code], query);
+}
+
+/** Every university code and label, for a university filter that matched nothing. */
+export const universityValues = (): string[] =>
+  Object.entries(UNIVERSITY_LABELS).map(([code, label]) => `${code} (${label})`);
+
+/** A section name with "&" read as "and": "arts and aesthetics" = "Arts & Aesthetics". */
+const sectionKey = (name: string): string => fold(name).replace(/&/g, " and ").replace(/\s+/g, " ").trim();
+
+/** A research section by name: exact (folded), or with "and" for "&". */
+export function sectionByName(store: DataStore, name: string): ReturnType<DataStore["getSection"]> {
+  const key = sectionKey(name);
+  return store.getSection(name) ?? store.sections.find((s) => sectionKey(s.name) === key);
+}
+
+/** A research section by name (exact, or with "and" for "&"), Omeka id or typed id. */
+export function resolveSectionLoose(store: DataStore, nameOrId: string): ReturnType<DataStore["resolveSection"]> {
+  return store.resolveSection(nameOrId) ?? sectionByName(store, nameOrId);
 }
 
 /** Folded labels of every known place (authorities and literal item places). */
@@ -199,7 +218,7 @@ export function selectResearchItems(store: DataStore, args: ResearchFilters) {
     preds.project_id = (it) =>
       project ? it.project?.o_id === project.o_id : equalsCI(it.project?.label, String(args.project_id));
   if (args.research_section) {
-    const section = store.resolveSection(args.research_section);
+    const section = resolveSectionLoose(store, args.research_section);
     preds.research_section = (it) => section
       ? store.sectionRefsOfItem(it).some((s) => s.o_id === section.o_id || equalsCI(s.label, section.name))
       : store.sectionRefsOfItem(it).some((s) => equalsCI(s.label, args.research_section!));
@@ -263,6 +282,22 @@ export function selectResearchItems(store: DataStore, args: ResearchFilters) {
     if (index && !countryNames(index, placeAliases(args.mentions_country!)).size) {
       const values = countrySuggestions(index, args.mentions_country!);
       if (values.length) didYouMean.push({ filter: "mentions_country", values });
+    }
+    // Closed vocabularies: a value no record carries is a spelling or a value
+    // the collection does not use. Name the stored values (or the near ones).
+    const vocabularies: [keyof ResearchFilters, () => string[]][] = [
+      ["university", universityValues],
+      ["research_section", () => store.sections.map((s) => s.name)],
+      ["language", () => store.cached("research:language-values", () => [...new Set(store.items.flatMap((it) => refLabels(it.languages)))])],
+      ["resource_type", () => store.cached("research:type-values", () => [...new Set(store.items.map((it) => it.type).filter((t): t is string => !!t))])],
+    ];
+    for (const [filter, values] of vocabularies) {
+      const value = args[filter];
+      const pred = preds[filter];
+      if (typeof value !== "string" || !pred || store.items.some(pred)) continue;
+      // Up to 100 stored values are listed whole (the corpus uses about 60 languages).
+      const near = closestValues(value, values(), 100);
+      if (near.length) didYouMean.push({ filter, values: near });
     }
   }
   return {

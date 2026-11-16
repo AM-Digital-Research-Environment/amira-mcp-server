@@ -8,7 +8,6 @@ import {
   READ_ONLY,
   capLimit,
   capOffset,
-  containsCI,
   errorResult,
   exposureRestrictedResult,
   filtersEcho,
@@ -22,7 +21,7 @@ import { itemUrlOrNull } from "../urls.js";
 import { allCollections, collectionFields, itemsOfCollection } from "../collections.js";
 import { APP_UI_META } from "./apps.js";
 import { researchFilterError, researchFilters, selectResearchItems } from "../researchItemQuery.js";
-import { placeAliases, RefTally, refKey, type TallyRow } from "../matching.js";
+import { keywordPredicate, placeAliases, RefTally, refKey, type TallyRow } from "../matching.js";
 import { fold } from "../text.js";
 import { queryErrorResult } from "./responses.js";
 import { timelineSchema } from "./outputSchemas.js";
@@ -32,6 +31,30 @@ function countRefs(items: ResearchItemRec[], pick: (it: ResearchItemRec) => Link
   const tally = new RefTally();
   for (const it of items) tally.add(pick(it));
   return tally.rows().sort((a, b) => b.count - a.count);
+}
+
+/** A row filter on `label` with the search tools' keyword semantics (src/matching.ts keywordPredicate). */
+function byLabel(keyword: string): (r: { label: string }) => boolean {
+  const matches = keywordPredicate(keyword);
+  return (r) => matches([r.label]);
+}
+
+/** The first problem with a `near` or `bbox` argument, or null. */
+export function geoArgError(near?: { latitude: number; longitude: number; km: number }, bbox?: number[]): string | null {
+  const lat = (v: number) => v >= -90 && v <= 90;
+  const lon = (v: number) => v >= -180 && v <= 180;
+  if (near && (!lat(near.latitude) || !lon(near.longitude))) {
+    return "`near` needs latitude in -90..90 and longitude in -180..180.";
+  }
+  if (bbox) {
+    const [west, south, east, north] = bbox as [number, number, number, number];
+    if (!lon(west) || !lon(east) || !lat(south) || !lat(north)) {
+      return "`bbox` is [west, south, east, north]: longitudes in -180..180, latitudes in -90..90.";
+    }
+    // west > east is a box across the antimeridian; south > north is no box at all.
+    if (south > north) return "`bbox` south must be less than or equal to north ([west, south, east, north]).";
+  }
+  return null;
 }
 
 /** "Library of Congress Subject Headings" → "lcsh", "Tag" → "tag". */
@@ -58,8 +81,9 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       description: "Subject headings (LCSH or free tags) ranked by distinct research-item count. Feed a heading into search_research_items.subject.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_subjects:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Substring filter on the subject heading"),
-        vocabulary: z.enum(["lcsh", "tag"]).optional().describe("Only Library of Congress headings or only free tags"),
+        keyword: z.string().max(1000).optional().describe("Filter on the heading; every word must match, quote a phrase"),
+        vocabulary: z.enum(["lcsh", "tag", "unspecified"]).optional()
+          .describe("lcsh, tag, or unspecified: every other heading (mostly places with no vocabulary)"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
         offset: z.number().int().min(0).max(100_000).optional(),
       })),
@@ -70,8 +94,15 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       const limit = capLimit(args.limit, 50, 300);
       const offset = capOffset(args.offset);
       let ranked = store.cached("facets:subjects", () => countRefs(store.items, (it) => it.subjects));
-      if (args.keyword) ranked = ranked.filter((r) => containsCI(r.label, args.keyword!));
-      if (args.vocabulary) ranked = ranked.filter((r) => subjectVocabulary(r.o_id != null ? store.getSubject(r.o_id)?.vocabulary : null) === args.vocabulary);
+      if (args.keyword) ranked = ranked.filter(byLabel(args.keyword));
+      if (args.vocabulary) {
+        // Every heading falls under exactly one value: "unspecified" takes any
+        // that is neither LCSH nor a tag (mostly places with no vocabulary).
+        const vocabularyOf = (r: TallyRow) => subjectVocabulary(r.o_id != null ? store.getSubject(r.o_id)?.vocabulary : null);
+        ranked = args.vocabulary === "unspecified"
+          ? ranked.filter((r) => { const v = vocabularyOf(r); return v !== "lcsh" && v !== "tag"; })
+          : ranked.filter((r) => vocabularyOf(r) === args.vocabulary);
+      }
       return textResult(
         pageOf(ranked, offset, limit, (r) => {
           const authority = r.o_id != null ? store.getSubject(r.o_id) : undefined;
@@ -99,9 +130,10 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       inputSchema: schemaOnce("list_locations:in", () => z.strictObject({
         filters: researchFilters.optional().describe("Research-item filters applied before place counts"),
         country: z.string().max(1000).optional().describe("One country, exact name or alias, plus its cities"),
-        keyword: z.string().max(1000).optional().describe("Substring filter on the place name"),
-        near: z.strictObject({ latitude: z.number(), longitude: z.number(), km: z.number().positive() }).optional().describe("Places within km of a point"),
-        bbox: z.array(z.number()).length(4).optional().describe("[west, south, east, north]"),
+        keyword: z.string().max(1000).optional().describe("Filter on the place name; every word must match, quote a phrase"),
+        near: z.strictObject({ latitude: z.number(), longitude: z.number(), km: z.number().positive() }).optional()
+          .describe("Places within km (> 0) of a point; latitude -90..90, longitude -180..180"),
+        bbox: z.array(z.number()).length(4).optional().describe("[west, south, east, north]; west > east crosses the antimeridian"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
         offset: z.number().int().min(0).max(100_000).optional(),
       })),
@@ -111,6 +143,8 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_locations");
       const refused = researchFilterError(args.filters ?? {}, store);
       if (refused) return queryErrorResult(refused);
+      const geoError = geoArgError(args.near, args.bbox);
+      if (geoError) return errorResult("invalid_argument", geoError);
       const limit = capLimit(args.limit, 50, 300);
       const offset = capOffset(args.offset);
 
@@ -151,7 +185,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
         const names = placeAliases(args.country);
         ranked = ranked.filter((r) => names.has(fold(r.country ?? r.label)));
       }
-      if (args.keyword) ranked = ranked.filter((r) => containsCI(r.label, args.keyword!));
+      if (args.keyword) ranked = ranked.filter(byLabel(args.keyword));
       if (args.near || args.bbox) {
         ranked = ranked.filter((r) => {
           const loc = r.o_id != null ? store.getLocation(r.o_id) : undefined;
@@ -194,6 +228,8 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
             matched_items: selected.length,
             items_without_place: selected.filter((it) => !it.places.length).length,
             ...limitEcho(args.limit, 300, limit),
+            // Mirrors the arguments, so `filters.filters` is this tool's own
+            // `filters` argument; the map app replays it (src/ui/views/map.js).
             ...filtersEcho({ country: args.country, keyword: args.keyword, near: args.near, bbox: args.bbox, filters: args.filters }),
           },
         ),
@@ -209,7 +245,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       description: "Research collections, one per project, ranked by research-item count and cited by the project page. Feed an id or code into search_research_items.collection.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_collections:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Substring filter on the collection title, project name or code"),
+        keyword: z.string().max(1000).optional().describe("Filter on the collection title, project name or code; every word must match"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
       })),
@@ -225,9 +261,9 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
         .filter((r) => r.count > 0)
         .sort((a, b) => b.count - a.count || a.c.title.localeCompare(b.c.title)));
       if (args.keyword) {
-        const kw = args.keyword;
-        ranked = ranked.filter(({ c }) => containsCI(c.title, kw) || containsCI(c.project?.name, kw) ||
-          containsCI(c.project?.dre_id, kw) || c.sets.some((s) => containsCI(s.title, kw) || containsCI(s.code, kw)));
+        const matches = keywordPredicate(args.keyword);
+        ranked = ranked.filter(({ c }) =>
+          matches([c.title, c.project?.name, c.project?.dre_id, ...c.sets.flatMap((s) => [s.title, s.code])]));
       }
 
       return textResult(
@@ -251,9 +287,9 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_categories:in", () => z.strictObject({
         category: z
-          .enum(["formats", "genres", "languages", "resource_types"])
-          .describe("'genres' is an alias of 'formats'. The former 'tags' facet is merged into subjects — use list_subjects"),
-        keyword: z.string().max(1000).optional().describe("Substring filter on the value"),
+          .enum(["formats", "genres", "physical_notes", "languages", "resource_types"])
+          .describe("'genres' = 'formats' (controlled terms); 'physical_notes' lists free-text notes. Both feed genre. Tags: use list_subjects"),
+        keyword: z.string().max(1000).optional().describe("Filter on the value; every word must match, quote a phrase"),
         limit: z.number().int().min(1).optional().describe("Default 100, max 500"),
         offset: z.number().int().min(0).max(100_000).optional(),
       })),
@@ -270,11 +306,12 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
 
       let ranked = store.cached(`facets:category:${category}`, () => {
       let ranked: TallyRow[];
+      // Controlled format terms and free-text physical notes are separate
+      // facets: a sentence-long note is not a format value.
       if (category === "formats") {
-        ranked = countRefs(store.items, (it) => [
-          ...it.formats,
-          ...it.format_notes.map((label) => ({ label, o_id: null })),
-        ]);
+        ranked = countRefs(store.items, (it) => it.formats);
+      } else if (category === "physical_notes") {
+        ranked = countRefs(store.items, (it) => it.format_notes.map((label) => ({ label, o_id: null })));
       } else if (category === "languages") {
         ranked = countRefs(store.items, (it) => it.languages);
       } else {
@@ -282,7 +319,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       }
       return ranked;
       });
-      if (args.keyword) ranked = ranked.filter((r) => containsCI(r.label, args.keyword!));
+      if (args.keyword) ranked = ranked.filter(byLabel(args.keyword));
 
       const codeOf = (label: string): string | null =>
         store.languageIndex.all.find((l) => l.name === label)?.code ?? null;
@@ -317,7 +354,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       // Renders through the MCP Apps timeline when the host supports the
       // extension; ignored (plain JSON) everywhere else.
       _meta: APP_UI_META,
-      description: "Research-item year/decade histogram with dated and undated counts. A date range counts in each spanned bucket. Supports shared item filters and pagination.",
+      description: "Research-item year/decade histogram with dated and undated counts. A date range counts in each spanned bucket. dated_items and year_range follow from/to. Supports item filters and paging.",
       annotations: READ_ONLY,
       outputSchema: schemaOnce("list_years:out", () => timelineSchema),
       inputSchema: schemaOnce("list_years:in", () => z.strictObject({
@@ -355,15 +392,17 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
           undatedItems++;
           continue;
         }
-        datedItems++;
         const lo = it.year_min;
         const hi = it.year_max ?? it.year_min;
-        yearRange = yearRange
-          ? { min: Math.min(yearRange.min, lo), max: Math.max(yearRange.max, hi) }
-          : { min: lo, max: hi };
         // Count the item once per distinct bucket across its (windowed) span.
+        // dated_items and year_range describe the same from/to window as the buckets.
         const spanLo = Math.max(lo, from ?? lo);
         const spanHi = Math.min(hi, to ?? hi);
+        if (spanLo > spanHi) continue;
+        datedItems++;
+        yearRange = yearRange
+          ? { min: Math.min(yearRange.min, spanLo), max: Math.max(yearRange.max, spanHi) }
+          : { min: spanLo, max: spanHi };
         const seen = new Set<number>();
         for (let y = spanLo; y <= spanHi; y++) {
           const key = bucket === "decade" ? Math.floor(y / 10) * 10 : y;

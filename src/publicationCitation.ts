@@ -61,14 +61,24 @@ export function publicationBibtex(p: PublicationRec): string {
     }
   }
   add("title", p.title);
+  const seriesNumber = seriesNumbered(p);
   if (allowStructured()) {
     if (VENUE_IS_JOURNAL.has(p.type)) add("journal", p.venue);
     else if (VENUE_IS_BOOKTITLE.has(p.type)) add("booktitle", p.venue);
     add("series", seriesTitle(p));
+    // The venue of a report, thesis or post, when a real series took the series slot.
+    const venue = extraVenue(p);
+    if (entry === "techreport") add("institution", venue ?? p.publisher);
+    else if (entry === "phdthesis" || entry === "mastersthesis") {
+      add("school", p.degree_granting_institutions?.map((r) => r.label).join("; ") || venue || p.publisher);
+    } else add("howpublished", venue);
+    add("address", p.places_of_publication.map((r) => r.label).join("; "));
+    add("keywords", p.subjects.map((r) => r.label).join(", "));
   }
   add("year", p.year != null ? String(p.year) : null);
-  add("volume", p.volume);
-  add("number", p.issue);
+  // A report's number in its series is BibTeX `number`, not `volume`.
+  add("volume", seriesNumber ? null : p.volume);
+  add("number", seriesNumber ? p.volume : p.issue);
   add("pages", p.pages);
   add("publisher", p.publisher);
   add("doi", p.doi?.replace(/^https?:\/\/(dx\.)?doi\.org\//i, ""));
@@ -85,6 +95,18 @@ export function publicationBibtex(p: PublicationRec): string {
 const seriesTitle = (p: PublicationRec): string | null =>
   p.series?.length ? p.series.join("; ") :
     !VENUE_IS_JOURNAL.has(p.type) && !VENUE_IS_BOOKTITLE.has(p.type) ? p.venue : null;
+/** A venue that is neither a journal nor a containing book, when a real series
+ * holds the series slot: it used to be dropped from every export. */
+const extraVenue = (p: PublicationRec): string | null =>
+  p.venue && p.series?.length && !VENUE_IS_JOURNAL.has(p.type) && !VENUE_IS_BOOKTITLE.has(p.type) && !p.series.includes(p.venue)
+    ? p.venue : null;
+/** Types numbered within a series (a working-paper number), whose `volume` is that number. */
+const SERIES_NUMBERED = new Set(["working_paper"]);
+const seriesNumbered = (p: PublicationRec): boolean => SERIES_NUMBERED.has(p.type) && !!p.volume && !p.issue;
+/** Wikidata QIDs among the identifiers, labelled apart from repository ids. */
+const isQid = (id: string): boolean => /^(https?:\/\/(www\.)?wikidata\.org\/(wiki|entity)\/)?Q\d+$/i.test(id.trim());
+/** "2025/10/09": RIS DA wants zero-padded YYYY/MM/DD. */
+const risDate = (parts: number[]): string => parts.map((n, i) => (i === 0 ? String(n) : String(n).padStart(2, "0"))).join("/");
 const bareDoi = (p: PublicationRec): string | undefined => p.doi?.replace(/^https?:\/\/(dx\.)?doi\.org\//i, "");
 /** The cited link. A private record (curator mode) never falls back to its AMIRA page, which the public cannot open. */
 const publicationUrl = (p: PublicationRec): string | null => p.doi ?? p.urls[0] ?? (isPrivateRecord(p) ? null : itemUrl(p.o_id));
@@ -103,10 +125,13 @@ function issuedParts(p: PublicationRec): number[] | null {
 }
 
 function publicationNote(p: PublicationRec): string {
+  const ids = [...new Set([p.pub_id, ...(p.identifiers ?? [])])];
+  const qids = ids.filter(isQid);
   const notes = [
     isPrivateRecord(p) ? PRIVATE_CITATION_NOTE.replace(/\.$/, "") : `AMIRA: ${itemUrl(p.o_id)}`,
-    `Repository identifiers: ${[...new Set([p.pub_id, ...(p.identifiers ?? [])])].join("; ")}`,
+    `Repository identifiers: ${ids.filter((id) => !isQid(id)).join("; ")}`,
   ];
+  if (qids.length) notes.push(`Wikidata: ${qids.map((q) => q.replace(/^.*\//, "")).join("; ")}`);
   if (p.num_pages) notes.push(`Number of pages: ${p.num_pages}`);
   if (allowStructured()) {
     if (p.conference_details?.length) notes.push(`Conference: ${p.conference_details.join("; ")}`);
@@ -136,12 +161,12 @@ function publicationRis(p: PublicationRec): string {
   add("TI", p.title);
   add("PY", p.year != null ? String(p.year) : null);
   const dateParts = issuedParts(p);
-  if (dateParts && dateParts.length > 1) add("DA", dateParts.join("/"));
+  if (dateParts && dateParts.length > 1) add("DA", risDate(dateParts));
   add("M3", p.type);
   if (allowStructured()) {
     for (const ref of p.authors) add("AU", ref.label);
     for (const ref of p.editors) add("A2", ref.label);
-    if (VENUE_IS_JOURNAL.has(p.type) || VENUE_IS_BOOKTITLE.has(p.type)) add("T2", p.venue);
+    add("T2", VENUE_IS_JOURNAL.has(p.type) || VENUE_IS_BOOKTITLE.has(p.type) ? p.venue : extraVenue(p));
     add("T3", seriesTitle(p));
     add("CY", p.places_of_publication.map((r) => r.label).join("; "));
     for (const ref of p.subjects) add("KW", ref.label);
@@ -187,11 +212,16 @@ function publicationCsl(p: PublicationRec): Record<string, unknown> {
     if (p.editors.length) out.editor = p.editors.map((r) => cslName(r.label));
     if (VENUE_IS_JOURNAL.has(p.type) || VENUE_IS_BOOKTITLE.has(p.type)) add("container-title", p.venue);
     add("collection-title", seriesTitle(p));
+    // A thesis's venue is its institution (CSL publisher); otherwise the container.
+    const venue = extraVenue(p);
+    if (venue && out.type === "thesis" && !p.publisher) add("publisher", venue);
+    else add("container-title", venue);
     add("publisher-place", p.places_of_publication.map((r) => r.label).join("; "));
     add("keyword", p.subjects.map((r) => r.label).join("; "));
   }
   add("publisher", p.publisher);
-  add("volume", p.volume);
+  if (seriesNumbered(p)) add("collection-number", p.volume);
+  else add("volume", p.volume);
   add("issue", p.issue);
   add("page", p.pages);
   add("number-of-pages", p.num_pages);

@@ -35,6 +35,7 @@ export { createHttpApp, clientAddress, addressBucket, createRateLimiter } from "
 export { parseTypedId, canonicalTypedId, stripTypedId } from "./typedIds.js";
 export { RECORD_KINDS, findRecord, recordByOId, recordTitle } from "./recordKinds.js";
 export { parseKeyword, keywordMatches, placeAliases, wordPrefixMatch, tokenize, RefTally, refKey } from "./matching.js";
+export { closestValues, keywordPredicate, literalPhrase, matchSnippet } from "./matching.js";
 export { placeMatcher, researchFilterError } from "./researchItemQuery.js";
 export { foldedMatches } from "./text.js";
 export { cleanArgs, ALWAYS_LOAD } from "./tools/policy.js";
