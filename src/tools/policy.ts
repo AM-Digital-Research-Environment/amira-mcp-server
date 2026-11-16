@@ -44,7 +44,7 @@ import type { DataStore } from "../data.js";
  * awaits it runs to completion, and its result wins the race. The deadline
  * therefore bounds the ASYNC part of a call (waiting for the first snapshot
  * load, reading retained snapshots from disk), not a long computation. Heavy
- * indexes are warmed when a store loads (src/data.ts), so requests do not pay
+ * indexes are warmed when a store loads (src/storeLifecycle.ts), so requests do not pay
  * for them. */
 export const CALL_DEADLINE_MS = 60_000;
 
