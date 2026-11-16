@@ -42,6 +42,10 @@ const storeScope = new AsyncLocalStorage<DataStore>();
 export function withStore<T>(store: DataStore, fn: () => T): T {
   return storeScope.run(store, fn);
 }
+/** The store `withStore` bound for the running call, or undefined outside one. */
+export function scopedStore(): DataStore | undefined {
+  return storeScope.getStore();
+}
 setFoldCacheProvider(() => (storeScope.getStore() ?? current)?.folds);
 let loading: Promise<DataStore> | null = null;
 let refreshInFlight: Promise<void> | null = null;

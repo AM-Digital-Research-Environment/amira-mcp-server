@@ -2,5 +2,5 @@
 // process lifecycle that loads, refreshes and replaces it (src/storeLifecycle.ts).
 export { DataStore, UNIVERSITY_LABELS } from "./store.js";
 export {
-  cacheSnapshotDir, chooseInitial, currentStore, ensureStore, loadInBackground, refreshNow, refreshStatus, stopBackgroundRefresh, withStore,
+  cacheSnapshotDir, chooseInitial, currentStore, ensureStore, loadInBackground, refreshNow, refreshStatus, scopedStore, stopBackgroundRefresh, withStore,
 } from "./storeLifecycle.js";
