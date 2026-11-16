@@ -8,16 +8,18 @@ import type { OrganisationRec, ResearchItemRec } from "../types.js";
 import { allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
-  capLimit,
   capOffset,
   emptySearchHint,
   equalsCI,
   errorResult,
   exposureRestrictedResult,
   filtersEcho,
+  idParam,
   itemRef,
-  limitEcho,
+  limitParam,
+  offsetParam,
   pageOf,
+  textParam,
   textResult,
   type Server,
 } from "./_shared.js";
@@ -27,7 +29,10 @@ import { fold } from "../text.js";
 import { duplicatePointer, publicFirst, publicNamesakeOf, withoutPrivateNamesakes } from "../namesakes.js";
 import { pastEndHint } from "./listHints.js";
 
-type PartnerCategoryKey = "amrc" | "privileged" | "cooperation" | "global";
+/** list_institutions and list_groups page alike. */
+const LIMIT = limitParam(50, 200);
+
+type PartnerCategoryKey ="amrc" | "privileged" | "cooperation" | "global";
 
 interface PartnerCategory {
   key: PartnerCategoryKey;
@@ -202,15 +207,15 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       description: "Browse institution authorities (and untyped organisations, marked kind) by name or acronym (e.g. 'UJKZ'), with project counts and citation links.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_institutions:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Name or acronym, partial; several words must all match"),
-        limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        keyword: textParam().optional().describe("Name or acronym, partial; several words must all match"),
+        limit: LIMIT.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
       const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_institutions");
-      const limit = capLimit(args.limit, 50, 200);
+      const { limit, echo } = LIMIT.resolve(args.limit);
       const offset = capOffset(args.offset);
       // Groups have their own list; an organisation of no recorded type would
       // otherwise be in neither, though the overview counts it.
@@ -233,7 +238,7 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
             ...(o.latitude != null ? { latitude: o.latitude, longitude: o.longitude } : {}),
             amira_url: itemUrl(o.o_id),
           }),
-          { ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
+          { ...echo, ...filtersEcho(args) },
         );
       return textResult({ ...page, ...emptySearchHint(filtered.length, args), ...pastEndHint(page) });
     },
@@ -247,8 +252,8 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       description: "Institution or group profile: identifiers, members, funded projects and credited items, with citation links.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_institution:in", () => z.strictObject({
-        name: z.string().max(1000).optional().describe("Institution or group name, or an acronym"),
-        id: z.union([z.string().max(64), z.number()]).optional().describe("Omeka id or typed id organisation:1224"),
+        name: textParam().optional().describe("Institution or group name, or an acronym"),
+        id: idParam(64).optional().describe("Omeka id or typed id organisation:1224"),
       })),
     },
     async ({ name, id }) => {
@@ -332,8 +337,7 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       description: "Cluster partner institutions grouped by catalogue category, with citation links.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_cluster_partners:in", () => z.strictObject({
-        category: z
-          .string().max(1000)
+        category: textParam()
           .optional()
           .describe("Optional: amrc | privileged | cooperation | global, or a category label"),
       })),
@@ -389,15 +393,15 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       description: "Browse group authorities by name, mostly performing ensembles credited on research items, with item counts and citation links.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_groups:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Name or acronym, partial; several words must all match"),
-        limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        keyword: textParam().optional().describe("Name or acronym, partial; several words must all match"),
+        limit: LIMIT.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
       const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_groups");
-      const limit = capLimit(args.limit, 50, 200);
+      const { limit, echo } = LIMIT.resolve(args.limit);
       const offset = capOffset(args.offset);
       const filtered = listedOrganisations(store, (o) => o.kind === "group", args.keyword);
       const page = pageOf(
@@ -412,7 +416,7 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
             contributed_item_count: contributedItems(store, g).length,
             amira_url: itemUrl(g.o_id),
           }),
-          { ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
+          { ...echo, ...filtersEcho(args) },
         );
       return textResult({ ...page, ...emptySearchHint(filtered.length, args), ...pastEndHint(page) });
     },

@@ -25,7 +25,7 @@ import {
 } from "../semantic.js";
 import { parseTypedId } from "../typedIds.js";
 import type { LinkedRef } from "../types.js";
-import { READ_ONLY, capLimit, errorResult, exposureRestrictedResult, limitEcho, textResult, type Server } from "./_shared.js";
+import { READ_ONLY, errorResult, exposureRestrictedResult, limitParam, textResult, type Server } from "./_shared.js";
 
 /** Neighbours an `include_similar` block lists; get_similar_items goes to 10. */
 const DETAIL_LIMIT = 5;
@@ -151,6 +151,8 @@ export function noNeighboursReason(index: SemanticIndex, oId: number): string | 
 /** The opt-in flag the detail tools share. */
 export const includeSimilarSchema = z.boolean().optional().describe("Add up to 5 similar records, each explained");
 
+const LIMIT = limitParam(5, 10);
+
 export function registerSimilarTools(server: Server, tools: ToolMap): void {
   tools.get_similar_items = server.registerTool("get_similar_items", {
     title: "Find similar records",
@@ -160,7 +162,7 @@ export function registerSimilarTools(server: Server, tools: ToolMap): void {
     inputSchema: schemaOnce("get_similar_items:in", () => z.strictObject({
       id: z.union([z.string().min(1).max(256), z.number().int().positive()]).describe("omeka_id, or a typed id such as publication:29919"),
       types: z.array(z.enum(SEMANTIC_KINDS)).min(1).max(SEMANTIC_KINDS.length).optional().describe("Only these record types"),
-      limit: z.number().int().min(1).optional().describe("Default 5, max 10"),
+      limit: LIMIT.schema,
     })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_similar_items");
@@ -170,13 +172,13 @@ export function registerSimilarTools(server: Server, tools: ToolMap): void {
     const seed = resolveSemanticSeed(store, args.id, "find_related");
     if ("error" in seed) return seed.error;
     const { record } = seed;
-    const limit = capLimit(args.limit, 5, 10);
+    const { limit, echo } = LIMIT.resolve(args.limit);
     const found = neighbours(store, index, record, limit, args.types);
     return textResult({
       source: semanticRef(record),
       space: semanticSpace(index),
       ...found,
-      ...(found.count ? limitEcho(args.limit, 10, limit) : {}),
+      ...(found.count ? echo : {}),
       ...(found.count && guidanceEnabled() ? { note: NOTE } : {}),
     });
   });

@@ -29,7 +29,10 @@ import {
   CHARACTER_LIMIT,
   creditLabel,
   dateStatus,
+  errorResult,
+  limitParam,
   refLabels,
+  textParam,
   textResult,
   textWindowAppend,
   yearLabel,
@@ -40,13 +43,10 @@ import {
 import { itemUrl } from "../urls.js";
 import { parseTypedId } from "../typedIds.js";
 import { detailToolOf, findRecord, isStoredKind, RECORD_KINDS, recordByOId, type RecordTypes } from "../recordKinds.js";
-import { limitEcho } from "./pagination.js";
-import { errorResult } from "./responses.js";
 import { otherKindOfOId, toolForKind, wrongKindMessage } from "./records.js";
 import { config } from "../config.js";
 
-const DEFAULT_SEARCH_LIMIT = 10;
-const MAX_SEARCH_LIMIT = 50;
+const SEARCH_LIMIT = limitParam(10, 50);
 
 /** Drop null/undefined/empty-array entries so metadata stays compact. */
 function compact(o: Record<string, unknown>): Record<string, unknown> {
@@ -418,13 +418,12 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
       description: "Ranked search across items, publications, videos, podcasts, projects and sections. Returns typed IDs, titles and citation URLs. Fetch selected records for evidence.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("search:in", () => z.strictObject({
-        query: z
-          .string().max(1000)
+        query: textParam()
           .describe(
             "A few keywords, names, places or themes — e.g. 'Yoruba architecture'. Terms are matched " +
               "individually, so concise queries beat full sentences",
           ),
-        limit: z.number().int().min(1).optional().describe("Default 10, max 50"),
+        limit: SEARCH_LIMIT.schema,
         types: z.array(z.enum(SEARCH_TYPES)).optional().describe("Restrict to these record kinds"),
       })),
       outputSchema: schemaOnce("search:out", () => z.object({
@@ -441,13 +440,13 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
     },
     async ({ query, limit, types }) => {
       const store = callStore();
-      const capped = capLimit(limit, DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT);
-      const results = runSearch(store, query, capped, types as SearchType[] | undefined).map((h) => ({
+      const capped = SEARCH_LIMIT.resolve(limit);
+      const results = runSearch(store, query, capped.limit, types as SearchType[] | undefined).map((h) => ({
         id: h.id,
         title: h.title,
         url: h.url,
       }));
-      return textResult({ results, ...limitEcho(limit, MAX_SEARCH_LIMIT, capped) });
+      return textResult({ results, ...capped.echo });
     },
   );
 
@@ -459,8 +458,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
       description: "Read a typed search result as a cited document. Full text/transcripts are opt-in and pageable; metadata and text respect exposure policy. Unknown ID returns an error.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("fetch:in", () => z.strictObject({
-        id: z
-          .string().max(1000)
+        id: textParam()
           .describe("A typed record id from search (item:9902, pub:30001, video:…, podcast:…, project:…, section:…) or resolve_entity"),
         include_transcript: z.boolean().optional().describe("Default false — set true to append the video/podcast transcript"),
         transcript_offset: z.number().int().min(0).optional().describe("Start offset into the transcript (chars), with include_transcript"),

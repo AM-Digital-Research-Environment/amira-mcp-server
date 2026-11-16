@@ -9,18 +9,20 @@ import { UNIVERSITY_LABELS, type DataStore } from "../data.js";
 import { callStore } from "./callStore.js";
 import {
   READ_ONLY,
-  capLimit,
   capOffset,
   capText,
   emptyExportHint,
   emptySearchHint,
   errorResult,
   filtersEcho,
+  idParam,
   itemSummary,
-  limitEcho,
+  limitParam,
+  offsetParam,
   pageOf,
   queryErrorResult,
   refLabels,
+  textParam,
   textResult,
   yearLabel,
   type Server,
@@ -38,6 +40,8 @@ import {
   countriesNote, countryNames, fulltextIndex, groupLabelNote, inMappedCollection, neighboursNote, sourceRef, excludedCount,
 } from "../fulltextMaps.js";
 
+const SEARCH_LIMIT = limitParam(20, 100);
+
 export function registerResearchItemTools(server: Server, tools: ToolMap): void {
   // === search_research_items ================================================
   tools.search_research_items = server.registerTool(
@@ -47,24 +51,24 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       description: "Search digitised research items. Filters are AND-combined; empty results suggest a filter to relax or a stored place name. export links all matches as a file.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("search_research_items:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional()
+        keyword: textParam().optional()
           .describe("Every word must occur in the title, description, abstract, contents or identifiers; quote a phrase to match it exactly"),
-        subject: z.string().max(1000).optional()
+        subject: textParam().optional()
           .describe("Subject heading, partial (e.g. 'Architecture'). Subjects absorb the former free-form tags — there is no tag filter"),
-        location: z.string().max(1000).optional()
+        location: textParam().optional()
           .describe("A place at ANY level of the city→country hierarchy: 'Nigeria' finds Lagos items, 'Lagos' finds only Lagos"),
         location_id: z.number().int().positive().optional().describe("Exact location authority ID, including descendants; avoids homonym matches"),
-        country: z.string().max(1000).optional()
+        country: textParam().optional()
           .describe("Country only, exact name or common alias ('Côte d'Ivoire' = 'Ivory Coast'). Use `location` for cities"),
-        contributor: z.string().max(1000).optional().describe("A person/organisation credited on the item; either name order works"),
-        project_id: z.union([z.string().max(1000), z.number()]).optional().describe("Project Omeka id"),
-        research_section: z.string().max(1000).optional().describe("e.g. 'Arts & Aesthetics', 'Mobilities'"),
-        university: z.string().max(1000).optional().describe("ubt | unilag | ujkz | ufba | external — code or full name"),
-        resource_type: z.string().max(1000).optional().describe("e.g. 'Image', 'Text', 'Audio', 'Moving image'"),
-        genre: z.string().max(1000).optional().describe("Format term or physical note, partial (e.g. 'interview', 'photograph')"),
-        collection: z.string().max(1000).optional().describe("Collection id, code or partial title from list_collections"),
-        language: z.string().max(1000).optional().describe("Name or ISO code — 'French', 'fr', 'fra' and legacy 'fre' all match"),
-        mentions_country: z.string().max(1000).optional()
+        contributor: textParam().optional().describe("A person/organisation credited on the item; either name order works"),
+        project_id: idParam(1000).optional().describe("Project Omeka id"),
+        research_section: textParam().optional().describe("e.g. 'Arts & Aesthetics', 'Mobilities'"),
+        university: textParam().optional().describe("ubt | unilag | ujkz | ufba | external — code or full name"),
+        resource_type: textParam().optional().describe("e.g. 'Image', 'Text', 'Audio', 'Moving image'"),
+        genre: textParam().optional().describe("Format term or physical note, partial (e.g. 'interview', 'photograph')"),
+        collection: textParam().optional().describe("Collection id, code or partial title from list_collections"),
+        language: textParam().optional().describe("Name or ISO code — 'French', 'fr', 'fra' and legacy 'fre' all match"),
+        mentions_country: textParam().optional()
           .describe("ILAM African Music articles whose full text names this country 3+ times"),
         year_from: z.number().int().min(0).max(2200).optional().describe("Keep items whose content dates overlap from this year"),
         year_to: z.number().int().min(0).max(2200).optional().describe("Keep items whose content dates overlap up to this year"),
@@ -72,13 +76,13 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
         added_since: isoDate.optional().describe("Added to AMIRA on or after this ISO date"),
         modified_since: isoDate.optional().describe("Changed on or after this ISO date"),
         export: z.enum(EXPORT_FORMATS.research_items).optional().describe("Return a file link instead of rows"),
-        limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        limit: SEARCH_LIMIT.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
       const store = callStore();
-      const limit = capLimit(args.limit, 20, 100);
+      const { limit, echo } = SEARCH_LIMIT.resolve(args.limit);
       const offset = capOffset(args.offset);
       const { export: format, limit: _l, offset: _o, ...filters } = args;
       // Structured-metadata filters are refused under restricted exposure, so a
@@ -106,7 +110,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       return textResult({
         ...(index ? { mentions_note: countriesNote(index) } : {}),
         ...pageOf(filtered, offset, limit, row, {
-          ...limitEcho(args.limit, 100, limit),
+          ...echo,
           ...filtersEcho(filters),
           ...(suggestions && guided ? { suggestions } : {}),
           ...(did_you_mean && guided ? { did_you_mean } : {}),
@@ -124,8 +128,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       description: "Research-item metadata, linked entities, rights, media files, IIIF manifest and a generated citation (BibTeX/RIS/CSL-JSON). Long fields cap at 25,000 characters.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_research_item:in", () => z.strictObject({
-        id: z
-          .union([z.string().max(1000), z.number()])
+        id: idParam(1000)
           .describe("Omeka id (the number ending its amira_url, e.g. 9902) or a typed id such as research_item:9902"),
         citation_format: z
           .enum(["bibtex", "ris", "csl-json"])

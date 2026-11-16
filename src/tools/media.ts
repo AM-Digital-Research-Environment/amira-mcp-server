@@ -13,7 +13,6 @@ import type { LinkedRef, MediaRec, PodcastRec, VideoRec } from "../types.js";
 import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
-  capLimit,
   capOffset,
   containsCI,
   dateStatus,
@@ -21,12 +20,15 @@ import {
   errorResult,
   exposureRestrictedResult,
   filtersEcho,
-  limitEcho,
+  idParam,
+  limitParam,
   matchSnippet,
+  offsetParam,
   pageOf,
   podcastSummary,
   refLabels,
   textAccessDisabledResult,
+  textParam,
   textResult,
   textWindowFields,
   videoSummary,
@@ -49,11 +51,9 @@ const yearParams = {
   year_from: z.number().int().min(0).max(2200).optional().describe("Earliest year"),
   year_to: z.number().int().min(0).max(2200).optional().describe("Latest year"),
 };
-const pageParams = {
-  limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
-  offset: z.number().int().min(0).max(100_000).optional(),
-};
-const keywordParam = z.string().max(1000).optional()
+const LIMIT = limitParam(20, 100);
+const pageParams = { limit: LIMIT.schema, offset: offsetParam };
+const keywordParam = textParam().optional()
   .describe("Every word must occur in the title, abstract or transcript; quote a phrase to match it exactly");
 
 /**
@@ -100,9 +100,9 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       annotations: READ_ONLY,
       inputSchema: schemaOnce("search_podcasts:in", () => z.strictObject({
         keyword: keywordParam,
-        series: z.string().max(1000).optional().describe("Series title, partial (e.g. 'Cluster Conversations')"),
-        person: z.string().max(1000).optional().describe("A speaker/host name; either name order works"),
-        language: z.string().max(1000).optional().describe("Name or ISO code — 'French', 'fr', 'fra' all match"),
+        series: textParam().optional().describe("Series title, partial (e.g. 'Cluster Conversations')"),
+        person: textParam().optional().describe("A speaker/host name; either name order works"),
+        language: textParam().optional().describe("Name or ISO code — 'French', 'fr', 'fra' all match"),
         ...yearParams,
         ...pageParams,
       })),
@@ -110,7 +110,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
     async (args) => {
       if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
       const store = callStore();
-      const limit = capLimit(args.limit, 20, 100);
+      const { limit, echo } = LIMIT.resolve(args.limit);
       const offset = capOffset(args.offset);
       for (const key of ["series", "person", "language"] as const) {
         if (args[key] && !allowStructured()) return exposureRestrictedResult("structured", `The \`${key}\` filter`);
@@ -125,7 +125,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
           (p) => transcriptOnly.has(p.o_id)
             ? { ...podcastSummary(p), matched_in: "transcript", transcript_snippet: matchSnippet(p.transcript, args.keyword!) }
             : podcastSummary(p),
-          { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) }),
+          { ...echo, ...filtersEcho(args) }),
         ...emptySearchHint(filtered.length, args),
       });
     },
@@ -139,7 +139,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       description: "Podcast detail, duration, audio file and citation link; says which model generated the transcript. Transcript is opt-in, bounded and pageable.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_podcast:in", () => z.strictObject({
-        id: z.union([z.string().max(1000), z.number()]).describe("Podcast id from search_podcasts, e.g. 39121, or podcast:39121"),
+        id: idParam(1000).describe("Podcast id from search_podcasts, e.g. 39121, or podcast:39121"),
         ...transcriptParams,
         include_similar: includeSimilarSchema,
       })),
@@ -191,9 +191,9 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       annotations: READ_ONLY,
       inputSchema: schemaOnce("search_videos:in", () => z.strictObject({
         keyword: keywordParam,
-        playlist: z.string().max(1000).optional().describe("Playlist title, partial"),
-        speaker: z.string().max(1000).optional().describe("A speaker name; either name order works"),
-        language: z.string().max(1000).optional().describe("Name or ISO code — 'French', 'fr', 'fra' all match"),
+        playlist: textParam().optional().describe("Playlist title, partial"),
+        speaker: textParam().optional().describe("A speaker name; either name order works"),
+        language: textParam().optional().describe("Name or ISO code — 'French', 'fr', 'fra' all match"),
         ...yearParams,
         ...pageParams,
       })),
@@ -201,7 +201,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
     async (args) => {
       if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
       const store = callStore();
-      const limit = capLimit(args.limit, 20, 100);
+      const { limit, echo } = LIMIT.resolve(args.limit);
       const offset = capOffset(args.offset);
       for (const key of ["playlist", "speaker", "language"] as const) {
         if (args[key] && !allowStructured()) return exposureRestrictedResult("structured", `The \`${key}\` filter`);
@@ -216,7 +216,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
           (v) => transcriptOnly.has(v.o_id)
             ? { ...videoSummary(v), matched_in: "transcript", transcript_snippet: matchSnippet(v.transcript, args.keyword!) }
             : videoSummary(v),
-          { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) }),
+          { ...echo, ...filtersEcho(args) }),
         ...emptySearchHint(filtered.length, args),
       });
     },
@@ -230,7 +230,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       description: "Video detail, thumbnail and citation link; says how the transcript was produced when recorded. Transcript is opt-in, bounded and pageable.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_video:in", () => z.strictObject({
-        id: z.union([z.string().max(1000), z.number()]).describe("Video id from search_videos, e.g. 39218, or video:39218"),
+        id: idParam(1000).describe("Video id from search_videos, e.g. 39218, or video:39218"),
         ...transcriptParams,
         include_similar: includeSimilarSchema,
       })),

@@ -9,19 +9,21 @@ import { allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
   anyContainsCI,
-  capLimit,
   capOffset,
   emptySearchHint,
   equalsCI,
   errorResult,
   exposureRestrictedResult,
   filtersEcho,
+  idParam,
   itemRef,
-  limitEcho,
+  limitParam,
+  offsetParam,
   pageOf,
   projectSummary,
   refLabels,
   refLinks,
+  textParam,
   textResult,
   type Server,
 } from "./_shared.js";
@@ -33,6 +35,8 @@ import { guidanceEnabled } from "../guidance.js";
 import type { ProjectRec } from "../types.js";
 import { fold } from "../text.js";
 
+const SEARCH_LIMIT = limitParam(25, 100);
+
 export function registerProjectTools(server: Server, tools: ToolMap): void {
   // === search_projects ======================================================
   tools.search_projects = server.registerTool(
@@ -42,23 +46,22 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       description: "Search project names, descriptions and membership. Returns cited summaries and item counts; use get_project for detail.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("search_projects:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Every word must occur in the name, an acronym or the description; quote a phrase"),
-        university: z
-          .string().max(1000)
+        keyword: textParam().optional().describe("Every word must occur in the name, an acronym or the description; quote a phrase"),
+        university: textParam()
           .optional()
           .describe("ubt | unilag | ujkz | ufba | external — code or name. A data facet, not a full AMRC list"),
-        research_section: z.string().max(1000).optional().describe("Name or id, e.g. 'Knowledges'"),
-        principal_investigator: z.string().max(1000).optional().describe("A PI name; either order works ('Erdmute Alber' finds 'Alber, Erdmute')"),
-        member: z.string().max(1000).optional().describe("A project member's name; either order works"),
-        institution: z.string().max(1000).optional().describe("Funding/affiliated institution name, partial"),
-        limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        research_section: textParam().optional().describe("Name or id, e.g. 'Knowledges'"),
+        principal_investigator: textParam().optional().describe("A PI name; either order works ('Erdmute Alber' finds 'Alber, Erdmute')"),
+        member: textParam().optional().describe("A project member's name; either order works"),
+        institution: textParam().optional().describe("Funding/affiliated institution name, partial"),
+        limit: SEARCH_LIMIT.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
       const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "search_projects");
-      const limit = capLimit(args.limit, 25, 100);
+      const { limit, echo } = SEARCH_LIMIT.resolve(args.limit);
       const offset = capOffset(args.offset);
       // A section by name or id; projects link to it by id (their label may be stale).
       const section = args.research_section
@@ -96,7 +99,7 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
 
       return textResult({
         ...pageOf(filtered, offset, limit, (p) => projectSummary(p, store.itemsForProject(p.o_id).length), {
-          ...limitEcho(args.limit, 100, limit),
+          ...echo,
           ...filtersEcho(args),
           ...(didYouMean.length ? { did_you_mean: didYouMean } : {}),
         }),
@@ -113,7 +116,7 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       description: "Project description, team, sections, funders, item counts by type, top subjects and ten sample research items, with citation links.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_project:in", () => z.strictObject({
-        id: z.union([z.string().max(256), z.number()]).describe("Project Omeka id (e.g. 37700) or typed id project:37700"),
+        id: idParam(256).describe("Project Omeka id (e.g. 37700) or typed id project:37700"),
         include_similar: includeSimilarSchema,
       })),
     },

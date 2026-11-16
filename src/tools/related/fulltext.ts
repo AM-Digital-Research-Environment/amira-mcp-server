@@ -4,11 +4,11 @@ import type { DataStore } from "../../data.js";
 import { fulltextIndex, groupLabelNote, inMappedCollection, neighboursNote, sourceRef } from "../../fulltextMaps.js";
 import { recordLinks } from "../../recordLinks.js";
 import { itemUrl } from "../../urls.js";
-import { errorResult, limitEcho, textResult, yearLabel } from "../_shared.js";
+import { errorResult, textResult, yearLabel } from "../_shared.js";
 import { RelatedLists } from "./lists.js";
 import { MATCHING } from "./matching.js";
 
-export function relatedByFullText(store: DataStore, value: string, limit: number, requested: number | undefined) {
+export function relatedByFullText(store: DataStore, value: string, limit: number, limitEcho: Record<string, unknown>) {
   const index = fulltextIndex(store);
   if (!index) return errorResult("fulltext_map_unavailable", "This snapshot carries no full-text map.");
   const item = store.getItem(value);
@@ -41,7 +41,7 @@ export function relatedByFullText(store: DataStore, value: string, limit: number
     seed_label: item.title,
     matching: MATCHING.research_item,
     amira_url: itemUrl(item.o_id),
-    ...limitEcho(requested, 50, limit),
+    ...limitEcho,
     matched_items: seed.length,
     content_group: group ? { id: group.id, label: group.label, label_ai_generated: true, note: groupLabelNote(index) } : null,
     closest_in_content: seed.map(({ it, score }) => ({ title: it.title, date: yearLabel(it), score, omeka_id: it.o_id,

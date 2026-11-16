@@ -8,7 +8,6 @@ import { allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
   anyContainsCI,
-  capLimit,
   capOffset,
   emptySearchHint,
   errorResult,
@@ -16,11 +15,13 @@ import {
   filtersEcho,
   fundingPhase,
   itemRef,
-  limitEcho,
+  limitParam,
+  offsetParam,
   pageOf,
   personSummary,
   publicationSummary,
   refLabels,
+  textParam,
   textResult,
   type Server,
 } from "./_shared.js";
@@ -113,6 +114,8 @@ const COLLABORATORS_NOTE =
   `podcast or video appearances; works with more than ${LARGE_TEAM_AUTHORS} authors are left out. Report them ` +
   "as shared credits.";
 
+const SEARCH_LIMIT = limitParam(25, 100);
+
 /** Near misses offered when a person search finds nobody. */
 const SUGGESTION_CAP = 5;
 
@@ -156,16 +159,16 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       description: "Find canonical person authority records. Names accept either order and ignore accents. Use resolve_entity to disambiguate homonyms.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("search_persons:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Matches the name, a name variant or an affiliation"),
-        affiliation: z.string().max(1000).optional().describe("Matches the person's affiliations only"),
-        limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        keyword: textParam().optional().describe("Matches the name, a name variant or an affiliation"),
+        affiliation: textParam().optional().describe("Matches the person's affiliations only"),
+        limit: SEARCH_LIMIT.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
       const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "search_persons");
-      const limit = capLimit(args.limit, 25, 100);
+      const { limit, echo } = SEARCH_LIMIT.resolve(args.limit);
       const offset = capOffset(args.offset);
 
       const keywordMatches = (p: PersonRec, keyword: string) =>
@@ -177,7 +180,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       const filtered = publicFirst(store.persons.filter((p) => (!args.keyword || keywordMatches(p, args.keyword)) && affiliated(p)));
 
       const page = pageOf(filtered, offset, limit, (p) => ({ ...personSummary(p), ...duplicatePointer(store, p, "person") }),
-        { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) });
+        { ...echo, ...filtersEcho(args) });
       // Suggest spellings only when the keyword itself matched nobody: when an
       // affiliation filter removed the matches, the name was not the problem,
       // and the generic advice to relax filters applies instead.
@@ -195,8 +198,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       description: "Person affiliations, identifiers, project and section roles, credited items, publications, podcasts, videos and collaborators. Lists cap at 50 with totals. Use id to disambiguate.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_person:in", () => z.strictObject({
-        name: z
-          .string().max(1000)
+        name: textParam()
           .optional()
           .describe("Full name in either order, with or without accents: 'Beier, Ulli' and 'Ulli Beier' both resolve"),
         id: z.union([z.number().int().positive(), z.string().max(64)]).optional()

@@ -10,10 +10,12 @@ import {
   errorResult,
   exposureRestrictedResult,
   fundingPhase,
+  idParam,
   projectSummary,
   refLabels,
   refLinks,
   sectionSummary,
+  textParam,
   textResult,
   type Server,
 } from "./_shared.js";
@@ -55,8 +57,8 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
       description: "One research section's description, team and projects, each with its research-item count.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_research_section:in", () => z.strictObject({
-        name: z.string().max(1000).optional().describe("Section name, e.g. 'Arts & Aesthetics' ('and' for '&' works)"),
-        id: z.union([z.string().max(64), z.number()]).optional().describe("Section Omeka id or typed id section:<id> from list_research_sections; not with name"),
+        name: textParam().optional().describe("Section name, e.g. 'Arts & Aesthetics' ('and' for '&' works)"),
+        id: idParam(64).optional().describe("Section Omeka id or typed id section:<id> from list_research_sections; not with name"),
       })),
     },
     async ({ name, id }) => {

@@ -20,12 +20,17 @@ import { literalPhrase } from "../matching.js";
 import { config } from "../config.js";
 import { guidanceEnabled } from "../guidance.js";
 import { findRecord } from "../recordKinds.js";
-import { READ_ONLY, capLimit, capOffset, limitEcho, queryErrorResult, textResult, errorResult, exposureRestrictedResult, pageOf, type Server } from "./_shared.js";
+import { READ_ONLY, capLimit, capOffset, limitParam, offsetParam, queryErrorResult, textResult, errorResult, exposureRestrictedResult, pageOf, type Server } from "./_shared.js";
 import { refreshSchema } from "./outputSchemas.js";
 import { personSuggestions } from "./people.js";
 import { pastEndHint, unresolvedQueryHint } from "./listHints.js";
 
-const offsetSchema = z.number().int().min(0).max(100_000).optional();
+const LIMITS = {
+  resolve_entity: limitParam(20, 50, null),
+  graph_evidence: limitParam(20, 50, "Evidence page size, default 20, max 50"),
+  get_text_passages: limitParam(10, 20),
+  get_snapshot_changes: limitParam(30, 100),
+};
 const querySchema = z.string().trim().min(1).max(1000);
 const pageShape = { count: z.number(), total_matches: z.number(), offset: z.number(), has_more: z.boolean(), next_offset: z.number().optional(),
   requested_limit: z.number().optional(), effective_limit: z.number().optional(), response_limited: z.boolean().optional() };
@@ -51,16 +56,16 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     title: "Resolve an entity", annotations: READ_ONLY,
     description: "Resolve a label or typed ID to cited candidates. Returns ambiguity instead of merging names. Use a returned id with get_entity_graph or get_* tools.",
     inputSchema: schemaOnce("resolve_entity:in", () => z.strictObject({ query: querySchema, type: z.enum(entityTypes).optional(),
-      limit: z.number().int().min(1).optional(), offset: offsetSchema })),
+      limit: LIMITS.resolve_entity.schema, offset: offsetParam })),
     outputSchema: schemaOnce("resolve_entity:out", () => z.object({ ...pageShape, results: z.array(entitySchema), ambiguous: z.boolean(), snapshot_id: z.string(),
       suggestions: z.array(z.object({ id: z.string(), name: z.string(), amira_url: citedUrl() })).optional(), hint: z.string().optional() })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "resolve_entity");
     const store = callStore();
-    const limit = capLimit(args.limit, 20, 50);
+    const { limit, echo } = LIMITS.resolve_entity.resolve(args.limit);
     const found = resolveEntities(store, args.query, args.type);
     const page = pageOf(found, capOffset(args.offset), limit, (e) => e,
-      { ambiguous: found.length > 1, snapshot_id: snapshotId(store.manifest), ...limitEcho(args.limit, 50, limit) });
+      { ambiguous: found.length > 1, snapshot_id: snapshotId(store.manifest), ...echo });
     // A name that resolves to nothing may be a misspelt person: offer near
     // misses, unless the query asked for another type.
     const personQuery = !args.type || args.type === "person";
@@ -76,8 +81,8 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     inputSchema: schemaOnce("get_entity_graph:in", () => z.strictObject({ seed: z.string().min(1).max(256), max_nodes: z.number().int().min(2).optional().describe("Default 40, max 100"),
       max_edges: z.number().int().min(1).optional().describe("Default 50, max 200"),
       types: z.array(z.enum(entityTypes)).min(1).max(entityTypes.length).optional(),
-      edge_id: z.string().max(64).optional(), snapshot_id: z.string().max(64).optional(), offset: offsetSchema,
-      limit: z.number().int().min(1).optional().describe("Evidence page size, default 20, max 50") })),
+      edge_id: z.string().max(64).optional(), snapshot_id: z.string().max(64).optional(), offset: offsetParam,
+      limit: LIMITS.graph_evidence.schema })),
     outputSchema: schemaOnce("get_entity_graph:out", () => z.object({ snapshot_id: z.string(), seed: z.string(), nodes: z.array(entitySchema).optional(), edges: z.array(edgeSchema).optional(),
       total_edges: z.number().optional(), truncated: z.boolean().optional(), bounds: z.object({ max_nodes: z.number(), max_edges: z.number(), hops: z.number() }).optional(),
       requested_bounds: z.object({ max_nodes: z.number().optional(), max_edges: z.number().optional() }).optional(),
@@ -105,9 +110,9 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     if (args.edge_id) {
       const edge = entityEdges(store, seed).find((e) => e.edge.id === args.edge_id);
       if (!edge) return errorResult("not_found", "This edge is absent from the seed's current graph.");
-      const limit = capLimit(args.limit, 20, 50);
+      const { limit, echo } = LIMITS.graph_evidence.resolve(args.limit);
       return textResult(pageOf([...edge.evidence.values()], capOffset(args.offset), limit, (e) => e,
-        { seed, snapshot_id: id, ...limitEcho(args.limit, 50, limit) }));
+        { seed, snapshot_id: id, ...echo }));
     }
     const maxNodes = capLimit(args.max_nodes, 40, 100), maxEdges = capLimit(args.max_edges, 50, 200);
     // Like a list's requested/effective limit: say when a bound was capped.
@@ -120,8 +125,8 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     title: "Find cited text passages", annotations: READ_ONLY,
     description: "Find accent-insensitive passages of one literal phrase (quotes optional; words are not matched separately) in selected publication/video/podcast IDs. Original UTF-16 offsets, bounded context, citations. Requires full text exposure.",
     inputSchema: schemaOnce("get_text_passages:in", () => z.strictObject({ ids: z.array(z.string().max(64)).min(1).max(10).describe("publication:, video: or podcast: ids"),
-      keyword: querySchema, radius: z.number().int().min(20).max(500).optional(), offset: offsetSchema,
-      limit: z.number().int().min(1).optional().describe("Default 10, max 20") })),
+      keyword: querySchema, radius: z.number().int().min(20).max(500).optional(), offset: offsetParam,
+      limit: LIMITS.get_text_passages.schema })),
     outputSchema: schemaOnce("get_text_passages:out", () => z.object({ ...pageShape, results: z.array(z.object({ id: z.string(), title: z.string(), amira_url: citedUrl(),
       start: z.number(), end: z.number(), match_start: z.number(), match_end: z.number(), text: z.string() })),
       snapshot_id: z.string(), scanned_matches_capped: z.boolean(), unavailable_ids: z.array(z.string()),
@@ -129,7 +134,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
   }, async (args) => {
     if (!allowFullText()) return exposureRestrictedResult("full", "get_text_passages");
     const store = callStore();
-    const limit = capLimit(args.limit, 10, 20);
+    const { limit, echo } = LIMITS.get_text_passages.resolve(args.limit);
     const offset = capOffset(args.offset);
     const radius = args.radius ?? 160;
     // One literal phrase: quote marks are syntax, so `"oral arts"` = `oral arts`.
@@ -177,7 +182,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     }
     const hasMore = offset + results.length < total;
     return textResult({ count: results.length, total_matches: total, offset, has_more: hasMore,
-      ...(hasMore ? { next_offset: offset + results.length } : {}), ...limitEcho(args.limit, 20, limit),
+      ...(hasMore ? { next_offset: offset + results.length } : {}), ...echo,
       results, snapshot_id: snapshotId(store.manifest), scanned_matches_capped: capped, unavailable_ids: unavailable.map((u) => u.id),
       ...(unavailable.length ? { unavailable } : {}) });
   });
@@ -260,7 +265,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     title: "Compare retained snapshots", annotations: READ_ONLY,
     description: "Page added/updated/deleted records between retained snapshots from this Omeka instance. Lists available snapshot IDs when fewer than two exist. For recent additions without history, use added_since on the search tools.",
     inputSchema: schemaOnce("get_snapshot_changes:in", () => z.strictObject({ from_id: z.string().max(64).optional(), to_id: z.string().max(64).optional(),
-      corpus: z.enum(CORPORA).optional(), offset: offsetSchema, limit: z.number().int().min(1).optional().describe("Default 30, max 100") })),
+      corpus: z.enum(CORPORA).optional(), offset: offsetParam, limit: LIMITS.get_snapshot_changes.schema })),
     outputSchema: schemaOnce("get_snapshot_changes:out", () => z.object({ status: z.enum(["ready", "history_unavailable"]), snapshots: z.array(z.object({ id: z.string(), fetched_at: z.string() })),
       reason: z.string().optional(), hint: z.string().optional(),
       from_id: z.string().optional(), to_id: z.string().optional(), results: z.array(z.object({ corpus: z.string(), id: z.number(),
@@ -286,8 +291,8 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     const toId = args.to_id ?? available[0]!.id, fromId = args.from_id ?? available[1]!.id;
     const before = available.find((s) => s.id === fromId)!, after = available.find((s) => s.id === toId)!;
     const changes = snapshotDiff(before, after, args.corpus ? [args.corpus] : CORPORA);
-    const limit = capLimit(args.limit, 30, 100);
+    const { limit, echo } = LIMITS.get_snapshot_changes.resolve(args.limit);
     return textResult(pageOf(changes, capOffset(args.offset), limit, (c) => c,
-      { status: "ready", snapshots: meta, from_id: fromId, to_id: toId, ...limitEcho(args.limit, 100, limit) }));
+      { status: "ready", snapshots: meta, from_id: fromId, to_id: toId, ...echo }));
   });
 }

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { CHARACTER_LIMIT } from "./responses.js";
 import { guidanceEnabled } from "../guidance.js";
 // --- input capping (lenient clamp, not rejection) ---------------------------
@@ -23,6 +24,41 @@ export function limitEcho(requested: number | undefined, max: number, effective:
   }
   return {};
 }
+
+// --- shared argument schemas -------------------------------------------------
+// Each helper reproduces the zod chain the tools wrote by hand, so the JSON
+// schema a tool advertises is unchanged.
+
+/** A list tool's `limit`: the schema and the cap it advertises, in one place. */
+export interface LimitParam {
+  schema: z.ZodOptional<z.ZodNumber>;
+  /** The applied limit and the requested/effective echo (limitEcho) for a requested one. */
+  resolve(requested: number | undefined): { limit: number; echo: Record<string, unknown> };
+}
+
+/**
+ * `limit` defaulting to `def` and capped at `max`. The description defaults to
+ * "Default <def>, max <max>"; pass the wording a tool already uses, or null for none.
+ */
+export function limitParam(def: number, max: number, description: string | null = `Default ${def}, max ${max}`): LimitParam {
+  const base = z.number().int().min(1).optional();
+  return {
+    schema: description === null ? base : base.describe(description),
+    resolve: (requested) => {
+      const limit = capLimit(requested, def, max);
+      return { limit, echo: limitEcho(requested, max, limit) };
+    },
+  };
+}
+
+/** The `offset` of every paged tool. */
+export const offsetParam = z.number().int().min(0).max(100_000).optional();
+
+/** A free-text argument (a keyword, a name, a filter value). */
+export const textParam = () => z.string().max(1000);
+
+/** An `id` argument: an Omeka id or a typed id, as a string of at most `max` characters or a number. */
+export const idParam = (max: number) => z.union([z.string().max(max), z.number()]);
 
 export function capText(text: string, limit = CHARACTER_LIMIT): { text: string; truncated: boolean } {
   if (text.length <= limit) return { text, truncated: false };

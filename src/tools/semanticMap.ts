@@ -16,8 +16,12 @@ import { RefTally } from "../matching.js";
 import { recordLinks } from "../recordLinks.js";
 import { SEMANTIC_KINDS, semanticIndex, semanticRef, semanticSpace, type SemanticRecord } from "../semantic.js";
 import { itemUrl } from "../urls.js";
-import { READ_ONLY, capLimit, capOffset, errorResult, exposureRestrictedResult, limitEcho, pageOf, textResult, type Server } from "./_shared.js";
+import { READ_ONLY, capOffset, errorResult, exposureRestrictedResult, limitParam, offsetParam, pageOf, textResult, type Server } from "./_shared.js";
 import { noNeighboursReason, resolveSemanticSeed, semanticUnavailable } from "./similar.js";
+
+/** One `limit` argument, read as a page of groups or, with group/id, of records. */
+const GROUPS_LIMIT = limitParam(10, 30, "Groups (default 10, max 30) or records (default 20, max 100)");
+const RECORDS_LIMIT = limitParam(20, 100, null);
 
 const TOP = 5;
 const EXAMPLES = 3;
@@ -63,8 +67,8 @@ export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
       group: z.number().int().min(1).optional().describe("A group id: list its records, nearest the centre first"),
       id: z.union([z.string().min(1).max(256), z.number().int().positive()]).optional().describe("A record (omeka_id or typed id): its group"),
       types: z.array(z.enum(SEMANTIC_KINDS)).min(1).max(SEMANTIC_KINDS.length).optional().describe("With group/id: only these record types"),
-      limit: z.number().int().min(1).optional().describe("Groups (default 10, max 30) or records (default 20, max 100)"),
-      offset: z.number().int().min(0).max(100_000).optional(),
+      limit: GROUPS_LIMIT.schema,
+      offset: offsetParam,
     })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_semantic_map");
@@ -96,12 +100,12 @@ export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
     }
 
     if (groupId === undefined) {
-      const limit = capLimit(args.limit, 10, 30);
+      const { limit, echo } = GROUPS_LIMIT.resolve(args.limit);
       const all = [...index.groups.entries()];
       const clustered = all.reduce((n, [, m]) => n + m.length, 0);
       return textResult(pageOf(all, offset, limit, ([id, members]) => describeGroup(store, id, members), {
         space: semanticSpace(index), groups: all.length, records_on_map: clustered, low_signal_records: index.lowSignal.size,
-        ...limitEcho(args.limit, 30, limit), ...note,
+        ...echo, ...note,
       }));
     }
 
@@ -111,14 +115,14 @@ export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
         suggested_tool: "get_semantic_map",
       });
     }
-    const limit = capLimit(args.limit, 20, 100);
+    const { limit, echo } = RECORDS_LIMIT.resolve(args.limit);
     const wanted = args.types ? new Set<string>(args.types) : null;
     const listed = members.filter((r) => !wanted || wanted.has(r.kind));
     return textResult(pageOf(listed, offset, limit, semanticRef, {
       space: semanticSpace(index),
       ...describeGroup(store, groupId, members),
       ...(seed ? { record: { ...semanticRef(seed), rank_in_group: members.findIndex((r) => r.o_id === seed!.o_id) + 1 } } : {}),
-      ...limitEcho(args.limit, 100, limit), ...note,
+      ...echo, ...note,
     }));
   });
 }
