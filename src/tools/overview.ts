@@ -1,7 +1,8 @@
 import { schemaOnce } from "./schemaOnce.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
-import { ensureStore, refreshStatus, UNIVERSITY_LABELS } from "../data.js";
+import { refreshStatus, UNIVERSITY_LABELS } from "../data.js";
+import { callStore } from "./callStore.js";
 import { SITE_BASE, config } from "../config.js";
 import { visibilityCounts } from "./curator.js";
 import { allowStructured, exposureLevel } from "../exposure.js";
@@ -34,7 +35,7 @@ export function registerOverviewTools(server: Server, tools: ToolMap): void {
       outputSchema: schemaOnce("get_collection_overview:out", () => overviewSchema),
     },
     async () => {
-      const store = await ensureStore();
+      const store = callStore();
 
       const payload = store.cached(`overview:${exposureLevel()}`, () => {
       let yearMin: number | null = null;

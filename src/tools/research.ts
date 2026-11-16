@@ -2,7 +2,8 @@ import { schemaOnce } from "./schemaOnce.js";
 import type { ToolMap } from "./policy.js";
 import { citedUrl } from "../visibility.js";
 import { z } from "zod";
-import { ensureStore, refreshStatus, } from "../data.js";
+import { refreshStatus, type DataStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import { allowFullText, allowStructured } from "../exposure.js";
 import { CORPORA, } from "../types.js";
 import { entityGraph, entityEdges, entitySchema, entityTypes, edgeSchema, evidenceSchema, graphIndex, resolveEntities } from "../entityGraph.js";
@@ -34,7 +35,7 @@ const counts = z.record(z.string(), z.number());
 const MATCH_CAP = 10_000;
 
 /** Why get_text_passages cannot read an id of another kind, and what to use instead. */
-function unsupportedNote(store: Awaited<ReturnType<typeof ensureStore>>, kind: string, key: string): string {
+function unsupportedNote(store: DataStore,kind: string, key: string): string {
   if (kind === "research_item") {
     const item = findRecord(store, "research_item", key);
     if (config.access === "curator" && item?.restricted?.fulltext) {
@@ -55,7 +56,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       suggestions: z.array(z.object({ id: z.string(), name: z.string(), amira_url: citedUrl() })).optional(), hint: z.string().optional() })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "resolve_entity");
-    const store = await ensureStore();
+    const store = callStore();
     const limit = capLimit(args.limit, 20, 50);
     const found = resolveEntities(store, args.query, args.type);
     const page = pageOf(found, capOffset(args.offset), limit, (e) => e,
@@ -86,7 +87,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       response_limited: z.boolean().optional() })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_entity_graph");
-    const store = await ensureStore();
+    const store = callStore();
     const id = snapshotId(store.manifest);
     if (args.snapshot_id && args.snapshot_id !== id) {
       // A string that is not a snapshot id, or one no retained snapshot carries, was never valid here.
@@ -127,7 +128,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       unavailable: z.array(z.object({ id: z.string(), reason: z.string(), note: z.string().optional() })).optional() })),
   }, async (args) => {
     if (!allowFullText()) return exposureRestrictedResult("full", "get_text_passages");
-    const store = await ensureStore();
+    const store = callStore();
     const limit = capLimit(args.limit, 10, 20);
     const offset = capOffset(args.offset);
     const radius = args.radius ?? 160;
@@ -191,7 +192,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       date_range: z.object({ earliest: z.number(), latest: z.number() }).nullable() })) })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "compare_collections");
-    const store = await ensureStore();
+    const store = callStore();
     const refused = researchFilterError(args.filters ?? {}, store);
     if (refused) return queryErrorResult(refused);
     const selected = new Set(selectResearchItems(store, args.filters ?? {}).filtered.map((it) => it.o_id));
@@ -235,7 +236,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       semantic_neighbours: z.record(z.string(), z.unknown()).nullable() })),
   }, async () => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_data_quality");
-    const store = await ensureStore();
+    const store = callStore();
     const quality = store.cached("quality", () => {
       const entities = [...graphIndex(store).entities.values()];
       return { snapshot_id: snapshotId(store.manifest), fetched_at: store.manifest.fetchedAt, schema_version: store.manifest.schemaVersion,
@@ -268,7 +269,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       requested_limit: z.number().optional(), effective_limit: z.number().optional(), response_limited: z.boolean().optional() })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_snapshot_changes");
-    const store = await ensureStore();
+    const store = callStore();
     const available = await retainedSnapshots(store);
     const meta = available.map((s) => ({ id: s.id, fetched_at: s.fetchedAt }));
     const unknown = [args.from_id, args.to_id].filter((v): v is string => !!v && !available.some((s) => s.id === v));

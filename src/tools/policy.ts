@@ -29,7 +29,8 @@
 //     URL and adds the restricted block to detail results.
 import type { RegisteredTool } from "@modelcontextprotocol/server";
 import { errorResult } from "./responses.js";
-import { currentStore, ensureStore, withStore } from "../data.js";
+import { currentStore, ensureStore } from "../data.js";
+import { runWithCallStore } from "./callStore.js";
 import { dropSafeIntegerBounds, dropSchemaNoise, withJsonSchema, withoutSchemaText } from "../guidance.js";
 import { config } from "../config.js";
 import { curatorToolResult } from "./curator.js";
@@ -58,10 +59,11 @@ function withDeadline<T>(work: Promise<T>, ms: number, onTimeout: () => T): Prom
 
 /** Run a handler bound to the snapshot being served when it starts, so a
  * refresh that swaps the store mid-call cannot mix two snapshots' caches.
- * The store comes back with the result (curator decoration reads it). */
+ * Handlers read it with callStore() (src/tools/callStore.ts). The store comes
+ * back with the result (curator decoration reads it). */
 async function inStore<T>(fn: () => T): Promise<{ result: Awaited<T>; store: DataStore }> {
   const store = currentStore() ?? await ensureStore();
-  return { result: await withStore(store, fn), store };
+  return { result: await runWithCallStore(store, fn), store };
 }
 
 function withoutStructured<T>(result: T): T {

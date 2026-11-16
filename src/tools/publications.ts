@@ -7,7 +7,7 @@ import type { ToolMap } from "./policy.js";
 // opt-in + windowable in get_publication — the same discipline as transcripts.
 import { z } from "zod";
 import { includeSimilarSchema, similarBlock } from "./similar.js";
-import { ensureStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import type { LinkedRef } from "../types.js";
 import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
 import {
@@ -60,7 +60,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       const maxLimit = args.citation_format ? 25 : 100;
       const limit = capLimit(args.limit, 25, maxLimit);
       const offset = capOffset(args.offset);
@@ -111,7 +111,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       })),
     },
     async ({ id, citation_format, include_fulltext, fulltext_offset, fulltext_max_chars, include_similar }) => {
-      const store = await ensureStore();
+      const store = callStore();
       const found = recordArg(store, id, "publication",
         () => errorResult("not_found", `No publication with id '${id}'.`, { suggested_tool: "search_publications" }));
       if ("error" in found) return found.error;
@@ -243,7 +243,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       const args = { ...filters, limit: rawLimit, offset: rawOffset };
       const invalid = publicationFilterError(filters);
       if (invalid) return queryErrorResult(invalid);
-      const store = await ensureStore();
+      const store = callStore();
       const { records } = selectPublications(store, filters);
       const buckets = new Map<string, { value: string; publication_count: number; amira_url?: string }>();
       let missing = 0;
@@ -290,7 +290,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_journals");
       const limit = capLimit(args.limit, 50, 200);
       const offset = capOffset(args.offset);

@@ -7,7 +7,7 @@
 import { schemaOnce } from "./schemaOnce.js";
 import { z } from "zod";
 import type { ToolMap } from "./policy.js";
-import { ensureStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import { allowDescriptive } from "../exposure.js";
 import {
   countriesNote, excludedCount, fulltextIndex, groupLabelNote, neighboursNote, sourceRef, wordsNote, wordTrends, type FulltextIndex,
@@ -39,7 +39,7 @@ export function registerFulltextTools(server: Server, tools: ToolMap): void {
     },
     async (args) => {
       if (!allowDescriptive()) return exposureRestrictedResult("descriptive", "get_fulltext_map");
-      const store = await ensureStore();
+      const store = callStore();
       const index = fulltextIndex(store);
       if (!index) return errorResult("fulltext_map_unavailable", "This snapshot carries no full-text map.");
       if (args.year_from !== undefined && args.year_to !== undefined && args.year_from > args.year_to) {

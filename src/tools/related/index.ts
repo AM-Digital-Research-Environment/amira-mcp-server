@@ -5,7 +5,8 @@
 // RelatedLists (./lists.ts).
 import { schemaOnce } from "../schemaOnce.js";
 import { z } from "zod";
-import { ensureStore, type DataStore } from "../../data.js";
+import type { DataStore } from "../../data.js";
+import { callStore } from "../callStore.js";
 import { resolveEntities } from "../../entityGraph.js";
 import { allowDescriptive, allowStructured } from "../../exposure.js";
 import { guidanceEnabled } from "../../guidance.js";
@@ -55,7 +56,7 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
     },
     async (args) => {
       if (!allowStructured()) return exposureRestrictedResult("structured", "find_related");
-      const store = await ensureStore();
+      const store = callStore();
       const limit = capLimit(args.limit, 20, 50);
       const type = args.entity_type as EntityType;
       if (type === "research_item") {

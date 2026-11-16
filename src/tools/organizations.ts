@@ -2,7 +2,7 @@ import { schemaOnce } from "./schemaOnce.js";
 import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
-import { ensureStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import type { DataStore } from "../data.js";
 import type { OrganisationRec, ResearchItemRec } from "../types.js";
 import { allowStructured } from "../exposure.js";
@@ -208,7 +208,7 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_institutions");
       const limit = capLimit(args.limit, 50, 200);
       const offset = capOffset(args.offset);
@@ -252,7 +252,7 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       })),
     },
     async ({ name, id }) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_institution");
       if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
       const byId = id != null ? recordArg(store, id, "organisation",
@@ -339,7 +339,7 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       })),
     },
     async ({ category }) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_cluster_partners");
       const matches = category ? partnerCategoryMatches(category) : [];
       if (category && matches.length !== 1) {
@@ -395,7 +395,7 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_groups");
       const limit = capLimit(args.limit, 50, 200);
       const offset = capOffset(args.offset);

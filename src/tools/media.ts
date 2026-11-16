@@ -8,7 +8,7 @@ import type { ToolMap } from "./policy.js";
 // search predicate and one detail shape; only their filters differ.
 import { z } from "zod";
 import { includeSimilarSchema, similarBlock } from "./similar.js";
-import { ensureStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import type { LinkedRef, MediaRec, PodcastRec, VideoRec } from "../types.js";
 import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
 import {
@@ -109,7 +109,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
     },
     async (args) => {
       if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
-      const store = await ensureStore();
+      const store = callStore();
       const limit = capLimit(args.limit, 20, 100);
       const offset = capOffset(args.offset);
       for (const key of ["series", "person", "language"] as const) {
@@ -145,7 +145,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       })),
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_similar }) => {
-      const store = await ensureStore();
+      const store = callStore();
       const found = recordArg(store, id, "podcast",
         () => errorResult("not_found", `No podcast with id ${id}.`, { suggested_tool: "search_podcasts" }));
       if ("error" in found) return found.error;
@@ -200,7 +200,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
     },
     async (args) => {
       if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
-      const store = await ensureStore();
+      const store = callStore();
       const limit = capLimit(args.limit, 20, 100);
       const offset = capOffset(args.offset);
       for (const key of ["playlist", "speaker", "language"] as const) {
@@ -236,7 +236,7 @@ export function registerMediaTools(server: Server, tools: ToolMap): void {
       })),
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_similar }) => {
-      const store = await ensureStore();
+      const store = callStore();
       const found = recordArg(store, id, "video",
         () => errorResult("not_found", `No video with id ${id}.`, { suggested_tool: "search_videos" }));
       if ("error" in found) return found.error;

@@ -17,7 +17,8 @@ import { schemaOnce } from "./schemaOnce.js";
 import { z } from "zod";
 import type { ToolMap } from "./policy.js";
 import { runSearch, SEARCH_TYPES, type SearchType } from "../searchRanking.js";
-import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
+import { UNIVERSITY_LABELS } from "../data.js";
+import { callStore } from "./callStore.js";
 import type { DataStore } from "../data.js";
 import { allowDescriptive, allowStructured } from "../exposure.js";
 import { guidanceEnabled } from "../guidance.js";
@@ -439,7 +440,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
       })),
     },
     async ({ query, limit, types }) => {
-      const store = await ensureStore();
+      const store = callStore();
       const capped = capLimit(limit, DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT);
       const results = runSearch(store, query, capped, types as SearchType[] | undefined).map((h) => ({
         id: h.id,
@@ -478,7 +479,7 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
       })),
     },
     async ({ id, include_transcript, transcript_offset, transcript_max_chars, include_fulltext, fulltext_offset, fulltext_max_chars, max_chars }) => {
-      const store = await ensureStore();
+      const store = callStore();
       const maxChars = capLimit(max_chars, CHARACTER_LIMIT, CHARACTER_LIMIT);
       const payload = fetchDoc(store, id, {
         includeTranscript: include_transcript ?? false,

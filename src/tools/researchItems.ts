@@ -5,7 +5,8 @@ import { isoDate, researchFilterError, selectResearchItems } from "../researchIt
 import { z } from "zod";
 import { includeSimilarSchema, similarBlock } from "./similar.js";
 import type { ResearchItemRec } from "../types.js";
-import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
+import { UNIVERSITY_LABELS, type DataStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import {
   READ_ONLY,
   capLimit,
@@ -76,7 +77,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       const limit = capLimit(args.limit, 20, 100);
       const offset = capOffset(args.offset);
       const { export: format, limit: _l, offset: _o, ...filters } = args;
@@ -143,7 +144,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       })),
     },
     async ({ id, citation_format, include_similar }) => {
-      const store = await ensureStore();
+      const store = callStore();
       const found = recordArg(store, id, "research_item", () => errorResult("not_found",
         `No research item with id '${stripTypedId(String(id), ["research_item"])}'.`, { suggested_tool: "search_research_items" }));
       if ("error" in found) return found.error;
@@ -241,7 +242,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
  * articles by full text, its content group and the countries its text names.
  * Derived numbers only; the text itself is private and never read here.
  */
-function fulltextFields(store: Awaited<ReturnType<typeof ensureStore>>, it: ResearchItemRec): Record<string, unknown> {
+function fulltextFields(store: DataStore,it: ResearchItemRec): Record<string, unknown> {
   const index = fulltextIndex(store);
   if (!index || !inMappedCollection(index, it)) return {};
   const article = index.articles.get(it.o_id);

@@ -8,7 +8,8 @@
 import { schemaOnce } from "./schemaOnce.js";
 import { z } from "zod";
 import type { ToolMap } from "./policy.js";
-import { ensureStore, type DataStore } from "../data.js";
+import type { DataStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import { allowStructured } from "../exposure.js";
 import { guidanceEnabled } from "../guidance.js";
 import { RefTally } from "../matching.js";
@@ -67,7 +68,7 @@ export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
     })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_semantic_map");
-    const store = await ensureStore();
+    const store = callStore();
     const index = semanticIndex(store);
     if (!index) return semanticUnavailable("semantic map", "get_collection_overview");
     if (!index.groups.size) {

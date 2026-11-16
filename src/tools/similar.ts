@@ -13,7 +13,8 @@
 import { schemaOnce } from "./schemaOnce.js";
 import { z } from "zod";
 import type { ToolMap } from "./policy.js";
-import { ensureStore, type DataStore } from "../data.js";
+import type { DataStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import { allowStructured } from "../exposure.js";
 import { guidanceEnabled } from "../guidance.js";
 import { refKey } from "../matching.js";
@@ -163,7 +164,7 @@ export function registerSimilarTools(server: Server, tools: ToolMap): void {
     })),
   }, async (args) => {
     if (!allowStructured()) return exposureRestrictedResult("structured", "get_similar_items");
-    const store = await ensureStore();
+    const store = callStore();
     const index = semanticIndex(store);
     if (!index) return semanticUnavailable("semantic neighbours", "find_related");
     const seed = resolveSemanticSeed(store, args.id, "find_related");

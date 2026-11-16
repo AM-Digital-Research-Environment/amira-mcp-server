@@ -2,7 +2,7 @@ import { schemaOnce } from "./schemaOnce.js";
 import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
-import { ensureStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import { allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
@@ -34,7 +34,7 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
       inputSchema: schemaOnce("list_research_sections:in", () => z.strictObject({})),
     },
     async () => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_research_sections");
       const sections = store.sections.map((s) => {
         // Projects link to sections by id; counting by label orphaned a project
@@ -60,7 +60,7 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
       })),
     },
     async ({ name, id }) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_research_section");
       if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
       if (id != null && name) return errorResult("invalid_argument", "Provide name or id, not both.");

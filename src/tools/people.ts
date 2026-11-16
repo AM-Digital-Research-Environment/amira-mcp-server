@@ -1,7 +1,7 @@
 import { schemaOnce } from "./schemaOnce.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
-import { ensureStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import type { DataStore } from "../data.js";
 import type { Contributor, PersonRec, PodcastRec, ProjectRec, PublicationRec, SectionRec, VideoRec } from "../types.js";
 import { allowStructured } from "../exposure.js";
@@ -163,7 +163,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "search_persons");
       const limit = capLimit(args.limit, 25, 100);
       const offset = capOffset(args.offset);
@@ -204,7 +204,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       })),
     },
     async ({ name, id }) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_person");
       if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
       let candidates: PersonRec[];

@@ -3,7 +3,8 @@ import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { includeSimilarSchema, similarBlock } from "./similar.js";
-import { ensureStore, UNIVERSITY_LABELS } from "../data.js";
+import { UNIVERSITY_LABELS } from "../data.js";
+import { callStore } from "./callStore.js";
 import { allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
@@ -55,7 +56,7 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "search_projects");
       const limit = capLimit(args.limit, 25, 100);
       const offset = capOffset(args.offset);
@@ -117,7 +118,7 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       })),
     },
     async ({ id, include_similar }) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_project");
       const found = recordArg(store, id, "project",
         () => errorResult("not_found", `No project with id '${id}'.`, { suggested_tool: "search_projects" }));
