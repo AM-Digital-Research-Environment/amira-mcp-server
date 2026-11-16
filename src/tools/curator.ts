@@ -57,7 +57,8 @@ export const PRIVATE_KEYWORD_NOTE =
 /** Said on a search result with rows matched only in a private full text, and on passages drawn from one. */
 export const RESTRICTED_MATCH_NOTE =
   "Rows with matched_in \"restricted_fulltext\" (or \"restricted_text\") matched only in a private full text: their " +
-  "fulltext_snippet (or text_snippet; a get_text_passages passage's text) is private. Do not quote or cite it as public.";
+  "fulltext_snippet (or text_snippet; a get_text_passages passage's text) is private in AMIRA, not on the public site. " +
+  "A public record is still cited by its amira_url; whether to quote the text is up to the curator.";
 
 /** The matched_in values of a row matched only in a private text. */
 const RESTRICTED_MATCHES = new Set(["restricted_fulltext", "restricted_text"]);

@@ -5,6 +5,20 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+### Curator mode
+
+- **Notes on private material inform instead of forbidding.** The server
+  instructions, `restricted_match_note`, `citation_note`, the `restricted`
+  block's note, the curator prompts, tool descriptions, the companion skill and
+  `docs/curator.md` no longer tell the model not to quote or cite private text;
+  they say what is private, that a private record has no public page (name it
+  as private, with its `admin_url`), and that a private text of a public record
+  is not on the public site, with whether to quote it left to the curator. The
+  old wording made agents refuse to open or quote private full text for
+  curators entitled to it. Fields, schemas and public mode are unchanged.
+
 ## 1.38.0 — 2026-11-16
 
 ### Curator mode

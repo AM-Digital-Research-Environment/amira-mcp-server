@@ -98,7 +98,7 @@ test("records outside the crawled corpora and languages carry visibility; a priv
   assert.equal(privFormat.visibility, "private");
   assert.equal(privFormat.amira_url, undefined);
   assert.equal(privFormat.admin_url, adminItem(X.privateFormat));
-  assert.match(privFormat.citation_note, /not publicly accessible/);
+  assert.match(privFormat.citation_note, /readers without curator access cannot open it/);
   assert.equal(node(X.publicFormat).visibility, "public");
   assert.equal(node(X.publicFormat).amira_url, publicItem(X.publicFormat));
   const lang = node(X.privateLanguage);
@@ -181,7 +181,7 @@ test("search rows and fetch documents cited by url carry visibility", async () =
   assert.ok(row);
   assert.equal(row.url, adminItem(IDS.privateItem));
   assert.equal(row.visibility, "private");
-  assert.match(row.citation_note, /not publicly accessible/);
+  assert.match(row.citation_note, /readers without curator access cannot open it/);
   const doc = await call("fetch", { id: row.id });
   assert.equal(doc.visibility, "private");
   assert.equal(doc.url, adminItem(IDS.privateItem));

@@ -112,7 +112,7 @@ test("curator: the private item is served as private, with an admin URL and no p
   assert.equal(item.visibility, "private");
   assert.equal(item.admin_url, adminItem(IDS.privateItem));
   assert.equal(item.amira_url, undefined, "anonymous visitors cannot open a private item's public page");
-  assert.match(item.citation_note, /not publicly accessible/);
+  assert.match(item.citation_note, /readers without curator access cannot open it/);
   // The generated citation and the CSL export say so, and link nothing public.
   assert.match(item.generated_citation, /Private AMIRA record/);
   assert.equal(item.csl_json.URL, undefined);

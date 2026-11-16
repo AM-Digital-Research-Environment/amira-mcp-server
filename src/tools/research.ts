@@ -53,7 +53,7 @@ const PASSAGES_DESCRIPTION = "Find accent-insensitive passages of one literal ph
  * row matched only there, so the single decoration step (src/tools/curator.ts)
  * adds `restricted_match_note`. Absent from the public surface.
  */
-const CURATOR_PASSAGES = " Curator mode: research_item: ids too, and private texts; their passages say matched_in and are private, not citable.";
+const CURATOR_PASSAGES = " Curator mode: research_item: ids too, and private texts; their passages say matched_in and are not on the public site.";
 const PRIVATE_MATCHED_IN = { research_item: "restricted_fulltext", publication: "restricted_fulltext", chronicle: "restricted_text" } as const;
 
 export function registerResearchTools(server: Server, tools: ToolMap): void {

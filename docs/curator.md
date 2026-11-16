@@ -59,7 +59,8 @@ applied to every tool and resource, so no tool can forget it:
   next crawl.
 - **Private records** lose `amira_url`, since anonymous visitors cannot open
   that page, and get `admin_url` (the Omeka admin page) and a `citation_note`
-  saying not to cite them as public. Any other URL of a private record inside a
+  saying that readers without curator access cannot open them, so they are
+  named as private rather than linked as if public. Any other URL of a private record inside a
   string (a generated citation, a `fetch` document, an export), whether its
   public page (`https://` or `http://`), its API URL (`/api/items/<id>`) or its
   IIIF manifest or collection, is rewritten to its admin URL, and a private
@@ -78,7 +79,7 @@ applied to every tool and resource, so no tool can forget it:
   `search_research_items` and `search_publications` match the keyword against it
   (rows matched only there say `matched_in: "restricted_fulltext"` with a
   snippet, and the result carries `restricted_match_note`: the snippet is
-  private), and `get_research_item` / `get_publication` return it with
+  private, not on the public site), and `get_research_item` / `get_publication` return it with
   `include_fulltext`, `fulltext_offset` and `fulltext_max_chars`, paged like
   every other long text. `get_research_item` gains those three parameters in
   curator mode only. Asked for with `include_fulltext` on a record that has
@@ -99,7 +100,7 @@ applied to every tool and resource, so no tool can forget it:
   passage drawn from a private text carries the search tools' marker
   (`matched_in: "restricted_fulltext"`, or `"restricted_text"` for a
   chronicle), so the result gets `restricted_match_note`: the passage `text` is
-  private and not citable, even when the record itself is public (its row then
+  private and not on the public site, even when the record itself is public (its row then
   says `visibility: "public"` and keeps its `amira_url`; a private record's
   row has `admin_url` instead). Its offsets are UTF-16 offsets into that
   private text, the ones `get_research_item` / `get_publication`
@@ -128,9 +129,14 @@ applied to every tool and resource, so no tool can forget it:
 - **Semantic neighbours**: the corpus vectors are built from the public API, so
   a private record has none, and the semantic tools say so;
   `get_data_quality` counts private records apart (`private_not_embedded`).
-- **Instructions and prompts** put the private-record rules first, and cite
-  public records by `amira_url`, private ones only by `admin_url`, for
-  curators.
+- **Instructions and prompts** put the private-record rules first, cite
+  public records by `amira_url`, and name private ones as private with their
+  `admin_url`.
+- **The server informs, it does not forbid.** Every note on private material
+  states facts: what is private, that a private record has no public page,
+  that a private text or value is not on the public site. Curators hold the
+  data already, so the notes put no limit on reading, quoting or using private
+  text: whether a passage leaves their hands is the curator's decision.
 - **App views** (map, graph, bibliography, …) show a private record's title
   as plain text marked "(private)", never as a link.
 

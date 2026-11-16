@@ -155,7 +155,8 @@ name in either order; location = any hierarchy level; project = id/label. The ru
 
 The full text of ILAM's journal *African Music* (collection 27724) is private: no public tool reads or
 quotes it. DRE Visualizations derived public numbers from it offline, and the server serves those.
-(The curator server pages it for curation only, in `restricted`; never quote it in public outputs.)
+(The curator server pages it in `restricted`: private in AMIRA, not on the public site; whether to
+quote it is up to the curator.)
 
 | Task | Tool | Key params |
 | --- | --- | --- |

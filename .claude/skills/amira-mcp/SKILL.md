@@ -278,10 +278,13 @@ MODE and results carry `visibility`. The public server never does.
 
 - Every record says `visibility: "public"` or `"private"`. A private record has **no `amira_url`**:
   it carries `admin_url` (its Omeka admin page, which only curators can open) and a
-  `citation_note`. Never cite, link or describe a private record as a public source; name it with
-  its `admin_url` and say it is private. Citations and exports of a private record say so too.
+  `citation_note`. Readers without curator access cannot open it, so name it as private with its
+  `admin_url` rather than linking it as if public. Citations and exports of a private record say so too.
 - `restricted` on a detail result holds private values (`security_level`, `mongo_id`, `bitstream`,
-  other private `values`, private full text): for curation work only, never in public outputs.
+  other private `values`, private full text), not on the public site. Read and use them as the task
+  needs. A private text of a public record leaves the record public: cite the record by its
+  `amira_url` as usual. The text itself is private in AMIRA, not on the public site; whether to
+  quote it is up to the curator.
 - Private full text (e.g. ILAM's OCR text) is searchable in `search_research_items` and
   `search_publications`: a row matched only there says `matched_in: "restricted_fulltext"` with a
   snippet. Read it with `include_fulltext` on `get_research_item` / `get_publication`, paged by

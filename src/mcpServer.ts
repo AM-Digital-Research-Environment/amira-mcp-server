@@ -107,10 +107,11 @@ export const INSTRUCTIONS =
  * text stays within the same 2,048-character limit (a unit test enforces it).
  */
 const CURATOR_RULES =
-  "CURATOR MODE — this server also serves PRIVATE AMIRA records and values, for curators only:\n" +
-  "• A record with `visibility: \"private\"` has no public page: it carries `admin_url` (Omeka admin) and a " +
-  "`citation_note` instead of `amira_url`. Never cite or link it as a public source.\n" +
-  "• `restricted` holds private values (security level, MongoDB id, private full text): for curation work only.\n\n";
+  "CURATOR MODE — this server also serves PRIVATE AMIRA records and values:\n" +
+  "• A record with `visibility: \"private\"` has no public page: `admin_url` (Omeka admin) and `citation_note` " +
+  "replace `amira_url`. Only curators can open it: name it as private.\n" +
+  "• `restricted` holds private values (security level, MongoDB id, full text), not on the public site; " +
+  "quoting them is the curator's call.\n\n";
 const CURATOR_ABOUT =
   "\n\nABOUT: AMIRA is the research-data platform of the Africa Multiple Cluster of Excellence, University of Bayreuth. " +
   "Results come from an authenticated snapshot of its Omeka S API; get_collection_overview gives its date and the " +

@@ -51,11 +51,12 @@ export const isPrivateRecord = (rec: { visibility?: string } | null | undefined)
 
 /** Said wherever a private record is shown, so it is never passed off as a public source. */
 export const PRIVATE_CITATION_NOTE =
-  "Private AMIRA record: not publicly accessible. Do not cite it as a public source or link it in public work.";
+  "Private AMIRA record: no public page, so readers without curator access cannot open it. " +
+  "Name it as private rather than linking it as if public.";
 
 /** Said with every restricted block. */
 export const RESTRICTED_NOTE =
-  "Private values: visible to AMIRA curators only, not on the public site. Do not quote or cite them as public.";
+  "Private values: visible to AMIRA curators only, not on the public site. Whether to quote them is up to the curator.";
 
 /** Output-schema type of a record's `amira_url`. Optional in curator mode only,
  * where a private record carries `admin_url` instead; the public schema is unchanged. */

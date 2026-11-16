@@ -29,11 +29,11 @@ const CITE_PUBLIC =
   "implying absence. " +
   METHOD;
 
-/** Curator mode (#26): a private record has no `amira_url`, only an admin link that is never a public citation. */
+/** Curator mode (#26): a private record has no `amira_url`, only an admin link that readers without curator access cannot open. */
 const CITE_CURATOR =
   "Cite every public record you mention with its `amira_url` as a markdown link, one link per record. A record with " +
-  "`visibility: \"private\"` has no `amira_url`: mark it as private, give its `admin_url` for curators only, and never cite " +
-  "it as a public source. Use only URLs the tools return and never print legacy DRE identifiers. State what the " +
+  "`visibility: \"private\"` has no `amira_url`: name it as private with its `admin_url`, which only curators can open, " +
+  "rather than as a public source. Use only URLs the tools return and never print legacy DRE identifiers. State what the " +
   "collection does not cover rather than implying absence. " +
   METHOD;
 

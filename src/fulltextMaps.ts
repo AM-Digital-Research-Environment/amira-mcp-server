@@ -180,7 +180,7 @@ export function excludedCount(index: FulltextIndex): number {
 export function neighboursNote(index: FulltextIndex): string {
   return `Closest by full-text embedding (${index.maps.map.model.name}, cosine of article vectors), computed offline from ILAM's full text, ` +
     (config.access === "curator"
-      ? "which is private: curators read it in get_research_item's `restricted` block (include_fulltext), never as public text. "
+      ? "which is private in AMIRA, not on the public site: curators read it in get_research_item's `restricted` block (include_fulltext). "
       : "which is private and never served here. ") +
     "Scores sit in a narrow band (about 0.90 to 0.97): compare ranks, not raw values. " +
     `Not on the map: articles without full text, and ${excludedCount(index)} with full text excluded as shared section text, journal furniture or under 300 words.`;
