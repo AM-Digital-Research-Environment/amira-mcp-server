@@ -28,8 +28,34 @@ import { itemUrl, itemUrlOrNull } from "../urls.js";
 import { nameKey, nearMissNames, personMatches, samePerson } from "../names.js";
 import { guidanceEnabled } from "../guidance.js";
 import { resolveEntities } from "../entityGraph.js";
-import { stripTypedId } from "../typedIds.js";
 import { fold } from "../text.js";
+import { duplicatePointer, publicFirst, withoutPrivateNamesakes } from "../namesakes.js";
+import { collaborativeRole, isPersonCredit } from "../personCredits.js";
+import { RECORD_KINDS, detailToolOf, recordByOId, recordTitle } from "../recordKinds.js";
+import { recordArg } from "./records.js";
+import { pastEndHint } from "./listHints.js";
+
+const KIND_LABEL: Record<string, string> = {
+  research_item: "a research item", organisation: "an institution or group", section: "a research section",
+  collection: "a collection", publication: "a publication", location: "a location", subject: "a subject",
+};
+
+/** The person an `id` argument names, or an error saying what the id is when it names another kind of record. */
+function personById(store: DataStore, id: string | number): { record: PersonRec } | { error: ReturnType<typeof errorResult> } {
+  return recordArg(store, id, "person", () => {
+    const text = String(id).trim();
+    const n = Number(text.replace(/^person:/i, ""));
+    if (!Number.isSafeInteger(n) || n <= 0) return errorResult("invalid_id", "Use a numeric person id or person:<id>.");
+    const other = recordByOId(store, n);
+    if (other) {
+      const what = KIND_LABEL[other.kind] ?? `a ${other.kind}`;
+      const tool = detailToolOf(other.kind) ?? RECORD_KINDS[other.kind].search ?? "resolve_entity";
+      const message = `Omeka id ${n} is ${what} ('${recordTitle(other.record)}'), not a person.`;
+      return errorResult("not_found", `${message} Use ${tool}.`, { suggested_tool: tool, terse: message });
+    }
+    return errorResult("not_found", "Unknown person id.", { suggested_tool: "resolve_entity" });
+  });
+}
 
 /** Author or editor role of a person on a publication — by Omeka id when both
  * sides are linked, otherwise by the full order-independent name. The old
@@ -57,17 +83,8 @@ function creditedAnywhere(store: DataStore, name: string): string | null {
 
 const COLLABORATOR_CAP = 15;
 
-/**
- * Credits that place a person on a record without sharing its work: production
- * crew and custodial or sponsoring roles. Until v1.29.0 a podcast's sound
- * engineer was listed among the speakers' collaborators, and an answer passed
- * that on to the researcher it described.
- */
-const NON_COLLABORATIVE_ROLES = new Set([
-  "Sound engineer", "Transcriber", "Repository", "Sponsor", "Publisher", "Provider",
-  "Copyright holder", "Owner", "Former owner", "Patron",
-].map(fold));
-const collaborative = (role: string | null | undefined): boolean => !role || !NON_COLLABORATIVE_ROLES.has(fold(role));
+/** Production crew and custodial or sponsoring roles share no work (src/personCredits.ts). */
+const collaborative = collaborativeRole;
 
 /**
  * Publications with more authors than this are team works and add no
@@ -156,15 +173,17 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         (p.alt_names ?? []).some((alt) => personMatches(alt, keyword)) ||
         anyContainsCI(refLabels(p.affiliations), keyword);
       const affiliated = (p: PersonRec) => !args.affiliation || anyContainsCI(refLabels(p.affiliations), args.affiliation);
-      const filtered = store.persons.filter((p) => (!args.keyword || keywordMatches(p, args.keyword)) && affiliated(p));
+      // Curator mode: private records (retired duplicates among them) after public ones.
+      const filtered = publicFirst(store.persons.filter((p) => (!args.keyword || keywordMatches(p, args.keyword)) && affiliated(p)));
 
-      const page = pageOf(filtered, offset, limit, personSummary, { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) });
+      const page = pageOf(filtered, offset, limit, (p) => ({ ...personSummary(p), ...duplicatePointer(store, p, "person") }),
+        { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) });
       // Suggest spellings only when the keyword itself matched nobody: when an
       // affiliation filter removed the matches, the name was not the problem,
       // and the generic advice to relax filters applies instead.
       const spelling = filtered.length || !args.keyword || store.persons.some((p) => keywordMatches(p, args.keyword!))
         ? {} : personSuggestions(store.persons.filter(affiliated), args.keyword);
-      return textResult({ ...page, ...("suggestions" in spelling ? spelling : emptySearchHint(filtered.length, args)) });
+      return textResult({ ...page, ...("suggestions" in spelling ? spelling : emptySearchHint(filtered.length, args)), ...pastEndHint(page) });
     },
   );
 
@@ -188,10 +207,21 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_person");
       if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
-      const oIdArg = id != null ? Number(stripTypedId(String(id), ["person"])) : null;
-      if (oIdArg != null && !Number.isSafeInteger(oIdArg)) return errorResult("invalid_id", "Use a numeric person id or person:<id>.");
-      const candidates = oIdArg != null ? store.persons.filter((p) => p.o_id === oIdArg) : store.persons.filter((p) => samePerson(p.name, name!));
-      if (oIdArg != null && !candidates.length) return errorResult("not_found", "Unknown person id.", { suggested_tool: "resolve_entity" });
+      let candidates: PersonRec[];
+      if (id != null) {
+        const byId = personById(store, id);
+        if ("error" in byId) return byId.error;
+        // Both given: they must name the same person, or the reply would
+        // describe the id while echoing the name as the query.
+        if (name && ![byId.record.name, ...(byId.record.alt_names ?? [])].some((n) => samePerson(n, name))) {
+          const message = `id ${id} is '${byId.record.name}', not '${name}'. Pass either id or name.`;
+          return errorResult("invalid_argument", message, { terse: message });
+        }
+        candidates = [byId.record];
+      } else {
+        // A retired private duplicate never competes with its public namesake.
+        candidates = withoutPrivateNamesakes(store, store.persons.filter((p) => samePerson(p.name, name!)), "person");
+      }
       if (candidates.length > 1) return errorResult("ambiguous_entity", "Multiple people share this name; use an exact id from resolve_entity.", { suggested_tool: "resolve_entity", available_values: candidates.map((p) => String(p.o_id)), terse: "Multiple people share this name; use an exact id." });
 
       const record: PersonRec | undefined = candidates[0];
@@ -239,8 +269,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         for (const ref of refs) {
           // Collaborators are people: groups, companies and institutions
           // credited on the same record ("Institute of African Studies") are not.
-          if (isPerson(ref.label, ref.o_id) || (ref.o_id != null && store.getOrganisationByOId(ref.o_id))) continue;
-          if (!collaborative(ref.role)) continue;
+          if (isPerson(ref.label, ref.o_id) || !isPersonCredit(store, ref)) continue;
           const key = ref.o_id != null ? `id:${ref.o_id}` : `name:${nameKey(ref.label) || fold(ref.label)}`;
           if (seen.has(key)) continue;
           seen.add(key);
@@ -296,6 +325,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         ...(name ? { query: name } : {}),
         found_in_authority_list: !!record,
         ...(record ? { id: String(record.o_id), omeka_id: record.o_id } : {}),
+        ...duplicatePointer(store, record, "person"),
         affiliations: refLabels(record?.affiliations),
         identifiers: record?.identifiers ?? [],
         ...(record?.alt_names?.length ? { name_variants: record.alt_names } : {}),

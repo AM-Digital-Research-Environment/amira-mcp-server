@@ -12,7 +12,12 @@ export function relatedByFullText(store: DataStore, value: string, limit: number
   const index = fulltextIndex(store);
   if (!index) return errorResult("fulltext_map_unavailable", "This snapshot carries no full-text map.");
   const item = store.getItem(value);
-  if (!item) return errorResult("not_found", `No research item with id '${value}'.`, { suggested_tool: "search_research_items" });
+  if (!item) {
+    // The value is an id, not a text query ("xylophone"): say what is expected.
+    const message = `No research item with id '${value}'. research_item takes the item id of an ILAM African Music article ` +
+      "('27733' or 'research_item:27733'), not a text query.";
+    return errorResult("not_found", `${message} Find articles with search_research_items.`, { suggested_tool: "search_research_items", terse: message });
+  }
   const article = index.articles.get(item.o_id);
   if (!article) {
     return errorResult("not_on_fulltext_map", inMappedCollection(index, item)

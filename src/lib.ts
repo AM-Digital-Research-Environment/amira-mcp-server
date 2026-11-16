@@ -58,6 +58,7 @@ export {
   resetOmekaKeyCache, withOmekaKey,
 } from "./access.js";
 export { publicView, splitVisibility, PRIVATE_CITATION_NOTE, RESTRICTED_NOTE } from "./visibility.js";
+export { publicNamesakeOf } from "./namesakes.js";
 export { cacheSnapshotDir, refreshNow, refreshStatus } from "./data.js";
 export { auditLine } from "./httpApp.js";
 export { adminItemUrl, adminItemSetUrl } from "./urls.js";

@@ -268,6 +268,17 @@ export function transformSubject(item: OmekaItem): SubjectRec {
   };
 }
 
+/**
+ * A Wikidata URI in the entity form every other record uses
+ * (`http://www.wikidata.org/entity/Q…`): one location carried the page URL
+ * (`https://www.wikidata.org/wiki/Q…`). Any other URI is returned unchanged.
+ */
+export function wikidataUri(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = /^https?:\/\/(?:www\.)?wikidata\.org\/(?:wiki|entity)\/(Q\d+)\/?$/i.exec(url.trim());
+  return m ? `http://www.wikidata.org/entity/${m[1]!.toUpperCase()}` : url;
+}
+
 export function transformOrganisation(item: OmekaItem): OrganisationRec {
   const type = (firstString(item, "dcterms:type") ?? "").toLowerCase();
   const lat = Number.parseFloat(firstString(item, "geo:lat") ?? "");
@@ -279,8 +290,8 @@ export function transformOrganisation(item: OmekaItem): OrganisationRec {
     part_of: linkedRefs(item, "dcterms:isPartOf"),
     latitude: Number.isFinite(lat) ? lat : null,
     longitude: Number.isFinite(lng) ? lng : null,
-    wikidata: uriValues(item, "dcterms:identifier").find((u) => /wikidata\.org/i.test(u.url))?.url
-      ?? uriValues(item, "dcterms:identifier")[0]?.url ?? null,
+    wikidata: wikidataUri(uriValues(item, "dcterms:identifier").find((u) => /wikidata\.org/i.test(u.url))?.url
+      ?? uriValues(item, "dcterms:identifier")[0]?.url),
     alt_names: allStrings(item, "dcterms:alternative"),
     identifiers: authorityIds(item, "dcterms:identifier"),
   };
@@ -295,7 +306,7 @@ export function transformLocation(item: OmekaItem): LocationRec {
     latitude: Number.isFinite(lat) ? lat : null,
     longitude: Number.isFinite(lng) ? lng : null,
     parent: firstLinked(item, "dcterms:isPartOf"),
-    wikidata: uriValues(item, "dcterms:identifier")[0]?.url ?? null,
+    wikidata: wikidataUri(uriValues(item, "dcterms:identifier")[0]?.url),
     place_type: firstString(item, "dcterms:type"),
   };
 }

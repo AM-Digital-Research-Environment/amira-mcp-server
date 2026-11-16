@@ -9,10 +9,10 @@
   "surface": {
     "stdio": {
       "tool_count": 36,
-      "total_chars": 48089,
-      "total_tokens": 12042,
+      "total_chars": 48514,
+      "total_tokens": 12149,
       "tools": {
-        "get_entity_graph": 900,
+        "get_entity_graph": 928,
         "search_research_items": 789,
         "list_years": 750,
         "compare_collections": 668,
@@ -24,7 +24,7 @@
         "get_snapshot_changes": 456,
         "get_text_passages": 454,
         "get_data_quality": 342,
-        "find_related": 338,
+        "find_related": 377,
         "search_projects": 311,
         "get_publication": 293,
         "search_podcasts": 292,
@@ -43,19 +43,19 @@
         "get_project": 159,
         "get_institution": 147,
         "get_research_section": 145,
-        "list_institutions": 144,
+        "list_institutions": 162,
         "list_journals": 141,
-        "list_groups": 132,
+        "list_groups": 154,
         "list_cluster_partners": 122,
         "list_research_sections": 118
       }
     },
     "http": {
       "tool_count": 38,
-      "total_chars": 51268,
-      "total_tokens": 12841,
+      "total_chars": 51693,
+      "total_tokens": 12948,
       "tools": {
-        "get_entity_graph": 900,
+        "get_entity_graph": 928,
         "search_research_items": 789,
         "list_years": 750,
         "compare_collections": 668,
@@ -68,7 +68,7 @@
         "get_snapshot_changes": 456,
         "get_text_passages": 454,
         "get_data_quality": 342,
-        "find_related": 338,
+        "find_related": 377,
         "search": 324,
         "search_projects": 311,
         "get_publication": 293,
@@ -88,19 +88,19 @@
         "get_project": 159,
         "get_institution": 147,
         "get_research_section": 145,
-        "list_institutions": 144,
+        "list_institutions": 162,
         "list_journals": 141,
-        "list_groups": 132,
+        "list_groups": 154,
         "list_cluster_partners": 122,
         "list_research_sections": 118
       }
     },
     "stdio_guidance_off": {
       "tool_count": 36,
-      "total_chars": 31853,
-      "total_tokens": 7976,
+      "total_chars": 31965,
+      "total_tokens": 8004,
       "tools": {
-        "get_entity_graph": 796,
+        "get_entity_graph": 824,
         "list_years": 622,
         "compare_collections": 610,
         "get_collection_overview": 467,
@@ -140,10 +140,10 @@
     },
     "http_guidance_off": {
       "tool_count": 38,
-      "total_chars": 33517,
-      "total_tokens": 8393,
+      "total_chars": 33629,
+      "total_tokens": 8421,
       "tools": {
-        "get_entity_graph": 796,
+        "get_entity_graph": 824,
         "list_years": 622,
         "compare_collections": 610,
         "get_collection_overview": 467,

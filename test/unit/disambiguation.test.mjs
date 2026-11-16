@@ -89,7 +89,8 @@ test("find_related: a full name or a person id pivots on that person only", asyn
     assert.equal(rel.ambiguous, false, value);
     assert.equal(rel.amira_url, url(120), value);
     assert.deepEqual(rel.sample_items.map((i) => i.omeka_id), [520], value);
-    assert.deepEqual(rel.related_people.map((p) => p.name).sort(), ["Fendler, Ute", "University of Lagos"], value);
+    // An organisation credited on the item is not one of its people (src/personCredits.ts).
+    assert.deepEqual(rel.related_people.map((p) => p.name).sort(), ["Fendler, Ute"], value);
   }
   const ulf = await call("find_related", { entity_type: "person", value: "Ulf Vierke" });
   assert.deepEqual(ulf.sample_items.map((i) => i.omeka_id), [521]);

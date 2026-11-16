@@ -58,7 +58,8 @@ export function registerOverviewTools(server: Server, tools: ToolMap): void {
           projects: store.projects.length,
           research_items: store.items.length,
           persons: store.persons.length,
-          institutions: store.organisations.filter((o) => o.kind === "institution").length,
+          // Untyped organisations are listed by list_institutions, so counted here.
+          institutions: store.organisations.filter((o) => o.kind !== "group").length,
           groups: store.organisations.filter((o) => o.kind === "group").length,
           ...(otherOrganisations ? { other_organisations: otherOrganisations } : {}),
           research_sections: store.sections.length,
