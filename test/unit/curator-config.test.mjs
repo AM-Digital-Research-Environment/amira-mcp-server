@@ -154,16 +154,19 @@ async function health(base) {
 
 test("curator data unverified for longer than the maximum staleness is refused", { timeout: 30_000 }, async (t) => {
   const { cacheDir, site } = await curatorCache(new Date().toISOString());
-  // 0.0005 h = 1.8 s: long enough to load and answer once, then the data lapses.
+  // 0.002 h = 7.2 s, counted from the snapshot's timestamp above: long enough for the child
+  // process to start, load and answer once even on a loaded machine (1.8 s was not: the cache
+  // was sometimes stale before it loaded), then the data lapses.
+  const stamped = Date.now();
   const server = await spawnHttpServer({ env: { ...CURATOR, AMIRA_SITE_BASE: site, AMIRA_CACHE_DIR: cacheDir,
-    AMIRA_CURATOR_MAX_STALE_HOURS: "0.0005" } });
+    AMIRA_CURATOR_MAX_STALE_HOURS: "0.002" } });
   t.after(() => server.stop());
   await server.waitForLog(/loaded 4 research items/);
   assert.equal((await health(server.base)).status, 200);
   const call = () => fetch(`${server.base}/mcp`, { method: "POST", headers: { "Content-Type": "application/json",
     Accept: "application/json, text/event-stream", Authorization: `Bearer ${TOKEN}`, "MCP-Protocol-Version": "2025-11-25" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_collection_overview", arguments: {} } }) });
-  await new Promise((r) => setTimeout(r, 2500));
+  await new Promise((r) => setTimeout(r, Math.max(0, stamped + 7_900 - Date.now())));
   const lapsed = await health(server.base);
   assert.equal(lapsed.status, 503);
   assert.equal(lapsed.body.status, "unavailable");
