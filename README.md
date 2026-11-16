@@ -608,7 +608,7 @@ rather than given an invented label. Group ids are renumbered per build
 | `AMIRA_DATA_DIR` | — | bundled `data/` | Override the bundled snapshot path (dev) |
 | `AMIRA_ENRICHMENT_BASE` | — | — | **Tests only**: fetch the full-text map and the corpus-vector releases from `<base>/raw`, `<base>/api` and `<base>/download` instead of GitHub (no token is sent) |
 | `AMIRA_EXPOSURE` | — | `full` | **Benchmark experiments only**: restrict which metadata the tools expose (see below) |
-| `AMIRA_GUIDANCE` | — | `on` | **Benchmark experiments only**: `off` serves the same tools without the curatorial guidance — instructions, descriptions, error advice, prompts, skill (see below); restart to change |
+| `AMIRA_GUIDANCE` | — | `on` | **Benchmark experiments only**: `off` (or `0`/`false`/`no`) serves the same tools without the curatorial guidance — instructions, descriptions, error advice, prompts, skill (see below); restart to change |
 | `AMIRA_SKILLS` | — | on | Serve the companion skill over the finalized SEP-2640 extension. `0`/`false`/`off` withdraws the capability and the `skills/*` methods |
 | `PORT` | — | `8787` | Port for the remote HTTP transport (`server/http.js`); ignored by the `.mcpb` |
 | `HOST` | — | `127.0.0.1` | HTTP bind address; set `0.0.0.0` explicitly for remote access. The Docker image sets this itself |

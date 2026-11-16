@@ -168,6 +168,27 @@ curator relay and a review of the 1.36.0 code.
   are tested against the registered tools; `server.json` in git is a placeholder
   stamped by the release.
 
+### Settings and internals
+
+- **Boolean settings accept the same spellings everywhere:** `1`/`true`/`yes`/`on`
+  and `0`/`false`/`no`/`off`, in any case. `AMIRA_GUIDANCE=false` now turns the
+  guidance off (it used to be ignored) and `AMIRA_SKILLS=on` works. An
+  unrecognised value logs one warning naming the variable and keeps the
+  default; the per-call settings treat an unsubstituted `${user_config.*}` as
+  unset, like the others.
+- No behaviour change, tool surface byte-identical: every setting is read
+  through `src/env.ts`; the data layer is split into the store (`src/store.ts`)
+  and its lifecycle (`src/storeLifecycle.ts`), the snapshot module into
+  `src/snapshot/` (crawl, enrichments, probe, disk, HTTP); handlers read the
+  store the policy bound for the call; each tool states its limit once
+  (`limitParam`); the podcast and video tools share factories; error codes are a
+  closed type; dead and test-only code is gone from the core.
+- App views: the shared helpers, the router and the bootstrap are typechecked
+  files instead of embedded strings; the views are formatted and checked in
+  strict mode (null checks aside); the tools a view may call live in the view
+  contract and are tested against the views. The token budgets and checks moved
+  from `scripts/weigh.mjs` to `test/helpers/budget.mjs`.
+
 ## 1.36.0 — 2026-11-13
 
 Curator access (#26, step 1): an internal, read-only curator mode that serves
