@@ -90,9 +90,10 @@ assert.ok(DECODED.startsWith(`${lib.BRIDGE_JS}\n`), "the decoded script starts w
 /** Everything after the bridge: shared helpers, the seven views, the router. */
 const VIEWS_JS = DECODED.slice(lib.BRIDGE_JS.length + 1);
 
-/** The bridge's callTool allowlist, read from the shipped bundle so the stub
- * refuses exactly what the real bridge refuses. */
-const allowlist = lib.BRIDGE_JS.match(/new Set\(\[([^\]]*"get_entity_graph"[^\]]*)\]\)/);
+/** The bridge's callTool allowlist (VIEW_CALLABLE_TOOLS, src/ui/viewContract.ts),
+ * read from the shipped bundle so the stub refuses exactly what the real bridge
+ * refuses: the one array literal of tool names that holds get_entity_graph. */
+const allowlist = lib.BRIDGE_JS.match(/\[((?:"[a-z_]+",)*"get_entity_graph"(?:,"[a-z_]+")*)\]/);
 assert.ok(allowlist, "BRIDGE_JS carries a callTool allowlist");
 const BRIDGE_TOOLS = new Set(JSON.parse(`[${allowlist[1]}]`));
 

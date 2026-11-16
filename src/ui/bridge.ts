@@ -5,6 +5,7 @@ import { App, applyHostStyleVariables, type McpUiHostContext } from "@modelconte
 import type { CallToolResult } from "@modelcontextprotocol/client";
 import { ContextSync, type ContextSyncStatus } from "./contextSync.js";
 import { askText, buildSelectionContext, selectionText, type SelectionContext } from "./selectionContext.js";
+import { VIEW_CALLABLE_TOOLS } from "./viewContract.js";
 
 type Payload = Record<string, unknown>;
 declare const __SERVER_VERSION__: string;
@@ -14,7 +15,7 @@ let input: Payload = {};
 let ready: Promise<void> | undefined;
 let connected = false;
 const lifecycle = new AbortController();
-const tools = new Set(["get_entity_graph", "resolve_entity", "list_locations", "search_research_items", "list_years", "search_publications", "get_publication", "list_publication_facets", "search_projects", "list_subjects"]);
+const tools = new Set<string>(VIEW_CALLABLE_TOOLS);
 
 function status(message: string) {
   const element = document.getElementById("app-status");
