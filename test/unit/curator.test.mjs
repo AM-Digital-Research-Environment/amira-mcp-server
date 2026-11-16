@@ -305,7 +305,9 @@ test("http: no token and an unknown token are 401; a personal token works and is
   assert.equal(unknown.status, 401);
   assert.equal((await send(base, { path: "/metrics" })).status, 401);
   assert.equal((await send(base, { path: "/metrics", headers: { Authorization: `Bearer ${BOB}` } })).status, 200);
-  assert.equal(audit.length, 0, "refused requests are not audited as a curator");
+  assert.ok(!audit.some((l) => l.includes("curator=")), "refused requests are not audited as a curator");
+  assert.equal(audit.filter((l) => l.startsWith("[amira] audit rejected=unauthorized ")).length, 3, "each refusal is logged once");
+  audit.length = 0;
 
   const client = await clientFor(base, ALICE);
   t.after(() => client.close());

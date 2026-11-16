@@ -62,4 +62,12 @@ export { auditLine } from "./httpApp.js";
 export { adminItemUrl, adminItemSetUrl } from "./urls.js";
 // Curator relay (#26): the .mcpb's stdio-to-curator forwarder.
 export { curatorUrlError } from "./access.js";
-export { describeRelayError, normalizeCuratorToken, redactToken, startRelay } from "./relay.js";
+export { describeRelayError, normalizeCuratorToken, redactToken, startRelay, truncateForLog } from "./relay.js";
+// Curator lifecycle and hardening.
+export {
+  accessConfigWarnings, cacheDirFilesystem, describeTokens, filesystemOf, IMAGE_CACHE_DIR, KEY_TTL_MS, MAX_TOKEN_LENGTH, MIN_TOKEN_LENGTH,
+  omekaKey,
+} from "./access.js";
+export { parsePort, resolveFetchBase } from "./config.js";
+export { stopBackgroundRefresh } from "./data.js";
+export { AUTH_FAILURES_PER_MINUTE } from "./httpApp.js";

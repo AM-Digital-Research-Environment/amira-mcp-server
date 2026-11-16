@@ -9,7 +9,7 @@ import fs from "node:fs/promises";
 import * as path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { config } from "./config.js";
+import { config, resolveFetchBase } from "./config.js";
 import {
   transformItemSet,
   transformJournal,
@@ -31,7 +31,7 @@ import {
 import { classId, oid, systemDate, type OmekaItem } from "./omekaJSON.js";
 import { omekaKeyFor, redactSecrets, withOmekaKey } from "./access.js";
 import { splitVisibility, withVisibility } from "./visibility.js";
-import { normalizeApiBase, type AccessMode } from "./snapshotIdentity.js";
+import type { AccessMode } from "./snapshotIdentity.js";
 import { FULLTEXT_SOURCE, fulltextManifestEntry, parseFulltextMaps, type FulltextMaps } from "./fulltextMaps.js";
 import {
   SEMANTIC_SOURCE, computeNeighbours, parseSemanticNeighbours, semanticBuild, semanticManifestEntry, verifySemanticRelease,
@@ -89,8 +89,9 @@ const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
  * when nothing needs rewriting (the default: fetch base = public API).
  */
 function internalUrls(url: string): (<T>(body: T) => T) | null {
-  if (config.fetchBase === config.apiBase || !url.startsWith(`${config.fetchBase}/`)) return null;
-  const fetchBase = normalizeApiBase(config.fetchBase);
+  // config.fetchBase is already normalised (src/config.ts), as is every URL built from it.
+  const fetchBase = config.fetchBase;
+  if (!url.startsWith(`${fetchBase}/`) || fetchBase === resolveFetchBase(null, config.apiBase)) return null;
   const root = fetchBase.endsWith("/api") ? fetchBase.slice(0, -"/api".length) : new URL(fetchBase).origin;
   const pattern = new RegExp(`${escapeRe(root)}(?=[/?#\\s"'<>)]|$)`, "g");
   const rewrite = (v: unknown): unknown => {

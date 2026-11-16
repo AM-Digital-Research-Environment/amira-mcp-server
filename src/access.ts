@@ -14,6 +14,7 @@
 // to start, and the entry points exit when it is not empty. Public mode refuses
 // a configured key, so a public process can never crawl private data.
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { config } from "./config.js";
 import { normalizeApiBase } from "./snapshotIdentity.js";
@@ -27,9 +28,10 @@ export interface OmekaKey {
 const KEY_PART = /^[\x21-\x7e]{1,256}$/;
 
 /**
- * Parse a key file: `key_identity=…` and `key_credential=…` lines (`#` comments
- * allowed; `:` works as well as `=`), or a JSON object with the same two keys.
- * Error messages never quote the file.
+ * Parse a key file: `key_identity=…` and `key_credential=…` lines (`#` comment
+ * lines, and a `# comment` after a value as in the tokens file; `:` works as
+ * well as `=`), or a JSON object with the same two keys. A `#` with no space
+ * before it stays part of the value. Error messages never quote the file.
  */
 export function parseOmekaKey(text: string): OmekaKey {
   const found: Record<string, string> = {};
@@ -49,7 +51,8 @@ export function parseOmekaKey(text: string): OmekaKey {
     for (const [i, raw] of trimmed.split(/\r?\n/).entries()) {
       const line = raw.trim();
       if (!line || line.startsWith("#")) continue;
-      const m = /^(key_identity|key_credential)\s*[=:]\s*(.*)$/.exec(line);
+      const value = line.replace(/\s+#.*$/, "");
+      const m = /^(key_identity|key_credential)\s*[=:]\s*(.*)$/.exec(value);
       if (!m) throw new Error(`line ${i + 1} is neither key_identity=… nor key_credential=…`);
       if (found[m[1]!] !== undefined) throw new Error(`${m[1]} is given twice`);
       found[m[1]!] = m[2]!.trim().replace(/^(["'])(.*)\1$/, "$2");
@@ -78,19 +81,42 @@ export function readOmekaKeyFile(file: string): OmekaKey {
 }
 
 /** Re-read the key file at most this often, so a rotated key is picked up without a restart. */
-const KEY_TTL_MS = 60_000;
+export const KEY_TTL_MS = 60_000;
 let keyCache: { key: OmekaKey; at: number } | null = null;
+/** Since when the key file has been unreadable or malformed (null while it reads). */
+let keyFailingSince: number | null = null;
 /** Every key value ever loaded by this process, for redaction after a rotation. */
 const seenSecrets = new Set<string>();
 
 /**
  * The Omeka service key, or null outside curator mode. Public mode never reads
  * the file, even when one is configured (it refuses to start instead).
+ *
+ * A key file that cannot be read or parsed fails closed, but not at once: an
+ * atomic rotation (write a new file, rename it over the old one) can leave a
+ * reader a moment without one. The first failure is transient (`keyFile:
+ * "transient"`: the refresh is skipped and retried soon). Once the file has
+ * failed for longer than one re-read interval (KEY_TTL_MS), the error is
+ * flagged `omekaAuth`, like a key Omeka refuses: the caller drops the private
+ * data and wipes the curator cache (src/data.ts). A successful read resets it.
  */
 export function omekaKey(): OmekaKey | null {
   if (config.access !== "curator" || !config.omekaKeyFile) return null;
   if (!keyCache || Date.now() - keyCache.at >= KEY_TTL_MS) {
-    const key = readOmekaKeyFile(config.omekaKeyFile);
+    let key: OmekaKey;
+    try {
+      key = readOmekaKeyFile(config.omekaKeyFile);
+    } catch (err) {
+      const now = Date.now();
+      keyFailingSince ??= now;
+      keyCache = null;
+      if (now - keyFailingSince > KEY_TTL_MS) {
+        throw Object.assign(new Error(`${(err as Error).message} for more than ${KEY_TTL_MS / 1000} s; treating the key as not accepted`),
+          { omekaAuth: true, keyFile: "failed" });
+      }
+      throw Object.assign(err as Error, { keyFile: "transient" });
+    }
+    keyFailingSince = null;
     seenSecrets.add(key.identity);
     seenSecrets.add(key.credential);
     keyCache = { key, at: Date.now() };
@@ -98,18 +124,19 @@ export function omekaKey(): OmekaKey | null {
   return keyCache.key;
 }
 
-/** Tests: forget the cached key so the next request re-reads the file. */
+/** Tests: forget the cached key (and any failure streak) so the next request re-reads the file. */
 export function resetOmekaKeyCache(): void {
   keyCache = null;
+  keyFailingSince = null;
 }
 
 /** The key for a request to the configured Omeka API, or null for anything else (GitHub, other hosts). */
 export function omekaKeyFor(url: string): OmekaKey | null {
   if (config.access !== "curator") return null;
   // The fetch base, not the public one: a key must never be sent to the public
-  // URL when the deployment fetches over the internal network.
-  const prefix = `${normalizeApiBase(config.fetchBase)}/`;
-  return url.startsWith(prefix) ? omekaKey() : null;
+  // URL when the deployment fetches over the internal network. config.fetchBase
+  // is normalised once (src/config.ts), and every request URL is built from it.
+  return url.startsWith(`${config.fetchBase}/`) ? omekaKey() : null;
 }
 
 /** `url` with the key appended: built for the fetch call only, never returned or stored. */
@@ -141,31 +168,62 @@ export interface CuratorToken {
 const TOKEN_NAME = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$/;
 const TOKEN_LINE = /^(\S+)\s+([0-9a-fA-F]{64})$/;
 
+export interface ParsedTokens {
+  tokens: CuratorToken[];
+  /** Every line that grants nothing: malformed, or one of a repeated name or hash. */
+  invalidLines: number[];
+  /** Names given on more than one line, with those lines: none of them grants anything. */
+  repeatedNames: { name: string; lines: number[] }[];
+  /** Line groups that share one hash (one token for several lines): none of them grants anything. */
+  repeatedHashes: number[][];
+}
+
 /**
  * Parse a tokens file: `name sha256hex` per line, `#` comments and blank lines
- * allowed. A malformed line, a repeated name or a repeated hash is skipped and
- * reported by line number, never by content: skipping fails closed, since a
- * line that cannot be read grants nothing.
+ * allowed. A malformed line grants nothing and is reported by line number,
+ * never by content.
+ *
+ * A name given twice grants nothing at all, on any of its lines: a rotation
+ * done by appending a new line (rather than replacing the old one) would
+ * otherwise keep one of the two tokens valid, and the leaked one is as likely
+ * to be first as last. The same holds for one hash on several lines. Both are
+ * reported loudly (the name, never the hash), so the operator replaces the line.
  */
-export function parseTokensFile(text: string): { tokens: CuratorToken[]; invalidLines: number[] } {
-  const tokens: CuratorToken[] = [];
-  const invalidLines: number[] = [];
-  const names = new Set<string>();
-  const hashes = new Set<string>();
+export function parseTokensFile(text: string): ParsedTokens {
+  const rows: { line: number; name: string; hash: string }[] = [];
+  const invalid = new Set<number>();
   for (const [i, raw] of text.split(/\r?\n/).entries()) {
     const line = raw.replace(/#.*$/, "").trim();
     if (!line) continue;
     const m = TOKEN_LINE.exec(line);
     const hash = m?.[2]?.toLowerCase();
-    if (!m || !hash || !TOKEN_NAME.test(m[1]!) || names.has(m[1]!) || hashes.has(hash)) {
-      invalidLines.push(i + 1);
-      continue;
-    }
-    names.add(m[1]!);
-    hashes.add(hash);
-    tokens.push({ name: m[1]!, hash: Buffer.from(hash, "hex") });
+    if (!m || !hash || !TOKEN_NAME.test(m[1]!)) invalid.add(i + 1);
+    else rows.push({ line: i + 1, name: m[1]!, hash });
   }
-  return { tokens, invalidLines };
+  const group = (key: (r: (typeof rows)[number]) => string) => {
+    const by = new Map<string, number[]>();
+    for (const r of rows) by.set(key(r), [...(by.get(key(r)) ?? []), r.line]);
+    return [...by].filter(([, lines]) => lines.length > 1);
+  };
+  const repeatedNames = group((r) => r.name).map(([name, lines]) => ({ name, lines }));
+  const repeatedHashes = group((r) => r.hash).map(([, lines]) => lines);
+  for (const lines of [...repeatedNames.map((r) => r.lines), ...repeatedHashes]) for (const l of lines) invalid.add(l);
+  const tokens = rows.filter((r) => !invalid.has(r.line)).map((r) => ({ name: r.name, hash: Buffer.from(r.hash, "hex") }));
+  return { tokens, invalidLines: [...invalid].sort((a, b) => a - b), repeatedNames, repeatedHashes };
+}
+
+/** What a parse grants and refuses, for the log: line numbers and names, never a hash. */
+export function describeTokens(parsed: ParsedTokens): string {
+  const parts = [`curator tokens: ${parsed.tokens.length} active`];
+  for (const { name, lines } of parsed.repeatedNames) {
+    parts.push(`name ${name} is on lines ${lines.join(", ")}: refusing every token for ${name} until one line remains ` +
+      "(rotate by replacing the line, never by appending one)");
+  }
+  for (const lines of parsed.repeatedHashes) parts.push(`lines ${lines.join(", ")} hold the same token hash: refusing it on each`);
+  const repeated = new Set([...parsed.repeatedNames.flatMap((r) => r.lines), ...parsed.repeatedHashes.flat()]);
+  const malformed = parsed.invalidLines.filter((l) => !repeated.has(l));
+  if (malformed.length) parts.push(`ignored malformed line(s) ${malformed.join(", ")}`);
+  return parts.join("; ");
 }
 
 /** SHA-256 hex of a token: what the tokens file stores. */
@@ -178,8 +236,13 @@ export function generateToken(): string {
   return `amira_cur_${randomBytes(32).toString("base64url")}`;
 }
 
+/** Personal token length bounds, shared by the server's header check and the relay's (src/relay.ts). */
+export const MIN_TOKEN_LENGTH = 16;
+export const MAX_TOKEN_LENGTH = 512;
+/** A token as it can travel in a header: printable ASCII without spaces, within the length bounds. */
+export const TOKEN_CHARS = new RegExp(`^[\\x21-\\x7e]{${MIN_TOKEN_LENGTH},${MAX_TOKEN_LENGTH}}$`);
 /** `Authorization: Bearer <token>`; the token as sent, or null. */
-const BEARER = /^Bearer +([\x21-\x7e]{16,512})$/i;
+const BEARER = new RegExp(`^Bearer +([\\x21-\\x7e]{${MIN_TOKEN_LENGTH},${MAX_TOKEN_LENGTH}})$`, "i");
 
 export interface TokenStore {
   /** The curator's name for a valid `Authorization` header, else null. */
@@ -215,8 +278,7 @@ export function createTokenStore(file: string, opts: { reloadMs?: number; log?: 
     }
     const parsed = parseTokensFile(text);
     tokens = parsed.tokens;
-    report(`curator tokens: ${tokens.length} active` +
-      (parsed.invalidLines.length ? `; ignored malformed or repeated line(s) ${parsed.invalidLines.join(", ")}` : ""));
+    report(describeTokens(parsed));
   };
   load();
   return {
@@ -258,23 +320,103 @@ export function curatorUrlError(raw: string): string | null {
   if (url.username || url.password) return "AMIRA_CURATOR_URL must not carry credentials; the token belongs in AMIRA_CURATOR_TOKEN";
   if (url.protocol === "https:") return null;
   if (url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname)) return null;
-  return `AMIRA_CURATOR_URL must use https:// (plain http:// is accepted for localhost and 127.0.0.1 only); refusing ${JSON.stringify(url.origin)}`;
+  return `AMIRA_CURATOR_URL must use https:// (plain http:// is accepted for localhost, 127.0.0.1 and [::1] only); refusing ${JSON.stringify(url.origin)}`;
 }
 
 // --- startup checks -----------------------------------------------------------------
 
 export type EntryPoint = "http" | "stdio" | "fetch";
 
+/** Filesystems that keep their content in memory only. */
+const MEMORY_FILESYSTEMS = new Set(["tmpfs", "ramfs"]);
+/** The Docker image's cache path (Dockerfile: AMIRA_DEFAULT_CACHE_DIR). */
+export const IMAGE_CACHE_DIR = "/tmp/amira-cache";
+
+/** What the host checks read; injectable so tests can describe a Linux host from anywhere. */
+export interface HostProbe {
+  platform?: NodeJS.Platform;
+  /** The mount table (/proc/mounts), or null when unreadable. */
+  mounts?: () => string | null;
+  /** The real path of an absolute path (symlinks resolved); default: that of its nearest existing ancestor. */
+  realpath?: (dir: string) => string;
+  /** A file's mode bits, or null when it cannot be read. */
+  fileMode?: (file: string) => number | null;
+}
+
+/** `dir` with symlinks resolved, through its nearest existing ancestor (the cache dir may not exist yet). */
+function realPathOfNearest(dir: string): string {
+  const rest: string[] = [];
+  let cur = path.posix.resolve(dir);
+  for (;;) {
+    try {
+      return path.posix.join(fs.realpathSync(cur), ...rest.reverse());
+    } catch {
+      const parent = path.posix.dirname(cur);
+      if (parent === cur) return path.posix.resolve(dir);
+      rest.push(path.posix.basename(cur));
+      cur = parent;
+    }
+  }
+}
+
+/** The filesystem type a mount table (the /proc/mounts format) gives the absolute path `dir`, or null. */
+export function filesystemOf(dir: string, mounts: string): string | null {
+  let best: { point: string; type: string } | null = null;
+  for (const line of mounts.split("\n")) {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length < 3) continue;
+    // Spaces and other odd characters in mount points are octal-escaped (\040).
+    const point = fields[1]!.replace(/\\([0-7]{3})/g, (_, octal: string) => String.fromCharCode(Number.parseInt(octal, 8)));
+    const within = point === "/" || dir === point || dir.startsWith(`${point}/`);
+    // The longest mount point wins; among equal ones, the later mount (it hides the earlier).
+    if (within && (!best || point.length >= best.point.length)) best = { point, type: fields[2]! };
+  }
+  return best?.type ?? null;
+}
+
+/**
+ * Linux only: the filesystem the cache directory lives on ("tmpfs", "ext4",
+ * "overlay", …; null when the mount table is unreadable). Undefined on other
+ * platforms, where the explicit-setting rule is the only check.
+ */
+export function cacheDirFilesystem(dir: string, probe: HostProbe = {}): string | null | undefined {
+  if ((probe.platform ?? process.platform) !== "linux") return undefined;
+  const mounts = (probe.mounts ?? (() => {
+    try {
+      return fs.readFileSync("/proc/mounts", "utf8");
+    } catch {
+      return null;
+    }
+  }))();
+  if (mounts === null) return null;
+  return filesystemOf((probe.realpath ?? realPathOfNearest)(path.posix.resolve(dir)), mounts);
+}
+
+const underImageCacheDir = (dir: string): boolean => {
+  const resolved = path.posix.resolve(dir);
+  return resolved === IMAGE_CACHE_DIR || resolved.startsWith(`${IMAGE_CACHE_DIR}/`);
+};
+
 /**
  * Every reason this process must not start, as messages that quote no secret.
  * Curator mode needs the key, the tokens, an explicit (tmpfs) cache directory
  * and a refresh interval shorter than the maximum staleness; it runs over HTTP
  * only. Public mode refuses curator-only settings.
+ *
+ * The cache directory: AMIRA_CACHE_DIR must be set explicitly (the image's
+ * AMIRA_DEFAULT_CACHE_DIR does not count), and on Linux the image's cache path
+ * (/tmp/amira-cache) is accepted only when it really is a tmpfs mount, so a
+ * container started without `--tmpfs` never writes private data to its
+ * overlay layer. Any other non-tmpfs directory on Linux is a warning
+ * (`accessConfigWarnings`), not a refusal.
  */
-export function accessConfigErrors(entry: EntryPoint, cfg: typeof config = config): string[] {
+export function accessConfigErrors(entry: EntryPoint, cfg: typeof config = config, probe: HostProbe = {}): string[] {
   const errors: string[] = [];
   if (cfg.accessSetting !== "public" && cfg.accessSetting !== "curator") {
     return [`AMIRA_ACCESS must be "public" or "curator" (got ${JSON.stringify(cfg.accessSetting.slice(0, 40))})`];
+  }
+  if (entry === "http" && !(Number.isInteger(cfg.httpPort) && cfg.httpPort >= 0 && cfg.httpPort <= 65535)) {
+    errors.push(`PORT / AMIRA_HTTP_PORT must be an integer from 0 to 65535 (got ${JSON.stringify(String(cfg.httpPortSetting).slice(0, 40))})`);
   }
   if (cfg.apiBaseSetting !== null) {
     try {
@@ -329,10 +471,22 @@ export function accessConfigErrors(entry: EntryPoint, cfg: typeof config = confi
       errors.push("AMIRA_MCP_TOKEN_FILE / AMIRA_MCP_BEARER_TOKEN (one shared token) are refused in curator mode; use AMIRA_MCP_TOKENS_FILE");
     }
   }
-  if (!/^[a-z_]+(\/\d+)?(\?[^\s#]*)?$/.test(cfg.curatorAuthProbe) || /key_(identity|credential)/i.test(cfg.curatorAuthProbe)) {
-    errors.push("AMIRA_CURATOR_AUTH_PROBE must be an API path relative to the API base, such as items?is_public=0&per_page=1, without key parameters");
+  // A list endpoint: the probe must return a non-empty array, which a single
+  // resource (`items/123`) never does, so such a setting would block forever.
+  if (!/^[a-z_]+(\?[^\s#]*)?$/.test(cfg.curatorAuthProbe) || /key_(identity|credential)/i.test(cfg.curatorAuthProbe)) {
+    errors.push("AMIRA_CURATOR_AUTH_PROBE must be an API list path relative to the API base, such as items?is_public=0&per_page=1, " +
+      "without a resource id or key parameters");
   }
-  if (!cfg.cacheDirConfigured) errors.push("curator mode needs AMIRA_CACHE_DIR set explicitly, on tmpfs (private data is cached there)");
+  if (!cfg.cacheDirConfigured) {
+    errors.push("curator mode needs AMIRA_CACHE_DIR set explicitly, on tmpfs (private data is cached there); " +
+      "the Docker image's default cache path does not count");
+  } else if (underImageCacheDir(cfg.cacheDir)) {
+    const fsType = cacheDirFilesystem(cfg.cacheDir, probe);
+    if (fsType !== undefined && !MEMORY_FILESYSTEMS.has(fsType ?? "")) {
+      errors.push(`AMIRA_CACHE_DIR ${IMAGE_CACHE_DIR} (the image's cache path) is on ${fsType ?? "an unknown filesystem"}, not tmpfs: ` +
+        `start the container with --tmpfs ${IMAGE_CACHE_DIR} (Compose: tmpfs), or private data would be written to its disk layer`);
+    }
+  }
   if (!(cfg.curatorMaxStaleHours > 0)) errors.push("AMIRA_CURATOR_MAX_STALE_HOURS must be greater than 0");
   else if (cfg.liveRefresh && !(cfg.refreshIntervalHours > 0 && cfg.refreshIntervalHours < cfg.curatorMaxStaleHours)) {
     errors.push("AMIRA_REFRESH_INTERVAL_HOURS must be greater than 0 and less than AMIRA_CURATOR_MAX_STALE_HOURS in curator mode");
@@ -340,10 +494,44 @@ export function accessConfigErrors(entry: EntryPoint, cfg: typeof config = confi
   return errors;
 }
 
-/** Exit the process with every reason when the configuration is refused. */
+/**
+ * Curator mode, Linux: what is accepted but unwise, logged at startup without
+ * refusing. A cache directory not on tmpfs (private data reaches a disk), and a
+ * key or tokens file readable by its group or by others.
+ */
+export function accessConfigWarnings(cfg: typeof config = config, probe: HostProbe = {}): string[] {
+  if (cfg.access !== "curator" || (probe.platform ?? process.platform) !== "linux") return [];
+  const warnings: string[] = [];
+  if (cfg.cacheDirConfigured && !underImageCacheDir(cfg.cacheDir)) {
+    const fsType = cacheDirFilesystem(cfg.cacheDir, probe);
+    if (fsType !== undefined && !MEMORY_FILESYSTEMS.has(fsType ?? "")) {
+      warnings.push(`AMIRA_CACHE_DIR is on ${fsType ?? "an unknown filesystem"}, not tmpfs: the private snapshot is written to disk`);
+    }
+  }
+  const mode = probe.fileMode ?? ((file: string) => {
+    try {
+      return fs.statSync(file).mode;
+    } catch {
+      return null;
+    }
+  });
+  for (const [name, file] of [["AMIRA_OMEKA_KEY_FILE", cfg.omekaKeyFile], ["AMIRA_MCP_TOKENS_FILE", cfg.tokensFile]] as const) {
+    const bits = file ? mode(file) : null;
+    if (bits !== null && bits & 0o044) {
+      warnings.push(`${name} is readable by its group or by others (mode ${(bits & 0o777).toString(8).padStart(3, "0")}); ` +
+        "restrict it to the server's user (chmod 600)");
+    }
+  }
+  return warnings;
+}
+
+/** Exit the process with every reason when the configuration is refused; log the warnings otherwise. */
 export function refuseMisconfiguration(entry: EntryPoint): void {
   const errors = accessConfigErrors(entry);
-  if (!errors.length) return;
+  if (!errors.length) {
+    for (const w of accessConfigWarnings()) console.error(`[amira] warning: ${w}`);
+    return;
+  }
   for (const e of errors) console.error(`[amira] refusing to start: ${e}`);
   process.exit(1);
 }

@@ -138,8 +138,25 @@ function anonymous(item) {
   return out;
 }
 
+/** A minimal valid full-text map and word-count file (src/fulltextMaps.ts), invented values. */
+export const FULLTEXT_FILES = {
+  map: {
+    schemaVersion: 1, itemSetId: 27724, generatedAt: "2026-11-01T00:00:00Z", model: { name: "stub-model", revision: "r1" },
+    counts: { items: 1, withText: 1, shown: 1, excluded: {}, passages: 1 },
+    groups: [{ id: 1, size: 1, label: "Stub group" }],
+    items: [[IDS.publicItem, 0.1, 0.2, 1]], neighbours: {}, places: { minMentions: 3, items: {} },
+    labels: { by: "stub", from: "stub titles", date: "2026-11-01" },
+  },
+  words: { schemaVersion: 1, itemSetId: 27724, generatedAt: "2026-11-01T00:00:00Z", minArticles: 1, articles: 1,
+    years: [1981], totals: [100], words: { mbira: [0, 4] } },
+};
+
 /**
  * Start the stub. `state`: { mode: "auth" | "leak" | "deny" | "down", denyStatus }.
+ * Also: `enrichment: "ok"` serves the full-text map files under `/github/raw/…`
+ * (by default every `/github/…` request is a 404, as if GitHub were
+ * unreachable); `modified` overrides the newest `o:modified` the freshness
+ * probe reports (to make a refresh re-crawl); `delayMs` delays every answer.
  * Returns { base, api, state, requests, close() }; `requests` holds every
  * request target exactly as received (path and query).
  */
@@ -151,6 +168,10 @@ export async function startOmekaStub(state = {}) {
   const requests = [];
   const server = createServer((req, res) => {
     requests.push(req.url);
+    if (state.delayMs) setTimeout(() => handle(req, res), state.delayMs);
+    else handle(req, res);
+  });
+  const handle = (req, res) => {
     const url = new URL(req.url, "http://stub");
     const keyed = url.searchParams.has("key_identity") || url.searchParams.has("key_credential");
     const reply = (status, body, total) => {
@@ -158,6 +179,10 @@ export async function startOmekaStub(state = {}) {
         ...(total !== undefined ? { "Omeka-S-Total-Results": String(total) } : {}) });
       res.end(JSON.stringify(body).replaceAll(BASE, `http://${req.headers.host}`));
     };
+    if (res.destroyed) return;
+    if (state.enrichment === "ok" && url.pathname.startsWith("/github/raw/")) {
+      return reply(200, url.pathname.endsWith("-words.json") ? FULLTEXT_FILES.words : FULLTEXT_FILES.map);
+    }
     if (!url.pathname.startsWith("/api/")) return reply(404, {});
     // Omeka (or the proxy in front of it) briefly down: every API request fails.
     if (state.mode === "down") return reply(502, { error: "Bad Gateway" });
@@ -173,7 +198,8 @@ export async function startOmekaStub(state = {}) {
       case "/api/items": {
         if (probe) {
           const all = show(ITEMS.map(([, item]) => item));
-          return reply(200, all.slice(0, 1), all.length);
+          const first = all.slice(0, 1).map((it) => (state.modified ? { ...it, "o:modified": { "@value": state.modified } } : it));
+          return reply(200, first, all.length);
         }
         const corpusKeys = ["resource_template_id", "item_set_id"].filter((k) => url.searchParams.has(k));
         let matching = show(ITEMS.filter(([query]) => {
@@ -200,7 +226,7 @@ export async function startOmekaStub(state = {}) {
       default:
         return reply(404, {});
     }
-  });
+  };
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   return {

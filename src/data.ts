@@ -54,6 +54,13 @@ export const UNIVERSITY_LABELS: Record<University, string> = {
   external: "External collection",
 };
 
+/** Index `rec` under `key` unless a public record already holds it and `rec` is private. */
+function byNamePreferringPublic<T extends { visibility?: string }>(map: Map<string, T>, key: string, rec: T): void {
+  const held = map.get(key);
+  if (held && held.visibility !== "private" && rec.visibility === "private") return;
+  map.set(key, rec);
+}
+
 export class DataStore {
   readonly source: "bundled" | "cache";
   readonly manifest: SnapshotManifest;
@@ -180,12 +187,16 @@ export class DataStore {
       this.projectByDreId.set(fold(p.dre_id), p);
       this.projectByOId.set(p.o_id, p);
     }
+    // A public record wins a shared name over a private one: in curator mode the
+    // authority duplicates retired by a merge are private and keep the canonical
+    // name, and a lookup by that exact name must reach the public authority.
+    // Among records of equal visibility the last one wins, as before.
     for (const p of this.persons) {
-      this.personByName.set(fold(p.name), p);
+      byNamePreferringPublic(this.personByName, fold(p.name), p);
       this.personByOId.set(p.o_id, p);
     }
     for (const o of this.organisations) {
-      this.orgByName.set(fold(o.name), o);
+      byNamePreferringPublic(this.orgByName, fold(o.name), o);
       this.orgByOId.set(o.o_id, o);
     }
     // Acronyms and variants ("UJKZ") resolve too, without shadowing a real name.
@@ -244,6 +255,18 @@ export class DataStore {
   }
   getOrganisationByOId(oId: number): OrganisationRec | undefined {
     return this.orgByOId.get(oId);
+  }
+  /**
+   * Curator mode: the public person or organisation with the same (folded)
+   * name as `record`, when there is one other than `record` itself; undefined
+   * otherwise. Tells a tool that a private record (typically an authority
+   * duplicate retired by a merge) has a public namesake to point to. Always
+   * undefined in public mode, which holds no private record.
+   */
+  publicNamesake(record: { o_id: number; name: string; visibility?: string }, kind: "person" | "organisation"):
+    PersonRec | OrganisationRec | undefined {
+    const hit = (kind === "person" ? this.personByName : this.orgByName).get(fold(record.name.trim()));
+    return hit && hit.o_id !== record.o_id && hit.visibility !== "private" && fold(hit.name) === fold(record.name.trim()) ? hit : undefined;
   }
   /** Subject authority by id or exact (folded) heading. */
   getSubject(key: number | string): SubjectRec | undefined {
@@ -365,6 +388,8 @@ let refreshInFlight: Promise<void> | null = null;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let refreshController: AbortController | null = null;
 let stopped = false;
+/** Aborted on shutdown: what the initial load awaits outside a refresh (the curator key probe) honours it. */
+const lifecycle = new AbortController();
 const refreshState = { last_attempt: null as string | null, last_success: null as string | null,
   error_class: null as string | null, in_flight: false };
 export function refreshStatus() {
@@ -376,14 +401,22 @@ export function refreshStatus() {
       : {}),
   };
 }
+/**
+ * Stop refreshing for good (shutdown): clear the timers, abort the refresh or
+ * crawl in flight (every crawl runs as a background refresh, see
+ * `loadInitialCurator`), and wait for it and for an initial load to settle, so
+ * nothing is left writing to the cache (a `writer.lock`) when the process exits.
+ */
 export async function stopBackgroundRefresh(): Promise<void> {
   stopped = true;
+  lifecycle.abort();
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = null;
   if (curator.retryTimer) clearTimeout(curator.retryTimer);
   curator.retryTimer = null;
   refreshController?.abort();
   await refreshInFlight;
+  await loading?.catch(() => {});
 }
 
 export function cacheSnapshotDir(): string {
@@ -397,11 +430,16 @@ export function cacheSnapshotDir(): string {
 //   - it never comes from the bundled snapshot, only from the curator cache
 //     partition (AMIRA_CACHE_DIR, on tmpfs) or a fresh authenticated crawl;
 //   - `verifiedAt` records when Omeka last confirmed it (a crawl, or a probe
-//     that found nothing newer). Past AMIRA_CURATOR_MAX_STALE_HOURS without a
-//     confirmation (Omeka unreachable), requests are refused until a refresh
+//     that found nothing newer), and is persisted beside the cached snapshot
+//     (VERIFIED_FILE) so a restart honours it. Past
+//     AMIRA_CURATOR_MAX_STALE_HOURS without a confirmation (Omeka unreachable),
+//     requests are refused, and retried on the fast schedule, until a refresh
 //     succeeds;
-//   - when Omeka answers 401/403 to the key, the store is dropped, the cache
-//     wiped, and requests are refused until a later refresh succeeds.
+//   - when Omeka answers 401/403 to the key (or ignores it, or the key file
+//     stays unreadable), the store is dropped, the cache wiped, and requests
+//     are refused until a later refresh succeeds;
+//   - one crawl at a time: every crawl, the first one included, runs as a
+//     background refresh, which shutdown aborts.
 const curator = {
   verifiedAt: 0,
   blocked: false,
@@ -427,17 +465,54 @@ function curatorUnavailable(): Error {
       "Requests are refused until a refresh succeeds.");
 }
 
-/** The key was refused (401/403) or silently ignored (the authentication probe
- * found nothing private): drop the store, wipe the cache, refuse until a refresh succeeds. */
-async function revokeCuratorData(status: number | undefined): Promise<void> {
+/** The key was refused (401/403), silently ignored (the authentication probe
+ * found nothing private) or its file stayed unreadable: drop the store, wipe
+ * the cache, refuse until a refresh succeeds. */
+async function revokeCuratorData(err: { status?: number; keyFile?: string }): Promise<void> {
   current = null;
   curator.blocked = true;
   curator.verifiedAt = 0;
   await fs.rm(cacheSnapshotDir(), { recursive: true, force: true })
-    .catch((err: Error) => console.error(`[amira] curator cache could not be wiped: ${err.message}`));
-  console.error(`[amira] ${status ? `Omeka answered HTTP ${status} to the curator key` : KEY_NOT_ACCEPTED}: dropped the in-memory ` +
-    "snapshot and wiped the curator cache; refusing requests until a refresh succeeds");
+    .catch((e: Error) => console.error(`[amira] curator cache could not be wiped: ${e.message}`));
+  const why = err.status ? `Omeka answered HTTP ${err.status} to the curator key`
+    : err.keyFile ? "the Omeka key file stayed unreadable or malformed" : KEY_NOT_ACCEPTED;
+  console.error(`[amira] ${why}: dropped the in-memory snapshot and wiped the curator cache; refusing requests until a refresh succeeds`);
   scheduleCuratorRetry();
+}
+
+/** Beside the curator snapshot: when Omeka last confirmed it, so a restart does not discard data confirmed minutes ago. */
+const VERIFIED_FILE = "verified.json";
+
+/**
+ * When Omeka last confirmed the cached snapshot `manifest` describes: the
+ * persisted confirmation when it belongs to this very snapshot (same
+ * `fetchedAt`) and is neither older than the crawl nor in the future,
+ * otherwise the crawl time itself.
+ */
+async function lastConfirmed(manifest: SnapshotManifest): Promise<number> {
+  const fetched = Date.parse(manifest.fetchedAt);
+  try {
+    const stored = JSON.parse(await fs.readFile(path.join(cacheSnapshotDir(), VERIFIED_FILE), "utf8")) as { fetchedAt?: unknown; verifiedAt?: unknown };
+    const at = typeof stored.verifiedAt === "string" ? Date.parse(stored.verifiedAt) : NaN;
+    if (stored.fetchedAt === manifest.fetchedAt && at > fetched && at <= Date.now()) return at;
+  } catch {
+    // None yet, or unreadable: the crawl time is the last confirmation.
+  }
+  return fetched;
+}
+
+/** Persist a confirmation of the snapshot `manifest` describes (written whole, then renamed). Best effort. */
+async function recordConfirmation(manifest: SnapshotManifest, at: number): Promise<void> {
+  const dir = cacheSnapshotDir();
+  const tmp = path.join(dir, `verified-${process.pid}-${at}.tmp`);
+  try {
+    await fs.writeFile(tmp, JSON.stringify({ fetchedAt: manifest.fetchedAt, verifiedAt: new Date(at).toISOString() }));
+    await fs.rename(tmp, path.join(dir, VERIFIED_FILE));
+  } catch (err) {
+    await fs.unlink(tmp).catch(() => {});
+    // ENOENT: the cache was wiped meanwhile (a refused key); nothing to record.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") console.error(`[amira] curator confirmation not recorded: ${(err as Error).message}`);
+  }
 }
 
 /**
@@ -465,11 +540,27 @@ function scheduleCuratorRetry(kind: "auth" | "transient" = "auth"): void {
   curator.retryTimer.unref?.();
 }
 
-/** Crawl with the key and publish to the curator cache; the published snapshot. */
-async function curatorCrawl(signal?: AbortSignal): Promise<CrawlOutput> {
+/**
+ * The optional GitHub enrichments a crawl could not fetch (GitHub unreachable),
+ * carried over from the snapshot being served, in both modes. Without this a
+ * refresh would publish a snapshot without them, and `isStale` would then see
+ * nothing to refetch until the next Omeka change.
+ */
+function carryEnrichments(out: CrawlOutput): void {
+  // The pinned full-text files never change: when GitHub was unreachable, keep the ones already served.
+  if (!out.fulltext && current?.fulltextMaps?.source.tag === FULLTEXT_SOURCE.tag) out.fulltext = current.fulltextMaps;
+  // No verified release this time: keep the neighbours already served (filtered to the new snapshot at load).
+  // `current.semantic` already satisfies the setting, so a pinned build is never replaced by another.
+  if (!out.semantic && current?.semantic) out.semantic = current.semantic;
+}
+
+/** Crawl with the key and publish to the curator cache; the published snapshot. Runs inside a background refresh only. */
+async function curatorCrawl(signal: AbortSignal): Promise<CrawlOutput> {
   omekaKey(); // throws (naming only the variable) when the key file is missing or malformed
   const out = await crawlSnapshot(config.apiBase, (m) => console.error(`[amira] refresh: ${m}`), signal,
     { semanticRelease: config.semanticRelease, access: "curator", fetchBase: config.fetchBase });
+  signal.throwIfAborted();
+  carryEnrichments(out);
   const published = (await writeSnapshotAtomic(cacheSnapshotDir(), out, signal)) ?? await loadSnapshot(cacheSnapshotDir());
   assertSnapshotSource(published.manifest, config.apiBase, "curator");
   return published;
@@ -528,43 +619,71 @@ export function chooseInitial(cache: Loaded | null, bundled: Loaded | null, sema
   return storeOf(winner.source, winner.out, semantic);
 }
 
-/** Curator mode: the cached curator snapshot when recent enough, otherwise a fresh authenticated crawl. */
+/**
+ * Curator mode: the cached curator snapshot when Omeka confirmed it recently
+ * enough (null when there is none to serve). Past the refresh interval since
+ * the last confirmation, the key is probed before the cache is trusted: a
+ * refused key drops it; an unreachable Omeka is a transient failure, and the
+ * cache serves within the staleness limit.
+ */
+async function loadCuratorCache(): Promise<DataStore | null> {
+  omekaKey();
+  const cached = await tryLoad(cacheSnapshotDir(), "cache");
+  if (!cached) return null;
+  const confirmed = await lastConfirmed(cached.out.manifest);
+  if (Date.now() - confirmed > maxStaleMs()) {
+    console.error(`[amira] curator cache not confirmed for more than ${config.curatorMaxStaleHours} h; crawling afresh`);
+    return null;
+  }
+  if (Date.now() - confirmed > config.refreshIntervalHours * 3_600_000) {
+    await probeCuratorAuth(config.fetchBase, lifecycle.signal).catch((err: Error & { omekaAuth?: boolean }) => {
+      if (err.omekaAuth || lifecycle.signal.aborted) throw err;
+      console.error(`[amira] curator authentication probe skipped: ${redactSecrets(err.message)}`);
+    });
+  }
+  lifecycle.signal.throwIfAborted();
+  // A refresh may have refused the key while this load awaited: never serve the cache then.
+  if (curator.blocked) throw curatorUnavailable();
+  curator.verifiedAt = confirmed;
+  return chooseInitial(cached, null, config.semanticRelease)!;
+}
+
+/**
+ * Curator mode: the cached curator snapshot when recent enough, otherwise a
+ * fresh authenticated crawl. The crawl runs as a background refresh, so there
+ * is only ever one (a request arriving while the retry timer crawls waits for
+ * that crawl instead of starting a second), shutdown aborts it, and its
+ * success clears every failure state, `blocked` included.
+ */
 async function loadInitialCurator(): Promise<DataStore> {
   if (curator.blocked) throw curatorUnavailable();
   if (Date.now() < curator.nextAttempt && curator.lastError) throw curator.lastError;
-  try {
-    omekaKey();
-    const cached = await tryLoad(cacheSnapshotDir(), "cache");
-    const fetched = cached ? Date.parse(cached.out.manifest.fetchedAt) : NaN;
-    if (cached && Date.now() - fetched <= maxStaleMs()) {
-      // Past the refresh interval, confirm the key before trusting the cache.
-      // A refused key drops it; an unreachable Omeka is a transient failure,
-      // and the cache serves within the staleness limit.
-      if (Date.now() - fetched > config.refreshIntervalHours * 3_600_000) {
-        await probeCuratorAuth(config.fetchBase).catch((err: Error & { omekaAuth?: boolean }) => {
-          if (err.omekaAuth) throw err;
-          console.error(`[amira] curator authentication probe skipped: ${redactSecrets(err.message)}`);
-        });
-      }
-      curator.verifiedAt = fetched;
-      return chooseInitial(cached, null, config.semanticRelease)!;
+  if (!refreshInFlight) {
+    try {
+      const store = await loadCuratorCache();
+      if (store) return store;
+      if (!config.liveRefresh) throw new Error("no curator snapshot recent enough to serve, and live refresh is off");
+    } catch (err) {
+      const safe = new Error(`curator snapshot unavailable: ${redactSecrets((err as Error).message)}`);
+      curator.lastError = safe;
+      curator.nextAttempt = Date.now() + INITIAL_RETRY_MS;
+      if ((err as { omekaAuth?: boolean }).omekaAuth) await revokeCuratorData(err as { status?: number; keyFile?: string });
+      // A transient failure retries on its own: nothing else would until a request arrived.
+      else if (!current) scheduleCuratorRetry("transient");
+      throw safe;
     }
-    if (cached) console.error(`[amira] curator cache older than ${config.curatorMaxStaleHours} h; crawling afresh`);
-    if (!config.liveRefresh) throw new Error("no curator snapshot recent enough to serve, and live refresh is off");
-    console.error("[amira] curator mode: crawling the Omeka API with the service key");
-    const published = await curatorCrawl();
-    curator.verifiedAt = Date.now();
-    curator.lastError = null;
-    return storeOf("cache", published, servableSemantic(published.semantic, config.semanticRelease));
-  } catch (err) {
-    const safe = new Error(`curator snapshot unavailable: ${redactSecrets((err as Error).message)}`);
-    curator.lastError = safe;
-    curator.nextAttempt = Date.now() + INITIAL_RETRY_MS;
-    if ((err as { omekaAuth?: boolean }).omekaAuth) await revokeCuratorData((err as { status?: number }).status);
-    // A transient failure retries on its own: nothing else would until a request arrived.
-    else if (!current) scheduleCuratorRetry("transient");
-    throw safe;
+    // Another load may have started a refresh while this one read the cache.
+    if (!refreshInFlight) {
+      console.error("[amira] curator mode: crawling the Omeka API with the service key");
+      triggerBackgroundRefresh();
+    }
   }
+  await refreshInFlight;
+  if (current) return current;
+  // The refresh logged the failure, set `lastError` and scheduled the retry.
+  curator.nextAttempt = Date.now() + INITIAL_RETRY_MS;
+  throw curator.lastError ?? (stopped ? new Error("curator snapshot unavailable: the server is shutting down")
+    : curatorUnavailable());
 }
 
 async function loadInitial(): Promise<DataStore> {
@@ -668,7 +787,12 @@ async function backgroundRefresh(): Promise<void> {
       const probe = await probeRemote(config.fetchBase, signal);
       const forced = Date.now() - Date.parse(local.fetchedAt) >= config.fullRefreshHours * 3_600_000;
       if (!isStale(local, probe) && !forced) {
-        if (curatorMode) curator.verifiedAt = Date.now();
+        if (curatorMode) {
+          curator.verifiedAt = Date.now();
+          curator.lastError = null;
+          curator.retryDelayMs = 0;
+          await recordConfirmation(local, curator.verifiedAt);
+        }
         refreshState.last_success = new Date().toISOString(); refreshState.error_class = null; return;
       }
       console.error(`[amira] snapshot stale (local ${local.maxModified ?? "?"} < remote ${probe.maxModified ?? "?"}); refreshing…`);
@@ -681,11 +805,7 @@ async function backgroundRefresh(): Promise<void> {
       const out: CrawlOutput = await crawlSnapshot(config.apiBase, (m) => console.error(`[amira] refresh: ${m}`), signal,
         { semanticRelease: config.semanticRelease, fetchBase: config.fetchBase });
       signal.throwIfAborted();
-      // The pinned full-text files never change: when GitHub was unreachable, keep the ones already served.
-      if (!out.fulltext && current?.fulltextMaps?.source.tag === FULLTEXT_SOURCE.tag) out.fulltext = current.fulltextMaps;
-      // No verified release this time: keep the neighbours already served (filtered to the new snapshot at load).
-      // `current.semantic` already satisfies the setting, so a pinned build is never replaced by another.
-      if (!out.semantic && current?.semantic) out.semantic = current.semantic;
+      carryEnrichments(out);
       // The writer returns what it verified; only when another process published
       // a newer generation first is the served snapshot read back from disk.
       published = (await writeSnapshotAtomic(cacheSnapshotDir(), out, signal)) ?? await loadSnapshot(cacheSnapshotDir());
@@ -703,7 +823,9 @@ async function backgroundRefresh(): Promise<void> {
       curator.verifiedAt = Date.now();
       curator.blocked = false;
       curator.lastError = null;
+      curator.nextAttempt = 0;
       curator.retryDelayMs = 0;
+      await recordConfirmation(published.manifest, curator.verifiedAt);
       if (!refreshTimer && config.liveRefresh) startBackgroundRefresh();
     }
     refreshState.last_success = new Date().toISOString();
@@ -714,7 +836,14 @@ async function backgroundRefresh(): Promise<void> {
     refreshState.error_class = auth ? "omeka_auth_refused" : (err as Error).name === "AbortError" ? "cancelled"
       : (err as Error).name === "TimeoutError" ? "timeout" : "refresh_failed";
     console.error(`[amira] live refresh skipped: ${redactSecrets((err as Error).message)}`);
-    if (auth) await revokeCuratorData((err as { status?: number }).status);
-    else if (curatorMode && !current) scheduleCuratorRetry("transient");
+    if (curatorMode) curator.lastError = new Error(`curator snapshot unavailable: ${redactSecrets((err as Error).message)}`);
+    if (auth) await revokeCuratorData(err as { status?: number; keyFile?: string });
+    // Retry on the fast schedule while nothing may be served (no store, or one
+    // past its staleness limit after a long outage), and after a key file that
+    // could not be read (an atomic rotation in progress, or a removed file,
+    // which then fails closed at the retry): the hourly interval is too slow.
+    else if (curatorMode && (!current || curatorStale() || (err as { keyFile?: string }).keyFile === "transient")) {
+      scheduleCuratorRetry("transient");
+    }
   }
 }

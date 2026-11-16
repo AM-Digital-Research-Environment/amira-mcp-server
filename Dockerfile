@@ -4,6 +4,8 @@
 # — no node_modules needed at runtime.
 #   docker build -t amira-mcp .
 #   docker run -p 8787:8787 amira-mcp     # → http://localhost:8787/mcp
+# Curator mode (docs/curator.md) also needs, among others:
+#   --tmpfs /tmp/amira-cache -e AMIRA_CACHE_DIR=/tmp/amira-cache
 #
 # Both base images are pinned to the multi-arch index digest of node:26-slim;
 # the tag is kept for readability. Dependabot's `docker` ecosystem
@@ -51,13 +53,20 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 WORKDIR /app
+# AMIRA_DEFAULT_CACHE_DIR is the cache location when AMIRA_CACHE_DIR is unset:
+# the public server caches there as before. Curator mode does not count it as
+# AMIRA_CACHE_DIR set explicitly, and accepts /tmp/amira-cache only when it is
+# a tmpfs mount, so a curator container started without --tmpfs refuses to
+# start instead of writing private data to its overlay layer (docs/curator.md).
 ENV NODE_ENV=production \
     PORT=8787 \
     HOST=0.0.0.0 \
     AMIRA_LIVE_REFRESH=true \
-    AMIRA_CACHE_DIR=/tmp/amira-cache
-# Self-contained bundles + the JSON snapshot; nothing from node_modules.
-COPY --from=snapshot /app/server ./server
+    AMIRA_DEFAULT_CACHE_DIR=/tmp/amira-cache
+# Only what the container runs: the self-contained HTTP server and the curator
+# token generator, plus the JSON snapshot. Not the stdio bundle, the fetch CLI
+# or the test library (server/lib.js), and nothing from node_modules.
+COPY --from=snapshot /app/server/http.js /app/server/tokenCli.js ./server/
 COPY --from=snapshot /app/data ./data
 EXPOSE 8787
 USER node

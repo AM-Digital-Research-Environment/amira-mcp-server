@@ -13,7 +13,7 @@
 // malformed token, HTTP mode and AMIRA_ACCESS=curator are refused at startup.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readdirSync, writeFileSync } from "node:fs";
@@ -269,7 +269,17 @@ async function startFake() {
           instructions: "FAKE CURATOR",
         });
       } else if (msg.method === "tools/list") {
-        reply({ tools: ["slow", "boom", "hang"].map((name) => ({ name, inputSchema: { type: "object" } })) });
+        reply({ tools: ["slow", "boom", "hang", "redirect", "portal", "notjson", "silent"].map((name) => ({ name, inputSchema: { type: "object" } })) });
+      } else if (msg.method === "tools/call" && msg.params.name === "redirect") {
+        res.writeHead(302, { Location: "https://login.example.invalid/portal" }).end();
+      } else if (msg.method === "tools/call" && msg.params.name === "portal") {
+        res.writeHead(200, { "Content-Type": "text/html" }).end("<html><body>Sign in to the hotel Wi-Fi</body></html>");
+      } else if (msg.method === "tools/call" && msg.params.name === "notjson") {
+        res.writeHead(200, { "Content-Type": "application/json" }).end("<html>not json</html>");
+      } else if (msg.method === "tools/call" && msg.params.name === "silent") {
+        // An event stream that ends without the answer.
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.end(`event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/message", params: { level: "info", data: "bye" } })}\n\n`);
       } else if (msg.method === "tools/call" && msg.params.name === "slow") {
         res.writeHead(200, { "Content-Type": "text/event-stream" });
         const event = (m) => res.write(`event: message\ndata: ${JSON.stringify(m)}\n\n`);
@@ -331,6 +341,9 @@ test("relay (fake remote): progress and logging notifications, the auth and vers
     assert.ok(!err.message.includes(ALICE));
     return true;
   });
+  await new Promise((r) => setTimeout(r, 100)); // the deferred onerror line, had there been one
+  assert.equal(relay.stderr().split("\n").filter((l) => l.includes("502")).length, 1, `the failure is logged once:\n${relay.stderr()}`);
+  assert.ok(!relay.stderr().includes("upstream echoed"), "the upstream body never reaches the log");
 
   const controller = new AbortController();
   const pending = relay.client.callTool({ name: "hang", arguments: {} }, { signal: controller.signal });
@@ -342,12 +355,73 @@ test("relay (fake remote): progress and logging notifications, the auth and vers
   assert.ok(posts.some((p) => p.method === "notifications/cancelled"), "and was forwarded too");
 });
 
-// Last: every relay child has run.
-test("the token appears in no stderr line, and no relay wrote a cache", async () => {
+test("relay (fake remote): a redirect, a captive portal, a non-JSON body and a stream ending without an answer", async () => {
+  const fake = await startFake();
+  const relay = await stdioClient(relayEnv(ALICE, fake.url));
+  await relay.client.connect(relay.transport);
+  const fails = (name, pattern) => assert.rejects(relay.client.callTool({ name, arguments: {} }), (err) => {
+    assert.match(err.message, pattern, name);
+    assert.match(err.message, /No public data is served in its place/);
+    return true;
+  });
+  await fails("redirect", /answered HTTP 302 \(it redirected; check the curator URL\)/);
+  await fails("portal", /answered, but not with an MCP response \(a captive portal/);
+  await fails("notjson", /answered, but not with an MCP response/);
+  await fails("silent", /closed the response without answering/);
+  assert.ok(!relay.stderr().includes("hotel Wi-Fi"), "a portal page never reaches the log");
+});
+
+test("relay (fake remote): a request the server never answers gets the relay's own timeout", async () => {
+  const fake = await startFake();
+  const relay = await stdioClient({ ...relayEnv(ALICE, fake.url), AMIRA_CURATOR_RELAY_TIMEOUT_SECONDS: "1" });
+  await relay.client.connect(relay.transport);
+  const started = Date.now();
+  await assert.rejects(relay.client.callTool({ name: "hang", arguments: {} }),
+    /did not answer within 1 s \(AMIRA_CURATOR_RELAY_TIMEOUT_SECONDS\)\. No public data/);
+  assert.ok(Date.now() - started < 10_000);
+  for (let i = 0; i < 50 && !fake.seen.aborted.length; i++) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(fake.seen.aborted.length, 1, "the timed-out exchange is aborted");
+});
+
+test("relay: stdin closing with a request in flight shuts the relay down and aborts the request", async () => {
+  const fake = await startFake();
+  const child = spawn(process.execPath, [SERVER_STDIO], { env: childEnv({ AMIRA_CACHE_DIR: tempDir("relay-cache"), ...relayEnv(ALICE, fake.url) }),
+    stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  let stderr = "";
+  child.stderr.on("data", (c) => (stderr += c));
+  const exited = new Promise((r) => child.once("exit", r));
+  const line = (m) => child.stdin.write(`${JSON.stringify(m)}\n`);
+  line({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } } });
+  line({ jsonrpc: "2.0", method: "notifications/initialized" });
+  line({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "hang", arguments: {} } });
+  for (let i = 0; i < 100 && !fake.seen.posts.some((p) => p.method === "tools/call"); i++) await new Promise((r) => setTimeout(r, 50));
+  child.stdin.end();
+  const timer = setTimeout(() => child.kill("SIGKILL"), 10_000);
+  const code = await exited;
+  clearTimeout(timer);
+  assert.equal(code, 0, stderr);
+  for (let i = 0; i < 50 && !fake.seen.aborted.length; i++) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(fake.seen.aborted.length, 1, "the pending exchange was aborted");
+  assert.ok(!stderr.includes(ALICE));
+});
+
+test("the token appears in no relay's stderr, an upstream body echoing it is never logged, and no relay writes a cache", async () => {
+  // Self-contained: its own relay, against the fake remote whose 502 body echoes the token.
+  const fake = await startFake();
+  const relay = await stdioClient(relayEnv(ALICE, fake.url));
+  await relay.client.connect(relay.transport);
+  await assert.rejects(relay.client.callTool({ name: "boom", arguments: {} }));
+  await relay.client.listTools();
+  await new Promise((r) => setTimeout(r, 100));
+  assert.ok(!relay.stderr().includes(ALICE));
+  assert.ok(cacheDirs.length > 0);
+});
+
+// Every relay child spawned in this file, whichever tests ran: no token in any
+// stderr, and every relay cache dir still empty.
+test.after(() => {
   for (const { text } of stderrLog) {
     for (const secret of [ALICE, BOGUS]) assert.ok(!text.includes(secret), `stderr leaked a token:\n${text}`);
   }
-  assert.ok(stderrLog.some(({ text }) => text.includes("[redacted]")), "the 5xx body that echoed the token was redacted");
-  assert.ok(cacheDirs.length >= 6);
   for (const dir of cacheDirs) assert.deepEqual(readdirSync(dir), [], `relay cache ${dir} stays empty`);
 });

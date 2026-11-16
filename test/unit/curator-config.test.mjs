@@ -65,7 +65,9 @@ const REFUSALS = [
     /AMIRA_API_BASE must be an absolute http\(s\) URL/],
   ["public stdio with a non-http AMIRA_API_BASE", SERVER_STDIO, { AMIRA_API_BASE: "ftp://web/api" }, /AMIRA_API_BASE must be an absolute/],
   ["curator with an absolute or keyed authentication probe", SERVER_HTTP,
-    { ...CURATOR, AMIRA_CURATOR_AUTH_PROBE: "https://evil.example/items" }, /AMIRA_CURATOR_AUTH_PROBE must be an API path/],
+    { ...CURATOR, AMIRA_CURATOR_AUTH_PROBE: "https://evil.example/items" }, /AMIRA_CURATOR_AUTH_PROBE must be an API list path/],
+  ["curator with a single-resource authentication probe", SERVER_HTTP,
+    { ...CURATOR, AMIRA_CURATOR_AUTH_PROBE: "items/123" }, /AMIRA_CURATOR_AUTH_PROBE must be an API list path/],
 ];
 
 for (const [name, entry, env, message] of REFUSALS) {
@@ -94,14 +96,16 @@ test("key files: key=value lines or JSON; errors never quote the content", () =>
   }
 });
 
-test("tokens files: name and hash per line; malformed or repeated lines grant nothing", () => {
+test("tokens files: name and hash per line; malformed lines grant nothing, nor does any line of a repeated name or hash", () => {
   const h = (s) => createHash("sha256").update(s).digest("hex");
   const { tokens, invalidLines } = lib.parseTokensFile([
     "# curators", "", `alice ${h("a")}`, `bob ${h("b").toUpperCase()}   # upper-case hex is fine`,
     `alice ${h("c")}`, `carol ${h("a")}`, "dave nothex", `bad/name ${h("d")}`, `erin ${h("e")} extra`,
   ].join("\n"));
-  assert.deepEqual(tokens.map((t) => t.name), ["alice", "bob"]);
-  assert.deepEqual(invalidLines, [5, 6, 7, 8, 9]);
+  // alice is on lines 3 and 5 (an appended rotation): neither line grants anything,
+  // and line 6 reuses line 3's hash: neither does either.
+  assert.deepEqual(tokens.map((t) => t.name), ["bob"]);
+  assert.deepEqual(invalidLines, [3, 5, 6, 7, 8, 9]);
 });
 
 test("the token store accepts exactly the listed tokens and follows the file", () => {
@@ -166,6 +170,18 @@ test("curator data unverified for longer than the maximum staleness is refused",
   const text = await (await call()).text();
   assert.match(text, /not verified against Omeka for more than/);
   assert.match(server.logs(), /audit curator=carol method=tools\/call tool=get_collection_overview/);
+});
+
+test("a snapshot crawled 25 h ago but confirmed by Omeka a minute ago is served after a restart", { timeout: 30_000 }, async (t) => {
+  const fetchedAt = new Date(Date.now() - 25 * 3_600_000).toISOString();
+  const { cacheDir, site } = await curatorCache(fetchedAt);
+  const partition = lib.snapshotCacheDir(cacheDir, `${site}/api`, "curator");
+  writeFileSync(path.join(partition, "verified.json"), JSON.stringify({ fetchedAt, verifiedAt: new Date(Date.now() - 60_000).toISOString() }));
+  const server = await spawnHttpServer({ env: { ...CURATOR, AMIRA_SITE_BASE: site, AMIRA_CACHE_DIR: cacheDir } });
+  t.after(() => server.stop());
+  await server.waitForLog(/loaded 4 research items/);
+  assert.equal((await health(server.base)).status, 200);
+  assert.ok(!/authentication probe/.test(server.logs()), "confirmed within the refresh interval: no probe needed");
 });
 
 test("a curator cache older than the maximum staleness is never loaded", { timeout: 30_000 }, async (t) => {
