@@ -44,7 +44,16 @@ that part on the build `npm run fetch-data` just made, then the live API tests
 (`.github/actions/verify-and-pack`, shared by both). CI, release and data-refresh workflows run `npm run audit`,
 including development dependencies; `npm run audit:prod` checks only runtime dependencies.
 The test launcher enumerates files so `npm test` works on every supported Node
-version (22+) and on Windows, with a 60-second timeout per test.
+version (22+) and on Windows, with a 60-second timeout per test. `npm test` builds
+with `--sourcemap`, which writes `server/lib.js.map` for the test library only, and
+the launcher runs with `--enable-source-maps`, so a failing stack names `src/` lines;
+the runtime bundles never get a map.
+
+Which scripts build first: `test`, `test:live`, `benchmark`, `evaluate-retrieval`,
+`preview:apps`, `fetch-data` and `curator-token` run `npm run build` themselves.
+`smoke`, `smoke:http` and `weigh` do not: they run on the build that already exists
+(CI and `prepack-mcpb` run them right after `fetch-data` or a build), so after
+changing `src/` run `npm run build` before them.
 
 Tests must be hermetic. Call `hermeticEnv()` from `test/helpers/env.mjs` **before**
 importing `server/lib.js`: it clears every inherited `AMIRA_*` variable, turns live
@@ -58,7 +67,9 @@ in `test/helpers/mcp.mjs` wires a client to a server in-process.
 ZIP bundles with `fflate`. Schema provenance and its MIT license live in
 `scripts/vendor/mcpb/`. This keeps unused signing and editor dependencies out of
 the build. Packaging tests check archive contents, ignore rules, snapshot layout,
-required files, version agreement and unsafe paths. Run `npm run pack-mcpb` after
+required files, version agreement and unsafe paths. A bundle carries only the
+snapshot generation `data/active.json` names (its pointer rewritten to list no
+previous one), not the older generations `fetch-data` keeps for history. Run `npm run pack-mcpb` after
 changing packaging; it runs the prepack checks automatically. CI also packs a
 generation-based fixture on Windows.
 
@@ -96,7 +107,10 @@ generation-based fixture on Windows.
 
 ## Versioning and releases
 
-Version lives in both `package.json` and `manifest.json` — bump both, and add
+Version lives in both `package.json` and `manifest.json`. Bump them together
+with `npm version <major|minor|patch> --no-git-tag-version` (its `version`
+lifecycle runs `scripts/sync-version.mjs`, which copies the new version into
+`manifest.json`; `node scripts/sync-version.mjs --check` reports drift), and add
 an entry to `CHANGELOG.md` in the same commit: its `## X.Y.Z` section becomes the
 release notes (`scripts/release-notes.mjs`), and a tag without one fails before
 anything is published. Releases are tag-driven: pushing `v*` builds a fresh
@@ -118,6 +132,10 @@ today's date):
 ```bash
 npm run stamp-citation
 ```
+
+`server.json` (the MCP Registry entry) is not bumped either: in git it is a
+placeholder (`0.0.0-stamped-by-release`), and the release's registry job stamps
+the version, the `.mcpb` URL and its SHA-256 before publishing it.
 
 `node scripts/stamp-citation.mjs --check` reports version drift without
 writing; it deliberately ignores `date-released`, which records when a release

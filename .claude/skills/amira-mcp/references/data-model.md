@@ -4,6 +4,12 @@ Every entity is an Omeka S item; the server transforms the site's JSON-LD into t
 below at build time. Every record carries `amira_url` — the entity's public page
 (`…/s/amira/item/<id>`), the citation target.
 
+**Curator mode only** (the internal curator server; the public server never adds these keys): every
+record also carries `visibility` (`public` / `private`). A private record has `admin_url` and
+`citation_note` in place of `amira_url`, and detail results add `restricted` — `mongo_id`,
+`security_level` (DSL1–DSL5), `bitstream`, `values` (other private values by property term) and the
+private full text, which never appears in the public fields. See SKILL.md, "Curator mode".
+
 ## Research item
 
 The central artefact (image, text, audio, moving image, …). Returned in full by `get_research_item`.

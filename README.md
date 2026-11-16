@@ -128,7 +128,7 @@ add nothing to the per-turn tool payload.
 
 `AMIRA_TOOL_PROFILE=full` is the default: 36 core tools, or 38 over HTTP.
 `research`, `discovery` and `visualization` expose smaller documented subsets
-(23/12/14 core tools respectively; HTTP adds `search` and `fetch`). Profiles are
+(24/14/14 core tools respectively; HTTP adds `search` and `fetch`). Profiles are
 fixed at startup; they reduce discovery cost, not access permissions. Tools
 outside a profile are removed, and so are the apps that render them. See
 [`src/toolProfiles.ts`](src/toolProfiles.ts) for the exact lists.
@@ -303,7 +303,7 @@ also run as a **remote Streamable HTTP endpoint** — one HTTPS URL that ChatGPT
 Claude (web + desktop remote connectors), the OpenAI and Anthropic APIs, Cursor,
 VS Code and other clients connect to by pasting a URL (no download, always-fresh
 data). The remote surface serves the same 36 tools **plus** the
-OpenAI-compatible `search` / `fetch` tools for ChatGPT research integrations (36
+OpenAI-compatible `search` / `fetch` tools for ChatGPT research integrations (38
 total). Access is unauthenticated — the data is public and read-only.
 
 `search` takes plain keywords (matched term-by-term, not as an exact phrase),
@@ -486,8 +486,9 @@ npm run pack-mcpb                          # -> amira-mcp-server.mcpb
 ```
 
 `scripts/census.mjs` re-runs the property census behind the field mapping
-(`scripts/census-report.json`) — rerun and diff it if the instance's templates
-change. The design decisions behind it are in `ROADMAP.md`; `CHANGELOG.md`
+(`scripts/census-report.json`, generated on 10 June 2026 and not rerun since,
+so it predates later template and property changes) — rerun and diff it if the
+instance's templates change. The design decisions behind it are in `ROADMAP.md`; `CHANGELOG.md`
 records each release.
 
 ## Continuous delivery
@@ -498,8 +499,10 @@ workflows crawl the **public** API — no credentials):
 - **CI** (`.github/workflows/ci.yml`) — on pull requests and pushes to `main`:
   type-checks and lints once, then runs the offline unit suite (including the
   tool-surface token budget) on Node.js 22.0.0, 22, 24 and 26 on Linux and
-  Node.js 24 on Windows, then exercises both MCP transports, weighs every tool's
-  response at its maximum limit, and validates the MCPB manifest. The complete
+  Node.js 26 on Windows, then, on a crawled snapshot, exercises both MCP
+  transports, replays the evaluation set's identity questions, weighs every
+  tool's response at its maximum limit, and validates the MCPB manifest.
+  zizmor lints the workflows, composite actions and Dependabot configuration. The complete
   dependency audit fails on high or critical advisories. The packed `.mcpb` is
   then unpacked on Windows and macOS and smoke-tested there, so CI runs the bytes
   users install. A separate container job builds an offline fixture image,
@@ -512,12 +515,15 @@ workflows crawl the **public** API — no credentials):
   version already published on GitHub or the MCP Registry (released bytes are
   never replaced; fix a release with a new version), checks the tag against
   `package.json`, crawls a fresh snapshot, runs unit, live and smoke tests, packs
-  the `.mcpb`, zips the companion skill (`amira-mcp-skill.zip`) and builds the
-  image in a read-only job that records the SHA-256 of each. The publish job
-  verifies those bytes, repeats the guard, attests their build provenance, and
-  creates the release as a draft with the version's `CHANGELOG.md` section as its
-  notes before making it public. Non-blocking jobs push the tested image to GHCR
-  with an attestation and publish `server.json` to the
+  the `.mcpb`, zips the companion skill (`amira-mcp-skill.zip`), builds the
+  image, fails on any fixable high or critical vulnerability in it (Trivy), and
+  writes CycloneDX SBOMs of the image and of the bundle's runtime dependencies,
+  in a read-only job that records the SHA-256 of each. The publish job
+  verifies those bytes, repeats the guard, attests their build provenance and the
+  bundle's SBOM, and creates the release as a draft with the version's
+  `CHANGELOG.md` section as its notes before making it public. Non-blocking jobs
+  push the tested image to GHCR with provenance and SBOM attestations and stamp
+  and publish `server.json` (a placeholder in git) to the
   [MCP Registry](https://registry.modelcontextprotocol.io) with a pinned,
   checksum-verified publisher.
 - **Image scan** (`.github/workflows/image-scan.yml`) — weekly and on demand;
@@ -589,7 +595,7 @@ rather than given an invented label. Group ids are renumbered per build
 | Env var | Extension setting | Default | Meaning |
 | --- | --- | --- | --- |
 | `AMIRA_LIVE_REFRESH` | Refresh data from the live site | `true` | Probe + refresh the snapshot from the public API at startup and on the periodic interval |
-| `AMIRA_REFRESH_INTERVAL_HOURS` | — | `24` | When live refresh is on, repeat the freshness probe this often while the server is running; set `0` to disable periodic checks |
+| `AMIRA_REFRESH_INTERVAL_HOURS` | — | `24` (`1` in curator mode) | When live refresh is on, repeat the freshness probe this often while the server is running; set `0` to disable periodic checks (curator mode requires a value above 0 and below `AMIRA_CURATOR_MAX_STALE_HOURS`) |
 | `AMIRA_FULL_REFRESH_HOURS` | — | `168` | Force a complete crawl after this snapshot age even if item signatures are unchanged; minimum 1 hour |
 | `AMIRA_SEMANTIC_RELEASE` | — | `latest` | Corpus-vector release for `get_similar_items`: `latest` (the newest build that verifies), a pinned tag such as `semantic-embeddings-v1-35`, or `off`. `GITHUB_TOKEN` / `GH_TOKEN`, when set, is sent to `api.github.com` only, to list releases |
 | `AMIRA_TOOL_PROFILE` | — | `full` | `full`, `research`, `discovery`, or `visualization`; restart to change |
@@ -604,13 +610,14 @@ rather than given an invented label. Group ids are renumbered per build
 | `AMIRA_SKILLS` | — | on | Serve the companion skill over the finalized SEP-2640 extension. `0`/`false`/`off` withdraws the capability and the `skills/*` methods |
 | `PORT` | — | `8787` | Port for the remote HTTP transport (`server/http.js`); ignored by the `.mcpb` |
 | `HOST` | — | `127.0.0.1` | HTTP bind address; set `0.0.0.0` explicitly for remote access. The Docker image sets this itself |
+| `AMIRA_HTTP_PORT` / `AMIRA_HTTP_HOST` | — | — | Namespaced alternatives to `PORT` / `HOST`, for hosts where those names are taken; `PORT` / `HOST` win when both are set |
 | `AMIRA_ALLOWED_ORIGINS` | — | `localhost, 127.0.0.1, [::1]` | Comma-separated browser Origin hostnames or URLs allowed to call the HTTP endpoint. Server-to-server clients, which omit `Origin`, are unaffected. Add trusted web-client origins explicitly; wildcards are rejected. |
 | `AMIRA_RATE_LIMIT` | — | `120` | Requests/minute per client on `/mcp` (`0` disables). A courtesy cap — queries operate on the in-memory snapshot — not a security control; `/healthz` is exempt |
 | `AMIRA_TRUST_PROXY` | — | `false` | Attribute requests to the address the reverse proxy observed: `X-Real-IP`, otherwise the `X-Forwarded-For` entry `AMIRA_PROXY_HOPS` from the right (never the client-supplied leftmost one). Enable it behind a proxy — otherwise every request comes from the proxy and all clients share one bucket — and never when clients connect directly |
 | `AMIRA_PROXY_HOPS` | — | `1` | Number of trusted proxies in front of the server, for reading `X-Forwarded-For` when `X-Real-IP` is absent. IPv6 clients are bucketed by /64 |
 | `AMIRA_MCP_BEARER_TOKEN` | — | unset | HTTP only: require `Authorization: Bearer <token>` on `/mcp` and `/metrics` (`/healthz` stays open). Set it when the reverse proxy adds the header, so the container is never reachable unauthenticated if the proxy is bypassed |
 | `AMIRA_MCP_TOKEN_FILE` | — | unset | HTTP only: read that token from a mounted secret file instead |
-| `AMIRA_ACCESS` | — | `public` | `curator` starts the internal curator mode (HTTP only), which requires the three settings below; see [docs/curator.md](docs/curator.md) |
+| `AMIRA_ACCESS` | — | `public` | `curator` starts the internal curator mode (HTTP only), which requires `AMIRA_OMEKA_KEY_FILE`, `AMIRA_MCP_TOKENS_FILE` and an explicit `AMIRA_CACHE_DIR`; see [docs/curator.md](docs/curator.md) |
 | `AMIRA_OMEKA_KEY_FILE` | — | unset | Curator mode only: file with the Omeka service key (`key_identity`, `key_credential`). A public server refuses to start with it |
 | `AMIRA_MCP_TOKENS_FILE` | — | unset | Curator mode only: personal tokens, one `name sha256hex` line per curator, re-read every 2 s. Replaces `AMIRA_MCP_BEARER_TOKEN`, which curator mode refuses |
 | `AMIRA_CURATOR_RETRY_SECONDS` | — | `60` | Curator mode only: first timer-driven retry after a transient failure leaves no data (the first crawl failed); doubles up to five minutes |
@@ -684,7 +691,7 @@ session. `npm run weigh` measures both and the baseline records them.
 ## Architecture
 
 - **Pure in-memory typed records.** The Omeka JSON-LD is transformed once at
-  build time (`src/transform.ts`, evidence in `scripts/census-report.json`);
+  build time (`src/transform.ts`, evidence in `scripts/census-report.json` of 10 June 2026);
   the runtime loads compact records and indexes them at startup. No native
   bindings; the esbuild bundles are self-contained.
 - **Offline-first with atomic refresh.** Bundled snapshot + locked generation
