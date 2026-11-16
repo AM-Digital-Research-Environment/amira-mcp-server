@@ -56,7 +56,8 @@ test("manifest validation enforces the official schema and explicit version", (t
 
 test("packer preserves bundle layout, binary assets and snapshot generations with gitignore semantics", (t) => {
   const { root, write, output } = fixture(t);
-  const pointer = { generation: "fixture-generation" };
+  // The pointer as writeSnapshotAtomic writes it (src/snapshot.ts).
+  const pointer = { current: "fixture-generation", previous: [] };
   write("data/active.json", pointer);
   write("data/generations/fixture-generation/metadata.json", { title: "Études africaines" });
   write(".claude/skills/amira-mcp/SKILL.md", "Companion skill");
@@ -82,6 +83,43 @@ test("packer preserves bundle layout, binary assets and snapshot generations wit
   const first = readFileSync(output);
   packBundle(root, output);
   assert.deepEqual(readFileSync(output), first);
+});
+
+test("only the active snapshot generation ships, and the bundled pointer lists no absent previous one", (t) => {
+  const { root, write, output } = fixture(t);
+  // What `npm run fetch-data` leaves after two crawls: the current generation,
+  // the previous one it keeps for history, and one past its retention.
+  write("data/active.json", { current: "gen-new", previous: ["gen-old"] });
+  for (const generation of ["gen-new", "gen-old", "gen-stale"]) {
+    write(`data/generations/${generation}/manifest.json`, { generation });
+    write(`data/generations/${generation}/research_items.json`, []);
+  }
+  packBundle(root, output);
+  const contents = unzipSync(readFileSync(output));
+  const data = Object.keys(contents).filter((name) => name.startsWith("data/")).sort();
+  assert.deepEqual(data, [
+    "data/active.json", "data/generations/gen-new/manifest.json", "data/generations/gen-new/research_items.json",
+  ]);
+  assert.deepEqual(JSON.parse(Buffer.from(contents["data/active.json"]).toString()), { current: "gen-new", previous: [] });
+  // The working tree keeps its history; only the archive is trimmed.
+  assert.deepEqual(JSON.parse(readFileSync(path.join(root, "data/active.json"), "utf8")).previous, ["gen-old"]);
+
+  // A pointer to a generation that is not there cannot make a working bundle.
+  write("data/active.json", { current: "gen-missing", previous: [] });
+  assert.throws(() => packBundle(root, output), /gen-missing, which is missing/);
+  write("data/active.json", { generation: "gen-new" });
+  assert.throws(() => packBundle(root, output), /names no valid current generation/);
+  write("data/active.json", { current: "../outside", previous: [] });
+  assert.throws(() => packBundle(root, output), /names no valid current generation/);
+});
+
+test("without a pointer no generation ships: the flat layout reads data/ directly", (t) => {
+  const { root, write, output } = fixture(t);
+  write("data/manifest.json", { flat: true });
+  write("data/generations/orphan/manifest.json", { orphan: true });
+  packBundle(root, output);
+  const data = Object.keys(unzipSync(readFileSync(output))).filter((name) => name.startsWith("data/"));
+  assert.deepEqual(data, ["data/manifest.json"]);
 });
 
 test("validation rejects absent, unsafe and mismatched bundle files", (t) => {
@@ -182,6 +220,11 @@ test("the real repository packs to an allowlisted .mcpb", { timeout: 120_000 }, 
   const pointer = files["data/active.json"] && JSON.parse(Buffer.from(files["data/active.json"]).toString("utf8"));
   const snapshotManifest = pointer ? `data/generations/${pointer.current}/manifest.json` : "data/manifest.json";
   assert.ok(names.includes(snapshotManifest), `${snapshotManifest} is in the archive`);
+  if (pointer) {
+    const shipped = new Set(names.filter((n) => n.startsWith("data/generations/")).map((n) => n.split("/")[2]));
+    assert.deepEqual([...shipped], [pointer.current], "only the active generation ships");
+    assert.deepEqual(pointer.previous, [], "the bundled pointer lists no previous generation");
+  }
 });
 
 test("author, email and version agree across package.json, manifest.json and CITATION.cff", () => {
