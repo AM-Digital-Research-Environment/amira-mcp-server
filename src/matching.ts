@@ -5,7 +5,8 @@
 // Every comparison is accent- AND case-insensitive (src/text.ts): the same
 // concept is spelled "Côte d'Ivoire" in the subject authority and "Cote
 // d'Ivoire" in item titles, and a model cannot know which corpus stores which.
-import { fold, foldCached, foldedIndexOf } from "./text.js";
+import { fold, foldCached, foldedIndexOf, foldedMatches } from "./text.js";
+import { editDistance } from "./names.js";
 import type { LinkedRef } from "./types.js";
 import { itemUrlOrNull } from "./urls.js";
 
@@ -93,24 +94,57 @@ export function brief(text: string | null | undefined, n = 280): string | null {
   return text.length <= n ? text : `${text.slice(0, n).trimEnd()}…`;
 }
 
+/** Occurrences of each anchor scanned when choosing a snippet window. */
+const SNIPPET_SCAN = 50;
+
 /**
- * A short context window around the first occurrence of `query` in `text`, with
- * ellipses where it was clipped — so a transcript hit shows WHY it matched
- * without shipping the whole transcript. Multi-word queries anchor on the first
- * content term that occurs. Returns null when absent.
+ * A short context window around a match of `query` in `text`, with ellipses
+ * where it was clipped — so a transcript hit shows WHY it matched without
+ * shipping the whole transcript. A one-term query anchors on its first
+ * occurrence. A multi-term query takes the window (at most `radius` wide)
+ * holding the most DISTINCT terms, earliest on a tie, so the snippet shows the
+ * words together rather than the first term alone (often a PDF's title page).
+ * Bounded: at most SNIPPET_SCAN occurrences per term. Null when absent.
  */
 export function matchSnippet(text: string | null | undefined, query: string, radius = 140): string | null {
   if (!text || !query) return null;
   const parsed = parseKeyword(query);
   const anchors = [...parsed.phrases, ...parsed.terms];
-  let i = -1, len = 0;
-  for (const anchor of anchors.length ? anchors : [fold(query)]) {
-    i = foldedIndexOf(text, anchor);
-    if (i !== -1) { len = anchor.length; break; }
+  if (anchors.length <= 1) {
+    const anchor = anchors[0] ?? fold(query);
+    const i = foldedIndexOf(text, anchor);
+    return i === -1 ? null : clip(text, i, i + anchor.length, radius);
   }
-  if (i === -1) return null;
-  const start = Math.max(0, i - radius);
-  const end = Math.min(text.length, i + len + radius);
+  const hits: { start: number; end: number; term: number }[] = [];
+  anchors.forEach((anchor, term) => {
+    for (const r of foldedMatches(text, anchor, { take: SNIPPET_SCAN, cap: SNIPPET_SCAN }).ranges) hits.push({ ...r, term });
+  });
+  if (!hits.length) return null;
+  hits.sort((a, b) => a.start - b.start);
+  // Two pointers over the sorted hits: the span [lo, hi] at most `radius` wide
+  // with the most distinct terms.
+  const inWindow = new Map<number, number>();
+  let best = { lo: 0, hi: 0, distinct: 0 };
+  for (let lo = 0, hi = 0; hi < hits.length; hi++) {
+    inWindow.set(hits[hi]!.term, (inWindow.get(hits[hi]!.term) ?? 0) + 1);
+    while (hits[hi]!.start - hits[lo]!.start > radius) {
+      const t = hits[lo]!.term, n = inWindow.get(t)! - 1;
+      if (n) inWindow.set(t, n); else inWindow.delete(t);
+      lo++;
+    }
+    if (inWindow.size > best.distinct) best = { lo, hi, distinct: inWindow.size };
+  }
+  const first = hits[best.lo]!, last = hits[best.hi]!;
+  if (best.distinct === 1) return clip(text, first.start, first.end, radius);
+  // Keep the snippet about as long as a one-term one: margins shrink as the span grows.
+  const span = Math.max(last.end, first.end) - first.start;
+  const margin = Math.max(Math.floor(radius / 2), radius - Math.floor(span / 2));
+  return clip(text, first.start, Math.max(last.end, first.end), margin);
+}
+
+function clip(text: string, from: number, to: number, margin: number): string {
+  const start = Math.max(0, from - margin);
+  const end = Math.min(text.length, to + margin);
   let snip = text.slice(start, end).replace(/\s+/g, " ").trim();
   if (start > 0) snip = `…${snip}`;
   if (end < text.length) snip = `${snip}…`;
@@ -178,10 +212,56 @@ export function parseKeyword(query: string): KeywordQuery {
   });
   const terms = tokenize(rest);
   if (!terms.length && !phrases.length) {
-    const literal = fold(rest).trim();
+    // Quote marks are syntax, never content: an empty quoted keyword (`""`) is
+    // an empty keyword, not a literal phrase of two quote characters.
+    const literal = fold(rest).replace(QUOTES, " ").replace(/\s+/g, " ").trim();
     if (literal) phrases.push(literal);
   }
   return { phrases, terms };
+}
+
+const QUOTES = /["“”„«»]/g;
+
+/** A keyword as one literal phrase: quote marks dropped, whitespace collapsed
+ * (get_text_passages, a concordance, matches the phrase as written). */
+export function literalPhrase(query: string): string {
+  return query.replace(QUOTES, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The keyword predicate of the list tools and search_projects: the same
+ * word semantics as search_research_items (every word somewhere among the
+ * fields, a "quoted phrase" literally). A one-word keyword stays a substring
+ * match. An empty keyword matches everything.
+ */
+export function keywordPredicate(query: string | undefined): (fields: (string | null | undefined)[]) => boolean {
+  const parsed = query ? parseKeyword(query) : null;
+  if (!parsed || emptyKeyword(parsed)) return () => true;
+  return (fields) => keywordMatches(parsed, fields);
+}
+
+/**
+ * Values of a closed vocabulary to offer when a filter value matched nothing:
+ * the near ones (substring either way, a shared word, or a small edit
+ * distance), else the whole vocabulary when it is short enough to list.
+ */
+export function closestValues(query: string, values: readonly string[], listAllUpTo = 30): string[] {
+  const q = fold(query.trim());
+  const unique = [...new Set(values.filter(Boolean))];
+  if (!q) return unique.length <= listAllUpTo ? unique.sort((a, b) => a.localeCompare(b)) : [];
+  const qWords = tokenize(q);
+  const scored: [string, number][] = [];
+  const maxEdits = Math.max(1, Math.floor(q.length / 4));
+  for (const value of unique) {
+    const v = fold(value);
+    const words = tokenize(v);
+    const score = v.includes(q) || q.includes(v) ? 3
+      : qWords.some((w) => words.some((x) => x.startsWith(w) || w.startsWith(x))) ? 2
+      : editDistance(q, v, maxEdits) <= maxEdits ? 1 : 0;
+    if (score) scored.push([value, score]);
+  }
+  if (scored.length) return scored.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 8).map(([v]) => v);
+  return unique.length <= listAllUpTo ? unique.sort((a, b) => a.localeCompare(b)) : [];
 }
 
 /** True when every phrase and term of the query occurs in at least one of the

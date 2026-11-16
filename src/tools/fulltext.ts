@@ -33,8 +33,8 @@ export function registerFulltextTools(server: Server, tools: ToolMap): void {
         words: z.array(z.string().min(1).max(60)).min(1).max(6).optional()
           .describe("Single words: yearly rates per 10,000 words instead of the overview"),
         group: z.number().int().min(1).optional().describe("Group id: list its articles"),
-        year_from: z.number().int().min(0).max(2200).optional(),
-        year_to: z.number().int().min(0).max(2200).optional(),
+        year_from: z.number().int().min(0).max(2200).optional().describe("With words or group"),
+        year_to: z.number().int().min(0).max(2200).optional().describe("With words or group"),
       })),
     },
     async (args) => {
@@ -45,10 +45,17 @@ export function registerFulltextTools(server: Server, tools: ToolMap): void {
       if (args.year_from !== undefined && args.year_to !== undefined && args.year_from > args.year_to) {
         return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
       }
+      const yearsGiven = args.year_from !== undefined || args.year_to !== undefined;
+      if (yearsGiven && !args.words && args.group === undefined) {
+        return errorResult("invalid_argument", "`year_from` / `year_to` apply with `words` (yearly rates) or `group` (its articles), not to the overview.");
+      }
       const head = header(store, index);
       if (args.words) {
         const trends = wordTrends(index, args.words, args.year_from, args.year_to);
-        return textResult({ ...head, words: { ...trends, min_articles: index.maps.words.minArticles, note: wordsNote(index) } });
+        // Only single words are counted: say why a phrase landed in not_counted.
+        const notCounted = trends.not_counted.map((row) => /\s/.test(row.word.trim())
+          ? { ...row, reason: "Only single words are counted; pass each word separately." } : row);
+        return textResult({ ...head, words: { ...trends, not_counted: notCounted, min_articles: index.maps.words.minArticles, note: wordsNote(index) } });
       }
       if (args.group !== undefined) {
         const group = index.groups.get(args.group);
@@ -57,11 +64,15 @@ export function registerFulltextTools(server: Server, tools: ToolMap): void {
             suggested_tool: "get_fulltext_map",
           });
         }
-        const members = group.members.map((id) => store.getItem(String(id))!)
+        // year_from/year_to keep the articles whose dates overlap the window (undated ones drop out).
+        const inYears = (it: { year_min: number | null; year_max: number | null }) => !yearsGiven || (it.year_min != null &&
+          it.year_min <= (args.year_to ?? Infinity) && (it.year_max ?? it.year_min) >= (args.year_from ?? -Infinity));
+        const members = group.members.map((id) => store.getItem(String(id))!).filter(inYears)
           .sort((a, b) => (a.year_min ?? 9999) - (b.year_min ?? 9999) || a.title.localeCompare(b.title));
         return textResult({
           ...head,
-          group: { id: group.id, label: group.label, label_ai_generated: true, articles: members.length },
+          group: { id: group.id, label: group.label, label_ai_generated: true, articles: group.members.length,
+            ...(yearsGiven ? { articles_in_years: members.length } : {}) },
           group_note: groupLabelNote(index),
           results: members.map((it) => ({ title: it.title, date: yearLabel(it), omeka_id: it.o_id, amira_url: itemUrl(it.o_id) })),
         });

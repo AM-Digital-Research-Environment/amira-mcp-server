@@ -48,7 +48,7 @@ test("fetch: publications, with full-text opt-in and offset windowing", async ()
   const page = await call("fetch", { id: "pub:510", include_fulltext: true, fulltext_offset: 7, fulltext_max_chars: 100 });
   assert.equal(page.text, `${head}\nFull text:\n${fulltext.slice(7, 107)}`);
   assert.deepEqual(page.metadata, { ...meta, fulltext_included: true, fulltext_length: fulltext.length, fulltext_offset: 7,
-    fulltext_returned_chars: 100, fulltext_truncated: true });
+    fulltext_returned_chars: 100, fulltext_truncated: true, fulltext_next_offset: 107 });
 
   const bare = await call("fetch", { id: "pub:511", include_fulltext: true });
   assert.deepEqual(bare.metadata, { kind: "publication", omeka_id: 511, amira_url: url(511), type: "working_paper", year: 2020,
@@ -110,10 +110,17 @@ test("fetch: projects and research sections", async () => {
 
 test("fetch: unknown ids and kinds fetch cannot render are text-only not_found errors", async () => {
   for (const id of ["item:999999", "pub:999999", "video:1", "podcast:1", "project:1", "section:1", "section:abc",
-    "person:100", "subject:600", "500", "nonsense"]) {
+    "999999", "nonsense"]) {
     assert.deepEqual(await errorOf("fetch", { id }),
       { code: "not_found", message: `No record with id '${id}'.`, suggested_tool: "search" }, id);
   }
+  // A kind fetch does not render names the tool that does.
+  const person = await errorOf("fetch", { id: "person:100" });
+  assert.deepEqual([person.code, person.suggested_tool], ["invalid_id", "get_person"]);
+  assert.match(person.message, /fetch reads research items, publications/);
+  assert.equal((await errorOf("fetch", { id: "subject:600" })).suggested_tool, "list_subjects");
+  // A bare Omeka id resolves through the shared id space, as in the get_* tools.
+  assert.equal((await call("fetch", { id: "500" })).metadata.omeka_id, 500);
 });
 
 // --- exposure levels ------------------------------------------------------------------------

@@ -10,7 +10,6 @@ import {
   anyContainsCI,
   capLimit,
   capOffset,
-  containsCI,
   emptySearchHint,
   equalsCI,
   errorResult,
@@ -27,7 +26,10 @@ import {
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
 import { personMatches } from "../names.js";
-import { matchesUniversity } from "../researchItemQuery.js";
+import { matchesUniversity, resolveSectionLoose, universityValues } from "../researchItemQuery.js";
+import { closestValues, keywordPredicate } from "../matching.js";
+import { guidanceEnabled } from "../guidance.js";
+import type { ProjectRec } from "../types.js";
 import { fold } from "../text.js";
 
 export function registerProjectTools(server: Server, tools: ToolMap): void {
@@ -39,7 +41,7 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       description: "Search project names, descriptions and membership. Returns cited summaries and item counts; use get_project for detail.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("search_projects:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Matches the project name, an acronym or the description"),
+        keyword: z.string().max(1000).optional().describe("Every word must occur in the name, an acronym or the description; quote a phrase"),
         university: z
           .string().max(1000)
           .optional()
@@ -59,18 +61,19 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       const offset = capOffset(args.offset);
       // A section by name or id; projects link to it by id (their label may be stale).
       const section = args.research_section
-        ? store.resolveSection(args.research_section)
+        ? resolveSectionLoose(store, args.research_section)
         : undefined;
+      // Word semantics, as the server instructions promise: every word of a
+      // multi-word keyword somewhere in the name, a variant or the description.
+      const keywordOk = keywordPredicate(args.keyword);
+      const inSection = (p: ProjectRec) => section
+        ? p.sections.some((s) => s.o_id != null ? s.o_id === section.o_id : fold(s.label) === fold(section.name))
+        : p.sections.some((s) => equalsCI(s.label, args.research_section!));
 
       const filtered = store.projects.filter((p) => {
-        if (args.keyword && !(containsCI(p.name, args.keyword) || containsCI(p.description, args.keyword) ||
-          anyContainsCI(p.alt_names, args.keyword)))
-          return false;
+        if (args.keyword && !keywordOk([p.name, p.description, ...(p.alt_names ?? [])])) return false;
         if (args.university && !matchesUniversity(p.university, args.university)) return false;
-        if (args.research_section && !(section
-          ? p.sections.some((s) => s.o_id != null ? s.o_id === section.o_id : fold(s.label) === fold(section.name))
-          : p.sections.some((s) => equalsCI(s.label, args.research_section!))))
-          return false;
+        if (args.research_section && !inSection(p)) return false;
         if (args.principal_investigator && !p.pis.some((x) => personMatches(x.label, args.principal_investigator!)))
           return false;
         if (args.member && !p.members.some((x) => personMatches(x.label, args.member!))) return false;
@@ -78,10 +81,23 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
         return true;
       });
 
+      // A closed-vocabulary value no project carries: name the valid ones.
+      const didYouMean: { filter: string; values: string[] }[] = [];
+      const suggest = (filter: string, values: string[]) => { if (values.length) didYouMean.push({ filter, values }); };
+      if (!filtered.length && guidanceEnabled()) {
+        if (args.university && !store.projects.some((p) => matchesUniversity(p.university, args.university!))) {
+          suggest("university", closestValues(args.university, universityValues()));
+        }
+        if (args.research_section && !store.projects.some(inSection)) {
+          suggest("research_section", closestValues(args.research_section, store.sections.map((s) => s.name)));
+        }
+      }
+
       return textResult({
         ...pageOf(filtered, offset, limit, (p) => projectSummary(p, store.itemsForProject(p.o_id).length), {
           ...limitEcho(args.limit, 100, limit),
           ...filtersEcho(args),
+          ...(didYouMean.length ? { did_you_mean: didYouMean } : {}),
         }),
         ...emptySearchHint(filtered.length, args),
       });

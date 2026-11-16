@@ -63,7 +63,8 @@ test("get_institution: partner category from an isPartOf link; groups get item c
 test("get_institution: not_found and missing_entity are text-only errors", async () => {
   for (const args of [{ name: "Nowhere University" }, { id: 999999 }, { id: "organisation:abc" }]) {
     const error = await errorOf("get_institution", args);
-    assert.equal(error.code, "not_found", JSON.stringify(args));
+    // Text that cannot be an id at all is invalid_id rather than not_found.
+    assert.equal(error.code, args.id === "organisation:abc" ? "invalid_id" : "not_found", JSON.stringify(args));
     assert.equal(error.suggested_tool, "list_institutions");
   }
   // A typed id of another kind names the tool that reads it.
@@ -195,16 +196,15 @@ test("list_collections: one row per project, cited by the project page, with its
 });
 
 test("list_categories: formats (and the genres alias), languages with ISO codes, resource types", async () => {
+  // Controlled format terms only; free-text physical notes are their own category.
   const formats = {
-    category: "formats", distinct_values: 3, count: 3, total_matches: 3, offset: 0, has_more: false,
-    results: [
-      { value: "photograph", item_count: 1, amira_url: url(610) },
-      { value: "gelatin print", item_count: 1, amira_url: null },
-      { value: "field recording", item_count: 1, amira_url: null },
-    ],
+    category: "formats", distinct_values: 1, count: 1, total_matches: 1, offset: 0, has_more: false,
+    results: [{ value: "photograph", item_count: 1, amira_url: url(610) }],
   };
   assert.deepEqual(await call("list_categories", { category: "formats" }), formats);
   assert.deepEqual(await call("list_categories", { category: "genres" }), formats, "'genres' is an alias of 'formats'");
+  assert.deepEqual((await call("list_categories", { category: "physical_notes" })).results.map((r) => r.value),
+    ["gelatin print", "field recording"]);
   assert.deepEqual(await call("list_categories", { category: "languages" }), {
     category: "languages", distinct_values: 2, count: 2, total_matches: 2, offset: 0, has_more: false,
     results: [
@@ -222,7 +222,7 @@ test("list_categories: formats (and the genres alias), languages with ISO codes,
   });
   const english = await call("list_categories", { category: "languages", keyword: "ENG" });
   assert.deepEqual([english.filters, english.results.map((r) => r.value)], [{ keyword: "ENG" }, ["English"]]);
-  const clamped = await call("list_categories", { category: "formats", limit: 9999, offset: 2 });
+  const clamped = await call("list_categories", { category: "physical_notes", limit: 9999, offset: 1 });
   assert.deepEqual([clamped.requested_limit, clamped.effective_limit, clamped.results.map((r) => r.value)],
     [9999, 500, ["field recording"]]);
   assert.equal((await raw("list_categories", { category: "tags" })).isError, true, "the old tags facet is gone");
@@ -516,7 +516,7 @@ test("get_podcast: detail, every id form, transcript windowing, media, generated
   });
   for (const id of [999999, "podcast:abc"]) {
     const error = await errorOf("get_podcast", { id });
-    assert.deepEqual([error.code, error.suggested_tool], ["not_found", "search_podcasts"], String(id));
+    assert.deepEqual([error.code, error.suggested_tool], [id === 999999 ? "not_found" : "invalid_id", "search_podcasts"], String(id));
   }
   const wrongKind = await errorOf("get_podcast", { id: "video:540" });
   assert.deepEqual([wrongKind.code, wrongKind.suggested_tool], ["not_found", "get_video"]);

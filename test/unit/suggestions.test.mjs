@@ -35,6 +35,7 @@ const SEESEMANN = { id: "person:110", name: "Seesemann, Rüdiger", amira_url: ur
 const SEEMANN = { id: "person:111", name: "Seemann, Jörg", amira_url: url(111) };
 const HINT = "No person has this name. These authority names are spelled similarly; confirm one is the person meant before using it.";
 const RELAX = "No record matches all these filters. Drop or broaden them one at a time to find the one that excludes everything.";
+const SINGLE = "No record matches this filter. Check its spelling or broaden it; did_you_mean, when present, lists stored values.";
 const EMPTY = { count: 0, total_matches: 0, offset: 0, has_more: false, results: [] };
 
 // --- the matcher -------------------------------------------------------------------
@@ -130,7 +131,8 @@ test("default mode: a search that finds someone is unchanged; without a near mis
     const page = await call("search_persons", args);
     assert.equal(page.count, 0, JSON.stringify(args));
     assert.ok(!("suggestions" in page), JSON.stringify(args));
-    assert.equal(page.hint, RELAX, JSON.stringify(args));
+    // One filter gets the single-filter wording ("drop them one at a time" made no sense).
+    assert.equal(page.hint, Object.keys(args).length === 1 ? SINGLE : RELAX, JSON.stringify(args));
   }
   // A page past the end of a non-empty result is not an empty search.
   const past = await call("search_persons", { keyword: "Seesemann", offset: 5 });

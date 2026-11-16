@@ -207,7 +207,7 @@ test("guidance off: calls behave the same; errors keep their code with a terse m
         assert.deepEqual(errorOf(await off.call("list_cluster_partners", { category: "nonsense" })),
           { code: "invalid_category", message: "Unknown partner category 'nonsense'." });
         assert.deepEqual(errorOf(await off.call("get_entity_graph", { seed: "person:100", edge_id: "x", snapshot_id: "stale" })),
-          { code: "snapshot_changed", message: "The snapshot changed." });
+          { code: "invalid_id", message: "Unknown snapshot id 'stale'." });
         assert.deepEqual(errorOf(await off.call("fetch", { id: "item:999999999" })), { code: "not_found", message: "No record with id 'item:999999999'." });
         // Messages that only say what was wrong are the same in both modes.
         assert.deepEqual(errorOf(await off.call("get_person", {})), errorOf(await on.call("get_person", {})));

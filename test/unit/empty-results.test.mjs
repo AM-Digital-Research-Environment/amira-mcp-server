@@ -18,6 +18,9 @@ const conn = await connectInMemory(lib, {}, { name: "empty-results" });
 test.after(() => conn.close());
 
 const RELAX = "No record matches all these filters. Drop or broaden them one at a time to find the one that excludes everything.";
+/** With one filter, "drop them one at a time" made no sense. */
+const SINGLE = "No record matches this filter. Check its spelling or broaden it; did_you_mean, when present, lists stored values.";
+const hintFor = (args) => (Object.keys(args).filter((k) => k !== "citation_format").length === 1 ? SINGLE : RELAX);
 
 /** One filtered search per tool that matches nothing in the fixture. */
 const EMPTY_SEARCHES = [
@@ -46,7 +49,7 @@ test("a filtered search that finds nothing carries the relax hint", async () => 
   for (const [tool, args] of EMPTY_SEARCHES) {
     const page = await conn.call(tool, args);
     assert.equal(page.total_matches, 0, `${tool} ${JSON.stringify(args)}`);
-    assert.equal(page.hint, RELAX, `${tool} ${JSON.stringify(args)}`);
+    assert.equal(page.hint, hintFor(args), `${tool} ${JSON.stringify(args)}`);
   }
 });
 
@@ -62,7 +65,7 @@ test("search_research_items keeps its relaxation counts and place spellings besi
   const zero = await conn.call("search_research_items", { subject: "Islam", resource_type: "Audio" });
   assert.ok(zero.suggestions.some((s) => s.remove_filter === "resource_type" && s.would_match === 2));
   const miss = await conn.call("search_research_items", { location: "Lagoss" });
-  assert.deepEqual([miss.did_you_mean, miss.hint], [[{ filter: "location", values: ["Lagos"] }], RELAX]);
+  assert.deepEqual([miss.did_you_mean, miss.hint], [[{ filter: "location", values: ["Lagos"] }], SINGLE]);
 });
 
 test("AMIRA_GUIDANCE=off: empty searches stay bare, matching ones are unchanged", async () => {

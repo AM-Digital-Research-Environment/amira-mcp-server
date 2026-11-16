@@ -15,7 +15,9 @@ import { CORPORA, type CorpusName, type SnapshotData } from "./types.js";
 import { itemSetUrl, itemUrl } from "./urls.js";
 
 export interface RetainedSnapshot { id: string; fetchedAt: string; prints: Fingerprints }
-export interface SnapshotChange { corpus: CorpusName; id: number; change: "added" | "updated" | "deleted"; title: string; amira_url: string }
+export interface SnapshotChange { corpus: CorpusName; id: number; change: "added" | "updated" | "deleted"; title: string;
+  /** Absent for a deleted record: it has no page left. */
+  amira_url?: string }
 
 /** The served snapshot's records as SnapshotData (the store renames two corpora). */
 function storeData(store: DataStore): SnapshotData {
@@ -87,6 +89,9 @@ export function snapshotDiff(before: RetainedSnapshot, after: RetainedSnapshot, 
       const prev = old[id], next = now[id], rec = (next ?? prev)!;
       const change = !prev ? "added" as const : !next ? "deleted" as const : prev[0] !== next[0] ? "updated" as const : null;
       if (!change) continue;
+      // A deleted record has no page left to cite (and, in curator mode, no
+      // visibility to tell a public page from a private one): no URL.
+      if (change === "deleted") { changes.push({ corpus, id, change, title: rec[1] }); continue; }
       // A collection item set is cited by its project page (#18); the set page redirects there.
       const citedBy = rec[2];
       changes.push({ corpus, id, change, title: rec[1],

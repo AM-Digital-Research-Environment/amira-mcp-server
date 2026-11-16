@@ -6,6 +6,7 @@ import type { DataStore } from "../data.js";
 import { UNIVERSITY_LABELS } from "../data.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
 import { allowStructured } from "../exposure.js";
+import { config } from "../config.js";
 import type {
   PersonRec,
   PodcastRec,
@@ -130,6 +131,15 @@ export function sectionSummary(
   };
 }
 
+/**
+ * Curator mode: `has_restricted_fulltext` when the only (or another) full text
+ * is private, so `has_fulltext: false` (public text) never sits beside a
+ * restricted_fulltext match unexplained. Absent in public mode.
+ */
+export function restrictedTextFlag(p: PublicationRec): Record<string, unknown> {
+  return config.access === "curator" && p.restricted?.fulltext ? { has_restricted_fulltext: true } : {};
+}
+
 export function publicationSummary(p: PublicationRec): Record<string, unknown> {
   return {
     id: String(p.o_id),
@@ -143,6 +153,7 @@ export function publicationSummary(p: PublicationRec): Record<string, unknown> {
     // The publication's own canonical link (DOI, else repository permalink).
     url: p.doi ?? p.urls[0] ?? null,
     has_fulltext: !!p.fulltext,
+    ...restrictedTextFlag(p),
     amira_url: itemUrl(p.o_id),
   };
 }

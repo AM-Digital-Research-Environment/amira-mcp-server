@@ -357,7 +357,8 @@ test("get_research_item: generated citation defaults to BibTeX, switches on cita
 
 test("list_years: ranged items count into every bucket; from/to windows", async () => {
   const years = await call("list_years", { from: 1960, to: 1965 });
-  assert.equal(years.dated_items, 2);
+  assert.equal(years.dated_items, 1, "dated_items follows the from/to window: only item 501 spans it");
+  assert.deepEqual(years.year_range, { min: 1960, max: 1965 });
   assert.equal(years.undated_items, 2);
   assert.equal(years.distinct_buckets, 6); // 1960..1965, all from item 501
   assert.ok(years.results.every((r) => r.item_count === 1));
@@ -463,9 +464,9 @@ test("get_video / get_podcast accept a string id, like every other get_*", async
     assert.equal(byString.omeka_id, id);
   }
 
-  // A non-numeric id stays a clean not_found, never a crash.
+  // A non-numeric id is a clean invalid_id, never a crash.
   const missing = await call("get_video", { id: "not-a-number" });
-  assert.equal(missing.error.code, "not_found");
+  assert.equal(missing.error.code, "invalid_id");
   assert.equal(missing.error.suggested_tool, "search_videos");
 });
 

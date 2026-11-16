@@ -59,7 +59,7 @@ test("graph bounds, identity, provenance and paginated evidence agree", async ()
     assert.equal(page.total_matches, edge.count);
     assert.equal(page.results[0].id, edge.evidence[0].id);
   }
-  assert.equal((await call("get_entity_graph", { seed: "person:100", snapshot_id: "old" })).error.code, "snapshot_changed");
+  assert.equal((await call("get_entity_graph", { seed: "person:100", snapshot_id: "old" })).error.code, "invalid_id", "never a snapshot id");
   const empty = await call("get_entity_graph", { seed: "person:103" });
   assert.equal(empty.edges.length, 0);
 });

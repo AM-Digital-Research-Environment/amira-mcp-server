@@ -7,7 +7,7 @@ import type { DataStore } from "./data.js";
 import type { PublicationRec } from "./types.js";
 import { allowDescriptive, allowFullText, allowStructured, exposureLevel } from "./exposure.js";
 import { personMatches } from "./names.js";
-import { anyContainsCI, containsCI, emptyKeyword, equalsCI, keywordMatchesFolded, parseKeyword, refLabels } from "./matching.js";
+import { anyContainsCI, closestValues, containsCI, emptyKeyword, equalsCI, keywordMatchesFolded, parseKeyword, refLabels } from "./matching.js";
 import { fold, foldCached } from "./text.js";
 import { invalidDate, isoDate, sinceMatches, type QueryError } from "./researchItemQuery.js";
 
@@ -84,4 +84,26 @@ export function selectPublications(store: DataStore, args: PublicationFilters) {
     return true;
   });
   return { records, fulltextOnly, restrictedOnly };
+}
+
+/**
+ * For a search that found nothing: the closed-vocabulary filters (`type`,
+ * `language`) whose value no publication carries at all, with the stored
+ * values nearest to it (or all of them, when few).
+ */
+export function publicationDidYouMean(store: DataStore, args: PublicationFilters): { filter: string; values: string[] }[] {
+  const out: { filter: string; values: string[] }[] = [];
+  if (args.type && !store.publications.some((p) => equalsCI(p.type, args.type!))) {
+    const values = closestValues(args.type.replace(/\s+/g, "_"), store.cached("publications:types", () => [...new Set(store.publications.map((p) => p.type))]), 100);
+    if (values.length) out.push({ filter: "type", values });
+  }
+  if (args.language) {
+    const all = store.cached("publications:languages", () => [...new Set(store.publications.flatMap(languagesOf))]);
+    const refs = all.map((label) => ({ label, o_id: null }));
+    if (!refs.some((r) => store.languageIndex.matches([r], args.language!))) {
+      const values = closestValues(args.language, all, 100);
+      if (values.length) out.push({ filter: "language", values });
+    }
+  }
+  return out;
 }

@@ -19,6 +19,7 @@ import {
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
 import { APP_UI_META } from "./apps.js";
+import { sectionByName } from "../researchItemQuery.js";
 
 export function registerResearchSectionTools(server: Server, tools: ToolMap): void {
   // === list_research_sections ===============================================
@@ -54,21 +55,22 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
       description: "One research section's description, team and projects, each with its research-item count.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_research_section:in", () => z.strictObject({
-        name: z.string().max(1000).optional().describe("Section name, e.g. 'Arts & Aesthetics'"),
-        id: z.union([z.string().max(64), z.number()]).optional().describe("Section Omeka id or typed id section:218"),
+        name: z.string().max(1000).optional().describe("Section name, e.g. 'Arts & Aesthetics' ('and' for '&' works)"),
+        id: z.union([z.string().max(64), z.number()]).optional().describe("Section Omeka id or typed id section:<id> from list_research_sections; not with name"),
       })),
     },
     async ({ name, id }) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_research_section");
       if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
+      if (id != null && name) return errorResult("invalid_argument", "Provide name or id, not both.");
       const notFound = () => errorResult("not_found", `No research section ${id != null ? `with id '${id}'` : `named '${name}'`}.`, {
         suggested_tool: "list_research_sections",
         available_values: store.sections.map((x) => x.name),
       });
       const found = id != null ? recordArg(store, id, "section", notFound) : undefined;
       if (found && "error" in found) return found.error;
-      const s = found ? found.record : store.getSection(name!);
+      const s = found ? found.record : sectionByName(store, name!);
       if (!s) return notFound();
       const projects = store.projectsOfSection(s);
       const itemCount = projects.reduce((acc, p) => acc + store.itemsForProject(p.o_id).length, 0);

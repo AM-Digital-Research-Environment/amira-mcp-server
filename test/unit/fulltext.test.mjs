@@ -276,3 +276,12 @@ test("no surface returns more than the public derived numbers", async () => {
   ];
   for (const body of bodies) assert.ok(!JSON.stringify(body).includes(PRIVATE_TEXT));
 });
+
+test("get_fulltext_map: year_from/year_to filter a group, are refused on the overview; phrases are explained", async () => {
+  const g = await call("get_fulltext_map", { group: 1, year_from: 1970 });
+  assert.deepEqual(g.results.map((r) => r.omeka_id), [521], "1962 article dropped by the window");
+  assert.deepEqual([g.group.articles, g.group.articles_in_years], [2, 1]);
+  assert.equal((await call("get_fulltext_map", { year_from: 1960 })).error.code, "invalid_argument");
+  const w = (await call("get_fulltext_map", { words: ["kora mbira"] })).words;
+  assert.match(w.not_counted[0].reason, /single words/);
+});
