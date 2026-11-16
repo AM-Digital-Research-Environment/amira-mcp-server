@@ -11,6 +11,13 @@ import { createHttpApp, MCP_PATH } from "./httpApp.js";
 import { VERSION } from "./mcpServer.js";
 import { config } from "./config.js";
 import { ensureStore, stopBackgroundRefresh } from "./data.js";
+import { refuseMisconfiguration } from "./access.js";
+
+// Fail closed (#26): a curator server without its key, its personal tokens or a
+// tmpfs cache, or a public server holding a key, exits here.
+refuseMisconfiguration("http");
+// Curator mode writes private data to the cache: owner-only files and directories.
+if (config.access === "curator") process.umask(0o077);
 
 let startupError: string | null = null;
 const app = createHttpApp({ startupError: () => startupError });
@@ -34,7 +41,8 @@ httpServer.listen(config.httpPort, config.httpHost, () => {
   const port = address && typeof address === "object" ? address.port : config.httpPort;
   console.error(
     `[amira] AMIRA MCP server v${VERSION} on http://${config.httpHost}:${port}${MCP_PATH} ` +
-      `(site: ${config.siteBase}, live refresh: ${config.liveRefresh}, trust proxy: ${config.trustProxy})`,
+      `(site: ${config.siteBase}, live refresh: ${config.liveRefresh}, trust proxy: ${config.trustProxy}` +
+      `${config.access === "curator" ? ", access: curator" : ""})`,
   );
 });
 

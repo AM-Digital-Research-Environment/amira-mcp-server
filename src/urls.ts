@@ -28,3 +28,13 @@ export function iiifManifestUrl(oId: number): string {
 export function iiifCollectionUrl(oId: number): string {
   return `${SITE_BASE}/iiif/3/collection/${oId}`;
 }
+
+/** Omeka admin page of an item (curator mode: a private record has no public page). */
+export function adminItemUrl(oId: number): string {
+  return `${SITE_BASE}/admin/item/${oId}`;
+}
+
+/** Omeka admin page of an item set. */
+export function adminItemSetUrl(oId: number): string {
+  return `${SITE_BASE}/admin/item-set/${oId}`;
+}

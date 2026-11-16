@@ -87,7 +87,8 @@ function generatedBy(ref: LinkedRef | null | undefined): Record<string, unknown>
   return ref ? { transcript_generated_by: { name: ref.label, amira_url: itemUrlOrNull(ref.o_id) } } : {};
 }
 
-const mediaList = (media: MediaRec[] | undefined) => (media ?? []).map((m) => ({ type: m.type, url: m.url, size: m.size }));
+const mediaList = (media: MediaRec[] | undefined) =>
+  (media ?? []).map((m) => ({ type: m.type, url: m.url, size: m.size, ...(m.visibility ? { visibility: m.visibility } : {}) }));
 
 export function registerMediaTools(server: Server, tools: ToolMap): void {
   // === search_podcasts ======================================================

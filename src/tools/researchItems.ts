@@ -30,7 +30,8 @@ import { guidanceEnabled } from "../guidance.js";
 import { generateItemCitation } from "../citation.js";
 import { stripTypedId } from "../typedIds.js";
 import { exportLink, EXPORT_FORMATS } from "../resources.js";
-import { placeAliases } from "../matching.js";
+import { matchSnippet, placeAliases } from "../matching.js";
+import { config } from "../config.js";
 import {
   countriesNote, countryNames, fulltextIndex, groupLabelNote, inMappedCollection, neighboursNote, sourceRef, excludedCount,
 } from "../fulltextMaps.js";
@@ -83,7 +84,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       const refused = researchFilterError(filters, store);
       if (refused) return queryErrorResult(refused);
 
-      const { filtered, suggestions, did_you_mean } = selectResearchItems(store, filters);
+      const { filtered, suggestions, did_you_mean, fulltextOnly } = selectResearchItems(store, filters);
       if (format) return exportLink("research_items", format, filters, filtered.length);
 
       // Relaxation counts, spellings and the hint are guidance (AMIRA_GUIDANCE).
@@ -91,10 +92,14 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
       // With mentions_country, each row says how often its full text names the country.
       const index = filters.mentions_country ? fulltextIndex(store) : null;
       const named = index ? countryNames(index, placeAliases(filters.mentions_country!)) : null;
+      const summary = (it: (typeof filtered)[number]) => fulltextOnly.has(it.o_id)
+        // Curator mode: matched only in the private full text, which the snippet quotes.
+        ? { ...itemSummary(it, store), matched_in: "restricted_fulltext", fulltext_snippet: matchSnippet(it.restricted?.fulltext, args.keyword!) }
+        : itemSummary(it, store);
       const row = (it: (typeof filtered)[number]) => {
-        if (!index || !named) return itemSummary(it, store);
+        if (!index || !named) return summary(it);
         const mentions = index.articles.get(it.o_id)?.countries.filter((c) => named.has(c.country)) ?? [];
-        return { ...itemSummary(it, store), country_mentions: Object.fromEntries(mentions.map((c) => [c.country, c.mentions])) };
+        return { ...summary(it), country_mentions: Object.fromEntries(mentions.map((c) => [c.country, c.mentions])) };
       };
       return textResult({
         ...(index ? { mentions_note: countriesNote(index) } : {}),
@@ -125,6 +130,15 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
           .optional()
           .describe("Export format for the generated citation: bibtex (default) → `bibtex`, ris → `ris`, csl-json → `csl_json`"),
         include_similar: includeSimilarSchema,
+        // Curator mode only (#26): page the private full text in `restricted`.
+        // Absent from the public schema, so the public tool surface is unchanged.
+        ...(config.access === "curator"
+          ? {
+              include_fulltext: z.boolean().optional().describe("Curator mode: include the private full text (restricted.fulltext)"),
+              fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the private full text (chars)"),
+              fulltext_max_chars: z.number().int().min(1).optional().describe("Max private full-text characters (default/max 25000)"),
+            }
+          : {}),
       })),
     },
     async ({ id, citation_format, include_similar }) => {
@@ -208,7 +222,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
         table_of_contents: toc?.text ?? null,
         table_of_contents_truncated: toc?.truncated || undefined,
         has_media: it.has_media,
-        media: (it.media ?? []).map((m) => ({ type: m.type, url: m.url, source: m.source, size: m.size })),
+        media: (it.media ?? []).map((m) => ({ type: m.type, url: m.url, source: m.source, size: m.size, ...(m.visibility ? { visibility: m.visibility } : {}) })),
         iiif_manifest: it.has_media ? iiifManifestUrl(it.o_id) : null,
         thumbnail: it.thumbnail,
         created: it.created ?? null,

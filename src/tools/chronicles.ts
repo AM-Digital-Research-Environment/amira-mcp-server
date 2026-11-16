@@ -175,7 +175,7 @@ export function registerChronicleTools(server: Server, tools: ToolMap): void {
             }
           : {}),
         urls: c.urls,
-        media: (c.media ?? []).map((m) => ({ type: m.type, url: m.url, source: m.source })),
+        media: (c.media ?? []).map((m) => ({ type: m.type, url: m.url, source: m.source, ...(m.visibility ? { visibility: m.visibility } : {}) })),
         thumbnail: c.thumbnail,
         ...textWindowFields("text", c.text, { include: include_text, offset: text_offset, maxChars: text_max_chars }),
         amira_url: itemUrl(c.o_id),

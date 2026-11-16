@@ -2,6 +2,7 @@
 // Counts always describe the complete filtered corpus, before pagination or
 // summary formatting. Returns data and typed errors; the tools render them.
 import { z } from "zod";
+import { config } from "./config.js";
 import type { DataStore } from "./data.js";
 import type { PublicationRec } from "./types.js";
 import { allowDescriptive, allowFullText, allowStructured, exposureLevel } from "./exposure.js";
@@ -55,6 +56,9 @@ function foldedMeta(store: DataStore): Map<number, string[]> {
 
 export function selectPublications(store: DataStore, args: PublicationFilters) {
   const fulltextOnly = new Set<number>();
+  /** Curator mode (#26): matched only in a private full text. */
+  const restrictedOnly = new Set<number>();
+  const curator = config.access === "curator";
   const parsed = args.keyword ? parseKeyword(args.keyword) : null;
   const keyword = parsed && !emptyKeyword(parsed) ? parsed : null;
   const meta = keyword ? foldedMeta(store) : null;
@@ -71,11 +75,13 @@ export function selectPublications(store: DataStore, args: PublicationFilters) {
     if (keyword && meta) {
       const fields = meta.get(p.o_id) ?? [fold(p.title)];
       if (!keywordMatchesFolded(keyword, fields)) {
-        if (!allowFullText() || !p.fulltext || !keywordMatchesFolded(keyword, [...fields, foldCached(p.fulltext)])) return false;
-        fulltextOnly.add(p.o_id);
+        if (allowFullText() && p.fulltext && keywordMatchesFolded(keyword, [...fields, foldCached(p.fulltext)])) fulltextOnly.add(p.o_id);
+        else if (curator && allowFullText() && p.restricted?.fulltext &&
+          keywordMatchesFolded(keyword, [...fields, foldCached(p.restricted.fulltext)])) restrictedOnly.add(p.o_id);
+        else return false;
       }
     }
     return true;
   });
-  return { records, fulltextOnly };
+  return { records, fulltextOnly, restrictedOnly };
 }

@@ -18,6 +18,7 @@ import type { Contributor, ResearchItemRec } from "./types.js";
 import { allowStructured } from "./exposure.js";
 import { itemUrl } from "./urls.js";
 import { creditLabel as label } from "./matching.js";
+import { isPrivateRecord, PRIVATE_CITATION_NOTE } from "./visibility.js";
 
 export type CitationFormat = "bibtex" | "ris" | "csl-json";
 
@@ -228,7 +229,8 @@ function toBibtex(
   add("organization", repository);
   add("howpublished", PUBLISHER);
   add("doi", it.doi?.replace(/^https?:\/\/(dx\.)?doi\.org\//i, ""));
-  add("url", itemUrl(it.o_id));
+  // A private record (curator mode) has no public page to cite: no URL, and the note says so.
+  if (!isPrivateRecord(it)) add("url", itemUrl(it.o_id));
   // `unpublished` requires a note; every item has one (it always carries its
   // AMIRA id), so the entry is never malformed.
   add("note", note);
@@ -254,7 +256,7 @@ function toRis(
   add("PB", PUBLISHER);
   add("AV", repository);
   add("DO", it.doi?.replace(/^https?:\/\/(dx\.)?doi\.org\//i, ""));
-  add("UR", itemUrl(it.o_id));
+  if (!isPrivateRecord(it)) add("UR", itemUrl(it.o_id));
   add("N1", note);
   lines.push("ER  - ");
   return lines.join("\n");
@@ -293,7 +295,7 @@ function toCslJson(
     ...(repository ? { archive: repository } : {}),
     publisher: PUBLISHER,
     ...(it.doi ? { DOI: it.doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, "") } : {}),
-    URL: itemUrl(it.o_id),
+    ...(isPrivateRecord(it) ? {} : { URL: itemUrl(it.o_id) }),
     ...(note ? { note } : {}),
   };
 }
@@ -318,7 +320,9 @@ export function generateItemCitation(
 
   // The project only earns its own line when it differs from the collection
   // title — for most items the two are verbatim identical.
+  const privateRecord = isPrivateRecord(it);
   const noteParts = [
+    privateRecord ? PRIVATE_CITATION_NOTE.replace(/\.$/, "") : null,
     context.project && context.project !== context.collection ? `Project: ${context.project}` : null,
     structured && it.provenance.length ? `Provenance: ${it.provenance.join("; ")}` : null,
     `AMIRA item ${it.o_id}`,
@@ -332,7 +336,7 @@ export function generateItemCitation(
     sentence(context.collection ?? context.project),
     sentence(repository),
     sentence(PUBLISHER),
-    `${itemUrl(it.o_id)}.`,
+    privateRecord ? `[${PRIVATE_CITATION_NOTE}]` : `${itemUrl(it.o_id)}.`,
   ]);
 
   const exported =

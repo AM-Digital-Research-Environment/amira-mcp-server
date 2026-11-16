@@ -7,13 +7,18 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { API_BASE, config } from "./config.js";
 import { crawlSnapshot, loadSnapshot, writeSnapshotAtomic } from "./snapshot.js";
+import { refuseMisconfiguration } from "./access.js";
+
+// The bundled snapshot is public by definition (#26): never crawl it with a key.
+refuseMisconfiguration("fetch");
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const dest = path.resolve(process.argv[2] ?? path.resolve(MODULE_DIR, "..", "data"));
 
-console.error(`[fetch] crawling ${API_BASE} -> ${dest}`);
+console.error(`[fetch] crawling ${config.fetchBase} -> ${dest}`);
 const started = Date.now();
-const out = await crawlSnapshot(API_BASE, (m) => console.error(`[fetch] ${m}`), undefined, { semanticRelease: config.semanticRelease });
+const out = await crawlSnapshot(API_BASE, (m) => console.error(`[fetch] ${m}`), undefined,
+  { semanticRelease: config.semanticRelease, fetchBase: config.fetchBase });
 // No verified corpus-vector release this time: keep the neighbours of the snapshot being replaced
 // (they are filtered to the new snapshot at load, so a deleted record is never cited).
 if (!out.semantic && config.semanticRelease !== "off") {

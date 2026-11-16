@@ -9,8 +9,9 @@ import {
   anyContainsCI, containsCI, emptyKeyword, equalsCI, keywordMatchesFolded, parseKeyword, placeAliases, refLabels, wordPrefixMatch,
 } from "./matching.js";
 import { personMatches } from "./names.js";
-import { allowDescriptive, allowStructured } from "./exposure.js";
-import { fold } from "./text.js";
+import { allowDescriptive, allowFullText, allowStructured } from "./exposure.js";
+import { fold, foldCached } from "./text.js";
+import { config } from "./config.js";
 import { stripTypedId } from "./typedIds.js";
 import { collectionsOfItem, inCollection, resolveCollection } from "./collections.js";
 import { countryNames, countrySuggestions, fulltextIndex } from "./fulltextMaps.js";
@@ -161,6 +162,8 @@ export function selectResearchItems(store: DataStore, args: ResearchFilters) {
   // One predicate per active filter, so a zero-result set can be probed by
   // dropping each filter in turn (relaxation hints).
   const preds: Record<string, (it: ResearchItemRec) => boolean> = {};
+  /** Curator mode: items matched by the keyword only in their private full text. */
+  const fulltextOnly = new Set<number>();
   if (args.keyword) {
     const parsed = parseKeyword(args.keyword);
     if (!emptyKeyword(parsed)) {
@@ -169,7 +172,16 @@ export function selectResearchItems(store: DataStore, args: ResearchFilters) {
         [it.title, ...it.alt_titles, ...(desc ? [it.description, it.abstract, it.toc, ...it.identifiers] : [])]
           .filter((s): s is string => !!s).map(fold)])));
       const keyword = args.keyword;
-      preds.keyword = (it) => keywordMatchesFolded(parsed, index.get(it.o_id)!) || (desc && equalsCI(it.dre_id, keyword));
+      // Curator mode (#26) also searches the private full text (the ILAM OCR
+      // text), like search_publications searches publication full text.
+      const privateText = config.access === "curator" && allowFullText();
+      preds.keyword = (it) => {
+        if (keywordMatchesFolded(parsed, index.get(it.o_id)!) || (desc && equalsCI(it.dre_id, keyword))) return true;
+        const text = privateText ? it.restricted?.fulltext : undefined;
+        if (!text || !keywordMatchesFolded(parsed, [...index.get(it.o_id)!, foldCached(text)])) return false;
+        fulltextOnly.add(it.o_id);
+        return true;
+      };
     }
   }
   if (args.subject) preds.subject = (it) => it.subjects.some((s) => containsCI(s.label, args.subject!));
@@ -257,5 +269,6 @@ export function selectResearchItems(store: DataStore, args: ResearchFilters) {
     filtered,
     suggestions: suggestions.length ? suggestions : undefined,
     did_you_mean: didYouMean.length ? didYouMean : undefined,
+    fulltextOnly,
   };
 }

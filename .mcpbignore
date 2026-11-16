@@ -8,10 +8,12 @@ node_modules/
 
 # The extension runs server/index.js only (manifest `server.entry_point`).
 # http.js is the container/remote entry, lib.js the test library and
-# fetchCli.js the build-time crawler: ~5 MB of dead weight inside the .mcpb.
+# fetchCli.js the build-time crawler, tokenCli.js the curator-mode token
+# generator (curator mode is HTTP only): dead weight inside the .mcpb.
 server/http.js
 server/lib.js
 server/fetchCli.js
+server/tokenCli.js
 
 # Generated release archives must never be nested into a later bundle.
 *.mcpb

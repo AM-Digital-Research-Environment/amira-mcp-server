@@ -16,6 +16,7 @@ import { itemSetUrl, itemUrl } from "../urls.js";
 import { READ_ONLY, errorResult, exposureRestrictedResult, textResult, yearLabel, type Server } from "./_shared.js";
 import type { DataStore } from "../data.js";
 import { guidanceEnabled } from "../guidance.js";
+import { config } from "../config.js";
 
 const SAMPLE_PER_GROUP = 2;
 
@@ -85,7 +86,10 @@ function header(store: DataStore, index: FulltextIndex) {
       // Reasons overlap: an article can be both short and journal furniture.
       not_on_map_with_full_text: excludedCount(index), exclusion_reasons: c.excluded,
     },
-    privacy: "Derived from ILAM's full text offline; the text itself is private in AMIRA and is neither read nor quoted by this server.",
+    privacy: config.access === "curator"
+      ? "Derived from ILAM's full text offline. The text itself is private in AMIRA; in curator mode it is searchable " +
+        "(search_research_items keyword) and readable in get_research_item's `restricted` block."
+      : "Derived from ILAM's full text offline; the text itself is private in AMIRA and is neither read nor quoted by this server.",
   };
 }
 

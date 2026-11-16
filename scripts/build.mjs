@@ -2,6 +2,7 @@
 //   server/index.js     — the MCP server, stdio transport (entry of the .mcpb)
 //   server/http.js      — the MCP server, remote Streamable HTTP transport
 //   server/fetchCli.js  — the snapshot fetcher (build time + CI)
+//   server/tokenCli.js  — the curator-mode personal token generator (#26)
 //   server/lib.js       — the test library (src/lib.ts)
 //
 // No native bindings or optional cloud SDKs — the MCP SDK and zod inline
@@ -87,7 +88,7 @@ console.log(
 );
 
 await esbuild.build({
-  entryPoints: ["./src/index.ts", "./src/http.ts", "./src/fetchCli.ts", "./src/lib.ts"],
+  entryPoints: ["./src/index.ts", "./src/http.ts", "./src/fetchCli.ts", "./src/tokenCli.ts", "./src/lib.ts"],
   outdir: "server",
   bundle: true,
   platform: "node",

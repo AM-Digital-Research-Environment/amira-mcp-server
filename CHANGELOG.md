@@ -30,6 +30,113 @@ force and what comes next.
 - Snapshot schema v6: an older snapshot still loads (with no chronicles) and is
   reported stale, so a running server with live refresh recrawls it.
 
+## 1.36.0 — 2026-11-13
+
+Curator access (#26, step 1): an internal, read-only curator mode that serves
+private records to holders of a personal token, and a relay that lets the
+Claude Desktop extension reach it. Without a curator token, the extension and
+the public endpoint behave exactly as in 1.35.1.
+
+- **The `.mcpb` relays to the curator server** (#26). Claude Desktop custom
+  connectors can send no static header, so the extension gains an optional
+  **Curator token** setting (`sensitive`: masked, kept in the OS keychain) and
+  an advanced **Curator server URL** (default
+  `https://data.africamultiple.uni-bayreuth.de/curator/mcp`), passed to the
+  server as `AMIRA_CURATOR_TOKEN` and `AMIRA_CURATOR_URL`. With a token, the
+  stdio process becomes a pure relay: a stdio MCP server on one side, a
+  Streamable HTTP client of the curator endpoint (`Authorization: Bearer
+  <token>`) on the other, forwarding every JSON-RPC message both ways
+  unchanged. The client sees the curator server's own tools, resources,
+  prompts, capabilities, instructions and `serverInfo`, in either protocol era,
+  with its progress, logging and list-changed notifications; a cancellation
+  aborts the forwarded request. It loads no snapshot, writes no cache and
+  crawls nothing, so nothing private touches disk and no Omeka key is ever
+  held locally.
+- **The relay fails closed.** A rejected or revoked token (HTTP 401/403)
+  answers the request, `initialize` included, with "curator token rejected or
+  revoked; check the token in the extension settings, or clear it for the
+  public dataset"; an unreachable server or another HTTP error gets its own
+  clear message. Neither falls back to public data. The token is sent only in
+  the header, removed from the process environment once read, and redacted
+  from every log line and error. The URL must be `https://` (plain `http://` is
+  accepted only for `localhost` and `127.0.0.1`, for tests) and carry no
+  credentials. `AMIRA_CURATOR_TOKEN` is refused with `AMIRA_ACCESS=curator`, by
+  the HTTP server and by `fetch-data`. An empty token, or the unsubstituted
+  `${user_config.curator_token}` of an unset setting, is public mode: tool
+  results, resources, prompts and `tools/list` are byte-identical to 1.35.1 on
+  the released 1.35.1 snapshot.
+- **Fixed: a curator server whose first crawl fails now retries on its own.**
+  A transient failure with no data yet (Omeka unreachable, or a 502 while php
+  restarts) used to be retried only when a curator request arrived, and the
+  `/healthz` healthcheck sends none, so the container stayed unhealthy until
+  restarted. It now retries on a timer, after 60 s and then backing off to
+  every five minutes, and publishes the store once a crawl succeeds
+  (`AMIRA_CURATOR_RETRY_SECONDS` sets the first delay). Public mode, whose
+  first load reads local files only, is unchanged.
+- **Curator mode with personal tokens** (#26, step 1). `AMIRA_ACCESS=curator`
+  runs an internal, read-only endpoint for AMIRA's developers and data
+  curators that also serves private records and private values. It crawls the
+  Omeka API with a service key (`AMIRA_OMEKA_KEY_FILE`), added to each request
+  inside the fetch and kept out of the API base, the manifest, errors, logs,
+  `/healthz` and returned URLs. Clients authenticate with personal tokens:
+  `AMIRA_MCP_TOKENS_FILE` lists one `name sha256hex` line per curator, compared
+  in constant time and re-read every 2 s, so deleting a line revokes that
+  curator without a restart; `node server/tokenCli.js <name>` generates a
+  256-bit token. Each MCP request is audited with the curator's name and the
+  tool, never a token or an argument. OAuth sign-in for the chat applications
+  is the next step. See [docs/curator.md](docs/curator.md).
+- **Curator mode fails closed.** It refuses to start without the key, the
+  tokens, an explicit `AMIRA_CACHE_DIR` (meant for tmpfs) or a refresh interval
+  shorter than `AMIRA_CURATOR_MAX_STALE_HOURS` (default 24); it refuses stdio
+  and the `.mcpb` (which relay instead, above), `fetch-data` and a shared
+  bearer token. A public server refuses
+  to start with an Omeka key or a tokens file.
+- **Private data is marked, never mixed in.** In curator mode every record
+  carries `visibility`; a private record gets `admin_url` and a
+  `citation_note` instead of `amira_url`, and its generated citation, BibTeX,
+  RIS and CSL-JSON say it is private and link nothing public. Private values
+  (`dre:mongoId`, `dre:security`, `dre:bitstream`, a private description, …)
+  sit in a separate `restricted` block on detail results, never in the public
+  fields. The private ILAM OCR full text (`bibo:content` on research items,
+  read for the first time) and private publication full texts are searchable
+  in `search_research_items` / `search_publications` and paged with
+  `include_fulltext` on `get_research_item` (curator-only parameters) and
+  `get_publication`. The overview and `amira://dataset` split counts into
+  public and private.
+- **Snapshots and caches are isolated by access mode.** The manifest records
+  `access` (`public` for every new public snapshot; absent means public), the
+  curator cache partition hashes the mode in (public partitions keep their
+  hash, so existing caches stay valid), and each mode refuses the other's
+  snapshot. Curator mode never loads the bundled snapshot, refuses data Omeka
+  has not confirmed within the staleness limit, and drops its store, wipes its
+  cache and refuses requests until a refresh succeeds when the key is not
+  accepted. Its `/healthz` shows no counts.
+- **`AMIRA_API_BASE`: a fetch base apart from the link base.** The crawl and
+  refresh fetch from it (the full API URL, e.g. `http://web/api`), so a curator
+  server beside Omeka keeps keyed requests on the internal network, and the
+  key is only ever added to URLs under it. `AMIRA_SITE_BASE` remains the base
+  of every returned link and of the snapshot identity (manifest, cache
+  partition), so switching the fetch path orphans no cache; URLs Omeka builds
+  from the internal host (`@id`, media files, thumbnails) are rewritten to the
+  public site as they are read. An invalid value refuses to start. Unset, the
+  fetch base is `AMIRA_SITE_BASE/api` as before.
+- **A positive authentication probe.** Omeka answers an unknown, revoked or
+  mistyped key with the anonymous data (HTTP 200), not an error, so a crawl
+  alone would build a public-only snapshot labelled curator. Every curator
+  crawl and refresh, and every cached snapshot older than the refresh
+  interval, first requires a keyed `items?is_public=0&per_page=1`
+  (`AMIRA_CURATOR_AUTH_PROBE`) to return a non-empty array; an empty one is
+  treated like a 401/403 ("Omeka key not accepted or lacks view-all"). The
+  service account needs `view-all` (a `reviewer` for now).
+- **Public mode drops private content even if it arrives.** The crawl now
+  splits every resource's private values off before transforming it and drops
+  private resources, private media and links to them; loading a snapshot drops
+  any private record or `restricted` block again. Omeka's anonymous API never
+  sends these, so public output is unchanged: tool results, resources, exports
+  and `tools/list` are byte-identical on the test fixture, and the new keys
+  appear only in curator mode. The one visible difference is the `access`
+  field in newly written snapshot manifests.
+
 ## 1.35.1 — 2026-11-10
 
 A security release for the container image; the server itself is unchanged
