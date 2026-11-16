@@ -39,21 +39,22 @@
   ],
   "scripts": {
     "fetch-data": "npm run build && node server/fetchCli.js",
-    "curator-token": "node server/tokenCli.js",
+    "curator-token": "npm run build && node server/tokenCli.js",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.views.json",
     "lint": "biome lint .",
     "build": "node scripts/build.mjs",
     "build:strict": "node scripts/build.mjs --strict",
     "skills:check": "node scripts/skills.mjs --strict",
-    "clean": "rimraf server",
-    "test": "npm run build && node scripts/test.mjs unit",
-    "test:live": "npm run build && node scripts/test.mjs live",
+    "clean": "node -e \"require('node:fs').rmSync('server',{recursive:true,force:true})\"",
+    "test": "npm run build -- --sourcemap && node scripts/test.mjs unit",
+    "test:live": "npm run build -- --sourcemap && node scripts/test.mjs live",
     "smoke": "node test/smoke/stdio.mjs",
     "smoke:http": "node test/smoke/http.mjs",
     "weigh": "node scripts/weigh.mjs",
     "benchmark": "npm run build && node scripts/benchmark.mjs",
     "evaluate-retrieval": "npm run build && node scripts/evaluate-retrieval.mjs",
     "stamp-citation": "node scripts/stamp-citation.mjs",
+    "version": "node scripts/sync-version.mjs && git add manifest.json",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "validate:manifest": "node scripts/mcpb.mjs validate manifest.json",
     "start:http": "node server/http.js",
@@ -67,7 +68,6 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@hono/node-server": "^2.1.6",
     "@modelcontextprotocol/client": "^2.4.0",
     "@modelcontextprotocol/ext-apps": "^2.0.4",
     "@modelcontextprotocol/node": "^2.1.2",
@@ -75,7 +75,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.6",
+    "@biomejs/biome": "^2.6.8",
     "@types/node": "^22.20.5",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
@@ -84,7 +84,6 @@
     "fflate": "^0.8.3",
     "happy-dom": "^21.0.4",
     "ignore": "^7.0.14",
-    "rimraf": "^6.1.4",
     "typescript": "^7.0.2",
     "yaml": "^2.9.1"
   }
