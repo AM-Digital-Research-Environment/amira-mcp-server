@@ -5,6 +5,134 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+Fixes from a full test pass of the 38 tools through the curator relay and a
+review of the 1.36.0 code. No tool was added or removed.
+
+### Curator mode
+
+- **Every cited record can be classified.** The curator crawl records the id of
+  every private item on the instance, so records outside the crawled corpora
+  (formats, podcast series, AI-model items, partner categories, venues that are
+  not journals) carry `visibility` too, and a private one loses its public URL.
+  Languages join the index and the overview's `visibility` counts. A curator
+  cache written before this version has no list until its next full crawl.
+- **Rows of the unified `search` and `fetch` documents** that cite a private
+  record carry `visibility` and `citation_note`, not only the admin URL.
+- **Media rows always carry `visibility`.** A private media row keeps its
+  listing but has `url: null` and an `admin_url`; a thumbnail drawn from a
+  private media is null; a private record has no `iiif_manifest`. More URL
+  forms of a private record are rewritten inside strings (`http://`,
+  `/api/items/<id>`, IIIF, `/files/…`).
+- **A one-row JSONL export no longer gains the record's `restricted` block**;
+  exports get the URL rewrite only.
+- **Retired private duplicates no longer win name lookups.** A name shared by a
+  public record and a private duplicate resolves to the public one, the private
+  copy is listed after it and points to it with `possible_duplicate_of`.
+- **Honest messages.** A private record is said to be never embedded, instead of
+  "probably added since" the vector build (`get_data_quality` counts them apart
+  as `private_not_embedded`); the ILAM full-text note no longer says the text is
+  "never served here"; the instructions and prompts no longer promise an
+  `amira_url` on every record. Results whose keyword also matched private full
+  text say so (`restricted_match_note`, `curator_note` on `list_years`,
+  `list_locations` and `compare_collections`). `restricted` says
+  `has_fulltext: false` when asked for a full text the record lacks, marks
+  truncated private values, and shares one size budget with the public window.
+  Publications gain `has_restricted_fulltext`. `get_text_passages` explains that
+  it does not search private full text.
+- **The app views** show a private record as plain text marked "(private)", not
+  as an empty link.
+
+### Curator server and relay
+
+- **The image no longer satisfies the explicit-cache check by itself.** It sets
+  `AMIRA_DEFAULT_CACHE_DIR` instead of `AMIRA_CACHE_DIR`, so a curator container
+  must set `AMIRA_CACHE_DIR` itself, and on Linux the image's own path is
+  refused unless it is a tmpfs mount. Public containers cache where they did.
+  **Deployments: add `AMIRA_CACHE_DIR` and `--tmpfs` to the curator service.**
+- **A curator refresh keeps the full-text map and the semantic neighbours** when
+  GitHub is unreachable, as the public refresh already did.
+- **Tokens:** a name or hash repeated in the tokens file now grants nothing for
+  it (appending a new line used to leave the old token valid): replace the line.
+  Failed authentication is logged (never the token), and answered with 429 after
+  20 failures a minute from one address; authenticated requests are limited per
+  curator.
+- **Omeka key:** a key file that stays unreadable for more than a minute is
+  handled like a refused key. The fetch base is normalised once, so
+  `AMIRA_API_BASE=http://web:80/api` no longer loses the key. An auth probe that
+  could never pass (`items/123`) is refused at startup.
+- **Lifecycle:** one crawl at a time, abortable at shutdown; the last
+  confirmation time survives a restart; a store past its staleness limit retries
+  on the fast schedule. An invalid `PORT` / `AMIRA_HTTP_PORT` refuses to start.
+- **Relay:** a failed request is logged once and without the upstream body; each
+  request has a deadline (`AMIRA_CURATOR_RELAY_TIMEOUT_SECONDS`, default 300); a
+  non-MCP answer (a captive portal) gets its own message.
+- **The image ships only `http.js` and `tokenCli.js`**, not the test library.
+
+### Search, lists and detail tools
+
+- **Keywords mean the same everywhere.** `search_projects`, `list_subjects`,
+  `list_locations`, `list_collections`, `list_categories`, `list_journals`,
+  `list_institutions` and `list_groups` match every word of a multi-word keyword
+  and a quoted phrase exactly, as the instructions say; an empty quoted keyword
+  is no keyword. Snippets show the terms together.
+- **`get_text_passages`** matches one phrase with or without quotes, counts an id
+  once whatever its spelling, and gives a reason per unavailable id.
+- **`list_years`**: `dated_items` and `year_range` describe the `from`/`to`
+  window. **`get_fulltext_map`**: years filter a group's articles and are refused
+  on the overview. **`list_locations`** refuses impossible coordinates and
+  inverted boxes. **`list_subjects`** gains `vocabulary: "unspecified"`.
+  **`list_categories`** lists controlled format terms; free-text notes move to
+  `category: "physical_notes"`.
+- **Empty results explain themselves:** unknown universities, sections,
+  languages, resource and publication types return `did_you_mean`; empty and
+  past-the-end pages, empty exports, unknown typed ids get a hint.
+- **Ids:** a bare id of another kind says what it is and which tool reads it;
+  text that cannot be an id is `invalid_id`. `fetch` accepts bare ids, names the
+  kinds it serves, and rejects `max_chars` below 1.
+- **Text paging:** `*_next_offset` when truncated, a hint past the end, and a
+  compact header on later full-text pages of `get_publication`.
+- **`get_research_section`** matches "and" for "&" and refuses a conflicting
+  `id` and `name`, as `get_person` now does. `get_snapshot_changes` says why
+  history is unavailable and no longer links deleted records.
+
+### People, organisations and the entity graph
+
+- A full person name resolves in either order in `resolve_entity` and
+  `find_related`. A place also used as a subject is one graph node. Related-item
+  links are explicit edges, no longer co-occurrences that crowded out real ones.
+- People lists agree across `get_person`, `find_related` and the graph:
+  organisations and crew roles are left out, and the list carries a neutral note.
+- `find_related`: a project value matching several projects is refused; pooled
+  subjects and places are named in `matched_values`; sample lists follow a
+  smaller `limit`; publication rows carry ids.
+- `list_institutions` lists organisations that are neither institution nor group,
+  and the overview counts them, so institutions + groups is every organisation.
+  `list_cluster_partners` refuses an ambiguous category. `get_entity_graph`
+  echoes capped bounds.
+- **Removed:** `affiliated_persons` on `get_institution` (the same names are in
+  `affiliated_person_refs`, whose rows now use `name` and `id`).
+
+### Citations
+
+- RIS dates are zero-padded. Working papers, theses and posts keep their venue
+  beside a series (BibTeX `institution` / `school` / `howpublished`, RIS `T2`,
+  CSL `container-title`); a report number is a `number`; BibTeX gains `address`
+  and `keywords`; Wikidata ids are labelled as such.
+
+### Packaging, release and docs
+
+- A locally built `.mcpb` ships only the active snapshot generation.
+- The release scans the image it publishes, attests CycloneDX SBOMs for the
+  image and the bundle, and CI lints the workflows (zizmor). `mcp-publisher`
+  1.8.9; Biome 2.6.8; `rimraf` and the direct `@hono/node-server` dependency are
+  gone; `npm version` keeps `manifest.json` in step.
+- `SECURITY.md` covers both modes; the roadmap carries curator step 2; the
+  companion skill explains private records; tool counts in the citation metadata
+  are tested against the registered tools; `server.json` in git is a placeholder
+  stamped by the release.
+
 ## 1.36.0 — 2026-11-13
 
 Curator access (#26, step 1): an internal, read-only curator mode that serves
