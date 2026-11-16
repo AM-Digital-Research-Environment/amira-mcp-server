@@ -158,6 +158,83 @@ test("the collection appears in the overview, person profiles, find_related, the
   assert.ok(passages.results[0].amira_url.endsWith("/560"));
 });
 
+test("search_chronicles: every word of a multi-word keyword, a quoted phrase exactly", async () => {
+  // "A writer looks back on the sea." — the abstract of 560.
+  assert.deepEqual((await call("search_chronicles", { keyword: "sea writer" })).results.map((r) => r.omeka_id), [560]);
+  assert.equal((await call("search_chronicles", { keyword: "sea dragon" })).total_matches, 0, "every word must occur");
+  assert.equal((await call("search_chronicles", { keyword: "\"sea writer\"" })).total_matches, 0, "a phrase keeps its order");
+  assert.equal((await call("search_chronicles", { keyword: "\"looks back\"" })).total_matches, 1);
+  assert.equal((await call("search_chronicles", { keyword: "\"\"" })).total_matches, 2, "an empty quoted keyword is no keyword");
+});
+
+test("search_chronicles: an unknown form or language returns did_you_mean; empty and past-the-end pages get hints", async () => {
+  const poetry = await call("search_chronicles", { form: "poetry" });
+  assert.equal(poetry.total_matches, 0);
+  assert.deepEqual(poetry.did_you_mean, [{ filter: "form", values: ["essay", "still image"] }]);
+  assert.match(poetry.hint, /did_you_mean/);
+  assert.deepEqual((await call("search_chronicles", { form: "esay" })).did_you_mean, [{ filter: "form", values: ["essay"] }]);
+  assert.equal((await call("search_chronicles", { language: "Frnch" })).did_you_mean[0].filter, "language");
+  assert.equal((await call("search_chronicles", { form: "essay", year_from: 2026 })).did_you_mean, undefined,
+    "a stored form that the other filters exclude is not misspelt");
+  const past = await call("search_chronicles", { offset: 10 });
+  assert.match(past.hint, /past the end/);
+});
+
+test("ids: a chronicle id read by another get_* tool, and other ids read by get_chronicle, name the right tool", async () => {
+  const bareVideo = await call("get_chronicle", { id: 540 });
+  assert.equal(bareVideo.error.code, "not_found");
+  assert.equal(bareVideo.error.suggested_tool, "get_video");
+  assert.match(bareVideo.error.message, /a video id, not a chronicle id/);
+  const barePerson = await call("get_chronicle", { id: "100" });
+  assert.equal(barePerson.error.suggested_tool, "get_person");
+  for (const tool of ["get_podcast", "get_publication", "get_research_item", "get_project"]) {
+    const r = await call(tool, { id: "560" });
+    assert.equal(r.error.suggested_tool, "get_chronicle", tool);
+    assert.match(r.error.message, /a chronicle id/, tool);
+  }
+  assert.equal((await call("get_chronicle", { id: "the ocean essay" })).error.code, "invalid_id");
+});
+
+test("people: a chronicle's credits and depictions count alike in get_person, find_related and the entity graph", async () => {
+  // Beier (100) wrote 560 and is depicted on 561; Fendler (101) translated 560 and photographed 561.
+  const beier = await call("get_person", { id: 100 });
+  const fendler = beier.top_collaborators.find((c) => c.name === "Fendler, Ute");
+  assert.equal(fendler.shared_chronicles, 2);
+  const related = await call("find_related", { entity_type: "person", value: "Beier, Ulli" });
+  assert.equal(related.matched_chronicles, 2);
+  assert.equal(related.related_people.find((p) => p.name === "Fendler, Ute").chronicle_count, 2);
+  assert.deepEqual(related.related_chronicles.map((c) => [c.id, c.omeka_id]), [["560", 560], ["561", 561]], "rows carry ids like related_publications");
+  const graph = await call("get_entity_graph", { seed: "person:100" });
+  const shared = graph.edges.find((e) => e.kind === "cooccurrence" && e.relation === "shared_chronicles" &&
+    [e.source, e.target].includes("person:101"));
+  assert.equal(shared.chronicle_count, 2);
+  // A relation is an explicit link, never a co-occurrence member: the video joins no chronicle group.
+  const video = await call("get_entity_graph", { seed: "video:540" });
+  assert.ok(!video.edges.some((e) => e.relation === "shared_chronicles"));
+  assert.ok(video.edges.some((e) => e.kind === "explicit" && e.relation === "relation" && e.source === "chronicle:560"));
+});
+
+test("public mode: no curator-only key on a chronicle; fetch names get_chronicle", async () => {
+  const essay = await call("get_chronicle", { id: 560, include_text: true });
+  for (const key of ["visibility", "restricted", "has_restricted_text", "admin_url", "citation_note"]) assert.equal(essay[key], undefined, key);
+  const hits = await call("search_chronicles", { keyword: "baobab-chronicle-token" });
+  assert.equal(hits.results[0].has_restricted_text, undefined);
+  assert.equal(hits.restricted_match_note, undefined);
+
+  // `search` returns no chronicles, so `fetch` serves none: it names the tool that reads them.
+  const http = await connectInMemory(lib, { openai: true }, { name: "chronicles-openai" });
+  try {
+    const typed = await http.call("fetch", { id: "chronicle:560" });
+    assert.equal(typed.error.code, "invalid_id");
+    assert.equal(typed.error.suggested_tool, "get_chronicle");
+    assert.equal((await http.call("fetch", { id: "560" })).error.suggested_tool, "get_chronicle");
+    const found = await http.call("search", { query: "baobab-chronicle-token" });
+    assert.ok(!(found.results ?? []).some((r) => String(r.id).startsWith("chronicle:")));
+  } finally {
+    await http.close();
+  }
+});
+
 test("a v5 snapshot (before the collection) loads with an empty chronicles corpus and is stale", async () => {
   const dir = path.join(dataDir, "..", "v5-snapshot");
   const fixture = buildFixture(5);

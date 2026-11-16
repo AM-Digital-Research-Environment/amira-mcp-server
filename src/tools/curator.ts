@@ -17,7 +17,8 @@
 //   - a detail result (top-level `omeka_id`) gains the record's `restricted`
 //     block: its private values, and its private full text, windowed like
 //     every other long text (`include_fulltext`, `fulltext_offset`,
-//     `fulltext_max_chars`).
+//     `fulltext_max_chars`; get_chronicle's `include_text`, `text_offset`,
+//     `text_max_chars`).
 //
 // A record is classified from the store (every crawled corpus, item set and
 // media) and, for ids outside them (format authorities, AI-model items, …),
@@ -32,12 +33,18 @@ import type { DataStore } from "../data.js";
 import { adminItemSetUrl, adminItemUrl, adminMediaUrl } from "../urls.js";
 import { PRIVATE_CITATION_NOTE, RESTRICTED_NOTE, type RestrictedValues } from "../visibility.js";
 import { CHARACTER_LIMIT, scrub } from "./responses.js";
-import { textWindowFields } from "./textWindows.js";
+import { textWindowFields, type WindowField } from "./textWindows.js";
 
 type Visibility = "public" | "private";
 
-/** Tools whose arguments page a full text (`include_fulltext`, …), which also pages the restricted one. */
-const FULLTEXT_TOOLS = new Set(["get_research_item", "get_publication"]);
+/**
+ * Tools whose arguments page a full text, which also page the restricted one,
+ * and the field they page: `include_fulltext` / `fulltext_offset` /
+ * `fulltext_max_chars`, or get_chronicle's `include_text` / `text_offset` /
+ * `text_max_chars`. The restricted window takes the tool's own field name, so
+ * its paging hints name arguments the tool has.
+ */
+const FULLTEXT_TOOLS = new Map<string, WindowField>([["get_research_item", "fulltext"], ["get_publication", "fulltext"], ["get_chronicle", "text"]]);
 
 /** Tools other than search_research_items that select research items with the shared filters, keyword included. */
 const RESEARCH_FILTER_TOOLS = new Set(["list_years", "list_locations", "compare_collections"]);
@@ -49,8 +56,11 @@ export const PRIVATE_KEYWORD_NOTE =
 
 /** Said on a search result with rows matched only in a private full text. */
 export const RESTRICTED_MATCH_NOTE =
-  "Rows with matched_in \"restricted_fulltext\" matched only in a private full text: their fulltext_snippet is private. " +
-  "Do not quote or cite it as public.";
+  "Rows with matched_in \"restricted_fulltext\" (or \"restricted_text\") matched only in a private full text: their " +
+  "fulltext_snippet (or text_snippet) is private. Do not quote or cite it as public.";
+
+/** The matched_in values of a row matched only in a private text. */
+const RESTRICTED_MATCHES = new Set(["restricted_fulltext", "restricted_text"]);
 
 interface Indexed {
   o_id: number;
@@ -172,7 +182,7 @@ const adminUrl = (kind: Kind, id: number): string =>
 
 interface Ctx extends Indexes {
   /** Window options for the restricted full text, when the tool pages full texts. */
-  window: { include?: boolean; offset?: number; maxChars?: number } | null;
+  window: { field: WindowField; include?: boolean; offset?: number; maxChars?: number } | null;
 }
 
 /** Visibility of any Omeka id, or undefined when the snapshot cannot tell. */
@@ -230,14 +240,15 @@ function restrictedBlock(r: RestrictedValues | undefined, ctx: Ctx, publicWindow
   if (r?.security_level) out.security_level = r.security_level;
   if (r?.bitstream) out.bitstream = r.bitstream.map(capped);
   if (r?.values) out.values = Object.fromEntries(Object.entries(r.values).map(([term, texts]) => [term, texts.map(capped)]));
+  const field = ctx.window?.field ?? "fulltext";
   if (r?.fulltext) {
     Object.assign(out, ctx.window
-      ? textWindowFields("fulltext", r.fulltext, { ...ctx.window, budget: Math.max(1, CHARACTER_LIMIT - publicWindow) })
+      ? textWindowFields(field, r.fulltext, { ...ctx.window, budget: Math.max(1, CHARACTER_LIMIT - publicWindow) })
       : { has_fulltext: true, fulltext_length: r.fulltext.length });
-    if (r.fulltext_generated_by) out.fulltext_generated_by = r.fulltext_generated_by.label;
+    if (r.fulltext_generated_by) out[`${field}_generated_by`] = r.fulltext_generated_by.label;
   } else if (ctx.window?.include) {
     // Asked for the private full text: say there is none rather than staying silent.
-    out.has_fulltext = false;
+    out[`has_${field}`] = false;
   }
   return scrub(walk(out, ctx, 1) as Record<string, unknown>);
 }
@@ -314,11 +325,12 @@ function walk(value: unknown, ctx: Ctx, depth: number): unknown {
     if (typeof value.omeka_id === "number") {
       const restricted = ctx.restricted.get(value.omeka_id);
       if (restricted || ctx.window?.include) {
-        const publicWindow = typeof value.fulltext_returned_chars === "number" ? value.fulltext_returned_chars : 0;
+        const returned = value[`${ctx.window?.field ?? "fulltext"}_returned_chars`];
+        const publicWindow = typeof returned === "number" ? returned : 0;
         out.restricted = restrictedBlock(restricted, ctx, publicWindow);
       }
     }
-    if (Array.isArray(value.results) && value.results.some((r) => isPlain(r) && r.matched_in === "restricted_fulltext")) {
+    if (Array.isArray(value.results) && value.results.some((r) => isPlain(r) && RESTRICTED_MATCHES.has(r.matched_in as string))) {
       out.restricted_match_note = RESTRICTED_MATCH_NOTE;
     }
   }
@@ -326,10 +338,14 @@ function walk(value: unknown, ctx: Ctx, depth: number): unknown {
 }
 
 function contextFor(store: DataStore, tool: string | null, args: unknown): Ctx {
-  const a = (isPlain(args) ? args : {}) as { include_fulltext?: boolean; fulltext_offset?: number; fulltext_max_chars?: number };
+  const a = (isPlain(args) ? args : {}) as Record<string, unknown>;
+  const field = tool ? FULLTEXT_TOOLS.get(tool) : undefined;
+  const num = (v: unknown) => (typeof v === "number" ? v : undefined);
   return {
     ...indexes(store),
-    window: tool && FULLTEXT_TOOLS.has(tool) ? { include: a.include_fulltext, offset: a.fulltext_offset, maxChars: a.fulltext_max_chars } : null,
+    window: field
+      ? { field, include: a[`include_${field}`] === true, offset: num(a[`${field}_offset`]), maxChars: num(a[`${field}_max_chars`]) }
+      : null,
   };
 }
 

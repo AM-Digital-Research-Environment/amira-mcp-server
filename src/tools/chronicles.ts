@@ -1,3 +1,6 @@
+import { schemaOnce } from "./schemaOnce.js";
+import { recordArg } from "./records.js";
+import type { ToolMap } from "./policy.js";
 // Cluster Chronicles — the Africa Multiple cluster's writer-in-residence
 // programme (item set 50105): one record per work, of several forms (essays,
 // poems, photographs and drawings, events, a video). An essay or poem carries
@@ -5,20 +8,23 @@
 // never in summaries, opt-in and pageable in get_chronicle like a transcript.
 // Every abstract was written by a language model, and the record says which.
 import { z } from "zod";
-import { schemaOnce } from "./schemaOnce.js";
-import { recordArg } from "./records.js";
-import type { ToolMap } from "./policy.js";
-import { ensureStore, type DataStore } from "../data.js";
+import { callStore } from "./callStore.js";
+import { pastEndHint } from "./listHints.js";
+import type { DataStore } from "../data.js";
 import type { ChronicleRec, LinkedRef } from "../types.js";
+import { config } from "../config.js";
 import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
+import { guidanceEnabled } from "../guidance.js";
+import { duplicatePointer } from "../namesakes.js";
 import { recordByOId } from "../recordKinds.js";
 import { personMatches } from "../names.js";
-import { emptyKeyword, keywordMatches, parseKeyword } from "../matching.js";
+import { chronicleCredits } from "../personCredits.js";
+import { closestValues, emptyKeyword, keywordMatches, parseKeyword } from "../matching.js";
 import { invalidYearRange, placeMatcher } from "../researchItemQuery.js";
+import { INVALID_YEAR_RANGE } from "../errorCodes.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
 import {
   READ_ONLY,
-  capLimit,
   capOffset,
   chronicleSummary,
   containsCI,
@@ -27,25 +33,63 @@ import {
   errorResult,
   exposureRestrictedResult,
   filtersEcho,
-  limitEcho,
+  idParam,
+  limitParam,
   matchSnippet,
+  offsetParam,
   pageOf,
   refLabels,
   refLinks,
   textAccessDisabledResult,
+  textParam,
   textResult,
   textWindowFields,
+  textWindowParams,
   type Server,
 } from "./_shared.js";
 
 /** The forms the collection holds today, for the filter description. */
 const FORMS = "essay, poem, still image, event, video";
 
-/** A form filter value: the friendly form, a common synonym, or the class term. */
+/** Common words for a form, mapped to the stored one. */
+const FORM_ALIASES: Record<string, string> = { photo: "still image", photograph: "still image", image: "still image", drawing: "still image" };
+
+/** A form filter value: the stored form, a common synonym, or the class term (`fabio:Essay`). */
 function formMatches(c: ChronicleRec, value: string): boolean {
   const v = value.trim().toLowerCase();
-  const alias: Record<string, string> = { photo: "still image", photograph: "still image", image: "still image", drawing: "still image" };
-  return equalsCI(c.form, alias[v] ?? v) || equalsCI(c.resource_class ?? "", v);
+  return equalsCI(c.form, FORM_ALIASES[v] ?? v) || equalsCI(c.resource_class ?? "", v);
+}
+
+const LIMIT = limitParam(20, 100);
+
+/** Search arguments, as the schema below parses them. */
+interface SearchArgs {
+  keyword?: string; person?: string; form?: string; subject?: string; place?: string; language?: string;
+  year_from?: number; year_to?: number; limit?: number; offset?: number;
+}
+
+/**
+ * For a search that found nothing: the closed-vocabulary filters (`form`,
+ * `language`) whose value no chronicle carries at all, with the stored values
+ * nearest to it (or all of them, when few).
+ */
+function chronicleDidYouMean(store: DataStore, args: SearchArgs): { filter: string; values: string[] }[] {
+  const out: { filter: string; values: string[] }[] = [];
+  const { form, language } = args;
+  if (form && !store.chronicles.some((c) => formMatches(c, form))) {
+    const values = closestValues(form, store.chronicles.map((c) => c.form));
+    if (values.length) out.push({ filter: "form", values });
+  }
+  if (language && !store.chronicles.some((c) => store.languageIndex.matches(c.languages, language))) {
+    const values = closestValues(language, store.chronicles.flatMap((c) => refLabels(c.languages)));
+    if (values.length) out.push({ filter: "language", values });
+  }
+  return out;
+}
+
+/** Curator mode: `has_restricted_text` when the work's text is private (absent in public mode). */
+function restrictedTextFlag(c: ChronicleRec): Record<string, unknown> {
+  return config.access === "curator" && c.restricted?.fulltext ? { has_restricted_text: true } : {};
 }
 
 /** A typed reference to a related record: a chronicle, a video, a podcast… */
@@ -54,70 +98,81 @@ function relationRef(store: DataStore, ref: LinkedRef): Record<string, unknown> 
   return { title: ref.label, kind, ...(kind && ref.o_id != null ? { id: `${kind}:${ref.o_id}` } : {}), amira_url: itemUrlOrNull(ref.o_id) };
 }
 
+/** Curator mode: for a credited or depicted person who is a retired private duplicate, the pointer to its public namesake. */
+function pointer(store: DataStore, oId: number | null): Record<string, unknown> {
+  return oId != null ? duplicatePointer(store, store.getPersonByOId(oId), "person") : {};
+}
+
 export function registerChronicleTools(server: Server, tools: ToolMap): void {
   // === search_chronicles ====================================================
   tools.search_chronicles = server.registerTool(
     "search_chronicles",
     {
       title: "Search Cluster Chronicles",
-      description: "Search Cluster Chronicles works (writer-in-residence essays, poems, photos, events) by chronicler, form, year, subject, place or keyword. Full text matches include snippets.",
+      description: "Search Cluster Chronicles works (writer-in-residence essays, poems, photos, events) by chronicler, form, year, subject, place or keyword. Text-only hits include snippets.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("search_chronicles:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional()
+        keyword: textParam().optional()
           .describe("Every word must occur in the title, abstract or text; quote a phrase to match it exactly"),
-        person: z.string().max(1000).optional().describe("A chronicler, other credited person or person depicted; either name order works"),
+        person: textParam().optional().describe("A chronicler, other credited person or person depicted; either name order works"),
         form: z.string().max(100).optional().describe(`Form: ${FORMS}`),
-        subject: z.string().max(1000).optional().describe("Subject, partial"),
-        place: z.string().max(1000).optional().describe("Place at any level ('Kenya' includes Kakamega) or a venue, partial"),
-        language: z.string().max(1000).optional().describe("Name or ISO code"),
+        subject: textParam().optional().describe("Subject, partial"),
+        place: textParam().optional().describe("Place at any level ('Kenya' includes Kakamega) or a venue, partial"),
+        language: textParam().optional().describe("Name or ISO code"),
         year_from: z.number().int().min(0).max(2200).optional().describe("Earliest year"),
         year_to: z.number().int().min(0).max(2200).optional().describe("Latest year"),
-        limit: z.number().int().min(1).optional().describe("Default 20, max 100"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        limit: LIMIT.schema,
+        offset: offsetParam,
       })),
     },
-    async (args) => {
-      if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
-      const store = await ensureStore();
-      const limit = capLimit(args.limit, 20, 100);
+    async (args: SearchArgs) => {
+      if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", INVALID_YEAR_RANGE);
+      const store = callStore();
+      const { limit, echo } = LIMIT.resolve(args.limit);
       const offset = capOffset(args.offset);
       for (const key of ["person", "subject", "place", "language"] as const) {
         if (args[key] && !allowStructured()) return exposureRestrictedResult("structured", `The \`${key}\` filter`);
       }
-      const parsed = args.keyword ? parseKeyword(args.keyword) : null;
+      const { keyword, person, form, subject, place, language, year_from, year_to } = args;
+      const parsed = keyword ? parseKeyword(keyword) : null;
       const query = parsed && !emptyKeyword(parsed) ? parsed : null;
-      const matchesPlace = args.place ? placeMatcher(store, args.place, "any") : null;
+      const matchesPlace = place ? placeMatcher(store, place, "any") : null;
+      const curator = config.access === "curator";
+      /** Matched only in the public text, or (curator mode) only in a private one. */
       const textOnly = new Set<number>();
+      const restrictedOnly = new Set<number>();
       const filtered = store.chronicles.filter((c) => {
         if (query) {
           const meta = [c.title, ...c.alt_titles, allowDescriptive() ? c.abstract : null, allowDescriptive() ? c.description : null];
           if (!keywordMatches(query, meta)) {
-            if (!allowFullText() || !keywordMatches(query, [...meta, c.text])) return false;
-            textOnly.add(c.o_id);
+            if (allowFullText() && c.text && keywordMatches(query, [...meta, c.text])) textOnly.add(c.o_id);
+            else if (curator && allowFullText() && c.restricted?.fulltext && keywordMatches(query, [...meta, c.restricted.fulltext])) restrictedOnly.add(c.o_id);
+            else return false;
           }
         }
-        if (args.year_from !== undefined && (c.year ?? -Infinity) < args.year_from) return false;
-        if (args.year_to !== undefined && (c.year ?? Infinity) > args.year_to) return false;
-        if (args.form && !formMatches(c, args.form)) return false;
-        if (args.person && !c.people.some((p) => personMatches(p.name, args.person!)) &&
-          !c.depicts.some((r) => personMatches(r.label, args.person!))) return false;
-        if (args.subject && !c.subjects.some((s) => containsCI(s.label, args.subject!))) return false;
-        if (matchesPlace && !c.places.some((p) => matchesPlace(p) || containsCI(p.label, args.place!))) return false;
-        if (args.language && !store.languageIndex.matches(c.languages, args.language)) return false;
+        if (year_from !== undefined && (c.year ?? -Infinity) < year_from) return false;
+        if (year_to !== undefined && (c.year ?? Infinity) > year_to) return false;
+        if (form && !formMatches(c, form)) return false;
+        if (person && !chronicleCredits(c).some((p) => personMatches(p.name, person))) return false;
+        if (subject && !c.subjects.some((s) => containsCI(s.label, subject))) return false;
+        if (matchesPlace && place && !c.places.some((p) => matchesPlace(p) || containsCI(p.label, place))) return false;
+        if (language && !store.languageIndex.matches(c.languages, language)) return false;
         return true;
       });
       // Newest residency first; within one, the chronicler's own numbering.
       filtered.sort((a, b) => (b.date ?? "").slice(0, 4).localeCompare((a.date ?? "").slice(0, 4)) ||
         (a.number ?? Infinity) - (b.number ?? Infinity) || (a.date ?? "").localeCompare(b.date ?? "") || a.o_id - b.o_id);
 
-      return textResult({
-        ...pageOf(filtered, offset, limit,
-          (c) => textOnly.has(c.o_id)
-            ? { ...chronicleSummary(c), matched_in: "text", text_snippet: matchSnippet(c.text, args.keyword!) }
-            : chronicleSummary(c),
-          { ...limitEcho(args.limit, 100, limit), ...filtersEcho(args) }),
-        ...emptySearchHint(filtered.length, args),
-      });
+      const didYouMean = !filtered.length && guidanceEnabled() ? chronicleDidYouMean(store, args) : [];
+      const summary = (c: ChronicleRec) => ({ ...chronicleSummary(c), ...restrictedTextFlag(c) });
+      const page = pageOf(filtered, offset, limit,
+        (c) => textOnly.has(c.o_id) && keyword
+          ? { ...summary(c), matched_in: "text", text_snippet: matchSnippet(c.text, keyword) }
+          : restrictedOnly.has(c.o_id) && keyword
+            ? { ...summary(c), matched_in: "restricted_text", text_snippet: matchSnippet(c.restricted?.fulltext, keyword) }
+            : summary(c),
+        { ...echo, ...filtersEcho(args as Record<string, unknown>), ...(didYouMean.length ? { did_you_mean: didYouMean } : {}) });
+      return textResult({ ...page, ...emptySearchHint(filtered.length, args as Record<string, unknown>), ...pastEndHint(page) });
     },
   );
 
@@ -129,14 +184,13 @@ export function registerChronicleTools(server: Server, tools: ToolMap): void {
       description: "One Cluster Chronicles work: chroniclers and roles, people depicted, subjects, places, related works and recordings, images, links. Abstracts are AI-written (says which model). Text opt-in and pageable.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_chronicle:in", () => z.strictObject({
-        id: z.union([z.string().max(1000), z.number()]).describe("Id from search_chronicles, e.g. 50109, or chronicle:50109"),
+        id: idParam(1000).describe("Id from search_chronicles, e.g. 50109, or chronicle:50109"),
         include_text: z.boolean().optional().describe("Default false — set true to include the full text of an essay or poem"),
-        text_offset: z.number().int().min(0).optional().describe("Start offset into the text (chars), with include_text"),
-        text_max_chars: z.number().int().min(1).optional().describe("Max text characters to return (default/max 25000)"),
+        ...textWindowParams,
       })),
     },
     async ({ id, include_text, text_offset, text_max_chars }) => {
-      const store = await ensureStore();
+      const store = callStore();
       const found = recordArg(store, id, "chronicle",
         () => errorResult("not_found", `No Cluster Chronicles work with id ${id}.`, { suggested_tool: "search_chronicles" }));
       if ("error" in found) return found.error;
@@ -166,8 +220,8 @@ export function registerChronicleTools(server: Server, tools: ToolMap): void {
           : { abstract: null }),
         ...(allowStructured()
           ? {
-              people: c.people.map((p) => ({ name: p.name, role: p.role, amira_url: itemUrlOrNull(p.o_id) })),
-              depicts: refLinks(c.depicts),
+              people: c.people.map((p) => ({ name: p.name, role: p.role, amira_url: itemUrlOrNull(p.o_id), ...pointer(store, p.o_id) })),
+              depicts: refLinks(c.depicts).map((r) => ({ ...r, ...pointer(store, r.omeka_id) })),
               subjects: refLinks(c.subjects),
               places: refLinks(c.places),
               languages: refLabels(c.languages),
@@ -178,6 +232,7 @@ export function registerChronicleTools(server: Server, tools: ToolMap): void {
         media: (c.media ?? []).map((m) => ({ type: m.type, url: m.url, source: m.source, ...(m.visibility ? { visibility: m.visibility } : {}) })),
         thumbnail: c.thumbnail,
         ...textWindowFields("text", c.text, { include: include_text, offset: text_offset, maxChars: text_max_chars }),
+        ...restrictedTextFlag(c),
         amira_url: itemUrl(c.o_id),
       });
     },

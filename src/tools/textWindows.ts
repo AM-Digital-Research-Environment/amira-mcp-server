@@ -24,6 +24,12 @@ export const fulltextWindowParams = {
   fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
 };
 
+/** The paging arguments of an opt-in Cluster Chronicles text (get_chronicle). */
+export const textWindowParams = {
+  text_offset: z.number().int().min(0).optional().describe("Start offset into the text (chars), with include_text"),
+  text_max_chars: z.number().int().min(1).optional().describe("Max text characters to return (default/max 25000)"),
+};
+
 export interface WindowOpts {
   include?: boolean;
   offset?: number;
