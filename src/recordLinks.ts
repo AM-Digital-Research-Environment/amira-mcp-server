@@ -19,7 +19,7 @@ export interface RecordLinks {
   places: readonly LinkedRef[];
   /** The country of each place: the root of its ancestor chain. */
   countries: readonly LinkedRef[];
-  /** Credited people: contributors, authors and editors, speakers, PIs and members, as person credits
+  /** Credited people: contributors, authors and editors, speakers, PIs and members, chroniclers and people depicted, as person credits
    * (organisations and non-collaborative roles left out, src/personCredits.ts). */
   people: readonly LinkedRef[];
   /** A research item's project, or a project itself. */

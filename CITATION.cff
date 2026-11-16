@@ -12,8 +12,9 @@ abstract: >-
   metadata — research items, projects, research sections, people,
   institutions, groups, collections, the cluster bibliography with extracted
   full text, journals, podcast episodes and YouTube videos with searchable
-  transcripts, plus the places, languages and subjects that connect them —
-  as 36 typed tools (38 over HTTP) that any MCP client can query. A complete data snapshot
+  transcripts, the Cluster Chronicles writer-in-residence works, plus the
+  places, languages and subjects that connect them —
+  as 38 typed tools (40 over HTTP) that any MCP client can query. A complete data snapshot
   is bundled, so the server runs fully offline with no API key, account or
   VPN; when enabled it refreshes from the public Omeka S API. Every record
   carries an `amira_url`, so results can be cited as links back to the

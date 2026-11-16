@@ -21,7 +21,8 @@ it.
 
 - **Private resources** (`o:is_public: false`): items in any crawled corpus
   (research items, people, organisations, places, projects, sections,
-  publications, journals, podcasts, videos, playlists, languages, subjects),
+  publications, journals, podcasts, videos, playlists, languages, subjects,
+  Cluster Chronicles works),
   item sets and media. Examples: the research items of the item set *Of Art
   Worlds*, and authority duplicates made private when they were merged.
 - **Private values on public resources** (`is_public: false`): `dre:mongoId`,
@@ -84,6 +85,12 @@ applied to every tool and resource, so no tool can forget it:
   none, `restricted` says `has_fulltext: false`. On `get_publication` the public
   and the private window share one 25,000-character budget: the private window
   gets what the public one left (`fulltext_truncated` then says there is more).
+  A Cluster Chronicles work's private text follows the same rules under its own
+  field name: `search_chronicles` marks rows matched only there with
+  `matched_in: "restricted_text"` (a private `text_snippet`, the same note) and
+  `has_restricted_text`, and `get_chronicle` pages it under `restricted` with
+  `include_text`, `text_offset` and `text_max_chars` (`restricted.text`,
+  `has_text`, `text_length`, …).
 - **Keyword filters over research items match private full text everywhere**
   they apply, since every tool shares one selection: `list_years`,
   `list_locations` and `compare_collections` (their `filters.keyword`) and

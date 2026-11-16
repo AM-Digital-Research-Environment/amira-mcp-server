@@ -71,7 +71,7 @@ person's `role`; capped at 50, total reported), `publications[]` (author/editor)
 `videos[]` (episodes and videos with the person's `role`), `chronicles[]` (Cluster Chronicles works
 with the person's `role`, or `Depicted` for someone a photograph shows; only when there are any) and `top_collaborators[]` (`shared_items`,
 `shared_publications`, split into `shared_authorships` and `shared_editorships`, and
-`shared_recordings`). Publications pair people only in the same role, co-editing counts once per
+`shared_recordings`, and `shared_chronicles` when non-zero). Publications pair people only in the same role, co-editing counts once per
 volume, and works with more than ten authors are left out (`large_team_publication_count`). These are
 shared credits, not a measure of collaboration, as `collaborators_note` says. A `coverage_note` says
 how to read the counts: they describe AMIRA's records, and publications come from University of

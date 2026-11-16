@@ -90,7 +90,7 @@ export const INSTRUCTIONS =
   "WORKFLOW: call get_collection_overview first, then search_* / list_* to find records and get_* for detail. " +
   "resolve_entity turns a name into a typed id for get_entity_graph; find_related pivots on a subject, place, " +
   "person or project. Multi-word keywords match records containing every word; quote a phrase to match it " +
-  "exactly. Transcripts and full texts are opt-in on get_* (include_transcript / include_fulltext / " +
+  "exactly. Transcripts and texts are opt-in on get_* (include_transcript / include_fulltext / " +
   "include_text, paged by offset)." +
   SKILL_POINTER +
   "\n\n" +
