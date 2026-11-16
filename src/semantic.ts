@@ -395,7 +395,14 @@ export interface SemanticIndex {
   /** The semantic map: group id (1-based) → present members, closest to the centre first. */
   groups: Map<number, SemanticRecord[]>;
   groupOf: Map<number, number>;
+  /** Curator mode: embedded-kind records that are private. The vectors come
+   * from the public API only, so these are never embedded. Empty in public mode. */
+  privateRecords: Set<number>;
 }
+
+/** Why a private record has no neighbours (curator mode). */
+export const PRIVATE_NOT_EMBEDDED =
+  "Private record: the corpus vectors are built from the public API only, so private records are never embedded.";
 
 /** The stored neighbours, filtered at load to records the served snapshot holds. */
 export function semanticIndex(store: DataStore): SemanticIndex | null {
@@ -420,7 +427,13 @@ export function semanticIndex(store: DataStore): SemanticIndex | null {
       groups.set(g + 1, present);
       for (const r of present) groupOf.set(r.o_id, g + 1);
     });
-    return { source: semantic.source, lowSignal: new Set(semantic.low_signal), neighbours, groups, groupOf };
+    const privateRecords = new Set<number>();
+    for (const kind of SEMANTIC_KINDS) {
+      for (const r of RECORD_KINDS[kind].rows(store) as readonly { o_id: number; visibility?: string }[]) {
+        if (r.visibility === "private") privateRecords.add(r.o_id);
+      }
+    }
+    return { source: semantic.source, lowSignal: new Set(semantic.low_signal), neighbours, groups, groupOf, privateRecords };
   });
 }
 
@@ -438,10 +451,18 @@ export function semanticCoverage(store: DataStore) {
   const lowSignal = Object.fromEntries(SEMANTIC_KINDS.map((k) => [k, 0])) as Record<SemanticKind, number>;
   for (const id of index.neighbours.keys()) withNeighbours[semanticRecord(store, id)!.kind]++;
   for (const id of index.lowSignal) { const r = semanticRecord(store, id); if (r) lowSignal[r.kind]++; }
-  const notInRelease = Object.fromEntries(SEMANTIC_KINDS.map((k) => [k, totals[k] - withNeighbours[k] - lowSignal[k]]));
+  // Curator mode: private records are never embedded; they are counted apart
+  // from the public records added since the build. Public mode has none.
+  const privateNotEmbedded = Object.fromEntries(SEMANTIC_KINDS.map((k) => [k, 0])) as Record<SemanticKind, number>;
+  for (const id of index.privateRecords) {
+    const r = semanticRecord(store, id);
+    if (r && !index.neighbours.has(id) && !index.lowSignal.has(id)) privateNotEmbedded[r.kind]++;
+  }
+  const notInRelease = Object.fromEntries(SEMANTIC_KINDS.map((k) => [k, totals[k] - withNeighbours[k] - lowSignal[k] - privateNotEmbedded[k]]));
   return {
     release: index.source.tag, model: index.source.model, generated_at: index.source.generated_at,
     with_neighbours: withNeighbours, low_signal: lowSignal, not_in_release: notInRelease,
+    ...(index.privateRecords.size ? { private_not_embedded: privateNotEmbedded, private_note: PRIVATE_NOT_EMBEDDED } : {}),
     semantic_map_groups: index.groups.size,
   };
 }

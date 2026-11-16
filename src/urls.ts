@@ -38,3 +38,8 @@ export function adminItemUrl(oId: number): string {
 export function adminItemSetUrl(oId: number): string {
   return `${SITE_BASE}/admin/item-set/${oId}`;
 }
+
+/** Omeka admin page of a media record (curator mode: a private media file is never linked directly). */
+export function adminMediaUrl(oId: number): string {
+  return `${SITE_BASE}/admin/media/${oId}`;
+}

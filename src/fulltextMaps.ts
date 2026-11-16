@@ -14,6 +14,7 @@
 // public snapshot and filed in the item set the map describes, so every
 // citation remains an `amira_url` the snapshot can back.
 import { z } from "zod";
+import { config } from "./config.js";
 import type { DataStore } from "./data.js";
 import type { ResearchItemRec } from "./types.js";
 import { collectionOfItemSet, inCollection, type Collection } from "./collections.js";
@@ -178,7 +179,10 @@ export function excludedCount(index: FulltextIndex): number {
 
 export function neighboursNote(index: FulltextIndex): string {
   return `Closest by full-text embedding (${index.maps.map.model.name}, cosine of article vectors), computed offline from ILAM's full text, ` +
-    "which is private and never served here. Scores sit in a narrow band (about 0.90 to 0.97): compare ranks, not raw values. " +
+    (config.access === "curator"
+      ? "which is private: curators read it in get_research_item's `restricted` block (include_fulltext), never as public text. "
+      : "which is private and never served here. ") +
+    "Scores sit in a narrow band (about 0.90 to 0.97): compare ranks, not raw values. " +
     `Not on the map: articles without full text, and ${excludedCount(index)} with full text excluded as shared section text, journal furniture or under 300 words.`;
 }
 

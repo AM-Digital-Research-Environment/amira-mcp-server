@@ -124,8 +124,9 @@ async function renderExport(uri: string, corpus: string, format: string, query: 
   const store = await ensureStore();
   const out = withStore(store, () => exportText(store, uri, corpus, format, query));
   // Curator mode: CSV/JSONL rows were marked in exportText; any public URL of a
-  // private record left in the text (a BibTeX note, a CSL field) becomes its admin URL.
-  return config.access === "curator" ? { ...out, text: curatorText(out.text, store) } : out;
+  // private record left in the text (a BibTeX note, a CSL field) becomes its
+  // admin URL. URLs only: a one-row JSONL file is not a detail result.
+  return config.access === "curator" ? { ...out, text: curatorText(out.text, store, { urlsOnly: true }) } : out;
 }
 
 /** Export rows as a curator sees them (visibility, admin_url for private records); unchanged in public mode. */

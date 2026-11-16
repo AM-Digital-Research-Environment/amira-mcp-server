@@ -8,6 +8,7 @@
 // the stored spelling.
 import { completable, type McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { config } from "./config.js";
 import { ensureStore, type DataStore } from "./data.js";
 import { fold } from "./text.js";
 
@@ -22,11 +23,22 @@ const METHOD =
   "that need an earlier answer, such as an id. Open the answer with a one-line evidence ledger: how many records " +
   "you read in full, how many you cite from search metadata, and which figures come from facets or counts.";
 
-const CITE =
+const CITE_PUBLIC =
   "Cite every record you mention with its `amira_url` as a markdown link, one link per record; use only URLs the " +
   "tools return and never print legacy DRE identifiers. State what the collection does not cover rather than " +
   "implying absence. " +
   METHOD;
+
+/** Curator mode (#26): a private record has no `amira_url`, only an admin link that is never a public citation. */
+const CITE_CURATOR =
+  "Cite every public record you mention with its `amira_url` as a markdown link, one link per record. A record with " +
+  "`visibility: \"private\"` has no `amira_url`: mark it as private, give its `admin_url` for curators only, and never cite " +
+  "it as a public source. Use only URLs the tools return and never print legacy DRE identifiers. State what the " +
+  "collection does not cover rather than implying absence. " +
+  METHOD;
+
+/** The citation rules of every prompt, for the server's access mode. */
+const cite = (): string => (config.access === "curator" ? CITE_CURATOR : CITE_PUBLIC);
 
 /** Up to 20 stored names that start with (then contain) the typed prefix. */
 function suggest(key: string, pick: (store: DataStore) => string[]) {
@@ -81,7 +93,7 @@ export function registerPrompts(server: McpServer): void {
           "4. For the most relevant open-access works, get_text_passages with their typed ids and the topic to quote evidence.\n" +
           `5. search_research_items and find_related (entity_type subject) for archival material and connected projects.\n` +
           "6. Group the works by theme and period, name the main authors and projects, and list open questions.\n\n" +
-          CITE,
+          cite(),
       );
     },
   );
@@ -102,7 +114,7 @@ export function registerPrompts(server: McpServer): void {
           "4. search_research_items with project_id — representative items; note has_media and media types.\n" +
           "5. resolve_entity (type project) then get_entity_graph — the people, subjects and places it connects to.\n" +
           "6. Summarise scope, holdings, coverage gaps and links to related projects.\n\n" +
-          CITE,
+          cite(),
       ),
   );
 
@@ -122,7 +134,7 @@ export function registerPrompts(server: McpServer): void {
           "4. search_publications with author — the full publication list, newest first.\n" +
           "5. Summarise research themes, roles (PI, member, author, editor) and main collaborators.\n\n" +
           PROFILE_CAVEAT + "\n\n" +
-          CITE + " Display the name in its stored 'Surname, Forename' form.",
+          cite() + " Display the name in its stored 'Surname, Forename' form.",
       ),
   );
 
@@ -141,7 +153,7 @@ export function registerPrompts(server: McpServer): void {
           `3. find_related with entity_type location and value "${place}" — connected projects, subjects and people.\n` +
           `4. list_years with filters.location "${place}" — the periods covered.\n` +
           "5. Summarise holdings by project, type, language and period, and note what is missing.\n\n" +
-          CITE,
+          cite(),
       ),
   );
 
@@ -159,7 +171,7 @@ export function registerPrompts(server: McpServer): void {
           "2. get_text_passages with up to ten of their typed ids (podcast:, video:, publication:) and the same keyword; follow next_offset.\n" +
           "3. Quote short passages with their offsets; say who speaks or writes and when.\n" +
           "4. Transcripts may be machine-generated: report transcript_generated_by from get_podcast / get_video when present.\n\n" +
-          CITE,
+          cite(),
       ),
   );
 }

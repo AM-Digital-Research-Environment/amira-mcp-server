@@ -31,7 +31,16 @@ it.
   count too.
 
 Fields the transformation never reads are not exposed by authentication alone.
-Media files are listed (with `visibility`), never downloaded or served.
+Media are listed (each row with `visibility`), never downloaded or served: Omeka
+serves `/files/…` statically, so a private media row has no file `url`, only
+its `admin_url` (the Omeka admin page of the media), and an item `thumbnail`
+drawn from a private media is null.
+
+Besides the crawled corpora, the curator crawl lists the id of every private
+item on the instance (`items?is_public=0`, kept in the snapshot manifest and
+never served), so records that are only link targets (format and genre
+authorities, AI-model items, podcast series, venues outside the journals) are
+classified too.
 
 ## How private data is shown
 
@@ -39,36 +48,66 @@ Every result passes through one decoration step (`src/tools/curator.ts`),
 applied to every tool and resource, so no tool can forget it:
 
 - **`visibility`**: every object that cites a record carries
-  `visibility: "public"` or `"private"`. (The public server omits the field:
-  everything it serves is public.)
+  `visibility: "public"` or `"private"`: by its `amira_url`, or by a `url` that
+  is exactly a record page (`search` rows, `fetch` documents). An object that
+  cites another record's page (a collection cites its project) takes the most
+  restrictive of the two, and gets the `admin_url` of the private one. (The
+  public server omits the field: everything it serves is public.) A snapshot
+  written before the private-item list existed cannot classify ids outside the
+  crawled corpora: they carry no `visibility` and are not rewritten, until the
+  next crawl.
 - **Private records** lose `amira_url`, since anonymous visitors cannot open
   that page, and get `admin_url` (the Omeka admin page) and a `citation_note`
-  saying not to cite them as public. Any other public URL of a private record
-  inside a string (a generated citation, a `fetch` document, an export) is
-  rewritten to its admin URL.
+  saying not to cite them as public. Any other URL of a private record inside a
+  string (a generated citation, a `fetch` document, an export), whether its
+  public page (`https://` or `http://`), its API URL (`/api/items/<id>`) or its
+  IIIF manifest or collection, is rewritten to its admin URL, and a private
+  media file's URL to the media's admin page. Percent-encoded URLs are not
+  recognised. The `iiif_manifest` / `iiif_collection` field of a private record
+  is null: Omeka answers an anonymous request for it with 404.
 - **`restricted`**: a detail result (`get_research_item`, `get_publication`,
   `get_person`, …, and `amira://record/…`) carries the record's private values,
   grouped: `mongo_id`, `security_level`, `bitstream`, `values` (every other
   private value, by property term) and the private full text. Private values
   never appear in the public fields: a private description stays out of
   `description`, a private `bibo:content` out of `fulltext` and `transcript`.
+  A private value longer than 25,000 characters is cut there and ends with
+  `[…truncated: N characters in all]`.
 - **Private full text** (the ILAM OCR text, later private publication texts):
   `search_research_items` and `search_publications` match the keyword against it
   (rows matched only there say `matched_in: "restricted_fulltext"` with a
-  snippet), and `get_research_item` / `get_publication` return it with
+  snippet, and the result carries `restricted_match_note`: the snippet is
+  private), and `get_research_item` / `get_publication` return it with
   `include_fulltext`, `fulltext_offset` and `fulltext_max_chars`, paged like
   every other long text. `get_research_item` gains those three parameters in
-  curator mode only.
+  curator mode only. Asked for with `include_fulltext` on a record that has
+  none, `restricted` says `has_fulltext: false`. On `get_publication` the public
+  and the private window share one 25,000-character budget: the private window
+  gets what the public one left (`fulltext_truncated` then says there is more).
+- **Keyword filters over research items match private full text everywhere**
+  they apply, since every tool shares one selection: `list_years`,
+  `list_locations` and `compare_collections` (their `filters.keyword`) and
+  research-item exports count items matched only in a private full text, with
+  no row marker. The three tools add a result-level `curator_note` saying so;
+  an export cannot carry one.
 - **Citations and exports mark private records** rather than refusing them: the
   generated citation, BibTeX, RIS and CSL-JSON of a private record carry the
   private-record note and no AMIRA URL (a DOI or repository link, which is the
   publication's own public page, is kept). CSV and JSONL exports carry
-  `visibility`, and `admin_url` for private rows.
+  `visibility`, and `admin_url` for private rows; an export gets no
+  `restricted` block, whatever its row count.
 - **Counts**: `get_collection_overview` adds `visibility`, with public and
-  private counts per corpus and how many records carry private values or a
-  private full text; `amira://dataset` carries the same split. Facet counts
-  (subjects, places, years, …) include private records.
-- **Instructions** put the private-record rules first.
+  private counts per corpus (languages included) and how many records carry
+  private values or a private full text; `amira://dataset` carries the same
+  split. Facet counts (subjects, places, years, …) include private records.
+- **Semantic neighbours**: the corpus vectors are built from the public API, so
+  a private record has none, and the semantic tools say so;
+  `get_data_quality` counts private records apart (`private_not_embedded`).
+- **Instructions and prompts** put the private-record rules first, and cite
+  public records by `amira_url`, private ones only by `admin_url`, for
+  curators.
+- **App views** (map, graph, bibliography, …) show a private record's title
+  as plain text marked "(private)", never as a link.
 
 ## Configuration
 
@@ -278,5 +317,7 @@ and loading a snapshot drops any private record or `restricted` block again.
 - A read-only Omeka role with `view-all`; the service account is a `reviewer`.
 - Private podcast and video transcripts are reported by length in `restricted`
   but not paged; `get_text_passages` does not search private full text.
-- The app views (map, graph, …) link records by `amira_url` and show private
-  records without a link.
+- Item-set rows inside a collection (`item_sets: [{ id, code }]`) carry no
+  `visibility`; the collection itself does.
+- The `search` output schema still describes `url` as the public record page;
+  for a private row it is the admin page.

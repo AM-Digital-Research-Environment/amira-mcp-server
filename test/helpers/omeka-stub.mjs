@@ -54,12 +54,13 @@ const MODIFIED = "2026-11-01T00:00:00+00:00";
 const lit = (v, extra = {}) => ({ type: "literal", "@value": v, is_public: true, ...extra });
 /** Replaced by `http://<request Host>` when served, as Omeka builds its URLs from the request. */
 const BASE = "{{BASE}}";
+export const STUB_BASE = BASE;
 const res = (id, title, extra = {}) => ({ type: "resource:item", "@id": `${BASE}/api/items/${id}`, value_resource_id: id,
   display_title: title, is_public: true, ...extra });
 const stamp = { "o:created": { "@value": "2026-10-01T00:00:00+00:00" }, "o:modified": { "@value": MODIFIED } };
 
 /** [corpus query, raw item]. */
-const ITEMS = [
+const BASE_ITEMS = [
   ["resource_template_id=5", { "o:id": IDS.project, "o:is_public": true, "o:title": "Curator Fixture Project", ...stamp,
     "dcterms:title": [lit("Curator Fixture Project")], "dre:id": [lit("UBT_CuratorFixture2019")] }],
   ["resource_template_id=4", { "o:id": IDS.privatePerson, "o:is_public": false, "o:title": PRIVATE.personName, ...stamp,
@@ -106,7 +107,7 @@ const ITEM_SETS = [
   { "o:id": IDS.privateSet, "o:is_public": false, "o:title": PRIVATE.setTitle, ...stamp, "dcterms:title": [lit(PRIVATE.setTitle)] },
 ];
 
-const MEDIA = [
+const BASE_MEDIA = [
   { "o:id": IDS.publicMedia, "o:is_public": true, "o:item": { "o:id": IDS.publicItem }, "o:media_type": "audio/mpeg",
     "o:original_url": `${BASE}/files/original/public-recording.mp3`, "o:source": "recording.mp3", "o:size": 1000 },
   { "o:id": IDS.privateMedia, "o:is_public": false, "o:item": { "o:id": IDS.publicItem }, "o:media_type": "image/tiff",
@@ -114,9 +115,9 @@ const MEDIA = [
 ];
 
 // Every resource carries its own API URL, as Omeka's JSON-LD does.
-for (const [, item] of ITEMS) item["@id"] = `${BASE}/api/items/${item["o:id"]}`;
+for (const [, item] of BASE_ITEMS) item["@id"] = `${BASE}/api/items/${item["o:id"]}`;
 for (const set of ITEM_SETS) set["@id"] = `${BASE}/api/item_sets/${set["o:id"]}`;
-for (const m of MEDIA) m["@id"] = `${BASE}/api/media/${m["o:id"]}`;
+for (const m of BASE_MEDIA) m["@id"] = `${BASE}/api/media/${m["o:id"]}`;
 
 /** A resource as an anonymous visitor sees it: private values (and private annotation values) removed. */
 function anonymous(item) {
@@ -167,6 +168,9 @@ export async function startOmekaStub(state = {}) {
       url.searchParams.get("key_credential") === KEY.credential;
     const sees = (validKey && state.viewAll) || state.mode === "leak";
     const show = (list) => (sees ? list : list.filter((r) => r["o:is_public"] !== false).map(anonymous));
+    // `state.extraItems` ([query, item]) and `state.extraMedia` extend the fixtures for one test file.
+    const ITEMS = [...BASE_ITEMS, ...(state.extraItems ?? [])];
+    const MEDIA = [...BASE_MEDIA, ...(state.extraMedia ?? [])];
     const page = Number(url.searchParams.get("page") ?? 1);
     const probe = url.searchParams.get("sort_by") === "modified";
     switch (url.pathname) {

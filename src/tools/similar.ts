@@ -20,7 +20,7 @@ import { refKey } from "../matching.js";
 import { findRecord } from "../recordKinds.js";
 import { recordLinks } from "../recordLinks.js";
 import {
-  SEMANTIC_KINDS, semanticIndex, semanticRecord, semanticRef, semanticSpace, type SemanticIndex, type SemanticKind, type SemanticRecord,
+  PRIVATE_NOT_EMBEDDED, SEMANTIC_KINDS, semanticIndex, semanticRecord, semanticRef, semanticSpace, type SemanticIndex, type SemanticKind, type SemanticRecord,
 } from "../semantic.js";
 import { parseTypedId } from "../typedIds.js";
 import type { LinkedRef } from "../types.js";
@@ -142,6 +142,7 @@ export function semanticUnavailable(what: string, suggested: string) {
 /** Why a record has no neighbours, or null when it has some. */
 export function noNeighboursReason(index: SemanticIndex, oId: number): string | null {
   if (index.lowSignal.has(oId)) return "Too little own text (title, abstract or description, subjects, places) to compare reliably, so it has no neighbours.";
+  if (!index.neighbours.has(oId) && index.privateRecords.has(oId)) return PRIVATE_NOT_EMBEDDED;
   if (!index.neighbours.has(oId)) return `Not in corpus-vector build ${index.source.tag} (generated ${index.source.generated_at}), probably added since.`;
   return null;
 }
