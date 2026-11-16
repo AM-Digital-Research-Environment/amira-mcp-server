@@ -48,9 +48,6 @@ export function registerOverviewTools(server: Server, tools: ToolMap): void {
       const videosWithTranscript = store.videos.filter((v) => v.transcript).length;
       const podcastsWithTranscript = store.podcasts.filter((p) => p.transcript).length;
 
-      // An organisation that is neither an institution nor a group (a funder, say) is counted apart.
-      const otherOrganisations = store.organisations.filter((o) => o.kind !== "institution" && o.kind !== "group").length;
-
       return {
         collection_name: "Africa Multiple Cluster of Excellence — research data (AMIRA)",
         site_url: SITE_BASE,
@@ -58,10 +55,10 @@ export function registerOverviewTools(server: Server, tools: ToolMap): void {
           projects: store.projects.length,
           research_items: store.items.length,
           persons: store.persons.length,
-          // Untyped organisations are listed by list_institutions, so counted here.
+          // Untyped organisations (a funder, say) are listed by list_institutions, so counted
+          // here: institutions + groups is every organisation.
           institutions: store.organisations.filter((o) => o.kind !== "group").length,
           groups: store.organisations.filter((o) => o.kind === "group").length,
-          ...(otherOrganisations ? { other_organisations: otherOrganisations } : {}),
           research_sections: store.sections.length,
           publications: store.publications.length,
           publications_with_fulltext: pubsWithFulltext,

@@ -177,7 +177,8 @@ test("get_person says what an id of another kind is and refuses a conflicting na
   assert.equal(typed.suggested_tool, "get_institution");
   const bare = await errorOf("get_person", { id: 200 });
   assert.equal(bare.suggested_tool, "get_institution");
-  assert.match(bare.message, /Omeka id 200 is an institution or group \('University of Bayreuth'\), not a person/);
+  // The shared id resolver (recordArg) answers a bare id of another kind.
+  assert.match(bare.message, /'200' is an institution id, not a person id/);
   const conflict = await errorOf("get_person", { id: 100, name: "Fendler, Ute" });
   assert.equal(conflict.code, "invalid_argument");
   assert.equal((await call("get_person", { id: 100, name: "Ulli Beier" })).omeka_id, 100);

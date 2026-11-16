@@ -69,6 +69,7 @@ test("the overview counts organisations that are neither institutions nor groups
   const conn = await connectInMemory(lib, {}, { name: "curator-semantic" });
   t.after(() => conn.close());
   const { counts } = await conn.call("get_collection_overview");
-  assert.equal(counts.institutions + counts.groups + counts.other_organisations, fixture.data.organisations.length);
-  assert.equal(counts.other_organisations, 1);
+  // list_institutions lists the untyped organisation, so `institutions` counts it.
+  assert.equal(counts.institutions + counts.groups, fixture.data.organisations.length);
+  assert.equal(counts.other_organisations, undefined);
 });
