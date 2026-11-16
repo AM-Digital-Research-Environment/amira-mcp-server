@@ -233,9 +233,11 @@ function pickerMount(p, load, shown) {
  * `heading` is markup (escape data in it); `item` renders one record's markup.
  */
 export const EVIDENCE_JS = String.raw`
-function citationLink(r) {
-  var esc = window.amiraApp.esc;
-  return '<a data-citation href="' + esc(r.amira_url) + '">' + esc(r.title) + '</a>';
+function citationLink(r, title) {
+  var esc = window.amiraApp.esc, label = esc(title == null ? r.title : title);
+  // A private record (curator mode) has no public page: plain text, never an empty link.
+  if (!r.amira_url) return label + (r.visibility === 'private' ? ' <span class="note">(private)</span>' : '');
+  return '<a data-citation href="' + esc(r.amira_url) + '">' + label + '</a>';
 }
 function evidenceList(target, heading, data, item, moreId, onMore) {
   target.innerHTML = '<h2 tabindex="-1">' + heading + '</h2><ol start="' + (data.offset + 1) + '">' +

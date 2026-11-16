@@ -30,7 +30,7 @@ function radial(cls, a, r, body) {
   return '<text class="' + cls + '" transform="translate(' + p[0].toFixed(1) + ',' + p[1].toFixed(1) + ') rotate(' + (right ? a - 90 : a + 90).toFixed(1) +
     ')" text-anchor="' + (right ? 'start' : 'end') + '" dominant-baseline="middle">' + body + '</text>';
 }
-function citation(r) { return '<a data-citation href="' + esc(r.amira_url) + '">' + esc(r.title || r.label) + '</a>'; }
+function citation(r) { return citationLink(r, r.title || r.label); }
 function relationText(e) { return e.kind === 'explicit' ? e.relation.replaceAll('_', ' ') : 'Co-occurrence · ' + e.relation.replace('shared_', '').replaceAll('_', ' '); }
 function other(e) { return e.source === active.seed ? e.target : e.source; }
 async function load(seed) {
