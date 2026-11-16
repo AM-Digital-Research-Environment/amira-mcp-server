@@ -88,7 +88,7 @@ async function exportSelection() {
         : "Exported " + entries.length + " selected publications.",
     );
   } catch (error) {
-    api.status(error.message);
+    api.status(/** @type {Error} */ (error).message);
   } finally {
     button.disabled = selected.size === 0;
   }

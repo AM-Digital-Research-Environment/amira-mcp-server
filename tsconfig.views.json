@@ -4,8 +4,11 @@
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
-    "strict": false,
-    "noImplicitAny": true,
+    // Strict, except null checks: the views read getElementById results and
+    // optional result fields directly (about 110 sites), which strictNullChecks
+    // would make a cast apiece.
+    "strict": true,
+    "strictNullChecks": false,
     "noUncheckedIndexedAccess": false,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": [],
