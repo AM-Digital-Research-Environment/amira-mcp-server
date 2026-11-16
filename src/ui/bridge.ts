@@ -5,6 +5,7 @@ import { App, applyHostStyleVariables, type McpUiHostContext } from "@modelconte
 import type { CallToolResult } from "@modelcontextprotocol/client";
 import { ContextSync, type ContextSyncStatus } from "./contextSync.js";
 import { askText, buildSelectionContext, selectionText, type SelectionContext } from "./selectionContext.js";
+import { VIEW_CALLABLE_TOOLS } from "./viewContract.js";
 
 type Payload = Record<string, unknown>;
 declare const __SERVER_VERSION__: string;
@@ -14,7 +15,7 @@ let input: Payload = {};
 let ready: Promise<void> | undefined;
 let connected = false;
 const lifecycle = new AbortController();
-const tools = new Set(["get_entity_graph", "resolve_entity", "list_locations", "search_research_items", "list_years", "search_publications", "get_publication", "list_publication_facets", "search_projects", "list_subjects"]);
+const tools = new Set<string>(VIEW_CALLABLE_TOOLS);
 
 function status(message: string) {
   const element = document.getElementById("app-status");
@@ -116,15 +117,16 @@ const bridge = {
       { timeout: 10_000, signal: lifecycle.signal });
     if (reply.isError) throw new Error("The host declined to send the question.");
   },
-  /** `quiet` calls (background option lists) leave the status line alone. */
-  async callTool(name: string, args: Payload, options: { quiet?: boolean } = {}) {
+  /** `quiet` calls (background option lists) leave the status line alone. The
+   * result is the tool's structured content; `T` is the shape the caller reads. */
+  async callTool<T = Payload>(name: string, args: Payload, options: { quiet?: boolean } = {}): Promise<T> {
     if (!tools.has(name)) throw new Error("This tool is not available in the app.");
     await ready;
     const say = options.quiet ? () => {} : status;
     say("Loading…");
     try {
       const result = payload(await app.callServerTool({ name, arguments: args }, { timeout: 15_000, signal: lifecycle.signal }));
-      say(""); return result;
+      say(""); return result as T;
     } catch (error) { say((error as Error).message); throw error; }
   },
   async openLink(url: string) {
@@ -168,7 +170,10 @@ function showForCopy(text: string): void {
   box.focus();
   box.select();
 }
-declare global { interface Window { amiraApp: typeof bridge } }
+/** The bridge's API, window.amiraApp. The views' typecheck (tsconfig.views.json)
+ * reads this declaration itself, so the views are checked against the real bridge. */
+export type AmiraApp = typeof bridge;
+declare global { interface Window { amiraApp: AmiraApp } }
 window.amiraApp = bridge;
 
 // Route citations through the host. Data is escaped by renderers; only HTTP(S) links are opened.

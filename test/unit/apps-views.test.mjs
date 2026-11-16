@@ -2,7 +2,7 @@
 // from test/helpers/apps-harness.mjs, which explains how the views are run.
 import test from "node:test";
 import assert from "node:assert/strict";
-import {payload, sleep, text, rows, citations, options, lastCall, mount, assertHealthy,
+import {payload, sleep, text, rows, citations, options, lastCall, mount, assertHealthy, BRIDGE_TOOLS, lib,
 } from "../helpers/apps-harness.mjs";
 
 // --- overview -----------------------------------------------------------------
@@ -575,4 +575,62 @@ test("bibliography: pickers stay text fields when the host refuses their lists",
   app.submit(app.root.querySelector("#publication-search"));
   await app.waitFor(() => lastCall(app, "search_publications")?.args.language === "English", "typed language search");
   assertHealthy(app);
+});
+
+// --- across the views -----------------------------------------------------------
+
+test("without toolInfo, the shape fallback routes every result variant the views render", async (t) => {
+  // The real results the tests above render, by tool: defaults, filtered,
+  // empty and degenerate shapes. amiraViewFor (src/ui/views/_router.js) tells
+  // them apart by their fields alone.
+  const variants = [
+    ["get_collection_overview", {}],
+    ["get_collection_overview", {}, "descriptive"],
+    ["list_years", {}],
+    ["list_years", { bucket: "decade" }],
+    ["list_years", { from: 1800, to: 1801 }],
+    ["list_research_sections", {}],
+    ["find_related", { entity_type: "subject", value: "Architecture" }],
+    ["find_related", { entity_type: "subject", value: "zzz-no-such-subject" }],
+    ["find_related", { entity_type: "subject", value: "Oral Literature" }],
+    ["find_related", { entity_type: "location", value: "Nigeria" }],
+    ["get_entity_graph", { seed: "person:100" }],
+    ["get_entity_graph", { seed: "person:100", types: ["subject"] }],
+    ["get_entity_graph", { seed: "person:100", max_nodes: 2 }],
+    ["get_entity_graph", { seed: "organisation:201" }],
+    ["list_locations", {}],
+    ["list_locations", { country: "Atlantis" }],
+    ["search_publications", {}],
+    ["search_publications", { keyword: "zzz-no-such-publication" }],
+  ];
+  for (const [tool, args, exposure] of variants) {
+    if (exposure) process.env.AMIRA_EXPOSURE = exposure; // read per call (src/exposure.ts)
+    let d;
+    try { d = await payload(tool, args); } finally { delete process.env.AMIRA_EXPOSURE; }
+    const app = await mount(t, tool, { toolInfo: false });
+    app.show(d);
+    assertHealthy(app);
+    assert.equal(app.root.dataset.view, lib.VIEW_OF_TOOL[tool],`${tool} ${JSON.stringify(args)}${exposure ? ` (${exposure})` : ""}`);
+  }
+});
+
+test("every tool name a view passes to callTool or pickerLoad is on the bridge's allowlist, and every listed tool is used", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const dir = new URL("../../src/ui/views/", import.meta.url);
+  const used = new Set(), dynamic = [];
+  for (const file of readdirSync(dir).filter((name) => name.endsWith(".js"))) {
+    const source = readFileSync(new URL(file, dir), "utf8");
+    for (const m of source.matchAll(/\bcallTool\(\s*("([a-z_]+)"|[^,\s]+)/g)) {
+      if (m[2]) used.add(m[2]);
+      else dynamic.push(`${file}: callTool(${m[1]}`);
+    }
+    // pickerLoad(key, tool, ...): the tool is the second argument.
+    for (const m of source.matchAll(/\bpickerLoad\(\s*[^,]+,\s*("([a-z_]+)"|[^,\s]+)/g)) {
+      if (m[2]) used.add(m[2]);
+      else if (!file.startsWith("_shared")) dynamic.push(`${file}: pickerLoad(…, ${m[1]}`);
+    }
+  }
+  // The one call with a variable tool name is pickerLoad's own, fed by the literals above.
+  assert.deepEqual(dynamic, ["_shared.js: callTool(tool"]);
+  assert.deepEqual([...used].sort(), [...BRIDGE_TOOLS].sort());
 });

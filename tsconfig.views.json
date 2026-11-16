@@ -4,11 +4,19 @@
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
-    "strict": false,
-    "noImplicitAny": false,
+    // Strict, except null checks: the views read getElementById results and
+    // optional result fields directly (about 110 sites), which strictNullChecks
+    // would make a cast apiece.
+    "strict": true,
+    "strictNullChecks": false,
     "noUncheckedIndexedAccess": false,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": []
+    "types": [],
+    // package.json says "type": "module", which would make every .js file a
+    // module. Only files with import/export are: the views (`export { render }`)
+    // are, while _shared.js and _router.js stay classic scripts whose top-level
+    // names are the views' globals, as they are in the page.
+    "moduleDetection": "legacy"
   },
   "include": ["src/ui/views/*.js", "src/ui/views/globals.d.ts"],
   "exclude": []

@@ -26,5 +26,27 @@ export const VIEW_OF_TOOL = {
 
 export type ViewName = (typeof VIEW_OF_TOOL)[keyof typeof VIEW_OF_TOOL];
 
+/**
+ * The tools a view may call itself, through the bridge's callTool: its
+ * follow-up calls (filters, paging, evidence, re-centring) and the pickers'
+ * option lists. The bridge (src/ui/bridge.ts) refuses any other;
+ * test/unit/apps-views.test.mjs checks that every tool name the views pass is
+ * here and that every name here is used.
+ */
+export const VIEW_CALLABLE_TOOLS = [
+  "get_entity_graph",
+  "resolve_entity",
+  "list_locations",
+  "search_research_items",
+  "list_years",
+  "search_publications",
+  "get_publication",
+  "list_publication_facets",
+  "search_projects",
+  "list_subjects",
+] as const;
+
 /** Tools that render the app, in registration order. */
-export const APP_TOOLS = Object.keys(VIEW_OF_TOOL) as (keyof typeof VIEW_OF_TOOL)[];
+// Marked pure so a bundle that imports only VIEW_CALLABLE_TOOLS (the bridge)
+// drops this and VIEW_OF_TOOL.
+export const APP_TOOLS = /* @__PURE__ */ Object.keys(VIEW_OF_TOOL) as (keyof typeof VIEW_OF_TOOL)[];

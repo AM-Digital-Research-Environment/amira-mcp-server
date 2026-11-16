@@ -1,29 +1,29 @@
-// What the view scripts in this directory may use besides the DOM: the bridge
-// (`window.amiraApp`, src/ui/bridge.ts) and the helpers src/ui/shell.ts
-// defines once for every view (PICKER_JS, BAR_CHART_JS, SELECTION_JS).
+// What the view scripts in this directory may use besides the DOM and the
+// helpers of ./_shared.js (a classic script, so its functions are globals the
+// checker sees directly).
 //
 // Read by tsconfig.views.json only, never by the server's own typecheck. The
-// types are loose on purpose: the check catches an undefined name, a typo in a
-// bridge member or a wrong argument count, not the shape of the payloads the
-// tools return. test/unit/apps-render.test.mjs keeps AmiraApp's member list
-// equal to the real bridge's.
+// bridge is not declared here: this import pulls in src/ui/bridge.ts, whose
+// `declare global` types `window.amiraApp` as the real bridge object, so a
+// member the views use and the bridge lacks fails the typecheck. The tools'
+// payloads stay loose (ToolData): the check catches an undefined name, a typo
+// in a bridge member or a wrong argument count, not the shape of a result.
 
-/** The bridge the page exposes as window.amiraApp. */
-interface AmiraApp {
-  esc(value: unknown): string;
-  onResult(callback: (payload: any) => void): void;
-  input(): Record<string, any>;
-  toolName(): string | undefined;
-  shareSelection(selection: unknown): void;
-  canShare(): boolean;
-  canAsk(): boolean;
-  ask(): Promise<void>;
-  callTool(name: string, args: Record<string, unknown>, options?: { quiet?: boolean }): Promise<any>;
-  openLink(url: string): Promise<void>;
-  download(text: string, extension: "bib" | "ris" | "json"): Promise<"saved" | "shown">;
-  status(message: string): void;
+/** The bridge the page exposes as window.amiraApp (src/ui/bridge.ts). */
+type AmiraApp = import("../bridge.js").AmiraApp;
+
+/**
+ * A tool's JSON result, or one record of it, as the views read it: by field
+ * name, unchecked. The list fields the views walk are typed, so their
+ * callbacks get a record rather than an implicit any.
+ */
+interface ToolData {
+  [field: string]: any;
+  results?: ToolData[];
+  nodes?: ToolData[];
+  edges?: ToolData[];
+  related_publications?: ToolData[];
 }
-interface Window { amiraApp: AmiraApp }
 
 // The views were written against the untyped DOM: an event target is read as
 // the element it is, and a looked-up element as the input it is. These loose
@@ -40,23 +40,8 @@ interface Element { readonly dataset: DOMStringMap; focus(): void; value: any; d
 /** An option of a picker: the submitted value, an optional label and alternate name. */
 interface PickerOption { value: string; label?: string; alt?: string }
 /** A filter control: a free-text suggestion box or a select. */
-interface PickerSpec { name: string; kind: string; current?: unknown; any?: string; maxlength?: number }
+interface PickerSpec { name: string; kind: string; current?: unknown; any?: string; maxlength?: number; placeholder?: string }
 
-/** The "Ask about this selection" controls, or "" when the host takes neither. */
-declare function selectionControls(): string;
-/** Load (once per key) a picker's options from a tool's results. */
-declare function pickerLoad(key: string, tool: string, args: Record<string, unknown>,
-  pick: (row: any) => PickerOption | null, order?: (a: PickerOption, b: PickerOption) => number): Promise<PickerOption[] | null>;
-/** A picker's options when already loaded, else null. */
-declare function pickerNow(key: string): PickerOption[] | null;
-/** A picker's markup. */
-declare function pickerField(p: PickerSpec, list: PickerOption[] | null): string;
-/** Fill a rendered picker once its options arrive. */
-declare function pickerMount(p: PickerSpec, load: Promise<PickerOption[] | null>, shown?: PickerOption[] | null): void;
-/** A record's title (or `title`) as a citation link to its amira_url; plain text, marked when private, without one. */
-declare function citationLink(r: { amira_url?: string | null; title?: string; visibility?: string }, title?: string): string;
-/** Render a page of records into `target`, with "Next records" calling `onMore(next_offset)`. */
-declare function evidenceList(target: Element, heading: string, data: any, item: (r: any) => string, moreId: string,
-  onMore: (offset: number) => void): void;
-/** A horizontal bar chart's markup. */
-declare function barChart(rows: any[], opts?: Record<string, any>): string;
+/** Written by the page assembler (src/ui/page.ts viewsScript) for ./_router.js. */
+declare var amiraViews: Record<string, { title: string; render: (payload: Record<string, unknown>) => void }>;
+declare var amiraViewOfTool: Record<string, string>;

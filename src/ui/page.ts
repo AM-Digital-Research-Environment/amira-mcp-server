@@ -34,7 +34,7 @@ import { MAP_VIEW } from "./map.js";
 import { OVERVIEW_VIEW } from "./overview.js";
 import { RELATED_VIEW } from "./related.js";
 import { SECTIONS_VIEW } from "./sections.js";
-import { BAR_CHART_JS, EVIDENCE_JS, PICKER_JS, SELECTION_JS, SHELL_CSS, scopeCss, type AppView } from "./shell.js";
+import { SHELL_CSS, scopeCss, type AppView } from "./shell.js";
 import { TIMELINE_VIEW } from "./timeline.js";
 import { VIEW_OF_TOOL } from "./viewContract.js";
 
@@ -42,37 +42,12 @@ export const VIEWS: readonly AppView[] = [
   OVERVIEW_VIEW, TIMELINE_VIEW, SECTIONS_VIEW, RELATED_VIEW, GRAPH_VIEW, MAP_VIEW, BIBLIOGRAPHY_VIEW,
 ];
 
-const ROUTER_JS = String.raw`
-var amiraRoot = document.getElementById("root");
-/** The view for a result: the host's toolInfo first, else the result's shape. */
-function amiraViewFor(payload) {
-  var named = amiraViewOfTool[window.amiraApp.toolName() || ""];
-  if (named) return named;
-  var d = payload || {};
-  if (Array.isArray(d.nodes) && Array.isArray(d.edges)) return "graph";
-  if ("entity_type" in d && "matched_items" in d) return "related";
-  if (d.counts && typeof d.counts === "object" && !("results" in d)) return "overview";
-  if ("bucket" in d && "dated_items" in d) return "timeline";
-  if ("items_without_place" in d) return "map";
-  if (Array.isArray(d.results) && "total_matches" in d) return "bibliography";
-  if (Array.isArray(d.results)) return "sections";
-  return null;
-}
-window.amiraApp.onResult(function (payload) {
-  var name = amiraViewFor(payload), view = name && amiraViews[name];
-  if (!view) {
-    amiraRoot.removeAttribute("data-view");
-    amiraRoot.innerHTML = '<p class="empty">This result has no AMIRA view. Update the AMIRA extension to see it here; the answer in the conversation is unaffected.</p>';
-    return;
-  }
-  if (amiraRoot.dataset.view !== name) {
-    amiraRoot.onclick = amiraRoot.onkeydown = amiraRoot.onchange = null;
-    amiraRoot.dataset.view = name;
-    document.title = view.title;
-  }
-  view.render(payload);
-});
-`;
+/** The helpers every view may call (classic script, top level of the views script). */
+const SHARED_FILE = "_shared.js";
+/** The router, after the views: hands each result to the view that renders it. */
+const ROUTER_FILE = "_router.js";
+/** The page's plain inline script, which expands the gzip data element. */
+const BOOTSTRAP_FILE = "_bootstrap.js";
 
 /** A view's script as written in src/ui/views/, without the `export { render }`
  * that makes the file a module for its typecheck and lint. */
@@ -82,40 +57,26 @@ function viewSource(view: AppView, read: (file: string) => string): string {
   return view.prepare ? view.prepare(source) : source;
 }
 
+/** A classic-script file of src/ui/views/ (the shared helpers, the router): it
+ * must not be a module, since its top-level names are the views' globals. */
+function scriptSource(file: string, read: (file: string) => string): string {
+  const source = read(file);
+  if (/^(?:export|import) /m.test(source)) throw new Error(`${file}: a classic script, no import or export`);
+  return source;
+}
+
 /** Shared helpers, then each view in its own scope, then the router. `read`
  * returns a file of src/ui/views/ (scripts/build.mjs passes it). */
 export function viewsScript(read: (file: string) => string): string {
   return [
-    PICKER_JS,
-    BAR_CHART_JS,
-    SELECTION_JS,
-    EVIDENCE_JS,
+    scriptSource(SHARED_FILE, read),
     "var amiraViews = {};",
     ...VIEWS.map((view) =>
       `amiraViews[${JSON.stringify(view.name)}] = { title: ${JSON.stringify(view.title)}, render: (function () {\n${viewSource(view, read)}\nreturn render;\n})() };`),
     `var amiraViewOfTool = ${JSON.stringify(VIEW_OF_TOOL)};`,
-    ROUTER_JS,
+    scriptSource(ROUTER_FILE, read),
   ].join("\n");
 }
-
-/** Expand the gzip data element into an inline script. */
-const BOOTSTRAP = `(async () => {
-  const data = document.getElementById("amira-app-bundle");
-  try {
-    if (typeof DecompressionStream !== "function") throw new Error("This host cannot decode gzip.");
-    const bytes = Uint8Array.from(atob(data.textContent.trim()), (c) => c.charCodeAt(0));
-    const source = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
-    const script = document.createElement("script");
-    script.textContent = source;
-    document.body.appendChild(script);
-    data.remove();
-  } catch (error) {
-    const root = document.getElementById("root");
-    root.textContent = "The AMIRA app could not start in this host. The tool result in the conversation is unaffected.";
-    root.setAttribute("role", "alert");
-    console.error("[amira] app startup failed", error);
-  }
-})();`;
 
 export interface AppPage {
   html: string;
@@ -126,12 +87,13 @@ export interface AppPage {
 
 /**
  * `minify` (esbuild's transform, passed in by scripts/build.mjs) compacts the
- * views script's whitespace and syntax. Identifiers stay as written: the views
- * share globals (pickerLoad, selectionControls) and the tests read
- * `api.<member>` uses.
+ * whitespace and syntax of the views script and of the bootstrap. Identifiers
+ * stay as written: the views share globals (pickerLoad, selectionControls) and
+ * the tests read `api.<member>` uses.
  */
 export function appPage(bridgeJs: string, read: (file: string) => string, minify: (js: string) => string = (js) => js): AppPage {
   const script = `${bridgeJs}\n${minify(viewsScript(read))}`;
+  const bootstrap = minify(scriptSource(BOOTSTRAP_FILE, read)).trim();
   const compressed = gzipSync(script, { level: 9 });
   const css = SHELL_CSS + VIEWS.map((view) => scopeCss(`[data-view="${view.name}"]`, view.css)).join("");
   const html = `<!doctype html>
@@ -146,7 +108,7 @@ export function appPage(bridgeJs: string, read: (file: string) => string, minify
 <div class="wrap" id="root"><p class="empty">Waiting for research data…</p></div>
 <p id="app-status" role="status" aria-live="polite"></p>
 <script id="amira-app-bundle" type="application/gzip">${compressed.toString("base64")}</script>
-<script>${BOOTSTRAP}</script>
+<script>${bootstrap}</script>
 </body>
 </html>
 `;
