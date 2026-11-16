@@ -168,7 +168,10 @@ function showForCopy(text: string): void {
   box.focus();
   box.select();
 }
-declare global { interface Window { amiraApp: typeof bridge } }
+/** The bridge's API, window.amiraApp. The views' typecheck (tsconfig.views.json)
+ * reads this declaration itself, so the views are checked against the real bridge. */
+export type AmiraApp = typeof bridge;
+declare global { interface Window { amiraApp: AmiraApp } }
 window.amiraApp = bridge;
 
 // Route citations through the host. Data is escaped by renderers; only HTTP(S) links are opened.

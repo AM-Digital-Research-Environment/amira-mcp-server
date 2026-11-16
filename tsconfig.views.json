@@ -8,7 +8,12 @@
     "noImplicitAny": false,
     "noUncheckedIndexedAccess": false,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": []
+    "types": [],
+    // package.json says "type": "module", which would make every .js file a
+    // module. Only files with import/export are: the views (`export { render }`)
+    // are, while _shared.js and _router.js stay classic scripts whose top-level
+    // names are the views' globals, as they are in the page.
+    "moduleDetection": "legacy"
   },
   "include": ["src/ui/views/*.js", "src/ui/views/globals.d.ts"],
   "exclude": []

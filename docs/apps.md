@@ -36,9 +36,12 @@ it has no title or description.
 - zod's 50 non-English error catalogues are stubbed out of the bridge bundle,
   258 KB of strings that can never fire (the technique comes from the IWAC server);
 - each view's script is read from `src/ui/views/<view>.js`, where Biome lints it and
-  `tsconfig.views.json` typechecks it against the bridge and the shared helpers
-  (`src/ui/views/globals.d.ts`); the trailing `export { render }` that makes the
-  file a module for those checks is dropped;
+  `tsconfig.views.json` typechecks it against the bridge's own type
+  (`src/ui/bridge.ts`) and the shared helpers; the trailing `export { render }`
+  that makes the file a module for those checks is dropped. The helpers
+  (`src/ui/views/_shared.js`) and the router (`src/ui/views/_router.js`) are
+  classic scripts in the same directory, linted and typechecked the same way,
+  placed before and after the views;
 - the views script is minified (whitespace and syntax only; identifiers stay);
 - the map outline is written as integer relative SVG moves, a third of its
   previous size, at about one unit per pixel;

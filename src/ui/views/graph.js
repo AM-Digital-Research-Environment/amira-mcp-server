@@ -185,6 +185,7 @@ function render(d) {
   document.getElementById('resolve').onsubmit = async function (event) {
     event.preventDefault();
     try {
+      /** @type {ToolData} */
       var result = await api.callTool('resolve_entity', { query: new FormData(/** @type {HTMLFormElement} */ (event.target)).get('query'), limit: 20 });
       document.getElementById('candidates').innerHTML = result.results.length ? '<p>' + result.total_matches + ' candidates' + (result.has_more ? ' · refine the name to narrow this list' : '') + '</p><ul>' + result.results.map(function (n) { return '<li><button class="row-button" data-node="' + esc(n.id) + '">' + esc(n.label) + '</button> · ' + esc(n.type) + ' · ' + esc(n.id) + '</li>'; }).join('') + '</ul>' : '<p class="empty">No matching entity. Try a broader name.</p>';
     } catch (_) {}

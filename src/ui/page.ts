@@ -34,7 +34,7 @@ import { MAP_VIEW } from "./map.js";
 import { OVERVIEW_VIEW } from "./overview.js";
 import { RELATED_VIEW } from "./related.js";
 import { SECTIONS_VIEW } from "./sections.js";
-import { BAR_CHART_JS, EVIDENCE_JS, PICKER_JS, SELECTION_JS, SHELL_CSS, scopeCss, type AppView } from "./shell.js";
+import { SHELL_CSS, scopeCss, type AppView } from "./shell.js";
 import { TIMELINE_VIEW } from "./timeline.js";
 import { VIEW_OF_TOOL } from "./viewContract.js";
 
@@ -42,37 +42,10 @@ export const VIEWS: readonly AppView[] = [
   OVERVIEW_VIEW, TIMELINE_VIEW, SECTIONS_VIEW, RELATED_VIEW, GRAPH_VIEW, MAP_VIEW, BIBLIOGRAPHY_VIEW,
 ];
 
-const ROUTER_JS = String.raw`
-var amiraRoot = document.getElementById("root");
-/** The view for a result: the host's toolInfo first, else the result's shape. */
-function amiraViewFor(payload) {
-  var named = amiraViewOfTool[window.amiraApp.toolName() || ""];
-  if (named) return named;
-  var d = payload || {};
-  if (Array.isArray(d.nodes) && Array.isArray(d.edges)) return "graph";
-  if ("entity_type" in d && "matched_items" in d) return "related";
-  if (d.counts && typeof d.counts === "object" && !("results" in d)) return "overview";
-  if ("bucket" in d && "dated_items" in d) return "timeline";
-  if ("items_without_place" in d) return "map";
-  if (Array.isArray(d.results) && "total_matches" in d) return "bibliography";
-  if (Array.isArray(d.results)) return "sections";
-  return null;
-}
-window.amiraApp.onResult(function (payload) {
-  var name = amiraViewFor(payload), view = name && amiraViews[name];
-  if (!view) {
-    amiraRoot.removeAttribute("data-view");
-    amiraRoot.innerHTML = '<p class="empty">This result has no AMIRA view. Update the AMIRA extension to see it here; the answer in the conversation is unaffected.</p>';
-    return;
-  }
-  if (amiraRoot.dataset.view !== name) {
-    amiraRoot.onclick = amiraRoot.onkeydown = amiraRoot.onchange = null;
-    amiraRoot.dataset.view = name;
-    document.title = view.title;
-  }
-  view.render(payload);
-});
-`;
+/** The helpers every view may call (classic script, top level of the views script). */
+const SHARED_FILE = "_shared.js";
+/** The router, after the views: hands each result to the view that renders it. */
+const ROUTER_FILE = "_router.js";
 
 /** A view's script as written in src/ui/views/, without the `export { render }`
  * that makes the file a module for its typecheck and lint. */
@@ -82,19 +55,24 @@ function viewSource(view: AppView, read: (file: string) => string): string {
   return view.prepare ? view.prepare(source) : source;
 }
 
+/** A classic-script file of src/ui/views/ (the shared helpers, the router): it
+ * must not be a module, since its top-level names are the views' globals. */
+function scriptSource(file: string, read: (file: string) => string): string {
+  const source = read(file);
+  if (/^(?:export|import) /m.test(source)) throw new Error(`${file}: a classic script, no import or export`);
+  return source;
+}
+
 /** Shared helpers, then each view in its own scope, then the router. `read`
  * returns a file of src/ui/views/ (scripts/build.mjs passes it). */
 export function viewsScript(read: (file: string) => string): string {
   return [
-    PICKER_JS,
-    BAR_CHART_JS,
-    SELECTION_JS,
-    EVIDENCE_JS,
+    scriptSource(SHARED_FILE, read),
     "var amiraViews = {};",
     ...VIEWS.map((view) =>
       `amiraViews[${JSON.stringify(view.name)}] = { title: ${JSON.stringify(view.title)}, render: (function () {\n${viewSource(view, read)}\nreturn render;\n})() };`),
     `var amiraViewOfTool = ${JSON.stringify(VIEW_OF_TOOL)};`,
-    ROUTER_JS,
+    scriptSource(ROUTER_FILE, read),
   ].join("\n");
 }
 

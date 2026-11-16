@@ -1,6 +1,8 @@
-// Shared chassis for every AMIRA view: the DRE design tokens, the view
-// contract, and the helpers several views use. Each view supplies only its own
-// CSS and a render function; src/ui/page.ts assembles them into the one page.
+// Shared chassis for every AMIRA view: the DRE design tokens and the view
+// contract. Each view supplies only its own CSS and a render function;
+// src/ui/page.ts assembles them into the one page. The helpers several views
+// call (pickers, ranked bars, the selection controls, evidence lists) are
+// browser code, so they live beside the views, in src/ui/views/_shared.js.
 //
 // Extracted when the second app arrived — same reasoning as textWindowFields in
 // v1.6.0: two copies of a protocol handshake drift, and the drift is invisible
@@ -86,8 +88,8 @@ summary { cursor: pointer; padding: 8px 0; }
 `;
 
 /**
- * One view of the app. `script` is plain browser JavaScript that runs in its
- * own function scope, after the bridge, and must define `function
+ * One view of the app. Its script (`file`) is plain browser JavaScript that runs in its
+ * own function scope, after the bridge and the shared helpers, and must define `function
  * render(payload)`; it reaches the host only through `window.amiraApp`
  * (src/ui/bridge.ts). `css` is scoped to the view by scopeCss, so one view's
  * table widths cannot leak into another's.
@@ -127,157 +129,3 @@ export function scopeCss(scope: string, css: string): string {
   }
   return out;
 }
-
-/**
- * "Ask about this selection" and the sharing status line, for the views that
- * keep a selection (bibliography, map, graph). The button appears only when
- * the host accepts app messages, the status line only when it accepts context
- * updates, and the row not at all on a host that takes neither. One delegated
- * listener serves every render.
- */
-export const SELECTION_JS = String.raw`
-function selectionControls() {
-  var api = window.amiraApp, ask = api.canAsk(), share = api.canShare();
-  if (!ask && !share) return "";
-  return '<div class="controls">' + (ask ? '<button type="button" id="ask-selection">Ask about this selection</button>' : "") +
-    (share ? '<span id="selection-status" class="note" role="status"></span>' : "") + "</div>";
-}
-document.addEventListener("click", function (event) {
-  var button = event.target && event.target.closest && event.target.closest("#ask-selection");
-  if (!button) return;
-  var api = window.amiraApp;
-  button.disabled = true;
-  api.ask().then(function () { api.status("Question sent to the conversation."); },
-    function (error) { api.status(error.message); })
-    .then(function () { if (button.isConnected) button.disabled = false; });
-});
-`;
-
-/**
- * Filter pickers: dropdowns and suggestion lists whose options the app fetches
- * itself through allowlisted tools, so the lists never enter the model's
- * context. Until a list arrives, or when the host refuses the call, a field is
- * the plain text input it replaces, so typing a value always works.
- *
- * A field is `{ name, kind, any, current, maxlength, placeholder }`: kind
- * "select" becomes a dropdown (with `any` as its empty choice) once its list
- * loads; kind "suggest" stays a text field with a datalist. An option is
- * `{ value, label?, alt? }`; `current` matches value or alt, ignoring case, and
- * a current value the list lacks is kept as its own option.
- */
-export const PICKER_JS = String.raw`
-var pickerLists = {};
-/** Every page of a list tool, fetched once per key. Resolves null if the call fails. */
-function pickerLoad(key, tool, args, pick, order) {
-  if (!(key in pickerLists)) pickerLists[key] = (async function () {
-    var out = [], offset = 0, pages = 0, d;
-    do {
-      d = await window.amiraApp.callTool(tool, Object.assign({}, args, { offset: offset }), { quiet: true });
-      (d.results || []).forEach(function (r) { var o = pick(r); if (o) out.push(o); });
-      offset = d.next_offset;
-    } while (d.has_more && offset != null && ++pages < 10);
-    return order ? out.sort(order) : out;
-  })().then(function (list) { return pickerLists[key] = list; }, function () { return pickerLists[key] = null; });
-  return Promise.resolve(pickerLists[key]);
-}
-/** A loaded list, or null while it is pending or after it failed. */
-function pickerNow(key) { return Array.isArray(pickerLists[key]) ? pickerLists[key] : null; }
-function pickerOptions(list, hit) {
-  var esc = window.amiraApp.esc;
-  return list.map(function (o) {
-    return '<option value="' + esc(o.value) + '"' + (hit && hit(o) ? " selected" : "") + ">" + esc(o.label || o.value) + "</option>";
-  }).join("");
-}
-function pickerField(p, list) {
-  var esc = window.amiraApp.esc, cur = p.current == null ? "" : String(p.current), low = cur.toLowerCase();
-  if (p.kind === "select" && list) {
-    var hit = function (o) { return !!low && (o.value.toLowerCase() === low || (o.alt || "").toLowerCase() === low); };
-    return '<select name="' + p.name + '"><option value="">' + esc(p.any) + "</option>" +
-      (cur && !list.some(hit) ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + "</option>" : "") +
-      pickerOptions(list, hit) + "</select>";
-  }
-  var suggest = p.kind === "suggest";
-  return '<input name="' + p.name + '" maxlength="' + (p.maxlength || 1000) + '" value="' + esc(cur) + '"' +
-    (p.placeholder ? ' placeholder="' + esc(p.placeholder) + '"' : "") +
-    (suggest ? ' list="' + p.name + '-options" autocomplete="off"' : "") + ">" +
-    (suggest ? '<datalist id="' + p.name + '-options">' + pickerOptions(list || []) + "</datalist>" : "");
-}
-/** Choose the option marked selected explicitly: happy-dom, the DOM the renderer
- * tests run in, misreads a parsed selected attribute. A no-op in browsers. */
-function pickerSettle(el) {
-  var marked = el && el.tagName === "SELECT" && el.querySelector("option[selected]");
-  if (marked) el.value = marked.value;
-  return el;
-}
-/** Upgrade a field rendered from list shown (null while pending) once load
- * resolves. A field the page has since re-rendered, or a dropdown the reader is
- * using, is left alone. */
-function pickerMount(p, load, shown) {
-  var el = pickerSettle(document.querySelector('[name="' + p.name + '"]'));
-  load.then(function (list) {
-    if (!list || list === shown || !el || !el.isConnected) return;
-    if (p.kind === "suggest") { var options = document.getElementById(p.name + "-options"); if (options) options.innerHTML = pickerOptions(list); return; }
-    if (el === document.activeElement) return;
-    var holder = document.createElement("div");
-    holder.innerHTML = pickerField(Object.assign({}, p, { current: el.value }), list);
-    var next = holder.firstChild;
-    el.replaceWith(next);
-    pickerSettle(next);
-  });
-}
-`;
-
-/**
- * A page of records behind a mark (a graph edge, a place, a span of years):
- * heading, numbered list, "Next records". Three views wrote this out by hand.
- * `heading` is markup (escape data in it); `item` renders one record's markup.
- */
-export const EVIDENCE_JS = String.raw`
-function citationLink(r, title) {
-  var esc = window.amiraApp.esc, label = esc(title == null ? r.title : title);
-  // A private record (curator mode) has no public page: plain text, never an empty link.
-  if (!r.amira_url) return label + (r.visibility === 'private' ? ' <span class="note">(private)</span>' : '');
-  return '<a data-citation href="' + esc(r.amira_url) + '">' + label + '</a>';
-}
-function evidenceList(target, heading, data, item, moreId, onMore) {
-  target.innerHTML = '<h2 tabindex="-1">' + heading + '</h2><ol start="' + (data.offset + 1) + '">' +
-    data.results.map(function (r) { return '<li>' + item(r) + '</li>'; }).join('') + '</ol>' +
-    (data.has_more ? '<button id="' + moreId + '">Next records</button>' : '');
-  target.querySelector('h2').focus();
-  var more = document.getElementById(moreId);
-  if (more) more.onclick = function () { onMore(data.next_offset); };
-}
-`;
-
-/**
- * A horizontal ranked-bar chart as an SVG string, drawn from `[label, value]`
- * rows. Single series, so the fill carries no identity; the value is direct-
- * labelled at the end of each bar, which doubles as the accessible text
- * alternative and removes the need for an x-axis.
- */
-export const BAR_CHART_JS = String.raw`
-function barChart(rows, opts) {
-  opts = opts || {};
-  var esc = window.amiraApp.esc;
-  if (!rows.length) return '<p class="empty">No data.</p>';
-  var ROW = 20, GAP = 2, LABEL_W = opts.labelWidth || 132, VALUE_W = 44, PAD_R = 4;
-  var W = 460, H = rows.length * (ROW + GAP);
-  var max = rows.reduce(function (m, r) { return Math.max(m, r[1]); }, 0) || 1;
-  var trackW = W - LABEL_W - VALUE_W - PAD_R;
-  var out = ['<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' +
-    esc(opts.label || "ranked bar chart") + '" preserveAspectRatio="xMinYMin meet">'];
-  rows.forEach(function (r, i) {
-    var y = i * (ROW + GAP);
-    var w = Math.max(1.5, (r[1] / max) * trackW);
-    out.push('<text class="axis" x="' + (LABEL_W - 8) + '" y="' + (y + ROW / 2 + 3.5) +
-      '" text-anchor="end">' + esc(r[0]) + "</text>");
-    // 4px rounded data-end, anchored to the baseline at x = LABEL_W.
-    out.push('<rect class="bar" x="' + LABEL_W + '" y="' + (y + 3) + '" width="' + w.toFixed(1) +
-      '" height="' + (ROW - 6) + '" rx="3"><title>' + esc(r[0]) + ": " + r[1] + "</title></rect>");
-    out.push('<text class="val" x="' + (LABEL_W + w + 6).toFixed(1) + '" y="' + (y + ROW / 2 + 3.5) +
-      '">' + r[1] + "</text>");
-  });
-  out.push("</svg>");
-  return out.join("");
-}
-`;

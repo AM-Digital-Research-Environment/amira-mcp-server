@@ -57,10 +57,12 @@ test("the stub exposes exactly the real bridge's API, with the same escaping", a
   await win.happyDOM.waitUntilComplete();
   assert.deepEqual(errors, []);
   assert.deepEqual(Object.keys(win.amiraApp).sort(), STUB_API);
-  // The views' typecheck declares the bridge by hand (src/ui/views/globals.d.ts): same members.
+  // The views' typecheck (tsconfig.views.json) reads the bridge's own type, so the
+  // views are checked against the real bridge at type level: no hand-kept copy to compare.
   const { readFileSync } = await import("node:fs");
-  const declared = /interface AmiraApp \{([\s\S]*?)\n\}/.exec(readFileSync(new URL("../../src/ui/views/globals.d.ts", import.meta.url), "utf8"))[1];
-  assert.deepEqual([...declared.matchAll(/^ {2}(\w+)\(/gm)].map((m) => m[1]).sort(), STUB_API);
+  const globals = readFileSync(new URL("../../src/ui/views/globals.d.ts", import.meta.url), "utf8");
+  assert.match(globals, /^type AmiraApp = import\("\.\.\/bridge\.js"\)\.AmiraApp;$/m);
+  assert.doesNotMatch(globals, /interface AmiraApp\b/, "the bridge is not re-declared by hand");
 
   const stubWin = new Window({ settings: { enableJavaScriptEvaluation: true, suppressInsecureJavaScriptEnvironmentWarning: true } });
   t.after(() => stubWin.happyDOM.close());

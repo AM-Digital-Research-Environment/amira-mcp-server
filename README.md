@@ -730,10 +730,11 @@ session. `npm run weigh` measures both and the baseline records them.
   once decoded (it was 4.7 MB across seven pages), and a unit test holds it under
   300 KB and 500 KB.
 
-  The modules live in `src/ui/`: `shell.ts` holds the design tokens and shared
-  helpers, `bridge.ts` bundles the official Apps SDK, each view module supplies its
+  The modules live in `src/ui/`: `shell.ts` holds the design tokens,
+  `bridge.ts` bundles the official Apps SDK, each view module supplies its
   own CSS and names its script in `src/ui/views/` (plain browser JavaScript, linted
-  and typechecked with `tsconfig.views.json`), and `page.ts` assembles them at
+  and typechecked with `tsconfig.views.json`, beside the shared helpers of
+  `_shared.js` and the router of `_router.js`), and `page.ts` assembles them at
   build time. The page
   loads **nothing** from the network — no scripts, styles, fonts or tiles — so it
   needs no `_meta.ui.csp` grants and runs in the strictest sandbox. App controls
