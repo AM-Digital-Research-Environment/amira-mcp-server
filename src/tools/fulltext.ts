@@ -17,6 +17,7 @@ import { READ_ONLY, errorResult, exposureRestrictedResult, textResult, yearLabel
 import type { DataStore } from "../data.js";
 import { guidanceEnabled } from "../guidance.js";
 import { config } from "../config.js";
+import { INVALID_YEAR_RANGE } from "../errorCodes.js";
 
 const SAMPLE_PER_GROUP = 2;
 
@@ -43,7 +44,7 @@ export function registerFulltextTools(server: Server, tools: ToolMap): void {
       const index = fulltextIndex(store);
       if (!index) return errorResult("fulltext_map_unavailable", "This snapshot carries no full-text map.");
       if (args.year_from !== undefined && args.year_to !== undefined && args.year_from > args.year_to) {
-        return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
+        return errorResult("invalid_range", INVALID_YEAR_RANGE);
       }
       const yearsGiven = args.year_from !== undefined || args.year_to !== undefined;
       if (yearsGiven && !args.words && args.group === undefined) {

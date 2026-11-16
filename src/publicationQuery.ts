@@ -10,6 +10,7 @@ import { personMatches } from "./names.js";
 import { anyContainsCI, closestValues, containsCI, emptyKeyword, equalsCI, keywordMatchesFolded, parseKeyword, refLabels } from "./matching.js";
 import { fold, foldCached } from "./text.js";
 import { invalidDate, isoDate, sinceMatches, type QueryError } from "./researchItemQuery.js";
+import { INVALID_YEAR_RANGE } from "./errorCodes.js";
 
 export const publicationFilters = {
   keyword: z.string().max(1000).optional().describe("Title, abstracts, venue, subjects or full text; every word must match, quote a phrase"),
@@ -27,7 +28,7 @@ export type PublicationFilters = z.infer<z.ZodObject<typeof publicationFilters>>
 
 export function publicationFilterError(args: PublicationFilters): QueryError | null {
   if (args.year_from !== undefined && args.year_to !== undefined && args.year_from > args.year_to) {
-    return { code: "invalid_range", message: "`year_from` must be less than or equal to `year_to`." };
+    return { code: "invalid_range", message: INVALID_YEAR_RANGE };
   }
   if (invalidDate(args.added_since)) return { code: "invalid_date", message: "`added_since` must be an ISO date such as 2026-09-01." };
   for (const key of ["author", "venue", "subject", "language"] as const) {

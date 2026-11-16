@@ -41,6 +41,7 @@ import { iiifManifestUrl, itemUrl, itemUrlOrNull } from "../urls.js";
 import { personMatches } from "../names.js";
 import { emptyKeyword, keywordMatches, parseKeyword } from "../matching.js";
 import { invalidYearRange } from "../researchItemQuery.js";
+import { INVALID_YEAR_RANGE } from "../errorCodes.js";
 
 type TranscriptRecord = PodcastRec | VideoRec;
 
@@ -129,7 +130,7 @@ function registerTranscribedSearch<R extends TranscriptRecord>(server: Server, t
     async (raw) => {
       const args = raw as SearchArgs;
       const filters = raw as Record<string, string | undefined>;
-      if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", "`year_from` must be less than or equal to `year_to`.");
+      if (invalidYearRange(args.year_from, args.year_to)) return errorResult("invalid_range", INVALID_YEAR_RANGE);
       const store = callStore();
       const { limit, echo } = LIMIT.resolve(args.limit);
       const offset = capOffset(args.offset);
