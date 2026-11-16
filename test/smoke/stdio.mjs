@@ -92,7 +92,10 @@ check(badYearSearch.error?.code === "invalid_range", "search: inverted year rang
 
 // structured error shape (report §error-handling).
 const errItem = await call("get_research_item", { id: "NO_SUCH_ID" }, { expect: ["error"] });
-check(errItem.error?.code === "not_found" && !!errItem.error?.suggested_tool, "get_research_item: structured error");
+// Text with no digit cannot be an id at all (invalid_id); a well-formed unknown id is not_found.
+check(errItem.error?.code === "invalid_id" && !!errItem.error?.suggested_tool, "get_research_item: structured error");
+const missingItem = await call("get_research_item", { id: 999999999 }, { expect: ["error"] });
+check(missingItem.error?.code === "not_found", "get_research_item: unknown id is not_found");
 
 const item = await call("get_research_item", { id: 9902 }, { expect: [AMIRA, "sponsors"] });
 check(item.omeka_id === 9902 && item.id === "9902", "item: Omeka id exposed as id/omeka_id");
