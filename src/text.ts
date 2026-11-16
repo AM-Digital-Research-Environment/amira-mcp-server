@@ -59,7 +59,7 @@ interface OffsetShift { start: number; end: number; original: number; delta: num
 
 /**
  * Folded copies of large texts and their offset shifts. Each served snapshot
- * owns one (src/data.ts DataStore.folds), so the copies are freed with the
+ * owns one (src/store.ts DataStore.folds), so the copies are freed with the
  * snapshot they belong to: a module-wide cache, cleared on refresh, was
  * refilled with the OLD snapshot's texts by any call still running against it.
  */
@@ -69,7 +69,9 @@ export const newFoldCaches = (): FoldCaches => ({ folded: new Map(), offsets: ne
 /** Used when no snapshot is in scope (unit tests, scripts). */
 const fallbackCaches = newFoldCaches();
 let cacheProvider: () => FoldCaches | undefined = () => undefined;
-/** src/data.ts points this at the snapshot the current call is serving. */
+/** src/storeLifecycle.ts points this at the snapshot the current call is
+ * serving. An injected provider, not an import: the lifecycle imports the store,
+ * which imports this module, so importing the lifecycle here would be a cycle. */
 export function setFoldCacheProvider(provider: () => FoldCaches | undefined): void {
   cacheProvider = provider;
 }

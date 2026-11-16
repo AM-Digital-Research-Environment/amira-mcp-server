@@ -98,7 +98,7 @@ const seenSecrets = new Set<string>();
  * "transient"`: the refresh is skipped and retried soon). Once the file has
  * failed for longer than one re-read interval (KEY_TTL_MS), the error is
  * flagged `omekaAuth`, like a key Omeka refuses: the caller drops the private
- * data and wipes the curator cache (src/data.ts). A successful read resets it.
+ * data and wipes the curator cache (src/storeLifecycle.ts). A successful read resets it.
  */
 export function omekaKey(): OmekaKey | null {
   if (config.access !== "curator" || !config.omekaKeyFile) return null;

@@ -1,4 +1,4 @@
-// Store lifecycle (src/data.ts): the singleton must not latch a startup
+// Store lifecycle (src/storeLifecycle.ts): the singleton must not latch a startup
 // failure, and currentStore() must reflect what is actually being served.
 //
 // node --test runs each file in its own process, so this file can point the

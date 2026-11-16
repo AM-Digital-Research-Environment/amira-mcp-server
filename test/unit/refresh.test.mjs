@@ -1,4 +1,4 @@
-// Background refresh (src/data.ts): probe → crawl → atomic publish → hot swap,
+// Background refresh (src/storeLifecycle.ts): probe → crawl → atomic publish → hot swap,
 // against a local node:http stub standing in for the Omeka S REST API.
 //
 // Config (live refresh, site base, intervals) is read ONCE at module load, so
