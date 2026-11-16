@@ -12,6 +12,9 @@
 // in the smoke job (`npm run weigh -- --check`).
 import test from "node:test";
 import assert from "node:assert/strict";
+import {
+  measureSurface, checkSurface, checkResponses, baselinePayload, readBaseline, SURFACE_TOKEN_BUDGET, SURFACE_DRIFT_TOLERANCE,
+} from "../helpers/budget.mjs";
 import { hermeticEnv } from "../helpers/env.mjs";
 import { connectInMemory } from "../helpers/mcp.mjs";
 
@@ -21,9 +24,6 @@ import { connectInMemory } from "../helpers/mcp.mjs";
 hermeticEnv({ dataDir: true });
 
 const lib = await import("../../server/lib.js");
-const { measureSurface, checkSurface, checkResponses, baselinePayload, readBaseline, SURFACE_TOKEN_BUDGET, SURFACE_DRIFT_TOLERANCE } = await import(
-  "../../scripts/weigh.mjs"
-);
 
 const baseline = await readBaseline();
 
@@ -113,7 +113,7 @@ for (const [profile, budget] of [["research", 10_700], ["discovery", 6_800], ["v
   });
 }
 
-// --- the response gate's own contract (scripts/weigh.mjs) ------------------------
+// --- the response gate's own contract (test/helpers/budget.mjs) ------------------
 
 test("weigh --check fails when a baselined probe is no longer measured", () => {
   const { failures } = checkResponses({}, { "get_similar_items@max": { tokens: 1339 } });
