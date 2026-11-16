@@ -24,9 +24,12 @@ export function isTemplatePlaceholder(raw: string | undefined): boolean {
   return !v || /^\$\{[^}]*\}$/.test(v);
 }
 
+/** Where settings are read from: `process.env` unless a caller passes another (tests). */
+export type Env = Readonly<Record<string, string | undefined>>;
+
 /** An env var, trimmed; undefined when unset, empty or an unsubstituted placeholder. */
-export function envValue(name: string): string | undefined {
-  const raw = process.env[name]?.trim();
+export function envValue(name: string, env: Env = process.env): string | undefined {
+  const raw = env[name]?.trim();
   return isTemplatePlaceholder(raw) ? undefined : raw;
 }
 
@@ -46,8 +49,8 @@ const FALSE = ["0", "false", "no", "off"];
 
 /** A boolean setting: 1/true/yes/on or 0/false/no/off, case-insensitive. Unset
  * means `fallback`; anything else is reported once and means `fallback`. */
-export function bool(name: string, fallback: boolean): boolean {
-  const raw = envValue(name);
+export function bool(name: string, fallback: boolean, env: Env = process.env): boolean {
+  const raw = envValue(name, env);
   if (raw === undefined) return fallback;
   const s = raw.toLowerCase();
   if (TRUE.includes(s)) return true;
@@ -58,8 +61,8 @@ export function bool(name: string, fallback: boolean): boolean {
 
 /** One of `values` (case-insensitive). Unset means `fallback`; anything else is
  * reported once and means `fallback`. */
-export function enumOf<T extends string>(name: string, values: readonly T[], fallback: T): T {
-  const raw = envValue(name);
+export function enumOf<T extends string>(name: string, values: readonly T[], fallback: T, env: Env = process.env): T {
+  const raw = envValue(name, env);
   if (raw === undefined) return fallback;
   const s = raw.toLowerCase();
   if ((values as readonly string[]).includes(s)) return s as T;
@@ -68,8 +71,8 @@ export function enumOf<T extends string>(name: string, values: readonly T[], fal
 }
 
 /** A non-negative number (fractions allowed). Unset or invalid means `fallback`. */
-export function nonNegative(name: string, fallback: number): number {
-  const raw = envValue(name);
+export function nonNegative(name: string, fallback: number, env: Env = process.env): number {
+  const raw = envValue(name, env);
   if (raw === undefined) return fallback;
   const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : fallback;

@@ -95,3 +95,44 @@ test("a real value still overrides, and the placeholder guard is narrow", () => 
 
   assert.deepEqual(lib.parseAllowedOriginHostnames(undefined), ["localhost", "127.0.0.1", "[::1]"]);
 });
+
+// --- loadConfig: other environments, in-process ------------------------------------
+
+test("loadConfig: an empty or all-placeholder environment resolves to the defaults", () => {
+  const placeholders = Object.fromEntries(["AMIRA_SITE_BASE", "AMIRA_SITE_SLUG", "AMIRA_LIVE_REFRESH", "AMIRA_RATE_LIMIT", "AMIRA_ACCESS",
+    "AMIRA_SEMANTIC_RELEASE", "PORT"].map((k) => [k, `\${user_config.${k.toLowerCase()}}`]));
+  for (const env of [{}, placeholders]) {
+    const c = lib.loadConfig(env);
+    assert.equal(c.siteBase, "https://data.africamultiple.uni-bayreuth.de");
+    assert.equal(c.apiBase, "https://data.africamultiple.uni-bayreuth.de/api");
+    assert.equal(c.fetchBase, c.apiBase);
+    assert.equal(c.siteSlug, "amira");
+    assert.equal(c.liveRefresh, true);
+    assert.equal(c.rateLimitPerMinute, 120);
+    assert.equal(c.access, "public");
+    assert.equal(c.refreshIntervalHours, 24);
+    assert.equal(c.semanticRelease, "latest");
+    assert.equal(c.httpPort, 8787);
+    assert.equal(c.cacheDirConfigured, false);
+    assert.equal(c.curatorRelay, false);
+  }
+});
+
+test("loadConfig: real values are read from the environment given, not process.env", () => {
+  const c = lib.loadConfig({
+    AMIRA_SITE_BASE: "https://omeka.example.org//", AMIRA_API_BASE: "http://WEB:80/api/", AMIRA_ACCESS: "Curator",
+    AMIRA_TRUST_PROXY: "yes", AMIRA_PROXY_HOPS: "2.7", AMIRA_HTTP_PORT: "99999", AMIRA_CURATOR_RETRY_SECONDS: "0",
+  });
+  assert.equal(c.siteBase, "https://omeka.example.org");
+  assert.equal(c.apiBase, "https://omeka.example.org/api");
+  assert.equal(c.fetchBase, "http://web/api", "the fetch base in its canonical spelling");
+  assert.equal(c.apiBaseSetting, "http://WEB:80/api/");
+  assert.equal(c.access, "curator");
+  assert.equal(c.refreshIntervalHours, 1, "curator mode checks hourly by default");
+  assert.equal(c.trustProxy, true);
+  assert.equal(c.proxyHops, 2);
+  assert.ok(Number.isNaN(c.httpPort), "an invalid port is kept for the startup refusal");
+  assert.equal(c.httpPortSetting, "99999");
+  assert.equal(c.curatorRetrySeconds, 0.1);
+  assert.equal(lib.config.access, "public", "the served configuration is untouched");
+});
