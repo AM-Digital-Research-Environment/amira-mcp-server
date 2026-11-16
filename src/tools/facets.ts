@@ -1,19 +1,20 @@
 import { schemaOnce } from "./schemaOnce.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
-import { ensureStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import type { LinkedRef, ResearchItemRec } from "../types.js";
 import { allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
-  capLimit,
   capOffset,
   errorResult,
   exposureRestrictedResult,
   filtersEcho,
-  limitEcho,
+  limitParam,
+  offsetParam,
   pageOf,
   subjectEntry,
+  textParam,
   textResult,
   type Server,
 } from "./_shared.js";
@@ -25,6 +26,14 @@ import { keywordPredicate, placeAliases, RefTally, refKey, type TallyRow } from 
 import { fold } from "../text.js";
 import { queryErrorResult } from "./responses.js";
 import { timelineSchema } from "./outputSchemas.js";
+
+const LIMITS = {
+  list_subjects: limitParam(50, 300),
+  list_locations: limitParam(50, 300),
+  list_collections: limitParam(50, 200),
+  list_categories: limitParam(100, 500),
+  list_years: limitParam(200, 500),
+};
 
 /** Count linked refs across items, each item once per value (src/matching.ts refKey). */
 function countRefs(items: ResearchItemRec[], pick: (it: ResearchItemRec) => LinkedRef[]): TallyRow[] {
@@ -81,17 +90,17 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       description: "Subject headings (LCSH or free tags) ranked by distinct research-item count. Feed a heading into search_research_items.subject.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_subjects:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Filter on the heading; every word must match, quote a phrase"),
+        keyword: textParam().optional().describe("Filter on the heading; every word must match, quote a phrase"),
         vocabulary: z.enum(["lcsh", "tag", "unspecified"]).optional()
           .describe("lcsh, tag, or unspecified: every other heading (mostly places with no vocabulary)"),
-        limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        limit: LIMITS.list_subjects.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_subjects");
-      const limit = capLimit(args.limit, 50, 300);
+      const { limit, echo } = LIMITS.list_subjects.resolve(args.limit);
       const offset = capOffset(args.offset);
       let ranked = store.cached("facets:subjects", () => countRefs(store.items, (it) => it.subjects));
       if (args.keyword) ranked = ranked.filter(byLabel(args.keyword));
@@ -112,7 +121,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
           };
         }, {
           distinct_subjects: ranked.length,
-          ...limitEcho(args.limit, 300, limit),
+          ...echo,
           ...filtersEcho(args),
         }),
       );
@@ -129,23 +138,23 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       _meta: APP_UI_META,
       inputSchema: schemaOnce("list_locations:in", () => z.strictObject({
         filters: researchFilters.optional().describe("Research-item filters applied before place counts"),
-        country: z.string().max(1000).optional().describe("One country, exact name or alias, plus its cities"),
-        keyword: z.string().max(1000).optional().describe("Filter on the place name; every word must match, quote a phrase"),
+        country: textParam().optional().describe("One country, exact name or alias, plus its cities"),
+        keyword: textParam().optional().describe("Filter on the place name; every word must match, quote a phrase"),
         near: z.strictObject({ latitude: z.number(), longitude: z.number(), km: z.number().positive() }).optional()
           .describe("Places within km (> 0) of a point; latitude -90..90, longitude -180..180"),
         bbox: z.array(z.number()).length(4).optional().describe("[west, south, east, north]; west > east crosses the antimeridian"),
-        limit: z.number().int().min(1).optional().describe("Default 50, max 300"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        limit: LIMITS.list_locations.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_locations");
       const refused = researchFilterError(args.filters ?? {}, store);
       if (refused) return queryErrorResult(refused);
       const geoError = geoArgError(args.near, args.bbox);
       if (geoError) return errorResult("invalid_argument", geoError);
-      const limit = capLimit(args.limit, 50, 300);
+      const { limit, echo } = LIMITS.list_locations.resolve(args.limit);
       const offset = capOffset(args.offset);
 
       interface PlaceCount {
@@ -227,7 +236,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
             distinct_places: ranked.length,
             matched_items: selected.length,
             items_without_place: selected.filter((it) => !it.places.length).length,
-            ...limitEcho(args.limit, 300, limit),
+            ...echo,
             // Mirrors the arguments, so `filters.filters` is this tool's own
             // `filters` argument; the map app replays it (src/ui/views/map.js).
             ...filtersEcho({ country: args.country, keyword: args.keyword, near: args.near, bbox: args.bbox, filters: args.filters }),
@@ -245,15 +254,15 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
       description: "Research collections, one per project, ranked by research-item count and cited by the project page. Feed an id or code into search_research_items.collection.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_collections:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Filter on the collection title, project name or code; every word must match"),
-        limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        keyword: textParam().optional().describe("Filter on the collection title, project name or code; every word must match"),
+        limit: LIMITS.list_collections.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_collections");
-      const limit = capLimit(args.limit, 50, 200);
+      const { limit, echo } = LIMITS.list_collections.resolve(args.limit);
       const offset = capOffset(args.offset);
 
       let ranked = store.cached("facets:collections", () => allCollections(store)
@@ -272,7 +281,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
           offset,
           limit,
           ({ c, count }) => ({ collection: c.title, item_count: count, ...collectionFields(c) }),
-          { distinct_collections: ranked.length, ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
+          { distinct_collections: ranked.length, ...echo, ...filtersEcho(args) },
         ),
       );
     },
@@ -289,19 +298,19 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
         category: z
           .enum(["formats", "genres", "physical_notes", "languages", "resource_types"])
           .describe("'genres' = 'formats' (controlled terms); 'physical_notes' lists free-text notes. Both feed genre. Tags: use list_subjects"),
-        keyword: z.string().max(1000).optional().describe("Filter on the value; every word must match, quote a phrase"),
-        limit: z.number().int().min(1).optional().describe("Default 100, max 500"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        keyword: textParam().optional().describe("Filter on the value; every word must match, quote a phrase"),
+        limit: LIMITS.list_categories.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       const category = args.category === "genres" ? "formats" : args.category;
       // Resource type is minimal-level metadata; formats and languages are not.
       if (category !== "resource_types" && !allowStructured()) {
         return exposureRestrictedResult("structured", `list_categories category='${category}'`);
       }
-      const limit = capLimit(args.limit, 100, 500);
+      const { limit, echo } = LIMITS.list_categories.resolve(args.limit);
       const offset = capOffset(args.offset);
 
       let ranked = store.cached(`facets:category:${category}`, () => {
@@ -338,7 +347,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
           {
             category,
             distinct_values: ranked.length,
-            ...limitEcho(args.limit, 500, limit),
+            ...echo,
             ...filtersEcho({ keyword: args.keyword }),
           },
         ),
@@ -363,15 +372,15 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
         from: z.number().int().min(0).max(2200).optional().describe("Earliest year to report (inclusive)"),
         to: z.number().int().min(0).max(2200).optional().describe("Latest year to report (inclusive)"),
         sort: z.enum(["chronological", "count"]).optional().describe("Default 'chronological' (oldest first); 'count' ranks by item count"),
-        limit: z.number().int().min(1).optional().describe("Default 200, max 500"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        limit: LIMITS.list_years.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       const bucket = args.bucket ?? "year";
       const sort = args.sort ?? "chronological";
-      const limit = capLimit(args.limit, 200, 500);
+      const { limit, echo } = LIMITS.list_years.resolve(args.limit);
       const offset = capOffset(args.offset);
       const { from, to } = args;
       // The same gate as search_research_items: keyword and year filters stay
@@ -431,7 +440,7 @@ export function registerFacetTools(server: Server, tools: ToolMap): void {
             dated_items: datedItems,
             undated_items: undatedItems,
             ...(yearRange ? { year_range: yearRange } : {}),
-            ...limitEcho(args.limit, 500, limit),
+            ...echo,
             ...filtersEcho({ from, to, filters: args.filters }),
           },
         ),

@@ -2,7 +2,7 @@ import { schemaOnce } from "./schemaOnce.js";
 import { recordArg } from "./records.js";
 import type { ToolMap } from "./policy.js";
 import { z } from "zod";
-import { ensureStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import { allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
@@ -10,10 +10,12 @@ import {
   errorResult,
   exposureRestrictedResult,
   fundingPhase,
+  idParam,
   projectSummary,
   refLabels,
   refLinks,
   sectionSummary,
+  textParam,
   textResult,
   type Server,
 } from "./_shared.js";
@@ -34,7 +36,7 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
       inputSchema: schemaOnce("list_research_sections:in", () => z.strictObject({})),
     },
     async () => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_research_sections");
       const sections = store.sections.map((s) => {
         // Projects link to sections by id; counting by label orphaned a project
@@ -55,12 +57,12 @@ export function registerResearchSectionTools(server: Server, tools: ToolMap): vo
       description: "One research section's description, team and projects, each with its research-item count.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_research_section:in", () => z.strictObject({
-        name: z.string().max(1000).optional().describe("Section name, e.g. 'Arts & Aesthetics' ('and' for '&' works)"),
-        id: z.union([z.string().max(64), z.number()]).optional().describe("Section Omeka id or typed id section:<id> from list_research_sections; not with name"),
+        name: textParam().optional().describe("Section name, e.g. 'Arts & Aesthetics' ('and' for '&' works)"),
+        id: idParam(64).optional().describe("Section Omeka id or typed id section:<id> from list_research_sections; not with name"),
       })),
     },
     async ({ name, id }) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "get_research_section");
       if (id == null && !name) return errorResult("missing_entity", "Provide name or id.");
       if (id != null && name) return errorResult("invalid_argument", "Provide name or id, not both.");

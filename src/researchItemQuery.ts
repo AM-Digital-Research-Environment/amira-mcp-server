@@ -16,6 +16,7 @@ import { config } from "./config.js";
 import { stripTypedId } from "./typedIds.js";
 import { collectionsOfItem, inCollection, resolveCollection } from "./collections.js";
 import { countryNames, countrySuggestions, fulltextIndex } from "./fulltextMaps.js";
+import { INVALID_YEAR_RANGE, type ErrorCode } from "./errorCodes.js";
 
 const query = z.string().max(1000).optional();
 /** An ISO date or date-time ("2026-09-01"). Checked at run time by
@@ -41,7 +42,7 @@ export type ResearchFilters = z.infer<typeof researchFilters>;
 const STRUCTURED_FILTERS = ["subject", "location", "location_id", "country", "contributor", "project_id", "research_section",
   "university", "genre", "collection", "language"] as const;
 
-export interface QueryError { code: string; message: string; needs?: "structured" | "descriptive" | "full" }
+export interface QueryError { code: ErrorCode; message: string; needs?: "structured" | "descriptive" | "full" }
 
 /**
  * One exposure and range gate for every caller of `selectResearchItems`. Before
@@ -50,7 +51,7 @@ export interface QueryError { code: string; message: string; needs?: "structured
  */
 export function researchFilterError(args: ResearchFilters, store?: DataStore): QueryError | null {
   if (invalidYearRange(args.year_from, args.year_to)) {
-    return { code: "invalid_range", message: "`year_from` must be less than or equal to `year_to`." };
+    return { code: "invalid_range", message: INVALID_YEAR_RANGE };
   }
   for (const key of ["added_since", "modified_since"] as const) {
     if (invalidDate(args[key])) return { code: "invalid_date", message: `\`${key}\` must be an ISO date such as 2026-09-01.` };

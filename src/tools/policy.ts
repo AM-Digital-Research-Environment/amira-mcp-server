@@ -29,7 +29,8 @@
 //     URL and adds the restricted block to detail results.
 import type { RegisteredTool } from "@modelcontextprotocol/server";
 import { errorResult } from "./responses.js";
-import { currentStore, ensureStore, withStore } from "../data.js";
+import { currentStore, ensureStore } from "../data.js";
+import { runWithCallStore } from "./callStore.js";
 import { dropSafeIntegerBounds, dropSchemaNoise, withJsonSchema, withoutSchemaText } from "../guidance.js";
 import { config } from "../config.js";
 import { curatorToolResult } from "./curator.js";
@@ -58,14 +59,16 @@ function withDeadline<T>(work: Promise<T>, ms: number, onTimeout: () => T): Prom
 
 /** Run a handler bound to the snapshot being served when it starts, so a
  * refresh that swaps the store mid-call cannot mix two snapshots' caches.
- * The store comes back with the result (curator decoration reads it). */
+ * Handlers read it with callStore() (src/tools/callStore.ts). The store comes
+ * back with the result (curator decoration reads it). */
 async function inStore<T>(fn: () => T): Promise<{ result: Awaited<T>; store: DataStore }> {
   const store = currentStore() ?? await ensureStore();
-  return { result: await withStore(store, fn), store };
+  return { result: await runWithCallStore(store, fn), store };
 }
 
-function withoutStructured<T>(result: T): T {
-  if (result && typeof result === "object" && "structuredContent" in result) {
+/** The result without its structured content: always, or with `errorsOnly` only on an error. */
+function withoutStructured<T>(result: T, { errorsOnly = false } = {}): T {
+  if (result && typeof result === "object" && "structuredContent" in result && (!errorsOnly || (result as { isError?: boolean }).isError)) {
     const { structuredContent: _omit, ...rest } = result as Record<string, unknown>;
     return rest as T;
   }
@@ -99,30 +102,23 @@ function trimObject(obj: Record<string, unknown>, dropEmpty: boolean): Record<st
  */
 export function cleanArgs(args: unknown, shape?: Shape): { args: unknown } | { emptyRequired: string } {
   if (!isPlainObject(args)) return { args };
-  const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args)) {
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (trimmed) out[key] = trimmed;
-      else if (shape?.[key]?.safeParse?.(undefined).success === false) return { emptyRequired: key };
-    } else if (Array.isArray(value)) {
+    if (typeof value === "string" && !value.trim() && shape?.[key]?.safeParse?.(undefined).success === false) return { emptyRequired: key };
+  }
+  const out = trimObject(args, true);
+  for (const [key, value] of Object.entries(out)) {
+    if (Array.isArray(value)) {
       out[key] = value
         .map((v) => (typeof v === "string" ? v.trim() : isPlainObject(v) ? trimObject(v, false) : v))
         .filter((v) => v !== "");
     } else if (isPlainObject(value)) {
       out[key] = trimObject(value, true); // nested filter objects: every field is optional
-    } else out[key] = value;
+    }
   }
   return { args: out };
 }
 
-function withoutStructuredError<T>(result: T): T {
-  if (result && typeof result === "object" && (result as { isError?: boolean }).isError && "structuredContent" in result) {
-    const { structuredContent: _omit, ...rest } = result as Record<string, unknown>;
-    return rest as T;
-  }
-  return result;
-}
+const withoutStructuredError = <T>(result: T): T => withoutStructured(result, { errorsOnly: true });
 
 /** Remove tools outside the profile and wrap the rest with the shared policy. */
 export function applyToolPolicy(tools: ToolMap, allowed: ReadonlySet<string> | null, opts: { guidance?: boolean } = {}): void {

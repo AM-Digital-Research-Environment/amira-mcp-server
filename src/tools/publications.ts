@@ -7,12 +7,11 @@ import type { ToolMap } from "./policy.js";
 // opt-in + windowable in get_publication — the same discipline as transcripts.
 import { z } from "zod";
 import { includeSimilarSchema, similarBlock } from "./similar.js";
-import { ensureStore } from "../data.js";
+import { callStore } from "./callStore.js";
 import type { LinkedRef } from "../types.js";
 import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
-  capLimit,
   capOffset,
   capText,
   emptyExportHint,
@@ -20,13 +19,17 @@ import {
   errorResult,
   exposureRestrictedResult,
   filtersEcho,
-  limitEcho,
+  fulltextWindowParams,
+  idParam,
+  limitParam,
   matchSnippet,
+  offsetParam,
   pageOf,
   publicationSummary,
   refLabels,
   restrictedTextFlag,
   textAccessDisabledResult,
+  textParam,
   textResult,
   textWindowFields,
   type Server,
@@ -42,6 +45,14 @@ import { exportLink, EXPORT_FORMATS } from "../resources.js";
 import { fold } from "../text.js";
 import { APP_UI_META } from "./apps.js";
 
+const LIMITS = {
+  search_publications: limitParam(25, 100, "Default 25; max 100 summaries or 25 citation_format rows, also byte-bounded. export ignores it"),
+  /** search_publications with citation_format: the same argument, capped lower. */
+  citation_rows: limitParam(25, 25, null),
+  list_publication_facets: limitParam(25, 100),
+  list_journals: limitParam(50, 200),
+};
+
 export function registerPublicationTools(server: Server, tools: ToolMap): void {
   // === search_publications ==================================================
   tools.search_publications = server.registerTool(
@@ -55,14 +66,13 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
         ...publicationFilters,
         citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Omit for summaries; pages carry bibtex, ris or csl_json"),
         export: z.enum(EXPORT_FORMATS.publications).optional().describe("Return a file link instead of rows"),
-        limit: z.number().int().min(1).optional().describe("Default 25; max 100 summaries or 25 citation_format rows, also byte-bounded. export ignores it"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        limit: LIMITS.search_publications.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
-      const store = await ensureStore();
-      const maxLimit = args.citation_format ? 25 : 100;
-      const limit = capLimit(args.limit, 25, maxLimit);
+      const store = callStore();
+      const { limit, echo } = (args.citation_format ? LIMITS.citation_rows : LIMITS.search_publications).resolve(args.limit);
       const offset = capOffset(args.offset);
       const { citation_format, export: format, limit: _l, offset: _o, ...filters } = args;
       const invalid = publicationFilterError(filters);
@@ -72,7 +82,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
 
       filtered.sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title) || a.o_id - b.o_id);
       const didYouMean = !filtered.length && guidanceEnabled() ? publicationDidYouMean(store, filters) : [];
-      const extra = { ...limitEcho(args.limit, maxLimit, limit), ...filtersEcho(filters), ...(didYouMean.length ? { did_you_mean: didYouMean } : {}) };
+      const extra = { ...echo, ...filtersEcho(filters), ...(didYouMean.length ? { did_you_mean: didYouMean } : {}) };
       const hint = emptySearchHint(filtered.length, filters);
       if (citation_format) return publicationExportPage(filtered, offset, limit, citation_format, extra, hint);
 
@@ -102,16 +112,15 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       description: "Publication metadata and citation export (BibTeX default). Full text is opt-in and paginated. Cite amira_url; DOI/repository links are additional sources.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_publication:in", () => z.strictObject({
-        id: z.union([z.string().max(1000), z.number()]).describe("Publication Omeka id or typed id publication:29919"),
+        id: idParam(1000).describe("Publication Omeka id or typed id publication:29919"),
         citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Default bibtex; selects bibtex, ris or csl_json field"),
         include_fulltext: z.boolean().optional().describe("Default false — set true to include the extracted full text"),
-        fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
-        fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
+        ...fulltextWindowParams,
         include_similar: includeSimilarSchema,
       })),
     },
     async ({ id, citation_format, include_fulltext, fulltext_offset, fulltext_max_chars, include_similar }) => {
-      const store = await ensureStore();
+      const store = callStore();
       const found = recordArg(store, id, "publication",
         () => errorResult("not_found", `No publication with id '${id}'.`, { suggested_tool: "search_publications" }));
       if ("error" in found) return found.error;
@@ -215,8 +224,8 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       inputSchema: schemaOnce("list_publication_facets:in", () => z.strictObject({
         facet: z.enum(["type", "year", "language", "subject", "author", "venue"]),
         ...publicationFilters,
-        limit: z.number().int().min(1).optional().describe("Default 25, max 100"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        limit: LIMITS.list_publication_facets.schema,
+        offset: offsetParam,
       })),
       outputSchema: schemaOnce("list_publication_facets:out", () => z.object({
         facet: z.string(),
@@ -243,7 +252,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       const args = { ...filters, limit: rawLimit, offset: rawOffset };
       const invalid = publicationFilterError(filters);
       if (invalid) return queryErrorResult(invalid);
-      const store = await ensureStore();
+      const store = callStore();
       const { records } = selectPublications(store, filters);
       const buckets = new Map<string, { value: string; publication_count: number; amira_url?: string }>();
       let missing = 0;
@@ -268,10 +277,10 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
         if (!seen.size) missing++;
       }
       const ranked = [...buckets.values()].sort((a, b) => b.publication_count - a.publication_count || a.value.localeCompare(b.value));
-      const limit = capLimit(args.limit, 25, 100);
+      const { limit, echo } = LIMITS.list_publication_facets.resolve(args.limit);
       return textResult(pageOf(ranked, capOffset(args.offset), limit, (r) => r, {
         facet, total_publications: records.length, missing_values: missing,
-        ...limitEcho(args.limit, 100, limit), ...filtersEcho(filters),
+        ...echo, ...filtersEcho(filters),
       }));
     },
   );
@@ -284,15 +293,15 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       description: "Publication venues ranked by linked bibliography records, with ISSN and catalogue links.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_journals:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Filter on the journal title; every word must match, quote a phrase"),
-        limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
-        offset: z.number().int().min(0).max(100_000).optional(),
+        keyword: textParam().optional().describe("Filter on the journal title; every word must match, quote a phrase"),
+        limit: LIMITS.list_journals.schema,
+        offset: offsetParam,
       })),
     },
     async (args) => {
-      const store = await ensureStore();
+      const store = callStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_journals");
-      const limit = capLimit(args.limit, 50, 200);
+      const { limit, echo } = LIMITS.list_journals.resolve(args.limit);
       const offset = capOffset(args.offset);
 
       const pubCounts = new Map<number, number>();
@@ -324,7 +333,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
             website: r.j.url,
             amira_url: itemUrl(r.j.o_id),
           }),
-          { distinct_journals: ranked.length, ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
+          { distinct_journals: ranked.length, ...echo, ...filtersEcho(args) },
         ),
       );
     },
