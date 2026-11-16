@@ -7,7 +7,7 @@ export const TOOL_PROFILES = {
   full: null,
   research: ["get_collection_overview", "search_research_items", "get_research_item", "search_projects", "get_project",
     "search_persons", "get_person", "search_publications", "get_publication", "list_publication_facets", "search_videos", "get_video",
-    "search_podcasts", "get_podcast", "resolve_entity", "get_entity_graph", "get_text_passages", "compare_collections", "get_data_quality",
+    "search_podcasts", "get_podcast", "search_chronicles", "get_chronicle", "resolve_entity", "get_entity_graph", "get_text_passages", "compare_collections", "get_data_quality",
     "list_subjects", "list_locations", "list_collections", "get_fulltext_map", "get_similar_items", "search", "fetch"],
   discovery: ["get_collection_overview", "resolve_entity", "get_entity_graph", "find_related", "search_projects", "get_project",
     "search_persons", "get_person", "list_subjects", "list_locations", "search_research_items", "get_research_item", "get_similar_items",

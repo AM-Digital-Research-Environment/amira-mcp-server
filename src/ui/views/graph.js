@@ -11,7 +11,7 @@ var GROUPS = [
   { key: "places", label: "Places", heading: "PLACES", types: ["location"] },
   { key: "subjects", label: "Subjects", heading: "SUBJECTS", types: ["subject"] },
   { key: "organisations", label: "Organisations", heading: "ORGANISATIONS", types: ["organisation", "journal"] },
-  { key: "records", label: "Records", heading: "RECORDS", types: ["research_item", "publication", "podcast", "video"] },
+  { key: "records", label: "Records", heading: "RECORDS", types: ["research_item", "publication", "podcast", "video", "chronicle"] },
   { key: "formats", label: "Languages and formats", heading: "LANGUAGES, FORMATS", types: ["language", "format", "playlist"] },
 ];
 var groupOf = function (type) { return GROUPS.find(function (g) { return g.types.indexOf(type) >= 0; }) || GROUPS[GROUPS.length - 1]; };

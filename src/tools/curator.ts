@@ -66,7 +66,7 @@ function corpora(store: DataStore): [string, Indexed[]][] {
     ["organisations", store.organisations], ["locations", store.locations], ["research_sections", store.sections],
     ["publications", store.publications], ["journals", store.journals], ["podcasts", store.podcasts],
     ["videos", store.videos], ["playlists", store.playlists], ["languages", store.languageIndex.all],
-    ["item_sets", store.itemSets], ["subjects", store.subjects],
+    ["item_sets", store.itemSets], ["subjects", store.subjects], ["chronicles", store.chronicles],
   ];
 }
 

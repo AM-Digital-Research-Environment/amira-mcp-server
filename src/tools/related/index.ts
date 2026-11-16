@@ -11,12 +11,12 @@ import { resolveEntities } from "../../entityGraph.js";
 import { allowDescriptive, allowStructured } from "../../exposure.js";
 import { guidanceEnabled } from "../../guidance.js";
 import { personMatches, samePerson } from "../../names.js";
-import { collaborativeRole } from "../../personCredits.js";
+import { chronicleCredits, collaborativeRole } from "../../personCredits.js";
 import { recordLinks } from "../../recordLinks.js";
 import { placeMatcher } from "../../researchItemQuery.js";
 import { fold } from "../../text.js";
 import { stripTypedId } from "../../typedIds.js";
-import type { LinkedRef, ProjectRec, PublicationRec, ResearchItemRec } from "../../types.js";
+import type { ChronicleRec, LinkedRef, ProjectRec, PublicationRec, ResearchItemRec } from "../../types.js";
 import { itemUrl } from "../../urls.js";
 import {
   READ_ONLY, containsCI, equalsCI, errorResult, exposureRestrictedResult, itemRef, limitParam, textParam, textResult, type Server,
@@ -37,7 +37,7 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
       title: "Find related entities",
       // Renders as a radial co-occurrence hub in MCP Apps hosts; plain JSON elsewhere.
       _meta: APP_UI_META,
-      description: "Subjects, people, places and projects connected through shared records. Per-corpus counts deduplicate each record; subject/person seeds also include publications. Returns ambiguity and cited samples.",
+      description: "Subjects, people, places and projects connected through shared records. Per-corpus counts deduplicate each record; subject/person seeds also include publications, subject/place/person seeds Cluster Chronicles works. Returns ambiguity and cited samples.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("find_related:in", () => z.strictObject({
         entity_type: z
@@ -162,6 +162,13 @@ function relatedByEntity(store: DataStore, type: "subject" | "location" | "perso
     type === "subject" ? store.publications.filter((p) => p.subjects.some(matchesSubject))
       : type === "person" ? store.publications.filter((p) => [...p.authors, ...p.editors].some((r) => matchesPerson(r.label, r.o_id)))
         : [];
+  // Cluster Chronicles works carry subjects, places and people (credits and the
+  // people a work depicts, src/personCredits.ts), so they join those three pivots.
+  const matchedChronicles: ChronicleRec[] =
+    type === "subject" ? store.chronicles.filter((c) => c.subjects.some(matchesSubject))
+      : type === "location" ? store.chronicles.filter((c) => c.places.some(matchesPlace))
+        : type === "person" ? store.chronicles.filter((c) => chronicleCredits(c).some((p) => matchesPerson(p.name, p.o_id)))
+          : [];
 
   // The pivot's own subject or person would top every list: leave it out.
   const skip = {
@@ -177,18 +184,25 @@ function relatedByEntity(store: DataStore, type: "subject" | "location" | "perso
     lists.add("research_item", recordLinks(store, "research_item", it.o_id), crewOnly ? { ...skip, people: () => true } : skip);
   }
   for (const p of matchedPubs) lists.add("publication", recordLinks(store, "publication", p.o_id), skip);
+  for (const c of matchedChronicles) {
+    const crewOnly = type === "person" && !chronicleCredits(c).some((p) => matchesPerson(p.name, p.o_id) && collaborativeRole(p.role));
+    lists.add("chronicle", recordLinks(store, "chronicle", c.o_id), crewOnly ? { ...skip, people: () => true } : skip);
+  }
 
   // A substring (subject) or a place at any level (location) pools several
   // values into one set of counts: say which.
   const pooled = type === "subject"
-    ? pooledValues([...seed.flatMap((it) => it.subjects.filter(matchesSubject)), ...matchedPubs.flatMap((p) => p.subjects.filter(matchesSubject))])
-    : type === "location" ? pooledValues(seed.flatMap((it) => it.places.filter(matchesPlace))) : null;
+    ? pooledValues([...seed.flatMap((it) => it.subjects.filter(matchesSubject)), ...matchedPubs.flatMap((p) => p.subjects.filter(matchesSubject)),
+      ...matchedChronicles.flatMap((c) => c.subjects.filter(matchesSubject))])
+    : type === "location"
+      ? pooledValues([...seed.flatMap((it) => it.places.filter(matchesPlace)), ...matchedChronicles.flatMap((c) => c.places.filter(matchesPlace))])
+      : null;
 
   const candidates = type === "person" ? personSeeds
     : type === "project" ? resolveEntities(store, `project:${project!.o_id}`, "project")
       : resolveEntities(store, value, type);
   const sampleCap = Math.min(limit, SAMPLE_CAP);
-  const empty = !seed.length && !matchedPubs.length && guidanceEnabled()
+  const empty = !seed.length && !matchedPubs.length && !matchedChronicles.length && guidanceEnabled()
     ? { hint: type === "subject" ? `No subject heading contains '${value}'. Check the spelling, or browse headings with list_subjects.`
       : type === "location" ? `No place matches '${value}'. Check the spelling, or browse places with list_locations.`
         : type === "person" ? `No record credits '${value}'. Check the name with search_persons.`
@@ -203,6 +217,7 @@ function relatedByEntity(store: DataStore, type: "subject" | "location" | "perso
     ...limitEcho,
     matched_items: seed.length,
     ...(type === "subject" || type === "person" ? { matched_publications: matchedPubs.length } : {}),
+    ...(type !== "project" ? { matched_chronicles: matchedChronicles.length } : {}),
     ...(pooled ? { matched_value_count: pooled.length, matched_values: pooled.slice(0, limit) } : {}),
     ...empty,
     ...lists.toResponse(limit),
@@ -210,6 +225,10 @@ function relatedByEntity(store: DataStore, type: "subject" | "location" | "perso
     ...(matchedPubs.length
       ? { related_publications: matchedPubs.slice(0, sampleCap)
         .map((p) => ({ id: String(p.o_id), omeka_id: p.o_id, title: p.title, year: p.year, amira_url: itemUrl(p.o_id) })) }
+      : {}),
+    ...(matchedChronicles.length
+      ? { related_chronicles: matchedChronicles.slice(0, sampleCap)
+        .map((c) => ({ id: String(c.o_id), omeka_id: c.o_id, title: c.title, form: c.form, date: c.date, amira_url: itemUrl(c.o_id) })) }
       : {}),
   });
 }

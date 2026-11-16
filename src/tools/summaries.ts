@@ -8,6 +8,7 @@ import { itemUrl, itemUrlOrNull } from "../urls.js";
 import { allowStructured } from "../exposure.js";
 import { config } from "../config.js";
 import type {
+  ChronicleRec,
   PersonRec,
   PodcastRec,
   ProjectRec,
@@ -173,6 +174,24 @@ export function podcastSummary(p: PodcastRec): Record<string, unknown> {
     ...(p.duration ? { duration: p.duration } : {}),
     has_transcript: !!p.transcript,
     amira_url: itemUrl(p.o_id),
+  };
+}
+
+/** Search-result summary of a Cluster Chronicles work. */
+export function chronicleSummary(c: ChronicleRec): Record<string, unknown> {
+  return {
+    id: String(c.o_id),
+    omeka_id: c.o_id,
+    title: c.title,
+    ...(c.alt_titles.length ? { alternative_title: c.alt_titles[0] } : {}),
+    form: c.form,
+    date: c.date,
+    ...(c.number != null ? { number: c.number } : {}),
+    ...(allowStructured() ? capped("people", c.people.map(creditLabel)) : {}),
+    url: c.urls[0] ?? null,
+    has_text: !!c.text,
+    has_media: !!c.media?.length,
+    amira_url: itemUrl(c.o_id),
   };
 }
 

@@ -69,7 +69,7 @@ function pubRole(p: PublicationRec, personOId: number | null, name: string): "au
   return null;
 }
 
-/** True when the name occurs as a full credit anywhere (contributor, author, editor, podcast or video speaker). */
+/** True when the name occurs as a full credit anywhere (contributor, author, editor, podcast or video speaker, chronicler). */
 function creditedAnywhere(store: DataStore, name: string): string | null {
   return store.cached(`credited-names`, () => {
     const names = new Map<string, string>();
@@ -78,6 +78,7 @@ function creditedAnywhere(store: DataStore, name: string): string | null {
     for (const p of store.publications) for (const r of [...p.authors, ...p.editors]) add(r.label);
     for (const p of store.podcasts) for (const c of p.people) add(c.name);
     for (const v of store.videos) for (const c of v.speakers) add(c.name);
+    for (const c of store.chronicles) for (const p of c.people) add(p.name);
     return names;
   }).get(nameKey(name)) ?? null;
 }
@@ -196,7 +197,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
     "get_person",
     {
       title: "Get person profile",
-      description: "Person affiliations, identifiers, project and section roles, credited items, publications, podcasts, videos and collaborators. Lists cap at 50 with totals. Use id to disambiguate.",
+      description: "Person affiliations, identifiers, project and section roles, credited items, publications, podcasts, videos, Cluster Chronicles works and collaborators. Lists cap at 50 with totals. Use id to disambiguate.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_person:in", () => z.strictObject({
         name: textParam()
@@ -319,6 +320,16 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       };
       const podcasts = recordings(store.podcasts, (p) => p.people);
       const videos = recordings(store.videos, (v) => v.speakers);
+      // Cluster Chronicles works the person wrote, photographed, translated,
+      // spoke at or moderated, or is shown in (role "Depicted").
+      const chronicles: Record<string, unknown>[] = [];
+      for (const c of store.chronicles) {
+        const credit = c.people.find((p) => isPerson(p.name, p.o_id));
+        const depicted = !credit && c.depicts.some((r) => isPerson(r.label, r.o_id));
+        if (!credit && !depicted) continue;
+        chronicles.push({ role: credit ? credit.role || "Contributor" : "Depicted", id: String(c.o_id), omeka_id: c.o_id, title: c.title,
+          form: c.form, date: c.date, amira_url: itemUrl(c.o_id) });
+      }
 
       const shared = (c: Collaborator) => c.shared_items + c.authored.size + c.edited.size + c.shared_recordings;
       const topCollaborators = [...collaborators.values()].sort((a, b) => shared(b) - shared(a) || a.name.localeCompare(b.name));
@@ -349,6 +360,9 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         video_count: videos.length,
         videos: videos.slice(0, 50),
         videos_truncated: videos.length > 50 || undefined,
+        ...(chronicles.length
+          ? { chronicle_count: chronicles.length, chronicles: chronicles.slice(0, 50), chronicles_truncated: chronicles.length > 50 || undefined }
+          : {}),
         ...(guidanceEnabled() ? { collaborators_note: COLLABORATORS_NOTE } : {}),
         collaborator_count: topCollaborators.length,
         top_collaborators: topCollaborators.slice(0, COLLABORATOR_CAP).map((c) => ({

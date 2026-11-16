@@ -5,13 +5,13 @@
 // IDs. Every tool now parses both, and the detail tools accept a typed ID too.
 
 export type RecordKind =
-  | "research_item" | "publication" | "video" | "podcast" | "project" | "section" | "person" | "organisation"
+  | "research_item" | "publication" | "video" | "podcast" | "chronicle" | "project" | "section" | "person" | "organisation"
   | "location" | "subject" | "journal" | "collection" | "playlist" | "language" | "format";
 
 const PREFIXES: Record<string, RecordKind> = {
   item: "research_item", research_item: "research_item",
   pub: "publication", publication: "publication",
-  video: "video", podcast: "podcast", project: "project",
+  video: "video", podcast: "podcast", chronicle: "chronicle", project: "project",
   section: "section", research_section: "section",
   person: "person",
   organisation: "organisation", organization: "organisation", institution: "organisation", group: "organisation",

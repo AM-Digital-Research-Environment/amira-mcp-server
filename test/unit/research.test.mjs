@@ -37,7 +37,7 @@ test("related counts deduplicate contributor roles and locations per source reco
   assert.equal(related.effective_limit, 50);
   for (const row of [...related.related_people, ...related.related_countries]) {
     assert.ok(row.research_item_count <= related.matched_items);
-    assert.equal(row.count, row.research_item_count + row.publication_count);
+    assert.equal(row.count, row.research_item_count + row.publication_count + (row.chronicle_count ?? 0));
   }
   const onlyPubs = await call("find_related", { entity_type: "subject", value: "Decoloniality" });
   assert.equal(onlyPubs.matched_items, 0);

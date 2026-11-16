@@ -7,7 +7,7 @@ import { fold } from "./text.js";
 import { nameKey, nameMatchesQuery } from "./names.js";
 import { config } from "./config.js";
 import { type NamesakeKind, duplicatePointer, publicNamesakeOf } from "./namesakes.js";
-import { collaborativeRole } from "./personCredits.js";
+import { chronicleCredits, collaborativeRole } from "./personCredits.js";
 import { itemSetUrl, itemUrl } from "./urls.js";
 import { collectionOfItemSet } from "./collections.js";
 import { snapshotId } from "./snapshotIdentity.js";
@@ -15,7 +15,7 @@ import { canonicalTypedId } from "./typedIds.js";
 import { RECORD_KINDS, recordTitle } from "./recordKinds.js";
 
 export const entityTypes = ["person", "project", "section", "organisation", "location", "subject", "format", "language",
-  "collection", "research_item", "publication", "journal", "podcast", "video", "playlist"] as const;
+  "collection", "research_item", "publication", "journal", "podcast", "video", "chronicle", "playlist"] as const;
 export type EntityType = typeof entityTypes[number];
 export const entitySchema = z.object({ id: z.string(), type: z.enum(entityTypes), label: z.string(),
   omeka_id: z.number().nullable(), amira_url: citedUrlNullable(), resolved: z.boolean(),
@@ -29,7 +29,7 @@ export type Evidence = z.infer<typeof evidenceSchema>;
 export const edgeSchema = z.object({ id: z.string(), source: z.string(), target: z.string(),
   kind: z.enum(["explicit", "cooccurrence"]), relation: z.string(), count: z.number(),
   research_item_count: z.number(), publication_count: z.number(), video_count: z.number(), podcast_count: z.number(),
-  evidence: z.array(evidenceSchema), evidence_total: z.number() });
+  chronicle_count: z.number(), evidence: z.array(evidenceSchema), evidence_total: z.number() });
 type Edge = z.infer<typeof edgeSchema>;
 interface Link { source: string; target: string; relation: string; evidence: Evidence }
 interface RecordLinks { evidence: Evidence; entities: Set<string> }
@@ -54,7 +54,7 @@ export function graphIndex(store: DataStore): GraphIndex {
     };
     // Subjects, languages and formats enter as they are referenced, resolved by type below.
     for (const type of ["person", "project", "section", "organisation", "location", "collection", "research_item", "publication",
-      "journal", "podcast", "video", "playlist"] as const) {
+      "journal", "podcast", "video", "chronicle", "playlist"] as const) {
       for (const row of RECORD_KINDS[type].rows(store)) entity(type, recordTitle(row), row.o_id);
     }
     // The kind each record was registered under. Omeka ids are unique across
@@ -122,6 +122,24 @@ export function graphIndex(store: DataStore): GraphIndex {
       ["person", credits(p.speakers, true), "speaker"],
       ["playlist", p.playlists, "playlist"], ["language", p.languages, "language"],
     ], [["person", credits(p.speakers, false), "speaker"]]);
+    // A chronicle's people are its credits and the people it depicts
+    // (src/personCredits.ts), each linked under its own role. A venue that is
+    // an institution's record, and a relation to a video or podcast record,
+    // join that record's node (kindOf above); a relation is an explicit link
+    // only, like a research item's related items.
+    const chronicleRole = (role: string) => role.toLowerCase().replace(/\s+/g, "_") || "contributor";
+    for (const c of store.chronicles) {
+      const people = chronicleCredits(c);
+      const byRole = (shared: boolean): Refs =>
+        people.filter((p) => collaborativeRole(p.role) === shared)
+          .map((p): [EntityType, LinkedRef[], string] => ["person", [{ label: p.name, o_id: p.o_id }], chronicleRole(p.role)]);
+      record(`chronicle:${c.o_id}`, "chronicles", [
+        ...byRole(true), ["subject", c.subjects, "subject"], ["location", c.places, "spatial"], ["language", c.languages, "language"],
+      ], [
+        ...byRole(false),
+        ...c.relations.map((r): [EntityType, LinkedRef[], string] => ["chronicle", [r], "relation"]),
+      ]);
+    }
     for (const p of store.projects) record(`project:${p.o_id}`, "projects", [
       ["person", p.pis, "principal_investigator"], ["person", p.members, "member"],
       ["section", p.sections, "section"], ["organisation", p.funded_by, "funder"],
@@ -201,7 +219,7 @@ function computeEdges(store: DataStore, seed: string) {
     if (target === source) return;
     const id = createHash("sha256").update(JSON.stringify([source, target, kind, relation])).digest("hex").slice(0, 24);
     const row = edges.get(id) ?? { edge: { id, source, target, kind, relation, count: 0, research_item_count: 0,
-      publication_count: 0, video_count: 0, podcast_count: 0, evidence: [], evidence_total: 0 }, evidence: new Map() };
+      publication_count: 0, video_count: 0, podcast_count: 0, chronicle_count: 0, evidence: [], evidence_total: 0 }, evidence: new Map() };
     row.evidence.set(evidence.id, evidence); edges.set(id, row);
   };
   for (const link of index.explicit.get(seed) ?? []) add(link.source, link.target, "explicit", link.relation, link.evidence);
@@ -216,6 +234,7 @@ function computeEdges(store: DataStore, seed: string) {
     edge.publication_count = refs.filter((r) => r.corpus === "publications").length;
     edge.video_count = refs.filter((r) => r.corpus === "videos").length;
     edge.podcast_count = refs.filter((r) => r.corpus === "podcasts").length;
+    edge.chronicle_count = refs.filter((r) => r.corpus === "chronicles").length;
   }
   return [...edges.values()].sort((a, b) => b.edge.count - a.edge.count || a.edge.id.localeCompare(b.edge.id));
 }

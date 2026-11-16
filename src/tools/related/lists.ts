@@ -3,16 +3,15 @@
 // counted per record (src/matching.ts RefTally) and split by corpus.
 import { guidanceEnabled } from "../../guidance.js";
 import { RefTally } from "../../matching.js";
-import type { RecordLinks } from "../../recordLinks.js";
-import type { SemanticKind } from "../../semantic.js";
+import type { LinkKind, RecordLinks } from "../../recordLinks.js";
 import type { LinkedRef } from "../../types.js";
 import { itemUrlOrNull } from "../../urls.js";
 
 /** The per-corpus count each record kind adds to. Research items and
- * publications are always reported; the others only by the record pivot. */
-const CORPUS_FIELD: Record<SemanticKind, string> = {
+ * publications are always reported; the others only when a pivot matched one. */
+const CORPUS_FIELD: Record<LinkKind, string> = {
   research_item: "research_item_count", publication: "publication_count", video: "video_count",
-  podcast: "podcast_count", project: "project_count", section: "section_count",
+  podcast: "podcast_count", chronicle: "chronicle_count", project: "project_count", section: "section_count",
 };
 const ALWAYS = ["research_item_count", "publication_count"];
 
@@ -32,7 +31,7 @@ export class RelatedLists {
 
   /** Count one matched record's links. `skip` drops values from a list (the
    * pivot's own subject or person, which would otherwise top every list). */
-  add(kind: SemanticKind, links: RecordLinks, skip: Partial<Record<RelatedList, (ref: LinkedRef) => boolean>> = {}): void {
+  add(kind: LinkKind, links: RecordLinks, skip: Partial<Record<RelatedList, (ref: LinkedRef) => boolean>> = {}): void {
     for (const list of LISTS) {
       const refs = links[LINK_OF[list]];
       const drop = skip[list];

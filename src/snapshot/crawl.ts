@@ -3,6 +3,7 @@
 
 import { config } from "../config.js";
 import {
+  transformChronicle,
   transformItemSet,
   transformJournal,
   transformMedia,
@@ -99,6 +100,8 @@ const CORPUS_QUERIES: Record<Exclude<CorpusName, "item_sets">, string> = {
   podcasts: "resource_template_id=21",
   videos: "resource_template_id=22",
   playlists: "item_set_id=39193",
+  // Cluster Chronicles: the writer-in-residence works (template 34, mixed resource classes).
+  chronicles: "item_set_id=50105",
   languages: "item_set_id=19",
   // Subject authorities: curated LCSH headings and free tags (template 6).
   subjects: "item_set_id=1852",
@@ -224,9 +227,9 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     for (const list of Object.values(raw)) for (const it of list) if (it["o:is_public"] === false) hidden.add(oid(it));
   }
 
-  // Resolve the publication fabio classes (a handful of ids).
+  // Resolve the publication and chronicle classes (a handful of ids).
   const pubClassIds = new Set<number>();
-  for (const it of raw.publications) {
+  for (const it of [...raw.publications, ...raw.chronicles]) {
     const c = classId(it);
     if (c != null) pubClassIds.add(c);
   }
@@ -256,6 +259,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     languages: visible(raw.languages, transformLanguage),
     item_sets: visible(raw.item_sets, transformItemSet),
     subjects: visible(raw.subjects, transformSubject),
+    chronicles: visible(raw.chronicles, (it) => ({ ...transformChronicle(it, ctx), media: mediaOf(oid(it)) })),
   };
   if (droppedPrivate) log(`public mode: dropped ${droppedPrivate} private resource(s) the API returned`);
   // Curator mode: every private item, inside the crawled corpora or not, so a
