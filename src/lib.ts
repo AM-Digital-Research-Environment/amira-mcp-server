@@ -9,7 +9,10 @@ export { samePerson, nameMatchesQuery, editDistance, nearMissNames } from "./nam
 export { fold, foldCached, foldedIndexOf } from "./text.js";
 export { ensureStore, currentStore, chooseInitial, DataStore, withStore } from "./data.js";
 export { warmIndexes } from "./warm.js";
-export { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshot, writeSnapshotAtomic } from "./snapshot.js";
+export {
+  crawlSnapshot, fetchJSON, fetchSemanticRelease, isStale, loadSnapshot, probeCuratorAuth, probeRemote, readFingerprints, readManifest,
+  readSnapshotPointer, snapshotFingerprints, writeSnapshot, writeSnapshotAtomic,
+} from "./snapshot.js";
 export { itemUrl, itemUrlOrNull } from "./urls.js";
 export { generateItemCitation } from "./citation.js";
 export { createAmiraServer } from "./mcpServer.js";
@@ -26,7 +29,6 @@ export { scopeCss } from "./ui/shell.js";
 export { APP_TOOLS, APP_URI, VIEW_OF_TOOL } from "./ui/viewContract.js";
 export { registerAppResources } from "./tools/apps.js";
 export * from "./snapshotIdentity.js";
-export { fetchJSON, readFingerprints, readManifest, readSnapshotPointer, snapshotFingerprints } from "./snapshot.js";
 export * from "./entityGraph.js";
 export { selectResearchItems } from "./researchItemQuery.js";
 export { INSTRUCTIONS, curatorInstructions } from "./mcpServer.js";
@@ -43,9 +45,7 @@ export { exportUri } from "./resources.js";
 export { escBibtex } from "./citation.js";
 export { scrub } from "./tools/responses.js";
 export { describeMarkdown } from "./skills.js";
-export { probeCuratorAuth } from "./snapshot.js";
 export { FULLTEXT_SOURCE, parseFulltextMaps, fulltextIndex, wordTrends } from "./fulltextMaps.js";
-export { fetchSemanticRelease } from "./snapshot.js";
 export {
   NEIGHBOURS_PER_TYPE, SEMANTIC_SOURCE, computeNeighbours, parseSemanticNeighbours, pickSemantic, semanticIndex, servableSemantic,
   verifySemanticRelease,
