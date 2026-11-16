@@ -25,7 +25,7 @@ async function relay(): Promise<void> {
   const url = new URL(config.curatorUrl);
   let handle: Awaited<ReturnType<typeof startRelay>>;
   try {
-    handle = await startRelay({ url, token });
+    handle = await startRelay({ url, token, timeoutMs: config.curatorRelayTimeoutSeconds * 1000 });
   } catch (err) {
     console.error(`[amira] relay failed to start: ${redactToken(String((err as Error)?.message ?? err), token)}`);
     process.exit(1);

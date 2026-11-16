@@ -30,16 +30,16 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
-
+import { TOKEN_CHARS } from "./access.js";
 
 /**
  * The personal token as it goes into the header. A pasted `Bearer ` prefix is
- * dropped; anything that could not be a header value is refused without being
- * quoted.
+ * dropped; anything that could not be a header value, or that the curator
+ * server would refuse by its length, is refused without being quoted.
  */
 export function normalizeCuratorToken(raw: string): string {
   const token = raw.trim().replace(/^bearer\s+/i, "");
-  if (!/^[\x21-\x7e]{16,1024}$/.test(token)) {
+  if (!TOKEN_CHARS.test(token)) {
     throw new Error("AMIRA_CURATOR_TOKEN is malformed: paste the personal token exactly as issued (printable characters, no spaces)");
   }
   return token;
@@ -51,13 +51,26 @@ export function redactToken(text: string, token: string): string {
   return out.replace(/(bearer\s+)[\x21-\x7e]+/gi, "$1[redacted]");
 }
 
-export type RelayFailure = "unauthorized" | "unreachable" | "http_error" | "no_answer";
+export type RelayFailure = "unauthorized" | "unreachable" | "http_error" | "no_answer" | "not_mcp" | "timeout";
+
+/** The text of a failure for a log line: one line, at most `max` characters (the SDK quotes response bodies). */
+export function truncateForLog(text: string, max = 300): string {
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length > max ? `${line.slice(0, max)}… [${line.length - max} more characters]` : line;
+}
 
 /** A failure as the client sees it: a reason code and a message that quotes no secret. */
 export function describeRelayError(err: unknown, url: URL): { reason: RelayFailure; message: string } {
   const where = `${url.origin}${url.pathname}`;
   const noFallback = "No public data is served in its place.";
-  const e = err as { name?: string; status?: unknown; cause?: { code?: unknown }; code?: unknown; message?: unknown };
+  const e = err as { name?: string; status?: unknown; cause?: { code?: unknown }; code?: unknown; message?: unknown; timeoutSeconds?: unknown };
+  if (e?.name === "RelayTimeout") {
+    return {
+      reason: "timeout",
+      message: `AMIRA curator relay: the curator server at ${where} did not answer within ${String(e.timeoutSeconds)} s ` +
+        `(AMIRA_CURATOR_RELAY_TIMEOUT_SECONDS). ${noFallback}`,
+    };
+  }
   const status = typeof e?.status === "number" ? e.status : undefined;
   if (status === 401 || status === 403 || e?.name === "UnauthorizedError") {
     return {
@@ -75,6 +88,16 @@ export function describeRelayError(err: unknown, url: URL): { reason: RelayFailu
   }
   if (e?.name === "StreamClosedError") {
     return { reason: "no_answer", message: `AMIRA curator relay: the curator server at ${where} closed the response without answering. ${noFallback}` };
+  }
+  // An answer that is not MCP at all: a non-MCP content type, a body that is
+  // not JSON, or JSON that is not a JSON-RPC message. Typically a captive
+  // portal or a proxy's HTML page answering in the server's place.
+  if (e?.code === "CLIENT_HTTP_UNEXPECTED_CONTENT" || e?.name === "SyntaxError" || e?.name === "ZodError" || e?.name === "$ZodError") {
+    return {
+      reason: "not_mcp",
+      message: `AMIRA curator relay: something at ${where} answered, but not with an MCP response (a captive portal, ` +
+        `a proxy page or a wrong curator URL?). Sign in to the network or check the curator URL. ${noFallback}`,
+    };
   }
   const code = [e?.cause?.code, e?.code].find((c) => typeof c === "string" && /^[A-Z_]{3,40}$/.test(c));
   return {
@@ -96,6 +119,8 @@ export interface RelayOptions {
   stdout?: Writable;
   /** Where log lines go (stderr by default); every line is redacted first. */
   log?: (line: string) => void;
+  /** Answer a request with a relay error when the curator server has not answered it within this long (default 300 s). */
+  timeoutMs?: number;
 }
 
 export interface RelayHandle {
@@ -121,16 +146,30 @@ export async function startRelay(opts: RelayOptions): Promise<RelayHandle> {
     requestInit: { headers: { Authorization: `Bearer ${token}` } },
   });
 
+  const timeoutMs = opts.timeoutMs ?? 300_000;
   /** Requests forwarded and not yet answered, so a failure can answer them and a cancellation can abort them. */
-  const pending = new Map<string, { id: RequestId; method: string; controller: AbortController }>();
+  const pending = new Map<string, { id: RequestId; method: string; controller: AbortController; timer: ReturnType<typeof setTimeout> }>();
+  /** Take a request out of `pending` (answered, failed, cancelled or timed out); its entry, if it was still there. */
+  const settle = (key: string) => {
+    const entry = pending.get(key);
+    if (!entry) return undefined;
+    pending.delete(key);
+    clearTimeout(entry.timer);
+    return entry;
+  };
+  /**
+   * Errors already logged and answered by a send's own failure handler. The SDK
+   * reports a failed POST twice, to `onerror` and as the send's rejection, with
+   * the same error object; `onerror` defers its line and skips these.
+   */
+  const handled = new WeakSet<object>();
 
   const toClient = (message: JSONRPCMessage) =>
-    local.send(message).catch((err) => log(`[amira] relay: could not write to stdout: ${(err as Error).message}`));
+    local.send(message).catch((err) => log(`[amira] relay: could not write to stdout: ${truncateForLog((err as Error).message)}`));
 
   const answerWithError = (key: string, err: unknown) => {
-    const entry = pending.get(key);
+    const entry = settle(key);
     if (!entry) return;
-    pending.delete(key);
     const { reason, message } = describeRelayError(err, url);
     log(`[amira] relay: ${entry.method} failed: ${message}`);
     void toClient({ jsonrpc: "2.0", id: entry.id, error: { code: RELAY_ERROR_CODE, message, data: { reason } } });
@@ -140,7 +179,16 @@ export async function startRelay(opts: RelayOptions): Promise<RelayHandle> {
     if (isJSONRPCRequest(message)) {
       const key = keyOf(message.id);
       const controller = new AbortController();
-      pending.set(key, { id: message.id, method: message.method, controller });
+      // The relay's own deadline: without it, a request whose answer never
+      // comes (a hung server that keeps the stream open) would wait forever.
+      const timer = setTimeout(() => {
+        if (!pending.has(key)) return;
+        answerWithError(key, Object.assign(new Error("relay timeout"), { name: "RelayTimeout", timeoutSeconds: Math.round(timeoutMs / 1000) }));
+        controller.abort();
+      }, timeoutMs);
+      timer.unref?.();
+      settle(key); // a client reusing an id in flight: the newer request owns it
+      pending.set(key, { id: message.id, method: message.method, controller, timer });
       remote
         .send(message, {
           requestSignal: controller.signal,
@@ -152,8 +200,10 @@ export async function startRelay(opts: RelayOptions): Promise<RelayHandle> {
           },
         })
         .catch((err) => {
-          if (controller.signal.aborted) pending.delete(key);
-          else answerWithError(key, err);
+          if (err && typeof err === "object") handled.add(err);
+          if (controller.signal.aborted) {
+            if (pending.get(key)?.controller === controller) settle(key);
+          } else answerWithError(key, err);
         });
       return;
     }
@@ -163,13 +213,21 @@ export async function startRelay(opts: RelayOptions): Promise<RelayHandle> {
       const requestId = (message.params as { requestId?: RequestId } | undefined)?.requestId;
       const entry = requestId === undefined ? undefined : pending.get(keyOf(requestId));
       if (entry) {
-        pending.delete(keyOf(entry.id));
+        settle(keyOf(entry.id));
         entry.controller.abort();
       }
     }
     // Notifications, and the client's answers to server-initiated requests.
+    // The curator endpoint is stateless: an answer posted back arrives as a new
+    // HTTP request the server cannot correlate with the stream that asked, so
+    // server-initiated requests (sampling, elicitation, roots) do not work
+    // through the relay. The curator server sends none; the answers are still
+    // forwarded so a future stateful server would see them.
     const what = isJSONRPCNotification(message) ? message.method : "a response";
-    remote.send(message).catch((err) => log(`[amira] relay: could not forward ${what}: ${describeRelayError(err, url).message}`));
+    remote.send(message).catch((err) => {
+      if (err && typeof err === "object") handled.add(err);
+      log(`[amira] relay: could not forward ${what}: ${describeRelayError(err, url).message}`);
+    });
   };
 
   remote.onmessage = (message) => {
@@ -177,7 +235,7 @@ export async function startRelay(opts: RelayOptions): Promise<RelayHandle> {
       const key = message.id === undefined || message.id === null ? null : keyOf(message.id);
       const entry = key === null ? undefined : pending.get(key);
       if (entry && key !== null) {
-        pending.delete(key);
+        settle(key);
         // A 2025-era handshake: later requests carry the negotiated version as
         // a header. (2026-era requests carry it in their own _meta envelope.)
         const version = isJSONRPCResultResponse(message) ? (message.result as { protocolVersion?: unknown }).protocolVersion : undefined;
@@ -187,17 +245,26 @@ export async function startRelay(opts: RelayOptions): Promise<RelayHandle> {
     void toClient(message);
   };
 
-  // The transport reports every failure here as well (send failures are also
-  // answered above); log them once, redacted.
-  remote.onerror = (err) => log(`[amira] relay: ${err.message}`);
-  local.onerror = (err) => log(`[amira] relay: stdio error: ${err.message}`);
+  // The transport reports every failure here, send failures included, which are
+  // answered and logged above. Log only the others (the SSE GET stream, …):
+  // a tick later, so a send's rejection can mark its error handled first;
+  // once, redacted, and truncated, since the SDK's message quotes the body.
+  remote.onerror = (err) => {
+    setImmediate(() => {
+      if (!handled.has(err)) log(`[amira] relay: ${truncateForLog(err.message)}`);
+    });
+  };
+  local.onerror = (err) => log(`[amira] relay: stdio error: ${truncateForLog(err.message)}`);
 
   let closing: Promise<void> | null = null;
   let markClosed!: () => void;
   const closed = new Promise<void>((resolve) => (markClosed = resolve));
   const close = (): Promise<void> => {
     closing ??= (async () => {
-      for (const entry of pending.values()) entry.controller.abort();
+      for (const entry of pending.values()) {
+        clearTimeout(entry.timer);
+        entry.controller.abort();
+      }
       pending.clear();
       try {
         await remote.close();

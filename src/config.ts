@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeApiBase } from "./snapshotIdentity.js";
 
 // Renamed from __dirname to avoid colliding with the esbuild banner shim that
 // injects a top-level `__dirname` for bundled CJS dependencies.
@@ -69,7 +70,24 @@ export const API_BASE = `${SITE_BASE}/api`;
  * so the entry points can refuse it (src/access.ts).
  */
 const API_BASE_SETTING = envValue("AMIRA_API_BASE") ?? null;
-export const FETCH_BASE = API_BASE_SETTING ? API_BASE_SETTING.replace(/\/+$/, "") : API_BASE;
+
+/**
+ * The fetch base in its one canonical spelling (lower-case host, no default
+ * port, no trailing slash), so every request URL built from it and every
+ * prefix compared against it agree: `http://WEB:80/api/` and `http://web/api`
+ * are the same base. Built once here and used everywhere (the key is attached
+ * only to URLs under it, src/access.ts). A value that cannot be parsed is kept
+ * as given, minus trailing slashes, so the entry points can refuse it.
+ */
+export function resolveFetchBase(setting: string | null, apiBase: string): string {
+  const raw = (setting ?? apiBase).replace(/\/+$/, "");
+  try {
+    return normalizeApiBase(raw);
+  } catch {
+    return raw;
+  }
+}
+export const FETCH_BASE = resolveFetchBase(API_BASE_SETTING, API_BASE);
 
 /**
  * Directory holding the JSON snapshot shipped inside the bundle. The esbuild
@@ -90,8 +108,22 @@ function resolveBundledDataDir(): string {
 function resolveCacheDir(): string {
   const raw = envValue("AMIRA_CACHE_DIR");
   if (raw) return path.resolve(raw);
+  // A default, not a setting: the Docker image points it at /tmp/amira-cache.
+  // Curator mode does not count it as AMIRA_CACHE_DIR set explicitly, so a
+  // curator container started without its tmpfs cache refuses to start.
+  const imageDefault = envValue("AMIRA_DEFAULT_CACHE_DIR");
+  if (imageDefault) return path.resolve(imageDefault);
   return path.join(os.homedir(), ".amira-mcp", "cache");
 }
+
+/** A TCP port (0 = any free port), or null when `raw` is not one. */
+export function parsePort(raw: string): number | null {
+  const s = raw.trim();
+  if (!/^\d{1,5}$/.test(s)) return null;
+  const n = Number(s);
+  return n <= 65535 ? n : null;
+}
+const HTTP_PORT_SETTING = envValue("PORT") ?? envValue("AMIRA_HTTP_PORT") ?? "8787";
 
 function parseBool(v: string | undefined, fallback: boolean): boolean {
   if (v === undefined) return fallback;
@@ -198,7 +230,9 @@ export const config = {
   enrichmentBase: envValue("AMIRA_ENRICHMENT_BASE")?.replace(/\/+$/, "") ?? null,
   /** Bind for the remote HTTP transport (server/http.js); ignored by the stdio
    * entry point. PORT/HOST are the conventional names; AMIRA_HTTP_* also work. */
-  httpPort: Number(envValue("PORT") ?? envValue("AMIRA_HTTP_PORT") ?? "8787"),
+  httpPort: parsePort(HTTP_PORT_SETTING) ?? Number.NaN,
+  /** PORT / AMIRA_HTTP_PORT as given, so an invalid port can be refused at startup (src/access.ts). */
+  httpPortSetting: HTTP_PORT_SETTING,
   httpHost: envValue("HOST") ?? envValue("AMIRA_HTTP_HOST") ?? "127.0.0.1",
   /** Browser Origin hostnames accepted by the Streamable HTTP endpoint. MCP
    * clients without an Origin header are unaffected. */
@@ -234,8 +268,12 @@ export const config = {
    * any crawl or refresh, proving the key is accepted and has view-all (Omeka
    * answers an unknown key with anonymous data, not an error). Relative to the API base. */
   curatorAuthProbe: envValue("AMIRA_CURATOR_AUTH_PROBE") ?? "items?is_public=0&per_page=1",
-  /** Whether AMIRA_CACHE_DIR was set explicitly (curator mode requires it: point it at tmpfs). */
+  /** Whether AMIRA_CACHE_DIR was set explicitly (curator mode requires it: point it at tmpfs).
+   * AMIRA_DEFAULT_CACHE_DIR (the Docker image's /tmp/amira-cache) does not count. */
   cacheDirConfigured: envValue("AMIRA_CACHE_DIR") !== undefined,
+  /** Curator relay: answer a forwarded request with a relay error when the curator server has not
+   * answered it within this many seconds (AMIRA_CURATOR_RELAY_TIMEOUT_SECONDS, default 300). */
+  curatorRelayTimeoutSeconds: Math.max(1, parseNonNegativeNumber(envValue("AMIRA_CURATOR_RELAY_TIMEOUT_SECONDS"), 300)),
   /** Curator relay (stdio only): whether AMIRA_CURATOR_TOKEN is set. Empty, or
    * the unsubstituted `${user_config.curator_token}` of an unset .mcpb setting,
    * means public mode. The token is read by src/relay.ts and never copied here. */

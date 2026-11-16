@@ -133,6 +133,39 @@ interface Bucket {
   resetAt: number;
 }
 
+/** Curator mode: failed authentications allowed per client address per minute before 429. */
+export const AUTH_FAILURES_PER_MINUTE = 20;
+/** Curator mode: at most this many failed-authentication log lines per minute, whatever the flood. */
+const AUTH_LOG_LINES_PER_MINUTE = 30;
+
+/**
+ * Why an `Authorization` header was refused, for the log line: whether one was
+ * sent and whether it had the bearer shape. Never the header itself.
+ */
+function authFailureReason(header: string | undefined): string {
+  if (header === undefined || header === "") return "no_token";
+  return /^Bearer +\S+$/i.test(header.trim()) ? "unknown_token" : "malformed";
+}
+
+/** A log sink that passes at most `perMinute` lines a minute, then says how many it held back. */
+function cappedLog(perMinute: number, sink: (line: string) => void) {
+  let windowStart = 0;
+  let count = 0;
+  let suppressed = 0;
+  return (line: string, now = Date.now()): void => {
+    if (now - windowStart >= 60_000) {
+      if (suppressed) sink(`[amira] audit rejected=unauthorized suppressed=${suppressed} (log rate cap of ${perMinute}/min)`);
+      windowStart = now;
+      count = 0;
+      suppressed = 0;
+    }
+    if (count < perMinute) {
+      count += 1;
+      sink(line);
+    } else suppressed += 1;
+  };
+}
+
 /** A fixed-window per-client limiter with a bounded key set. */
 export function createRateLimiter(perMinute: number, keyOf: (req: IncomingMessage) => string) {
   const buckets = new Map<string, Bucket>();
@@ -290,7 +323,16 @@ function healthBody(startupError: string | null): Record<string, unknown> {
 export function createHttpApp(opts: HttpAppOptions = {}) {
   const rateLimitPerMinute = opts.rateLimitPerMinute ?? config.rateLimitPerMinute;
   const keyOpts = { trustProxy: opts.trustProxy ?? config.trustProxy, proxyHops: opts.proxyHops ?? config.proxyHops };
-  const limiter = createRateLimiter(rateLimitPerMinute, (req) => addressBucket(clientAddress(req, keyOpts)));
+  const addressOf = (req: IncomingMessage) => addressBucket(clientAddress(req, keyOpts));
+  // Curator mode: an authenticated request is counted against its curator, not
+  // its address, so curators behind one proxy address do not share a budget.
+  const curatorOf = new WeakMap<IncomingMessage, string>();
+  const limiter = createRateLimiter(rateLimitPerMinute, (req) => {
+    const name = curatorOf.get(req);
+    return name ? `curator:${name}` : addressOf(req);
+  });
+  /** Curator mode: failed authentications per client address (independent of AMIRA_RATE_LIMIT). */
+  const authFailures = createRateLimiter(AUTH_FAILURES_PER_MINUTE, addressOf);
   const host = opts.host ?? config.httpHost;
   // The MCP Streamable HTTP specification requires Origin validation. Requests
   // without Origin (normal for server-to-server MCP clients) pass; browser
@@ -309,6 +351,7 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
     if (!tokens.size) throw new Error("curator mode: AMIRA_MCP_TOKENS_FILE holds no valid token");
   }
   const audit = opts.audit ?? ((line: string) => console.error(line));
+  const auditRefusal = cappedLog(AUTH_LOG_LINES_PER_MINUTE, audit);
   const authorized = tokens ? null : bearerCheck(opts.bearerToken ?? config.bearerToken);
   const metrics = createRequestMetrics();
   const mcpEntry = createMcpHandler(() => createAmiraServer({ openai: true }), { maxRequestBodySize: MAX_REQUEST_BYTES });
@@ -359,10 +402,22 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
     if ((path === MCP_PATH || path === "/metrics") && tokens) {
       curator = tokens.check(req.headers.authorization);
       if (!curator) {
+        // Counted and logged before anything else answers: one audit line per
+        // failure (the client and why, never what was presented), capped so a
+        // flood cannot fill the log, and 429 once an address keeps failing.
+        const retryAfter = authFailures.check(req);
+        auditRefusal(`[amira] audit rejected=unauthorized client=${addressOf(req)} path=${path} ` +
+          `reason=${authFailureReason(req.headers.authorization)}${retryAfter ? " limited=1" : ""}`);
+        if (retryAfter) {
+          res.setHeader("Retry-After", String(retryAfter));
+          sendJson(res, 429, { error: "rate limited", message: `Too many failed authentications from this client. Retry in ${retryAfter}s.` });
+          return;
+        }
         res.setHeader("WWW-Authenticate", 'Bearer realm="amira-curator"');
         sendJson(res, 401, { error: "unauthorized" });
         return;
       }
+      curatorOf.set(req, curator);
     }
     if ((path === MCP_PATH || path === "/metrics") && authorized && !authorized(req.headers.authorization)) {
       res.setHeader("WWW-Authenticate", "Bearer");
