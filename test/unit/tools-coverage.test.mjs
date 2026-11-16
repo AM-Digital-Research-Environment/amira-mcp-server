@@ -7,13 +7,15 @@ import {
 } from "../helpers/coverage-harness.mjs";
 
 // --- institutions and groups ---------------------------------------------------
+// Affiliated people as refs only, `name` like every other ref (the bare name list repeated them).
+const personRef = (name, id) => ({ name, id: String(id), omeka_id: id, amira_url: url(id) });
 
 const UBT = {
   id: "200", omeka_id: 200, name: "University of Bayreuth", name_variants: ["UBT"], kind: "institution",
   part_of: [{ id: "37685", omeka_id: 37685, name: "Africa Multiple Research Centres", amira_url: url(37685) }],
   partner_categories: [AMRC], latitude: 49.94, longitude: 11.58, wikidata: null, identifiers: [],
   project_count: 1, projects: [{ id: "300", omeka_id: 300, name: "Fixture Art Worlds", amira_url: url(300) }],
-  affiliated_person_count: 1, affiliated_persons: ["Beier, Ulli"], affiliated_person_refs: [ref("Beier, Ulli", 100)],
+  affiliated_person_count: 1, affiliated_person_refs: [personRef("Beier, Ulli", 100)],
   contributed_item_count: 0, contributed_items: [], amira_url: url(200),
 };
 const UJKZ = {
@@ -22,7 +24,7 @@ const UJKZ = {
   wikidata: "http://www.wikidata.org/entity/Q3551690",
   identifiers: [{ scheme: "ror", id: "00t5e2y66", url: "https://ror.org/00t5e2y66" }],
   project_count: 1, projects: [{ id: "302", omeka_id: 302, name: "Ouaga Sound Archive", amira_url: url(302) }],
-  affiliated_person_count: 1, affiliated_persons: ["Kaboré, Awa"], affiliated_person_refs: [ref("Kaboré, Awa", 102)],
+  affiliated_person_count: 1, affiliated_person_refs: [personRef("Kaboré, Awa", 102)],
   contributed_item_count: 0, contributed_items: [], amira_url: url(202),
 };
 
@@ -48,14 +50,15 @@ test("get_institution: partner category from an isPartOf link; groups get item c
     id: "203", omeka_id: 203, name: "Center for Afro-Oriental Studies", name_variants: ["CEAO"], kind: "institution",
     part_of: [{ id: "39073", omeka_id: 39073, name: "Privileged partner", amira_url: url(39073) }],
     partner_categories: [{ key: "privileged", name: "Privileged partner", omeka_id: 39073, amira_url: url(39073) }],
-    wikidata: null, identifiers: [], project_count: 0, projects: [], affiliated_person_count: 0, affiliated_persons: [],
+    wikidata: null, identifiers: [], project_count: 0, projects: [], affiliated_person_count: 0,
     affiliated_person_refs: [], contributed_item_count: 0, contributed_items: [], amira_url: url(203),
   });
   assert.deepEqual(await call("get_institution", { id: "group:201" }), {
     id: "201", omeka_id: 201, name: "Test Research Group", kind: "group", part_of: [], partner_categories: [],
-    wikidata: null, identifiers: [], project_count: 0, projects: [], affiliated_person_count: 0, affiliated_persons: [],
+    wikidata: null, identifiers: [], project_count: 0, projects: [], affiliated_person_count: 0,
     affiliated_person_refs: [],
-    contributed_item_count: 1, contributed_items: [itemRef(504, "Ouagadougou Street Recording", "Sound", "2021")],
+    // The group's credit role on each item.
+    contributed_item_count: 1, contributed_items: [{ role: "Publisher", ...itemRef(504, "Ouagadougou Street Recording", "Sound", "2021") }],
     amira_url: url(201),
   });
 });
@@ -143,8 +146,13 @@ test("list_cluster_partners: all four categories, each filter form, invalid_cate
     const one = await call("list_cluster_partners", { category });
     assert.deepEqual(one, { source: all.source, filters: { category }, category_count: 1, partner_count: 2, categories: [amrc] }, category);
   }
-  // A label fragment resolves to the first category whose name contains it.
-  assert.deepEqual((await call("list_cluster_partners", { category: "partner" })).categories, [privileged]);
+  // A label fragment resolves only when one category contains it; "partner"
+  // is in three, which used to answer with the first silently.
+  assert.deepEqual((await call("list_cluster_partners", { category: "privileged" })).categories, [privileged]);
+  assert.deepEqual((await call("list_cluster_partners", { category: "Privileged PARTNER" })).categories, [privileged]);
+  const several = await errorOf("list_cluster_partners", { category: "partner" });
+  assert.equal(several.code, "ambiguous_entity");
+  assert.deepEqual(several.available_values.map((c) => c.key), ["privileged", "cooperation", "global"]);
   const cooperation = await call("list_cluster_partners", { category: "cooperation" });
   assert.deepEqual([cooperation.partner_count, cooperation.categories[0].partners], [0, []]);
 

@@ -2,9 +2,12 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { citedUrl, citedUrlNullable } from "./visibility.js";
 import type { DataStore } from "./data.js";
-import type { LinkedRef } from "./types.js";
+import type { LinkedRef, OrganisationRec, PersonRec } from "./types.js";
 import { fold } from "./text.js";
-import { nameMatchesQuery } from "./names.js";
+import { nameKey, nameMatchesQuery } from "./names.js";
+import { config } from "./config.js";
+import { type NamesakeKind, duplicatePointer, publicNamesakeOf } from "./namesakes.js";
+import { collaborativeRole } from "./personCredits.js";
 import { itemSetUrl, itemUrl } from "./urls.js";
 import { collectionOfItemSet } from "./collections.js";
 import { snapshotId } from "./snapshotIdentity.js";
@@ -15,7 +18,11 @@ export const entityTypes = ["person", "project", "section", "organisation", "loc
   "collection", "research_item", "publication", "journal", "podcast", "video", "playlist"] as const;
 export type EntityType = typeof entityTypes[number];
 export const entitySchema = z.object({ id: z.string(), type: z.enum(entityTypes), label: z.string(),
-  omeka_id: z.number().nullable(), amira_url: citedUrlNullable(), resolved: z.boolean() });
+  omeka_id: z.number().nullable(), amira_url: citedUrlNullable(), resolved: z.boolean(),
+  // Curator mode only: a retired private duplicate points to its public namesake (src/namesakes.ts).
+  ...(config.access === "curator"
+    ? { possible_duplicate_of: z.object({ name: z.string(), omeka_id: z.number(), amira_url: z.string().optional() }).passthrough().optional() }
+    : {}) });
 export type Entity = z.infer<typeof entitySchema>;
 export const evidenceSchema = z.object({ id: z.string(), corpus: z.string(), title: z.string(), amira_url: citedUrl() });
 export type Evidence = z.infer<typeof evidenceSchema>;
@@ -28,8 +35,8 @@ interface Link { source: string; target: string; relation: string; evidence: Evi
 interface RecordLinks { evidence: Evidence; entities: Set<string> }
 export interface GraphIndex {
   entities: Map<string, Entity>; explicit: Map<string, Link[]>; records: Map<string, RecordLinks[]>;
-  /** Entities with their folded labels, for resolution without re-folding. */
-  folded: { entity: Entity; label: string }[];
+  /** Entities with their folded labels (and a person's order-independent name key), for resolution without re-folding. */
+  folded: { entity: Entity; label: string; key?: string }[];
 }
 
 export function graphIndex(store: DataStore): GraphIndex {
@@ -50,10 +57,17 @@ export function graphIndex(store: DataStore): GraphIndex {
       "journal", "podcast", "video", "playlist"] as const) {
       for (const row of RECORD_KINDS[type].rows(store)) entity(type, recordTitle(row), row.o_id);
     }
+    // The kind each record was registered under. Omeka ids are unique across
+    // resources, so a reference to a registered record joins that one node
+    // whatever role it plays: a place used as a subject ("Lagos") used to
+    // become a second node, subject:1951 beside location:1951, each with half
+    // the edges, and resolve_entity reported the pair as ambiguous.
+    const kindOf = new Map<number, EntityType>();
+    for (const e of entities.values()) if (e.omeka_id != null && !kindOf.has(e.omeka_id)) kindOf.set(e.omeka_id, e.type);
 
     const add = (source: string, type: EntityType, ref: LinkedRef, relation: string, evidence: Evidence, group?: Set<string>) => {
       if (!ref.label && ref.o_id == null) return;
-      if (type === "person" && ref.o_id != null && entities.has(`organisation:${ref.o_id}`)) type = "organisation";
+      if (ref.o_id != null) type = kindOf.get(ref.o_id) ?? type;
       const target = entity(type, ref.label, ref.o_id, ref.o_id != null &&
         (entities.has(`${type}:${ref.o_id}`) || ["subject", "format", "language"].includes(type)));
       group?.add(target);
@@ -67,18 +81,33 @@ export function graphIndex(store: DataStore): GraphIndex {
       const node = entities.get(id)!;
       return { id, corpus, title: node.label, amira_url: node.amira_url! };
     };
-    const record = (id: string, corpus: string, refs: [EntityType, LinkedRef[], string][]) => {
+    type Refs = [EntityType, LinkedRef[], string][];
+    /** One record's links. `refs` are explicit edges AND members of the record's
+     * co-occurrence group; `linksOnly` are explicit edges only. */
+    const record = (id: string, corpus: string, refs: Refs, linksOnly: Refs = []) => {
       const evidence = evidenceOf(id, corpus);
       const group = new Set<string>();
       for (const [type, values, relation] of refs) for (const ref of values) add(id, type, ref, relation, evidence, group);
+      for (const [type, values, relation] of linksOnly) for (const ref of values) add(id, type, ref, relation, evidence);
       const entry = { evidence, entities: group };
       for (const key of group) { const rows = records.get(key) ?? []; rows.push(entry); records.set(key, rows); }
     };
+    // Credits in a non-collaborative role (sound engineer, repository,
+    // sponsor…) stay explicit links but share no work, so they co-occur with
+    // nobody: the definition get_person and find_related use (src/personCredits.ts).
+    type Credit = { name: string; o_id: number | null; role?: string | null };
+    const credits = (cs: readonly Credit[], shared: boolean) =>
+      cs.filter((c) => collaborativeRole(c.role) === shared).map((c) => ({ label: c.name, o_id: c.o_id }));
+    // A related item is an item-to-item link, not a member of the record's
+    // group: in the group it made every related item co-occur with the
+    // record's places, subjects and people.
     for (const it of store.items) record(`research_item:${it.o_id}`, "research_items", [
-      ["person", it.contributors.map((c) => ({ label: c.name, o_id: c.o_id })), "contributor"],
+      ["person", credits(it.contributors, true), "contributor"],
       ["subject", it.subjects, "subject"], ["location", it.places, "spatial"], ["format", it.formats, "format"],
       ["language", it.languages, "language"], ["project", it.project ? [it.project] : [], "project"],
       ["collection", it.item_sets.map((id) => ({ o_id: id, label: store.getItemSet(id)?.title ?? `Collection ${id}` })), "collection"],
+    ], [
+      ["person", credits(it.contributors, false), "contributor"],
       ...it.related.map((r): [EntityType, LinkedRef[], string] => ["research_item", [r.ref], r.relation]),
     ]);
     for (const p of store.publications) record(`publication:${p.o_id}`, "publications", [
@@ -87,12 +116,12 @@ export function graphIndex(store: DataStore): GraphIndex {
       ["location", p.places_of_publication, "publication_place"],
     ]);
     for (const p of store.podcasts) record(`podcast:${p.o_id}`, "podcasts", [
-      ["person", p.people.map((c) => ({ label: c.name, o_id: c.o_id })), "speaker"], ["language", p.languages, "language"],
-    ]);
+      ["person", credits(p.people, true), "speaker"], ["language", p.languages, "language"],
+    ], [["person", credits(p.people, false), "speaker"]]);
     for (const p of store.videos) record(`video:${p.o_id}`, "videos", [
-      ["person", p.speakers.map((c) => ({ label: c.name, o_id: c.o_id })), "speaker"],
+      ["person", credits(p.speakers, true), "speaker"],
       ["playlist", p.playlists, "playlist"], ["language", p.languages, "language"],
-    ]);
+    ], [["person", credits(p.speakers, false), "speaker"]]);
     for (const p of store.projects) record(`project:${p.o_id}`, "projects", [
       ["person", p.pis, "principal_investigator"], ["person", p.members, "member"],
       ["section", p.sections, "section"], ["organisation", p.funded_by, "funder"],
@@ -103,9 +132,32 @@ export function graphIndex(store: DataStore): GraphIndex {
     for (const p of store.persons) record(`person:${p.o_id}`, "persons", [["organisation", p.affiliations, "affiliation"]]);
     for (const p of store.organisations) record(`organisation:${p.o_id}`, "organisations", [["organisation", p.part_of, "part_of"]]);
     for (const p of store.locations) record(`location:${p.o_id}`, "locations", [["location", p.parent ? [p.parent] : [], "within"]]);
-    const folded = [...entities.values()].map((entity) => ({ entity, label: fold(entity.label) }));
+    const folded = [...entities.values()].map((entity) =>
+      ({ entity, label: fold(entity.label), ...(entity.type === "person" ? { key: nameKey(entity.label) } : {}) }));
     return { entities, explicit, records, folded };
   });
+}
+
+/** The person or organisation record behind an entity, for the curator-mode namesake rules. */
+function authorityOf(store: DataStore, entity: Entity): { record: PersonRec | OrganisationRec; kind: NamesakeKind } | undefined {
+  if (entity.omeka_id == null) return undefined;
+  if (entity.type === "person") { const record = store.getPersonByOId(entity.omeka_id); return record && { record, kind: "person" }; }
+  if (entity.type === "organisation") { const record = store.getOrganisationByOId(entity.omeka_id); return record && { record, kind: "organisation" }; }
+  return undefined;
+}
+
+/** The public record a private authority entity duplicates, as its typed id. */
+function namesakeId(store: DataStore, entity: Entity): string | undefined {
+  const authority = authorityOf(store, entity);
+  const canonical = authority && publicNamesakeOf(store, authority.record, authority.kind);
+  return canonical ? `${authority.kind}:${canonical.o_id}` : undefined;
+}
+
+/** Curator mode: an entity with its `possible_duplicate_of` pointer when it is a retired private duplicate. */
+function withPointer(store: DataStore, entity: Entity): Entity {
+  const authority = authorityOf(store, entity);
+  const pointer = authority ? duplicatePointer(store, authority.record, authority.kind) : {};
+  return "possible_duplicate_of" in pointer ? { ...entity, ...pointer } : entity;
 }
 
 export function resolveEntities(store: DataStore, query: string, type?: EntityType): Entity[] {
@@ -113,13 +165,26 @@ export function resolveEntities(store: DataStore, query: string, type?: EntityTy
   const raw = query.trim();
   const q = fold(raw);
   if (!q) return [];
+  const curator = config.access === "curator";
   // Typed ids from either vocabulary (`item:9902` = `research_item:9902`).
   const typed = canonicalTypedId(raw);
-  const exact = all.filter(({ entity, label }) => entity.id === typed || String(entity.omeka_id) === raw || label === q).map(({ entity }) => entity);
-  if (exact.length) return exact;
-  return all.filter(({ entity, label }) => label.includes(q) || (entity.type === "person" && nameMatchesQuery(entity.label, raw)))
+  // A person's full name matches in either order ("Fernand Bationo" = "Bationo, Fernand").
+  const key = nameKey(raw);
+  let exact = all.filter(({ entity, label, key: k }) =>
+    entity.id === typed || String(entity.omeka_id) === raw || label === q || (!!k && k === key)).map(({ entity }) => entity);
+  if (exact.length) {
+    // A retired private duplicate gives way to its public namesake (curator mode).
+    if (curator && exact.length > 1) {
+      const ids = new Set(exact.map((e) => e.id));
+      exact = exact.filter((e) => { const canonical = namesakeId(store, e); return !canonical || !ids.has(canonical); });
+    }
+    return curator ? exact.map((e) => withPointer(store, e)) : exact;
+  }
+  const isPrivate = (e: Entity): number => (curator && authorityOf(store, e)?.record.visibility === "private" ? 1 : 0);
+  const partial = all.filter(({ entity, label }) => label.includes(q) || (entity.type === "person" && nameMatchesQuery(entity.label, raw)))
     .map(({ entity }) => entity)
-    .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
+    .sort((a, b) => a.label.localeCompare(b.label) || isPrivate(a) - isPrivate(b) || a.id.localeCompare(b.id));
+  return curator ? partial.map((e) => withPointer(store, e)) : partial;
 }
 
 /** A seed's edges with their evidence, cached per seed (the most recent 64): an

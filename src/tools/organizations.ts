@@ -10,7 +10,7 @@ import {
   READ_ONLY,
   capLimit,
   capOffset,
-  containsCI,
+  emptySearchHint,
   equalsCI,
   errorResult,
   exposureRestrictedResult,
@@ -22,8 +22,10 @@ import {
   type Server,
 } from "./_shared.js";
 import { itemUrl } from "../urls.js";
-import { anyContainsCI } from "../matching.js";
+import { type KeywordQuery, keywordMatches, parseKeyword } from "../matching.js";
 import { fold } from "../text.js";
+import { duplicatePointer, publicFirst, publicNamesakeOf, withoutPrivateNamesakes } from "../namesakes.js";
+import { pastEndHint } from "./listHints.js";
 
 type PartnerCategoryKey = "amrc" | "privileged" | "cooperation" | "global";
 
@@ -97,14 +99,13 @@ const PARTNER_CATEGORY_NAMES: Record<PartnerCategoryKey, string[]> = {
   ],
 };
 
-function resolvePartnerCategory(input: string | undefined): PartnerCategory | null {
-  if (!input) return null;
-  const q = input.trim().toLowerCase();
-  return (
-    PARTNER_CATEGORIES.find(
-      (c) => c.key === q || c.name.toLowerCase() === q || c.name.toLowerCase().includes(q),
-    ) ?? null
-  );
+/** The categories `input` names: an exact key or label first, else every label containing it.
+ * Taking the first partial match silently answered "partner" with one of three categories. */
+function partnerCategoryMatches(input: string): PartnerCategory[] {
+  const q = fold(input).trim();
+  if (!q) return [];
+  const exact = PARTNER_CATEGORIES.filter((c) => c.key === q || fold(c.name) === q);
+  return exact.length ? exact : PARTNER_CATEGORIES.filter((c) => fold(c.name).includes(q));
 }
 
 function partnerCategoriesFor(org: OrganisationRec): PartnerCategory[] {
@@ -162,8 +163,21 @@ function contributedItems(store: DataStore, org: OrganisationRec): ResearchItemR
   return store.items.filter((it) => found.has(it));
 }
 
-const orgMatches = (o: OrganisationRec, keyword: string): boolean =>
-  containsCI(o.name, keyword) || anyContainsCI(o.alt_names, keyword);
+/** The organisation's credit role on an item it is credited on ("Publisher", "Performer"…). */
+function creditRole(org: OrganisationRec, it: ResearchItemRec): string | null {
+  const credit = it.contributors.find((c) => c.o_id === org.o_id || fold(c.name) === fold(org.name));
+  return credit?.role || null;
+}
+
+/** Every word of a multi-word keyword occurs in the name or a variant; a quoted phrase literally (src/matching.ts).
+ * The whole keyword used to be one substring, so "University Lagos" matched nothing. */
+const orgMatches = (o: OrganisationRec, keyword: KeywordQuery): boolean => keywordMatches(keyword, [o.name, ...(o.alt_names ?? [])]);
+
+/** Organisations of one list, private ones (retired duplicates among them) after public ones in curator mode. */
+function listedOrganisations(store: DataStore, inList: (o: OrganisationRec) => boolean, keyword: string | undefined): OrganisationRec[] {
+  const query = keyword ? parseKeyword(keyword) : null;
+  return publicFirst(store.organisations.filter((o) => inList(o) && (!query || orgMatches(o, query))));
+}
 
 const words = (s: string): string[] => fold(s).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 
@@ -185,10 +199,10 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
     "list_institutions",
     {
       title: "List institutions",
-      description: "Browse institution authorities by name or acronym (e.g. 'UJKZ'), with project counts and citation links.",
+      description: "Browse institution authorities (and untyped organisations, marked kind) by name or acronym (e.g. 'UJKZ'), with project counts and citation links.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_institutions:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Name or acronym, partial"),
+        keyword: z.string().max(1000).optional().describe("Name or acronym, partial; several words must all match"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
       })),
@@ -198,11 +212,10 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_institutions");
       const limit = capLimit(args.limit, 50, 200);
       const offset = capOffset(args.offset);
-      const filtered = store.organisations.filter(
-        (o) => o.kind === "institution" && (!args.keyword || orgMatches(o, args.keyword)),
-      );
-      return textResult(
-        pageOf(
+      // Groups have their own list; an organisation of no recorded type would
+      // otherwise be in neither, though the overview counts it.
+      const filtered = listedOrganisations(store, (o) => o.kind !== "group", args.keyword);
+      const page = pageOf(
           filtered,
           offset,
           limit,
@@ -210,6 +223,8 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
             name: o.name,
             id: String(o.o_id),
             omeka_id: o.o_id,
+            ...(o.kind === "organisation" ? { kind: o.kind } : {}),
+            ...duplicatePointer(store, o, "organisation"),
             ...(o.alt_names?.length ? { name_variants: o.alt_names } : {}),
             project_count: projectCountFor(store, o),
             ...(partnerCategoriesFor(o).length > 0
@@ -219,8 +234,8 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
             amira_url: itemUrl(o.o_id),
           }),
           { ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
-        ),
-      );
+        );
+      return textResult({ ...page, ...emptySearchHint(filtered.length, args), ...pastEndHint(page) });
     },
   );
 
@@ -244,11 +259,13 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
         () => errorResult("not_found", `No institution or group with id '${id}'.`, { suggested_tool: "list_institutions" })) : undefined;
       if (byId && "error" in byId) return byId.error;
       let record = byId ? byId.record : store.getOrganisation(name!);
+      // By name, a retired private duplicate gives way to its public namesake.
+      if (!byId) record = publicNamesakeOf(store, record, "organisation") ?? record;
       // Not an exact name or recorded variant: accept whole words of one name,
       // so an acronym in parentheses ("LACC") resolves the way list_institutions
       // finds it. Several matches are named, never guessed between.
       if (!record && id == null) {
-        const matches = store.organisations.filter((o) => orgWordsMatch(o, name!));
+        const matches = withoutPrivateNamesakes(store, store.organisations.filter((o) => orgWordsMatch(o, name!)), "organisation");
         if (matches.length > 1) {
           return errorResult("ambiguous_entity", `${matches.length} institutions or groups match '${name}'; use an exact name or id.`, {
             suggested_tool: "list_institutions",
@@ -275,6 +292,7 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
         id: String(record.o_id),
         omeka_id: record.o_id,
         name: record.name,
+        ...duplicatePointer(store, record, "organisation"),
         ...(record.alt_names?.length ? { name_variants: record.alt_names } : {}),
         kind: record.kind,
         part_of: (record.part_of ?? []).map((p) => ({
@@ -295,11 +313,11 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
         project_count: projects.length,
         projects: projects.map((p) => ({ id: String(p.o_id), omeka_id: p.o_id, name: p.name, amira_url: itemUrl(p.o_id) })),
         affiliated_person_count: people.length,
-        affiliated_persons: people.slice(0, 50).map((p) => p.name),
-        affiliated_person_refs: people.slice(0, 50).map((p) => ({ label: p.name, omeka_id: p.o_id, amira_url: itemUrl(p.o_id) })),
+        affiliated_person_refs: people.slice(0, 50)
+          .map((p) => ({ name: p.name, id: String(p.o_id), omeka_id: p.o_id, amira_url: itemUrl(p.o_id) })),
         affiliated_persons_truncated: people.length > 50 || undefined,
         contributed_item_count: items.length,
-        contributed_items: items.slice(0, 50).map(itemRef),
+        contributed_items: items.slice(0, 50).map((it) => ({ role: creditRole(record, it), ...itemRef(it) })),
         contributed_items_truncated: items.length > 50 || undefined,
         amira_url: itemUrl(record.o_id),
       });
@@ -323,13 +341,17 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
     async ({ category }) => {
       const store = await ensureStore();
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_cluster_partners");
-      const selected = category ? resolvePartnerCategory(category) : null;
-      if (category && !selected) {
-        return errorResult("invalid_category", `Unknown partner category '${category}'.`, {
+      const matches = category ? partnerCategoryMatches(category) : [];
+      if (category && matches.length !== 1) {
+        const several = matches.length > 1;
+        return errorResult(several ? "ambiguous_entity" : "invalid_category", several
+          ? `${matches.length} partner categories match '${category}'; pass one key or full label.`
+          : `Unknown partner category '${category}'.`, {
           suggested_tool: "list_cluster_partners",
-          available_values: PARTNER_CATEGORIES.map((c) => ({ key: c.key, name: c.name })),
+          available_values: (several ? matches : PARTNER_CATEGORIES).map((c) => ({ key: c.key, name: c.name })),
         });
       }
+      const selected = matches[0] ?? null;
 
       const categories = selected ? [selected] : PARTNER_CATEGORIES;
       const grouped = categories.map((c) => {
@@ -364,10 +386,10 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
     "list_groups",
     {
       title: "List groups",
-      description: "Browse research groups and associations by name, with citation links.",
+      description: "Browse group authorities by name, mostly performing ensembles credited on research items, with item counts and citation links.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("list_groups:in", () => z.strictObject({
-        keyword: z.string().max(1000).optional().describe("Name or acronym, partial"),
+        keyword: z.string().max(1000).optional().describe("Name or acronym, partial; several words must all match"),
         limit: z.number().int().min(1).optional().describe("Default 50, max 200"),
         offset: z.number().int().min(0).max(100_000).optional(),
       })),
@@ -377,11 +399,8 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
       if (!allowStructured()) return exposureRestrictedResult("structured", "list_groups");
       const limit = capLimit(args.limit, 50, 200);
       const offset = capOffset(args.offset);
-      const filtered = store.organisations.filter(
-        (o) => o.kind === "group" && (!args.keyword || orgMatches(o, args.keyword)),
-      );
-      return textResult(
-        pageOf(
+      const filtered = listedOrganisations(store, (o) => o.kind === "group", args.keyword);
+      const page = pageOf(
           filtered,
           offset,
           limit,
@@ -389,12 +408,13 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
             name: g.name,
             id: String(g.o_id),
             omeka_id: g.o_id,
+            ...duplicatePointer(store, g, "organisation"),
             contributed_item_count: contributedItems(store, g).length,
             amira_url: itemUrl(g.o_id),
           }),
           { ...limitEcho(args.limit, 200, limit), ...filtersEcho(args) },
-        ),
-      );
+        );
+      return textResult({ ...page, ...emptySearchHint(filtered.length, args), ...pastEndHint(page) });
     },
   );
 }

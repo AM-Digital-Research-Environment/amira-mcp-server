@@ -132,9 +132,11 @@ test("default mode: a search that finds someone is unchanged; without a near mis
     assert.ok(!("suggestions" in page), JSON.stringify(args));
     assert.equal(page.hint, RELAX, JSON.stringify(args));
   }
-  // A page past the end of a non-empty result is not an empty search.
+  // A page past the end of a non-empty result is not an empty search: it says
+  // the offset is past the end, not to relax the filters.
   const past = await call("search_persons", { keyword: "Seesemann", offset: 5 });
-  assert.deepEqual([past.total_matches, "hint" in past], [1, false]);
+  assert.equal(past.total_matches, 1);
+  assert.match(past.hint, /^offset 5 is past the end: there are 1 matches/);
   assert.deepEqual((await call("search_persons", { keyword: "Rudigr Seeman", affiliation: "Bayreuth" })).suggestions, [SEESEMANN]);
 });
 

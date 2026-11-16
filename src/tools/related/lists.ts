@@ -1,6 +1,7 @@
 // The related_* lists every find_related pivot returns: which projects,
 // sections, subjects, people, countries and formats its matched records share,
 // counted per record (src/matching.ts RefTally) and split by corpus.
+import { guidanceEnabled } from "../../guidance.js";
 import { RefTally } from "../../matching.js";
 import type { RecordLinks } from "../../recordLinks.js";
 import type { SemanticKind } from "../../semantic.js";
@@ -14,6 +15,11 @@ const CORPUS_FIELD: Record<SemanticKind, string> = {
   podcast: "podcast_count", project: "project_count", section: "section_count",
 };
 const ALWAYS = ["research_item_count", "publication_count"];
+
+/** How to read related_people, sent while guidance is on (AMIRA_GUIDANCE=off drops it). */
+const PEOPLE_NOTE =
+  "People credited on the matched records (organisations and production or custodial roles left out), ordered by how many " +
+  "records they share. A count of shared records, not a measure of collaboration or standing: do not rank or judge people by it.";
 
 export type RelatedList = "projects" | "sections" | "subjects" | "people" | "countries" | "formats";
 const LISTS: readonly RelatedList[] = ["projects", "sections", "subjects", "people", "countries", "formats"];
@@ -45,11 +51,14 @@ export class RelatedLists {
         amira_url: itemUrlOrNull(r.o_id),
       };
     });
+    const people = rows("people");
     return {
       related_projects: rows("projects"),
       related_research_sections: rows("sections"),
       related_subjects: rows("subjects"),
-      related_people: rows("people"),
+      // Sorted by count like every list, which must not read as a ranking of people (get_person's collaborators_note).
+      ...(people.length && guidanceEnabled() ? { people_note: PEOPLE_NOTE } : {}),
+      related_people: people,
       related_countries: rows("countries"),
       related_formats: rows("formats"),
     };

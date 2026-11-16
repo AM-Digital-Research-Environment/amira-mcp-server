@@ -5,6 +5,7 @@
 // map's group descriptions all read a record's links. Each used to fetch the
 // record by kind and pick the fields itself, three copies that had to agree.
 import type { DataStore } from "./data.js";
+import { personCredits } from "./personCredits.js";
 import { RECORD_KINDS } from "./recordKinds.js";
 import type { SemanticKind } from "./semantic.js";
 import type { LinkedRef } from "./types.js";
@@ -15,7 +16,8 @@ export interface RecordLinks {
   places: readonly LinkedRef[];
   /** The country of each place: the root of its ancestor chain. */
   countries: readonly LinkedRef[];
-  /** Credited people: contributors, authors and editors, speakers, PIs and members. */
+  /** Credited people: contributors, authors and editors, speakers, PIs and members, as person credits
+   * (organisations and non-collaborative roles left out, src/personCredits.ts). */
   people: readonly LinkedRef[];
   /** A research item's project, or a project itself. */
   projects: readonly LinkedRef[];
@@ -26,9 +28,11 @@ export interface RecordLinks {
 
 const NONE: readonly LinkedRef[] = [];
 const EMPTY: RecordLinks = { subjects: NONE, places: NONE, countries: NONE, people: NONE, projects: NONE, sections: NONE, formats: NONE };
-const credit = (c: { name: string; o_id: number | null }): LinkedRef => ({ label: c.name, o_id: c.o_id });
 
 function build(store: DataStore, kind: SemanticKind, oId: number): RecordLinks {
+  // People are person credits (src/personCredits.ts): no organisation, no
+  // non-collaborative role, the definition get_person counts collaborators by.
+  const people = (credits: Parameters<typeof personCredits>[1]) => personCredits(store, credits);
   switch (kind) {
     case "research_item": {
       const it = RECORD_KINDS.research_item.byKey(store, String(oId));
@@ -37,7 +41,7 @@ function build(store: DataStore, kind: SemanticKind, oId: number): RecordLinks {
         subjects: it.subjects,
         places: it.places,
         countries: it.places.map((p) => store.placeChainRefs(p).at(-1) ?? p),
-        people: it.contributors.map(credit),
+        people: people(it.contributors),
         projects: it.project ? [it.project] : NONE,
         sections: store.sectionRefsOfItem(it),
         formats: it.formats,
@@ -45,23 +49,23 @@ function build(store: DataStore, kind: SemanticKind, oId: number): RecordLinks {
     }
     case "publication": {
       const p = store.getPublication(String(oId));
-      return p ? { ...EMPTY, subjects: p.subjects, people: [...p.authors, ...p.editors] } : EMPTY;
+      return p ? { ...EMPTY, subjects: p.subjects, people: people([...p.authors, ...p.editors]) } : EMPTY;
     }
     case "video": {
       const v = store.getVideo(oId);
-      return v ? { ...EMPTY, people: v.speakers.map(credit) } : EMPTY;
+      return v ? { ...EMPTY, people: people(v.speakers) } : EMPTY;
     }
     case "podcast": {
       const p = store.getPodcast(oId);
-      return p ? { ...EMPTY, people: p.people.map(credit) } : EMPTY;
+      return p ? { ...EMPTY, people: people(p.people) } : EMPTY;
     }
     case "project": {
       const p = store.getProjectByOId(oId);
-      return p ? { ...EMPTY, projects: [{ label: p.name, o_id: p.o_id }], sections: p.sections, people: [...p.pis, ...p.members] } : EMPTY;
+      return p ? { ...EMPTY, projects: [{ label: p.name, o_id: p.o_id }], sections: p.sections, people: people([...p.pis, ...p.members]) } : EMPTY;
     }
     case "section": {
       const s = store.getSectionByOId(oId);
-      return s ? { ...EMPTY, sections: [{ label: s.name, o_id: s.o_id }], people: [...s.pis, ...s.members] } : EMPTY;
+      return s ? { ...EMPTY, sections: [{ label: s.name, o_id: s.o_id }], people: people([...s.pis, ...s.members]) } : EMPTY;
     }
   }
 }

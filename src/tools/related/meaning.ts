@@ -8,7 +8,7 @@ import { itemUrl } from "../../urls.js";
 import { errorResult, limitEcho, textResult } from "../_shared.js";
 import { noNeighboursReason, resolveSemanticSeed, semanticUnavailable } from "../similar.js";
 import { RelatedLists } from "./lists.js";
-import { MATCHING } from "./matching.js";
+import { MATCHING, SAMPLE_CAP } from "./matching.js";
 
 /** Records the `record` pivot counts: the seed's closest by meaning, of any type. */
 const PIVOT_RECORDS = 20;
@@ -45,7 +45,7 @@ export function relatedByMeaning(store: DataStore, value: string, limit: number,
     ...limitEcho(requested, 50, limit),
     matched_records: neighbours.length,
     matched_by_type: byType,
-    closest: neighbours.slice(0, 10).map(({ record: n, score }) => ({ ...semanticRef(n), score })),
+    closest: neighbours.slice(0, Math.min(limit, SAMPLE_CAP)).map(({ record: n, score }) => ({ ...semanticRef(n), score })),
     ...lists.toResponse(limit),
   });
 }

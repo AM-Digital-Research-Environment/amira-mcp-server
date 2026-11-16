@@ -19,6 +19,7 @@ import { findRecord } from "../recordKinds.js";
 import { READ_ONLY, capLimit, capOffset, limitEcho, queryErrorResult, textResult, errorResult, exposureRestrictedResult, pageOf, type Server } from "./_shared.js";
 import { refreshSchema } from "./outputSchemas.js";
 import { personSuggestions } from "./people.js";
+import { pastEndHint, unresolvedQueryHint } from "./listHints.js";
 
 const offsetSchema = z.number().int().min(0).max(100_000).optional();
 const querySchema = z.string().trim().min(1).max(1000);
@@ -47,7 +48,9 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     // A name that resolves to nothing may be a misspelt person: offer near
     // misses, unless the query asked for another type.
     const personQuery = !args.type || args.type === "person";
-    return textResult(found.length || !personQuery ? page : { ...page, ...personSuggestions(store.persons, args.query) });
+    if (found.length) return textResult({ ...page, ...pastEndHint(page) });
+    const why = unresolvedQueryHint(args.query);
+    return textResult(!personQuery || "hint" in why ? { ...page, ...why } : { ...page, ...personSuggestions(store.persons, args.query) });
   });
 
   tools.get_entity_graph = server.registerTool("get_entity_graph", {
@@ -61,6 +64,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       limit: z.number().int().min(1).optional().describe("Evidence page size, default 20, max 50") })),
     outputSchema: schemaOnce("get_entity_graph:out", () => z.object({ snapshot_id: z.string(), seed: z.string(), nodes: z.array(entitySchema).optional(), edges: z.array(edgeSchema).optional(),
       total_edges: z.number().optional(), truncated: z.boolean().optional(), bounds: z.object({ max_nodes: z.number(), max_edges: z.number(), hops: z.number() }).optional(),
+      requested_bounds: z.object({ max_nodes: z.number().optional(), max_edges: z.number().optional() }).optional(),
       neighbour_types: z.record(z.string(), z.number()).optional(), types: z.array(z.string()).optional(),
       results: z.array(evidenceSchema).optional(), count: z.number().optional(), total_matches: z.number().optional(), offset: z.number().optional(),
       has_more: z.boolean().optional(), next_offset: z.number().optional(), requested_limit: z.number().optional(), effective_limit: z.number().optional(),
@@ -81,7 +85,11 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       return textResult(pageOf([...edge.evidence.values()], capOffset(args.offset), limit, (e) => e,
         { seed, snapshot_id: id, ...limitEcho(args.limit, 50, limit) }));
     }
-    return textResult(entityGraph(store, seed, capLimit(args.max_nodes, 40, 100), capLimit(args.max_edges, 50, 200), args.types));
+    const maxNodes = capLimit(args.max_nodes, 40, 100), maxEdges = capLimit(args.max_edges, 50, 200);
+    // Like a list's requested/effective limit: say when a bound was capped.
+    const capped = { ...(args.max_nodes != null && args.max_nodes > 100 ? { max_nodes: args.max_nodes } : {}),
+      ...(args.max_edges != null && args.max_edges > 200 ? { max_edges: args.max_edges } : {}) };
+    return textResult({ ...entityGraph(store, seed, maxNodes, maxEdges, args.types), ...(Object.keys(capped).length ? { requested_bounds: capped } : {}) });
   });
 
   tools.get_text_passages = server.registerTool("get_text_passages", {
