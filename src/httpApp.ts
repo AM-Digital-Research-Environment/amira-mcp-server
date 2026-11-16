@@ -253,7 +253,7 @@ function resourceKind(uri: unknown): string {
 }
 
 /** One audit line: who, and which method/tool/resource kind. Never a token or an argument. */
-export function auditLine(curator: string, httpMethod: string | undefined, body: unknown): string {
+function auditLine(curator: string, httpMethod: string | undefined, body: unknown): string {
   const describe = (msg: unknown): string => {
     const m = msg as { method?: unknown; params?: { name?: unknown; uri?: unknown } } | null;
     if (!m || typeof m !== "object" || typeof m.method !== "string") return "message=?";

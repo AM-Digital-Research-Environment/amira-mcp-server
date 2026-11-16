@@ -18,8 +18,8 @@
 // for every term of every query. Results are therefore memoised above
 // LARGE_TEXT. The cache is keyed by the string itself — the snapshot already
 // holds those strings alive, so the only extra cost is the folded copy of texts
-// that were actually searched — and it is cleared when a refresh swaps the
-// snapshot (see data.ts).
+// that were actually searched — and each snapshot owns its own (FoldCaches
+// below), so it is freed with the snapshot a refresh replaces.
 
 // U+0300–U+036F, the combining-diacritic block NFD decomposition produces.
 const COMBINING_MARKS = /[̀-ͯ]/g;
@@ -59,7 +59,7 @@ interface OffsetShift { start: number; end: number; original: number; delta: num
 
 /**
  * Folded copies of large texts and their offset shifts. Each served snapshot
- * owns one (src/data.ts DataStore.folds), so the copies are freed with the
+ * owns one (src/store.ts DataStore.folds), so the copies are freed with the
  * snapshot they belong to: a module-wide cache, cleared on refresh, was
  * refilled with the OLD snapshot's texts by any call still running against it.
  */
@@ -69,7 +69,9 @@ export const newFoldCaches = (): FoldCaches => ({ folded: new Map(), offsets: ne
 /** Used when no snapshot is in scope (unit tests, scripts). */
 const fallbackCaches = newFoldCaches();
 let cacheProvider: () => FoldCaches | undefined = () => undefined;
-/** src/data.ts points this at the snapshot the current call is serving. */
+/** src/storeLifecycle.ts points this at the snapshot the current call is
+ * serving. An injected provider, not an import: the lifecycle imports the store,
+ * which imports this module, so importing the lifecycle here would be a cycle. */
 export function setFoldCacheProvider(provider: () => FoldCaches | undefined): void {
   cacheProvider = provider;
 }
@@ -114,13 +116,6 @@ export function foldCached(s: string): string {
   const folded = fold(s);
   foldedCache.set(s, folded);
   return folded;
-}
-
-/** Drop memoised folds — call when the snapshot behind them is replaced. */
-export function clearFoldCache(): void {
-  const { folded, offsets } = caches();
-  folded.clear();
-  offsets.clear();
 }
 
 /**
@@ -174,37 +169,4 @@ export function foldedMatches(
     cursor = index + query.length;
   }
   return { total, capped: false, ranges };
-}
-
-/** Original UTF-16 offsets, including decomposed accents and surrogate pairs. */
-export function foldedRanges(text: string, needle: string, limit = 20, from = 0): { start: number; end: number }[] {
-  const query = fold(needle);
-  if (!query) return [];
-  let normalized = "";
-  const starts: number[] = [], ends: number[] = [];
-  let offset = 0;
-  let baseUnits = 0; // index of the first folded unit of the last character that produced any
-  for (const char of text) {
-    const folded = stripMarks(char);
-    if (folded) baseUnits = ends.length;
-    for (let i = 0; i < folded.length; i++) { starts.push(offset); ends.push(offset + char.length); }
-    // A mark that folds away belongs to the preceding character: every unit that
-    // character produced (œ → "oe") now ends after the mark, as in foldedMatches.
-    if (!folded) for (let i = baseUnits; i < ends.length; i++) ends[i] = offset + char.length;
-    normalized += folded;
-    offset += char.length;
-  }
-  // Lowercase the whole sequence so contextual mappings (Greek final sigma)
-  // agree with fold(). NFD has removed the only expanding lowercase mapping, İ.
-  normalized = normalized.toLowerCase();
-  const result: { start: number; end: number }[] = [];
-  let cursor = 0;
-  while (result.length < limit) {
-    const index = normalized.indexOf(query, cursor);
-    if (index < 0) break;
-    const start = starts[index]!;
-    if (start >= from) result.push({ start, end: ends[index + query.length - 1]! });
-    cursor = index + query.length;
-  }
-  return result;
 }

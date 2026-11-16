@@ -238,11 +238,6 @@ test("a retired private duplicate never shadows the public authority of the same
   const store = new lib.DataStore("cache", fx.data, fx.manifest);
   assert.equal(store.getOrganisation(publicOrg.name).o_id, publicOrg.o_id);
   assert.equal(store.getPersonByName(publicPerson.name).o_id, publicPerson.o_id);
-  const privOrg = store.getOrganisationByOId(9200);
-  assert.equal(store.publicNamesake(privOrg, "organisation")?.o_id, publicOrg.o_id);
-  assert.equal(store.publicNamesake(store.getPersonByOId(9100), "person")?.o_id, publicPerson.o_id);
-  assert.equal(store.publicNamesake(publicOrg, "organisation"), undefined, "a public record is not its own namesake");
-  assert.equal(store.publicNamesake({ o_id: 1, name: "UBT", visibility: "private" }, "organisation"), undefined, "an alias is not a name");
 
   // Private only: the private record is found. Two public records: the last wins, as before.
   const only = buildFixture(lib.SNAPSHOT_SCHEMA_VERSION);
@@ -250,7 +245,6 @@ test("a retired private duplicate never shadows the public authority of the same
   only.data.organisations.push({ ...only.data.organisations[1], o_id: 9301, name: "Twin" }, { ...only.data.organisations[1], o_id: 9302, name: "Twin" });
   const s2 = new lib.DataStore("cache", only.data, only.manifest);
   assert.equal(s2.getOrganisation("Hidden Group").o_id, 9300);
-  assert.equal(s2.publicNamesake(s2.getOrganisationByOId(9300), "organisation"), undefined);
   assert.equal(s2.getOrganisation("Twin").o_id, 9302);
 });
 

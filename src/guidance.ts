@@ -22,26 +22,20 @@
 //         search_research_items' relaxation `suggestions` and `did_you_mean`.
 //         Prompts and the companion skill are not registered.
 //
-// Any value other than `off` means on; an unrecognised one is reported on
-// stderr, because a typo would otherwise run the wrong condition silently.
+// It takes the spellings of every boolean setting (src/env.ts): off, 0, false
+// or no turn it off; an unrecognised value is reported on stderr and keeps it
+// on, because a typo would otherwise run the wrong condition silently.
 //
 // The tool list is built when a server is created and hosts cache it, so set
 // the variable before the server starts: the surface is read once, results
 // read it per call (as AMIRA_EXPOSURE does) and agree as long as it is left
 // alone. The evaluation harness restarts the server for each condition.
 
-let warned = false;
+import { bool } from "./env.js";
 
-/** False only when AMIRA_GUIDANCE=off. */
+/** False when AMIRA_GUIDANCE is off (off/0/false/no). */
 export function guidanceEnabled(): boolean {
-  const raw = process.env.AMIRA_GUIDANCE?.trim().toLowerCase();
-  if (!raw || raw === "on") return true;
-  if (raw === "off") return false;
-  if (!warned) {
-    warned = true;
-    console.error(`[amira] ignoring AMIRA_GUIDANCE=${JSON.stringify(process.env.AMIRA_GUIDANCE)}; use on or off (guidance stays on).`);
-  }
-  return true;
+  return bool("AMIRA_GUIDANCE", true);
 }
 
 // --- schema stripping ----------------------------------------------------------

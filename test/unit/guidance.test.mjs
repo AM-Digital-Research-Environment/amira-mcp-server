@@ -136,8 +136,9 @@ test("guidance: unset and `on` return the same results; advice stays in errors a
   }
 });
 
-test("guidance: only `off` turns it off; an unknown value keeps it on", async () => {
-  for (const [value, enabled] of [[undefined, true], ["on", true], ["ON", true], [" off ", false], ["OFF", false], ["0", true], ["maybe", true]]) {
+test("guidance: the boolean spellings turn it off; an unknown value keeps it on", async () => {
+  for (const [value, enabled] of [[undefined, true], ["on", true], ["ON", true], ["1", true], ["yes", true], [" off ", false], ["OFF", false],
+    ["0", false], ["false", false], ["No", false], ["maybe", true], ["${user_config.guidance}", true]]) {
     if (value === undefined) delete process.env.AMIRA_GUIDANCE;
     else process.env.AMIRA_GUIDANCE = value;
     try {

@@ -50,20 +50,21 @@ test("editDistance counts insertions, deletions, substitutions and adjacent swap
   assert.equal(lib.editDistance("a", "abcdef", 1), 2);
 });
 
-test("nameNearMiss: either name order, accents ignored, one edit per three characters", () => {
-  const forward = lib.nameNearMiss("Seesemann, Rüdiger", "Rudigr Seeman");
-  assert.ok(forward !== null && forward > 0);
-  assert.equal(lib.nameNearMiss("Seesemann, Rüdiger", "Seeman Rudigr"), forward);
-  assert.equal(lib.nameNearMiss("Seesemann, Rüdiger", "RÜDIGR SEEMAN"), forward);
-  assert.equal(lib.nameNearMiss("Seesemann, Rüdiger", "Rüdiger Seesemann"), 0);
-  assert.ok(lib.nameNearMiss("Seesemann, Rüdiger", "Seeman") !== null, "one token may match one name token");
-  assert.ok(lib.nameNearMiss("Kaboré, Awa", "Awa Kabure") !== null);
-  assert.ok(lib.nameNearMiss("Beier, Ulli Rainer", "Uli Beir") !== null, "the name may carry extra tokens");
-  assert.equal(lib.nameNearMiss("Seesemann, Rüdiger", "Rudigr Smith"), null, "every query token needs a partner");
-  assert.equal(lib.nameNearMiss("Seemann, Jörg", "Rudigr Seeman"), null);
-  assert.equal(lib.nameNearMiss("Ba, Amadou", "Bo Amadou"), null, "tokens under three characters must match exactly");
-  assert.equal(lib.nameNearMiss("Beier, Ulli", "Ulli Ulli Beier"), null, "more query tokens than name tokens");
-  assert.equal(lib.nameNearMiss("Beier, Ulli", ""), null);
+test("near misses: either name order, accents ignored, one edit per three characters", () => {
+  /** Whether `query` is a near miss for the stored `name`. */
+  const near = (name, query) => lib.nearMissNames([{ name }], query).length === 1;
+  for (const query of ["Rudigr Seeman", "Seeman Rudigr", "RÜDIGR SEEMAN"]) assert.ok(near("Seesemann, Rüdiger", query), query);
+  // The same tokens score 0 and rank before a typo that the name tiebreak would put first.
+  const twins = [{ name: "Seesemann, Rüdigar" }, { name: "Seesemann, Rüdiger" }];
+  assert.deepEqual(lib.nearMissNames(twins, "Rüdiger Seesemann").map((p) => p.name), ["Seesemann, Rüdiger", "Seesemann, Rüdigar"]);
+  assert.ok(near("Seesemann, Rüdiger", "Seeman"), "one token may match one name token");
+  assert.ok(near("Kaboré, Awa", "Awa Kabure"));
+  assert.ok(near("Beier, Ulli Rainer", "Uli Beir"), "the name may carry extra tokens");
+  assert.ok(!near("Seesemann, Rüdiger", "Rudigr Smith"), "every query token needs a partner");
+  assert.ok(!near("Seemann, Jörg", "Rudigr Seeman"));
+  assert.ok(!near("Ba, Amadou", "Bo Amadou"), "tokens under three characters must match exactly");
+  assert.ok(!near("Beier, Ulli", "Ulli Ulli Beier"), "more query tokens than name tokens");
+  assert.ok(!near("Beier, Ulli", ""));
 });
 
 test("nearMissNames ranks the closest first, then by name, and checks name variants", () => {

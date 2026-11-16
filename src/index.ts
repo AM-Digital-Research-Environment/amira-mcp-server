@@ -2,7 +2,7 @@
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { createAmiraServer, VERSION } from "./mcpServer.js";
 import { config, envValue } from "./config.js";
-import { ensureStore, stopBackgroundRefresh } from "./data.js";
+import { loadInBackground, stopBackgroundRefresh } from "./data.js";
 import { refuseMisconfiguration } from "./access.js";
 import { normalizeCuratorToken, redactToken, startRelay } from "./relay.js";
 
@@ -44,16 +44,8 @@ async function relay(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  // Warm the in-memory snapshot (and kick off the background refresh) without
-  // blocking startup. Tool calls await ensureStore() and surface any load error.
-  void ensureStore()
-    .then((store) =>
-      console.error(
-        `[amira] loaded ${store.items.length} research items / ${store.projects.length} projects / ` +
-          `${store.videos.length} videos from ${store.source} snapshot (fetchedAt=${store.manifest.fetchedAt})`,
-      ),
-    )
-    .catch((err) => console.error(`[amira] initial data load failed: ${(err as Error).message}`));
+  // Warm the in-memory snapshot without blocking startup.
+  loadInBackground();
 
   // `serveStdio` owns the era decision: the opening exchange picks 2026-07-28
   // (`server/discover`) or the legacy `initialize` ladder, then pins ONE

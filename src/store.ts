@@ -1,0 +1,333 @@
+// In-memory store over one Omeka snapshot: its records, the indexes the
+// lookups use and the lazily built data derived from them. Which snapshot is
+// served, and when it is replaced, is src/storeLifecycle.ts.
+
+import type { FulltextMaps } from "./fulltextMaps.js";
+import type { SemanticNeighbours } from "./semantic.js";
+import { LanguageIndex } from "./languages.js";
+import { fold, newFoldCaches } from "./text.js";
+import { stripTypedId } from "./typedIds.js";
+import type {
+  ItemSetRec,
+  JournalRec,
+  LinkedRef,
+  LocationRec,
+  OrganisationRec,
+  PersonRec,
+  PlaylistRec,
+  PodcastRec,
+  ProjectRec,
+  PublicationRec,
+  ResearchItemRec,
+  SectionRec,
+  SnapshotData,
+  SnapshotManifest,
+  SubjectRec,
+  University,
+  VideoRec,
+} from "./types.js";
+
+export const UNIVERSITY_LABELS: Record<University, string> = {
+  ubt: "University of Bayreuth",
+  unilag: "University of Lagos",
+  ujkz: "Université Joseph Ki-Zerbo",
+  ufba: "Federal University of Bahia",
+  external: "External collection",
+};
+
+/** Index `rec` under `key` unless a public record already holds it and `rec` is private. */
+function byNamePreferringPublic<T extends { visibility?: string }>(map: Map<string, T>, key: string, rec: T): void {
+  const held = map.get(key);
+  if (held && held.visibility !== "private" && rec.visibility === "private") return;
+  map.set(key, rec);
+}
+
+export class DataStore {
+  readonly source: "bundled" | "cache";
+  readonly manifest: SnapshotManifest;
+
+  readonly items: ResearchItemRec[];
+  readonly projects: ProjectRec[];
+  readonly persons: PersonRec[];
+  readonly organisations: OrganisationRec[];
+  readonly locations: LocationRec[];
+  readonly sections: SectionRec[];
+  readonly publications: PublicationRec[];
+  readonly journals: JournalRec[];
+  readonly podcasts: PodcastRec[];
+  readonly videos: VideoRec[];
+  readonly playlists: PlaylistRec[];
+  readonly itemSets: ItemSetRec[];
+  /** Subject authorities (empty when serving a v4 snapshot). */
+  readonly subjects: SubjectRec[];
+  readonly languageIndex: LanguageIndex;
+  /** Folded copies of this snapshot's large texts (src/text.ts). */
+  readonly folds = newFoldCaches();
+  /** DRE Visualizations' ILAM full-text map products, when the snapshot carries them (src/fulltextMaps.ts). */
+  readonly fulltextMaps: FulltextMaps | null;
+  /** Nearest neighbours from DRE Visualizations' corpus vectors, when the snapshot carries them (src/semantic.ts). */
+  readonly semantic: SemanticNeighbours | null;
+
+  private readonly itemByDreId = new Map<string, ResearchItemRec>();
+  private readonly itemByOId = new Map<number, ResearchItemRec>();
+  private readonly projectByDreId = new Map<string, ProjectRec>();
+  private readonly projectByOId = new Map<number, ProjectRec>();
+  private readonly personByName = new Map<string, PersonRec>();
+  private readonly personByOId = new Map<number, PersonRec>();
+  private readonly orgByName = new Map<string, OrganisationRec>();
+  private readonly orgByOId = new Map<number, OrganisationRec>();
+  private readonly locationByOId = new Map<number, LocationRec>();
+  private readonly locationByName = new Map<string, LocationRec>();
+  private readonly sectionByName = new Map<string, SectionRec>();
+  private readonly sectionByOId = new Map<number, SectionRec>();
+  private readonly publicationByPubId = new Map<string, PublicationRec>();
+  private readonly publicationByOId = new Map<number, PublicationRec>();
+  private readonly journalByOId = new Map<number, JournalRec>();
+  private readonly podcastByOId = new Map<number, PodcastRec>();
+  private readonly videoByOId = new Map<number, VideoRec>();
+  private readonly playlistByOId = new Map<number, PlaylistRec>();
+  private readonly itemSetByOId = new Map<number, ItemSetRec>();
+  private readonly itemsByProjectOId = new Map<number, ResearchItemRec[]>();
+  private readonly subjectByOId = new Map<number, SubjectRec>();
+  private readonly subjectByName = new Map<string, SubjectRec>();
+  private readonly memo = new Map<string, unknown>();
+  /** One LRU per namespace, each with its own bound. */
+  private readonly lru = new Map<string, Map<string, unknown>>();
+  /** Snapshot-owned, lazy derived data. Cache keys must include exposure when relevant. */
+  cached<T>(key: string, build: () => T): T {
+    if (!this.memo.has(key)) this.memo.set(key, build());
+    return this.memo.get(key) as T;
+  }
+  /** Whether a `cached` entry has been built (warm-up checks, tests). */
+  isBuilt(key: string): boolean {
+    return this.memo.has(key);
+  }
+  /** Like `cached`, for per-argument data (a graph seed, a record's links):
+   * keeps only the `max` most recently used entries of `namespace`. Each
+   * namespace has its own bound: one shared map let a namespace with a large
+   * bound keep a heavy one (graph edges) far past its own. */
+  cachedRecent<T>(namespace: string, key: string, build: () => T, max = 64): T {
+    let lru = this.lru.get(namespace);
+    if (!lru) {
+      lru = new Map();
+      this.lru.set(namespace, lru);
+    }
+    if (lru.has(key)) {
+      const value = lru.get(key) as T;
+      lru.delete(key);
+      lru.set(key, value);
+      return value;
+    }
+    const value = build();
+    lru.set(key, value);
+    for (const oldest of lru.keys()) {
+      if (lru.size <= max) break;
+      lru.delete(oldest);
+    }
+    return value;
+  }
+  /** Entries currently held by one `cachedRecent` namespace (tests, metrics). */
+  recentSize(namespace: string): number {
+    return this.lru.get(namespace)?.size ?? 0;
+  }
+
+  constructor(source: "bundled" | "cache", data: SnapshotData, manifest: SnapshotManifest, fulltextMaps: FulltextMaps | null = null,
+    semantic: SemanticNeighbours | null = null) {
+    this.source = source;
+    this.manifest = manifest;
+    this.fulltextMaps = fulltextMaps;
+    this.semantic = semantic;
+    this.items = data.research_items;
+    this.projects = data.projects;
+    this.persons = data.persons;
+    this.organisations = data.organisations;
+    this.locations = data.locations;
+    this.sections = data.research_sections;
+    this.publications = data.publications;
+    this.journals = data.journals;
+    this.podcasts = data.podcasts;
+    this.videos = data.videos;
+    this.playlists = data.playlists;
+    this.itemSets = data.item_sets;
+    this.subjects = data.subjects ?? [];
+    this.languageIndex = new LanguageIndex(data.languages);
+
+    // Every by-name map is keyed on the FOLDED name (src/text.ts), so a lookup
+    // for "Côte d'Ivoire" reaches a record stored as "Cote d'Ivoire".
+    for (const it of this.items) {
+      this.itemByDreId.set(fold(it.dre_id), it);
+      this.itemByOId.set(it.o_id, it);
+      const pid = it.project?.o_id;
+      if (pid != null) {
+        const list = this.itemsByProjectOId.get(pid);
+        if (list) list.push(it);
+        else this.itemsByProjectOId.set(pid, [it]);
+      }
+    }
+    for (const p of this.projects) {
+      this.projectByDreId.set(fold(p.dre_id), p);
+      this.projectByOId.set(p.o_id, p);
+    }
+    // A public record wins a shared name over a private one: in curator mode the
+    // authority duplicates retired by a merge are private and keep the canonical
+    // name, and a lookup by that exact name must reach the public authority.
+    // Among records of equal visibility the last one wins, as before.
+    for (const p of this.persons) {
+      byNamePreferringPublic(this.personByName, fold(p.name), p);
+      this.personByOId.set(p.o_id, p);
+    }
+    for (const o of this.organisations) {
+      byNamePreferringPublic(this.orgByName, fold(o.name), o);
+      this.orgByOId.set(o.o_id, o);
+    }
+    // Acronyms and variants ("UJKZ") resolve too, without shadowing a real name.
+    for (const o of this.organisations) {
+      for (const alt of o.alt_names ?? []) if (!this.orgByName.has(fold(alt))) this.orgByName.set(fold(alt), o);
+    }
+    for (const s of this.subjects) {
+      this.subjectByOId.set(s.o_id, s);
+      if (!this.subjectByName.has(fold(s.name))) this.subjectByName.set(fold(s.name), s);
+    }
+    for (const l of this.locations) {
+      this.locationByOId.set(l.o_id, l);
+      this.locationByName.set(fold(l.name), l);
+    }
+    for (const s of this.sections) {
+      this.sectionByName.set(fold(s.name), s);
+      this.sectionByOId.set(s.o_id, s);
+    }
+    for (const p of this.publications) {
+      this.publicationByPubId.set(fold(p.pub_id), p);
+      for (const id of p.identifiers ?? []) this.publicationByPubId.set(fold(id), p);
+      this.publicationByOId.set(p.o_id, p);
+    }
+    for (const j of this.journals) this.journalByOId.set(j.o_id, j);
+    for (const p of this.podcasts) this.podcastByOId.set(p.o_id, p);
+    for (const v of this.videos) this.videoByOId.set(v.o_id, v);
+    for (const p of this.playlists) this.playlistByOId.set(p.o_id, p);
+    for (const s of this.itemSets) this.itemSetByOId.set(s.o_id, s);
+  }
+
+  getItem(key: string): ResearchItemRec | undefined {
+    const k = fold(key.trim());
+    const byDre = this.itemByDreId.get(k);
+    if (byDre) return byDre;
+    const asOId = Number(k);
+    return Number.isInteger(asOId) ? this.itemByOId.get(asOId) : undefined;
+  }
+  getProject(dreIdOrOId: string): ProjectRec | undefined {
+    const k = fold(dreIdOrOId.trim());
+    return this.projectByDreId.get(k) ?? (Number.isInteger(Number(k)) ? this.projectByOId.get(Number(k)) : undefined);
+  }
+  getProjectByOId(oId: number): ProjectRec | undefined {
+    return this.projectByOId.get(oId);
+  }
+  projectOf(item: ResearchItemRec): ProjectRec | undefined {
+    return item.project?.o_id != null ? this.projectByOId.get(item.project.o_id) : undefined;
+  }
+  getPersonByName(name: string): PersonRec | undefined {
+    return this.personByName.get(fold(name.trim()));
+  }
+  getPersonByOId(oId: number): PersonRec | undefined {
+    return this.personByOId.get(oId);
+  }
+  getOrganisation(name: string): OrganisationRec | undefined {
+    return this.orgByOId.get(Number(name)) ?? this.orgByName.get(fold(name.trim()));
+  }
+  getOrganisationByOId(oId: number): OrganisationRec | undefined {
+    return this.orgByOId.get(oId);
+  }
+  /** Subject authority by id or exact (folded) heading. */
+  getSubject(key: number | string): SubjectRec | undefined {
+    return typeof key === "number" ? this.subjectByOId.get(key) : this.subjectByName.get(fold(key.trim()));
+  }
+  getSection(name: string): SectionRec | undefined {
+    return this.sectionByName.get(fold(name.trim()));
+  }
+  getSectionByOId(oId: number): SectionRec | undefined {
+    return this.sectionByOId.get(oId);
+  }
+  /** A section by exact (folded) name, Omeka id or typed id (`section:<id>`). */
+  resolveSection(nameOrId: string): SectionRec | undefined {
+    const byName = this.getSection(nameOrId);
+    if (byName) return byName;
+    const id = Number(stripTypedId(nameOrId, ["section"]));
+    return Number.isSafeInteger(id) ? this.sectionByOId.get(id) : undefined;
+  }
+  getPublication(pubIdOrOId: string): PublicationRec | undefined {
+    const k = fold(pubIdOrOId.trim());
+    const byPubId = this.publicationByPubId.get(k);
+    if (byPubId) return byPubId;
+    const asOId = Number(k);
+    return Number.isInteger(asOId) ? this.publicationByOId.get(asOId) : undefined;
+  }
+  getJournal(oId: number): JournalRec | undefined {
+    return this.journalByOId.get(oId);
+  }
+  getPodcast(oId: number): PodcastRec | undefined {
+    return this.podcastByOId.get(oId);
+  }
+  getVideo(oId: number): VideoRec | undefined {
+    return this.videoByOId.get(oId);
+  }
+  getPlaylist(oId: number): PlaylistRec | undefined {
+    return this.playlistByOId.get(oId);
+  }
+  itemsForProject(projectOId: number): ResearchItemRec[] {
+    return this.itemsByProjectOId.get(projectOId) ?? [];
+  }
+  /** Section names of the item's parent project. */
+  sectionsOfItem(item: ResearchItemRec): string[] {
+    return this.sectionRefsOfItem(item).map((s) => s.label);
+  }
+  /** Section references (with ids) of the item's parent project. */
+  sectionRefsOfItem(item: ResearchItemRec): LinkedRef[] {
+    return this.projectOf(item)?.sections ?? [];
+  }
+  /** Projects linked to a section — by id, falling back to the label for unlinked refs. */
+  projectsOfSection(section: SectionRec): ProjectRec[] {
+    return this.cached(`section-projects:${section.o_id}`, () => this.projects.filter((p) =>
+      p.sections.some((x) => x.o_id != null ? x.o_id === section.o_id : fold(x.label) === fold(section.name))));
+  }
+
+  /** Ancestor authority references (region, country, …), nearest first. */
+  locationAncestorRefs(oId: number | null): LinkedRef[] {
+    return this.cached(`ancestors:${oId}`, () => {
+      const out: LinkedRef[] = [];
+      const seen = new Set<number>(oId == null ? [] : [oId]);
+      let cur = oId != null ? this.locationByOId.get(oId) : undefined;
+      while (cur?.parent?.o_id != null && !seen.has(cur.parent.o_id) && out.length < 6) {
+        seen.add(cur.parent.o_id);
+        const parent = this.locationByOId.get(cur.parent.o_id);
+        out.push({ label: parent?.name ?? cur.parent.label, o_id: cur.parent.o_id });
+        cur = parent;
+      }
+      return out;
+    });
+  }
+  locationAncestors(oId: number | null): string[] {
+    return this.locationAncestorRefs(oId).map((ref) => ref.label);
+  }
+  placeChainRefs(ref: LinkedRef): LinkedRef[] {
+    return [ref, ...this.locationAncestorRefs(ref.o_id)];
+  }
+  /** A place ref + all its ancestors (self first) — for location matching. */
+  placeChain(ref: LinkedRef): string[] {
+    return [ref.label, ...this.locationAncestors(ref.o_id)];
+  }
+  /** The COUNTRY a place belongs to: the root of its ancestor chain (cities sit
+   * directly under countries in this data; a country is its own root). */
+  countryOf(ref: LinkedRef): string {
+    const chain = this.placeChain(ref);
+    return chain[chain.length - 1]!;
+  }
+  getLocation(oId: number): LocationRec | undefined {
+    return this.locationByOId.get(oId);
+  }
+  getLocationByName(name: string): LocationRec | undefined {
+    return this.locationByName.get(fold(name.trim()));
+  }
+  getItemSet(oId: number): ItemSetRec | undefined {
+    return this.itemSetByOId.get(oId);
+  }
+}

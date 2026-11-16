@@ -6,8 +6,14 @@ import assert from "node:assert/strict";
 import { hermeticEnv } from "../helpers/env.mjs";
 
 hermeticEnv();
-const { clearFoldCache, fold, foldCached, foldedIndexOf, DataStore, withStore, SNAPSHOT_SCHEMA_VERSION } = await import("../../server/lib.js");
+const { fold, foldCached, foldedIndexOf, DataStore, withStore, SNAPSHOT_SCHEMA_VERSION } = await import("../../server/lib.js");
 const { buildFixture } = await import("../fixtures/fixture-data.mjs");
+
+/** A store with empty fold caches: running under a fresh one is a cache clear. */
+const freshStore = () => {
+  const fx = buildFixture(SNAPSHOT_SCHEMA_VERSION);
+  return new DataStore("bundled", fx.data, fx.manifest);
+};
 
 test("fold: lowercases and strips diacritics, both directions", () => {
   assert.equal(fold("Côte d'Ivoire"), "cote d'ivoire");
@@ -28,19 +34,20 @@ test("fold: precomposed and decomposed spellings converge", () => {
 });
 
 test("foldCached: memoises large texts and returns the same result as fold", () => {
-  clearFoldCache();
+  const store = freshStore();
   const big = "Développement régional en Côte d'Ivoire. ".repeat(200); // > 2000 chars
   assert.ok(big.length > 2000);
-  const first = foldCached(big);
-  const second = foldCached(big);
+  const first = withStore(store, () => foldCached(big));
+  const second = withStore(store, () => foldCached(big));
   assert.equal(first, fold(big));
   assert.equal(second, first);
+  assert.equal(store.folds.folded.size, 1, "memoised once");
   assert.ok(first.includes("cote d'ivoire"));
 
   // Short strings bypass the cache but must agree.
-  assert.equal(foldCached("Côte"), fold("Côte"));
-  clearFoldCache();
-  assert.equal(foldCached(big), first, "result survives a cache clear");
+  assert.equal(withStore(store, () => foldCached("Côte")), fold("Côte"));
+  assert.equal(store.folds.folded.size, 1, "short strings are not memoised");
+  assert.equal(withStore(freshStore(), () => foldCached(big)), first, "result survives a cache clear");
 });
 
 test("foldedIndexOf: accent-insensitive offsets stay valid in the ORIGINAL string", () => {
@@ -67,10 +74,11 @@ test("foldedIndexOf: sparse offsets survive balanced expansions, accents and cac
   const text = "각 café\u0301\u0301 tail 😀";
   assert.equal(fold(text).length, text.length);
   for (let i = 0; i < 2; i++) {
-    assert.equal(foldedIndexOf(text, "cafe"), text.indexOf("café"));
-    assert.equal(foldedIndexOf(text, "tail"), text.indexOf("tail"));
-    assert.equal(foldedIndexOf(text, "😀"), text.indexOf("😀"));
-    clearFoldCache();
+    withStore(freshStore(), () => {
+      assert.equal(foldedIndexOf(text, "cafe"), text.indexOf("café"));
+      assert.equal(foldedIndexOf(text, "tail"), text.indexOf("tail"));
+      assert.equal(foldedIndexOf(text, "😀"), text.indexOf("😀"));
+    });
   }
 });
 
