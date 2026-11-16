@@ -19,15 +19,16 @@
 // only the CONTENT is gated — a model should be able to say "there is a
 // transcript but access to it is disabled".
 
+import { enumOf } from "./env.js";
 import { guidanceEnabled } from "./guidance.js";
 
 export type ExposureLevel = "minimal" | "descriptive" | "structured" | "full";
 
-const LEVELS: ExposureLevel[] = ["minimal", "descriptive", "structured", "full"];
+const LEVELS: readonly ExposureLevel[] = ["minimal", "descriptive", "structured", "full"];
 
+/** AMIRA_EXPOSURE, read per call; unset or unrecognised (reported once) means full. */
 export function exposureLevel(): ExposureLevel {
-  const raw = process.env.AMIRA_EXPOSURE?.trim().toLowerCase();
-  return (LEVELS as string[]).includes(raw ?? "") ? (raw as ExposureLevel) : "full";
+  return enumOf("AMIRA_EXPOSURE", LEVELS, "full");
 }
 
 const rank = (l: ExposureLevel): number => LEVELS.indexOf(l);

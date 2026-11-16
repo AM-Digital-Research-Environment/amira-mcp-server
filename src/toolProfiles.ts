@@ -1,6 +1,8 @@
 // Deployment profiles: smaller tool surfaces for hosts that pay for every tool
 // definition on every turn. `full` (the default) registers everything. Removal
 // happens in tools/policy.ts through the SDK's public `RegisteredTool.remove()`.
+import { envValue } from "./env.js";
+
 export const TOOL_PROFILES = {
   full: null,
   research: ["get_collection_overview", "search_research_items", "get_research_item", "search_projects", "get_project",
@@ -16,7 +18,9 @@ export const TOOL_PROFILES = {
 } as const;
 export type ToolProfile = keyof typeof TOOL_PROFILES;
 
-export function resolveToolProfile(value = process.env.AMIRA_TOOL_PROFILE ?? "full"): ToolProfile {
+/** AMIRA_TOOL_PROFILE (read per call, through the placeholder guard), or `value`.
+ * Unknown is refused rather than defaulted: a smaller surface is a deployment choice. */
+export function resolveToolProfile(value = envValue("AMIRA_TOOL_PROFILE") ?? "full"): ToolProfile {
   const profile = value.trim() || "full";
   if (!Object.hasOwn(TOOL_PROFILES, profile)) throw new Error("AMIRA_TOOL_PROFILE must be full, research, discovery or visualization");
   return profile as ToolProfile;

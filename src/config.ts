@@ -2,34 +2,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { bool, envValue, nonNegative } from "./env.js";
 import { normalizeApiBase } from "./snapshotIdentity.js";
+
+// The readers live in src/env.ts; re-exported for the importers of this module.
+export { envValue, isTemplatePlaceholder } from "./env.js";
 
 // Renamed from __dirname to avoid colliding with the esbuild banner shim that
 // injects a top-level `__dirname` for bundled CJS dependencies.
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
-
-/**
- * Read an env var, treating an UNSUBSTITUTED MCPB template placeholder as unset.
- *
- * `manifest.json` wires settings through `"AMIRA_SITE_BASE": "${user_config.site_base}"`.
- * When an optional setting has no value, the MCPB runtime passes the placeholder
- * through verbatim rather than dropping the variable — so the process really
- * does receive the literal string `${user_config.site_base}`. Taking that as a
- * site base made every citation `${user_config.site_base}/s/amira/item/<id>`:
- * reported in the wild against v1.7.0, and the reason this guard is central
- * rather than a special case in one resolver.
- */
-export function isTemplatePlaceholder(raw: string | undefined): boolean {
-  const v = raw?.trim();
-  // Only a WHOLE-string ${...} counts: a real URL that merely contains braces
-  // is a genuine setting, not an unsubstituted template.
-  return !v || /^\$\{[^}]*\}$/.test(v);
-}
-
-export function envValue(name: string): string | undefined {
-  const raw = process.env[name]?.trim();
-  return isTemplatePlaceholder(raw) ? undefined : raw;
-}
 
 /**
  * Public base URL of the Omeka S instance (site `amira`). ALL citations point at
@@ -125,20 +106,6 @@ export function parsePort(raw: string): number | null {
 }
 const HTTP_PORT_SETTING = envValue("PORT") ?? envValue("AMIRA_HTTP_PORT") ?? "8787";
 
-function parseBool(v: string | undefined, fallback: boolean): boolean {
-  if (v === undefined) return fallback;
-  const s = v.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(s)) return true;
-  if (["0", "false", "no", "off", ""].includes(s)) return false;
-  return fallback;
-}
-
-function parseNonNegativeNumber(v: string | undefined, fallback: number): number {
-  if (v === undefined || v.trim() === "") return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) && n >= 0 ? n : fallback;
-}
-
 const LOCAL_ORIGIN_HOSTNAMES = ["localhost", "127.0.0.1", "[::1]"];
 
 /**
@@ -214,13 +181,13 @@ export const config = {
   bundledDataDir: resolveBundledDataDir(),
   cacheDir: resolveCacheDir(),
   /** When true (default), refresh the snapshot from the public Omeka API. */
-  liveRefresh: parseBool(envValue("AMIRA_LIVE_REFRESH"), true),
+  liveRefresh: bool("AMIRA_LIVE_REFRESH", true),
   /** Periodic freshness check interval. 0 disables periodic checks. Curator mode
    * checks hourly by default: its data stops being served once unverified for
    * longer than `curatorMaxStaleHours`. */
-  refreshIntervalHours: parseNonNegativeNumber(envValue("AMIRA_REFRESH_INTERVAL_HOURS"), ACCESS === "curator" ? 1 : 24),
+  refreshIntervalHours: nonNegative("AMIRA_REFRESH_INTERVAL_HOURS",ACCESS === "curator" ? 1 : 24),
   /** Refresh vocabularies even when item timestamps do not change (minimum one hour). */
-  fullRefreshHours: Math.max(1, parseNonNegativeNumber(envValue("AMIRA_FULL_REFRESH_HOURS"), 168)),
+  fullRefreshHours: Math.max(1, nonNegative("AMIRA_FULL_REFRESH_HOURS", 168)),
   /** Corpus-vector release for semantic neighbours (src/semantic.ts): "latest"
    * (default), "off", or a pinned tag such as semantic-embeddings-v1-35. */
   semanticRelease: envValue("AMIRA_SEMANTIC_RELEASE") ?? "latest",
@@ -239,15 +206,15 @@ export const config = {
   allowedOriginHostnames: parseAllowedOriginHostnames(envValue("AMIRA_ALLOWED_ORIGINS")),
   /** Per-client requests/minute allowed on /mcp; 0 disables the limiter. A
    * courtesy cap against runaway clients querying the in-memory snapshot — not a security control. Put a real one in the proxy. */
-  rateLimitPerMinute: parseNonNegativeNumber(envValue("AMIRA_RATE_LIMIT"), 120),
+  rateLimitPerMinute: nonNegative("AMIRA_RATE_LIMIT", 120),
   /** Attribute requests to the address a trusted reverse proxy observed
    * (X-Real-IP, else the X-Forwarded-For hop AMIRA_PROXY_HOPS from the right)
    * instead of the socket peer. Enable it behind a proxy — otherwise every
    * request comes from the proxy and all clients share one rate-limit bucket —
    * and never when clients connect directly: they could then forge the header. */
-  trustProxy: parseBool(envValue("AMIRA_TRUST_PROXY"), false),
+  trustProxy: bool("AMIRA_TRUST_PROXY", false),
   /** Trusted proxies in front of the server (1 = a single nginx). */
-  proxyHops: Math.max(1, Math.floor(parseNonNegativeNumber(envValue("AMIRA_PROXY_HOPS"), 1))),
+  proxyHops: Math.max(1, Math.floor(nonNegative("AMIRA_PROXY_HOPS", 1))),
   /** When set, /mcp and /metrics require `Authorization: Bearer <token>`. */
   bearerToken: readBearerToken(),
   /** `public` or `curator` (AMIRA_ACCESS); see ACCESS. */
@@ -260,10 +227,10 @@ export const config = {
   /** Curator mode: file of personal tokens, one `name sha256hex` per line. */
   tokensFile: envValue("AMIRA_MCP_TOKENS_FILE") ?? null,
   /** Curator mode: stop serving data not verified against Omeka for this long (hours). */
-  curatorMaxStaleHours: parseNonNegativeNumber(envValue("AMIRA_CURATOR_MAX_STALE_HOURS"), 24),
+  curatorMaxStaleHours: nonNegative("AMIRA_CURATOR_MAX_STALE_HOURS", 24),
   /** Curator mode: first retry delay (seconds) after a transient failure leaves no data; it
    * doubles up to 5 minutes. Default 60; tests shorten it. */
-  curatorRetrySeconds: Math.max(0.1, parseNonNegativeNumber(envValue("AMIRA_CURATOR_RETRY_SECONDS"), 60)),
+  curatorRetrySeconds: Math.max(0.1, nonNegative("AMIRA_CURATOR_RETRY_SECONDS", 60)),
   /** Curator mode: the keyed request that must return a non-empty array before
    * any crawl or refresh, proving the key is accepted and has view-all (Omeka
    * answers an unknown key with anonymous data, not an error). Relative to the API base. */
@@ -273,7 +240,7 @@ export const config = {
   cacheDirConfigured: envValue("AMIRA_CACHE_DIR") !== undefined,
   /** Curator relay: answer a forwarded request with a relay error when the curator server has not
    * answered it within this many seconds (AMIRA_CURATOR_RELAY_TIMEOUT_SECONDS, default 300). */
-  curatorRelayTimeoutSeconds: Math.max(1, parseNonNegativeNumber(envValue("AMIRA_CURATOR_RELAY_TIMEOUT_SECONDS"), 300)),
+  curatorRelayTimeoutSeconds: Math.max(1, nonNegative("AMIRA_CURATOR_RELAY_TIMEOUT_SECONDS", 300)),
   /** Curator relay (stdio only): whether AMIRA_CURATOR_TOKEN is set. Empty, or
    * the unsubstituted `${user_config.curator_token}` of an unset .mcpb setting,
    * means public mode. The token is read by src/relay.ts and never copied here. */

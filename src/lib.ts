@@ -17,6 +17,7 @@ export { loadSkillCatalog } from "./skills.js";
 export { exposureLevel } from "./exposure.js";
 export { guidanceEnabled, stripSchemaText } from "./guidance.js";
 export { isTemplatePlaceholder, parseAllowedOriginHostnames, config } from "./config.js";
+export { bool, enumOf, envValue, nonNegative } from "./env.js";
 export { publicationBibtex, publicationCitation } from "./publicationCitation.js";
 export { BRIDGE_JS } from "./ui/assets.js";
 export { ContextSync } from "./ui/contextSync.js";

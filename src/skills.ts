@@ -43,6 +43,7 @@ import {
   type SkillCatalog,
   type SkillSource,
 } from "@modelcontextprotocol/server/ext/skills";
+import { bool } from "./env.js";
 
 /**
  * Skill files are immutable for the life of a build, so every skill result is
@@ -206,9 +207,7 @@ const EXTENSION: SkillsExtension | undefined = await (async () => {
  * construction (per request on the HTTP transport, which builds a fresh server).
  */
 export function skillsEnabled(): boolean {
-  const raw = process.env.AMIRA_SKILLS?.trim().toLowerCase();
-  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") return false;
-  return EXTENSION !== undefined;
+  return bool("AMIRA_SKILLS", true) && EXTENSION !== undefined;
 }
 
 /**
