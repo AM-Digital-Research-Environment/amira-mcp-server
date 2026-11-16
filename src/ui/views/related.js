@@ -28,19 +28,30 @@ const SECTORS = [
   ["related_formats", "FORMATS"],
 ];
 
+/**
+ * @param {string} s
+ * @param {number} n
+ * @returns {string}
+ */
 function clip(s, n) {
   s = String(s);
   return s.length <= n ? s : s.slice(0, n - 1).trimEnd() + "…";
 }
+/**
+ * @param {number} angle
+ * @param {number} r
+ */
 const polar = function (angle, r) {
   const a = ((angle - 90) * Math.PI) / 180; // 0deg = 12 o'clock, clockwise
   return [CX + r * Math.cos(a), CY + r * Math.sin(a)];
 };
 
+/** @param {ToolData} d */
 function render(d) {
   const root = document.getElementById("root");
   // A research-item seed (full-text pivot) is named by its title, not its id.
   const seedName = d.seed_label || d.value || "";
+  /** @type {{ key: string, label: string, rows: ToolData[] }[]} */
   const live = SECTORS.map(function (s) {
     return {
       key: s[0],
@@ -225,7 +236,7 @@ function render(d) {
     "<details><summary>All returned relationships and counts</summary><table><thead><tr><th>Entity</th><th>Research items</th><th>Publications</th></tr></thead><tbody>" +
     SECTORS.map(function (s) {
       return (d[s[0]] || [])
-        .map(function (r) {
+        .map(/** @param {ToolData} r */ function (r) {
           return (
             "<tr><td>" +
             esc(r.name) +

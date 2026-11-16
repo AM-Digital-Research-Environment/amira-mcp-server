@@ -5,7 +5,7 @@
     "checkJs": true,
     "noEmit": true,
     "strict": false,
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "noUncheckedIndexedAccess": false,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": [],

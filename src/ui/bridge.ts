@@ -116,15 +116,16 @@ const bridge = {
       { timeout: 10_000, signal: lifecycle.signal });
     if (reply.isError) throw new Error("The host declined to send the question.");
   },
-  /** `quiet` calls (background option lists) leave the status line alone. */
-  async callTool(name: string, args: Payload, options: { quiet?: boolean } = {}) {
+  /** `quiet` calls (background option lists) leave the status line alone. The
+   * result is the tool's structured content; `T` is the shape the caller reads. */
+  async callTool<T = Payload>(name: string, args: Payload, options: { quiet?: boolean } = {}): Promise<T> {
     if (!tools.has(name)) throw new Error("This tool is not available in the app.");
     await ready;
     const say = options.quiet ? () => {} : status;
     say("Loading…");
     try {
       const result = payload(await app.callServerTool({ name, arguments: args }, { timeout: 15_000, signal: lifecycle.signal }));
-      say(""); return result;
+      say(""); return result as T;
     } catch (error) { say((error as Error).message); throw error; }
   },
   async openLink(url: string) {

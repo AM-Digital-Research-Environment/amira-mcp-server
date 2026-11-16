@@ -11,11 +11,13 @@ const W = 640,
   ROW = 22,
   GROUP_GAP = 26;
 
+/** @param {unknown} s a date string */
 function year(s) {
   const n = parseInt(String(s || "").slice(0, 4), 10);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** @param {ToolData} payload */
 function render(payload) {
   const root = document.getElementById("root");
   const rows = (payload && payload.results) || [];
@@ -26,9 +28,12 @@ function render(payload) {
 
   // Group by funding phase; sections without a phase (the synthetic "External"
   // grouping) have no span to draw, so they are listed, not plotted.
-  const groups = {},
-    order = [],
-    undated = [];
+  /** @type {Record<string, { r: ToolData, from: number, to: number }[]>} */
+  const groups = {};
+  /** @type {string[]} */
+  const order = [];
+  /** @type {ToolData[]} */
+  const undated = [];
   rows.forEach(function (r) {
     const from = year(r.date && r.date.start),
       to = year(r.date && r.date.end);
@@ -67,6 +72,7 @@ function render(payload) {
 
   const H = PAD_T + plotted * ROW + order.length * GROUP_GAP + 24;
   const trackW = W - PAD_L - PAD_R;
+  /** @param {number} y */
   const x = function (y) {
     return PAD_L + ((y - minY) / (maxY - minY)) * trackW;
   };

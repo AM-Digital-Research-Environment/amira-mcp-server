@@ -24,17 +24,19 @@ const pickerLists = {};
  * @param {string} key
  * @param {string} tool
  * @param {Record<string, unknown>} args
- * @param {(row: any) => PickerOption | null} pick
+ * @param {(row: ToolData) => PickerOption | null} pick
  * @param {(a: PickerOption, b: PickerOption) => number} [order]
  * @returns {Promise<PickerOption[] | null>}
  */
 function pickerLoad(key, tool, args, pick, order) {
   if (!(key in pickerLists))
     pickerLists[key] = (async function () {
+      /** @type {PickerOption[]} */
       const out = [];
       let offset = 0,
-        pages = 0,
-        d;
+        pages = 0;
+      /** @type {ToolData} */
+      let d;
       do {
         d = await window.amiraApp.callTool(tool, Object.assign({}, args, { offset: offset }), { quiet: true });
         (d.results || []).forEach(function (r) {
@@ -49,6 +51,7 @@ function pickerLoad(key, tool, args, pick, order) {
         pickerLists[key] = list;
         return list;
       },
+      /** @returns {null} */
       function () {
         pickerLists[key] = null;
         return null;
@@ -95,6 +98,7 @@ function pickerField(p, list) {
     cur = p.current == null ? "" : String(p.current),
     low = cur.toLowerCase();
   if (p.kind === "select" && list) {
+    /** @param {PickerOption} o */
     const hit = function (o) {
       return !!low && (o.value.toLowerCase() === low || (o.alt || "").toLowerCase() === low);
     };
@@ -272,7 +276,7 @@ document.addEventListener("click", function (event) {
 /**
  * A record's title (or `title`) as a citation link to its amira_url; plain
  * text, marked when private, without one.
- * @param {{ amira_url?: string | null, title?: string, visibility?: string }} r
+ * @param {ToolData} r a record: its amira_url, title and visibility are read
  * @param {string} [title]
  * @returns {string}
  */
@@ -290,8 +294,8 @@ function citationLink(r, title) {
  * "Next records" calls `onMore(next_offset)`.
  * @param {Element} target
  * @param {string} heading
- * @param {any} data
- * @param {(r: any) => string} item
+ * @param {ToolData} data
+ * @param {(r: ToolData) => string} item
  * @param {string} moreId
  * @param {(offset: number) => void} onMore
  */

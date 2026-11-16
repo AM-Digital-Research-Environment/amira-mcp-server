@@ -5,10 +5,14 @@
 // makes the file a module for those checks; the page assembler drops it.
 const api = window.amiraApp,
   esc = api.esc;
-let active,
-  picked,
-  filter = null,
-  shown = null;
+/** The result on screen. @type {ToolData} */
+let active;
+/** The selected neighbour's id. @type {string | null | undefined} */
+let picked;
+/** The neighbour types the graph is limited to. @type {string[] | null} */
+let filter = null;
+/** The link whose records are listed, and that page of records. @type {{ edge: ToolData | undefined, data: ToolData } | null} */
+let shown = null;
 // Sectors, clockwise from twelve o'clock. Every entity type belongs to one.
 const GROUPS = [
   { key: "people", label: "People", heading: "PEOPLE", types: ["person"] },
@@ -44,6 +48,7 @@ const GROUPS = [
     types: ["language", "format", "playlist"],
   },
 ];
+/** @param {string} type */
 const groupOf = function (type) {
   return (
     GROUPS.find(function (g) {
@@ -61,14 +66,29 @@ const W = 700,
   R_LABEL = 176,
   LABEL_CHARS = 24,
   TOTAL = 16;
+/**
+ * @param {string} s
+ * @param {number} n
+ * @returns {string}
+ */
 function clip(s, n) {
   s = String(s);
   return s.length <= n ? s : s.slice(0, n - 1).trimEnd() + "…";
 }
+/**
+ * @param {number} angle
+ * @param {number} r
+ */
 function polar(angle, r) {
   const a = ((angle - 90) * Math.PI) / 180;
   return [C + r * Math.cos(a), C + r * Math.sin(a)];
 }
+/**
+ * @param {string} cls
+ * @param {number} a
+ * @param {number} r1
+ * @param {number} r2
+ */
 function line(cls, a, r1, r2) {
   const p = polar(a, r1),
     q = polar(a, r2);
@@ -86,7 +106,13 @@ function line(cls, a, r1, r2) {
     '"/>'
   );
 }
-/** Radial text at angle a, turned so it never reads upside down. */
+/**
+ * Radial text at angle a, turned so it never reads upside down.
+ * @param {string} cls
+ * @param {number} a
+ * @param {number} r
+ * @param {string} body markup
+ */
 function radial(cls, a, r, body) {
   const p = polar(a, r),
     right = a <= 180;
@@ -106,24 +132,33 @@ function radial(cls, a, r, body) {
     "</text>"
   );
 }
+/** @param {ToolData} r */
 function citation(r) {
   return citationLink(r, r.title || r.label);
 }
+/** @param {ToolData} e */
 function relationText(e) {
   return e.kind === "explicit"
     ? e.relation.replaceAll("_", " ")
     : "Co-occurrence · " + e.relation.replace("shared_", "").replaceAll("_", " ");
 }
+/** @param {ToolData} e */
 function other(e) {
   return e.source === active.seed ? e.target : e.source;
 }
+/** @param {string} seed */
 async function load(seed) {
+  /** @type {ToolData} */
   const args = { seed: seed };
   if (filter) args.types = filter;
   try {
     render(await api.callTool("get_entity_graph", args));
   } catch (_) {}
 }
+/**
+ * @param {string} id
+ * @param {number} [offset]
+ */
 async function evidence(id, offset) {
   try {
     const data = await api.callTool("get_entity_graph", {
@@ -156,6 +191,10 @@ async function evidence(id, offset) {
 // What the model is told: the graph's centre and type filter, the selected
 // neighbour, and the link whose records are listed, with that page of records.
 // Labels and titles are data; selectionContext.ts bounds and labels them.
+/**
+ * @param {ToolData} n
+ * @param {string} role
+ */
 function entity(n, role) {
   return {
     title: n.label,
@@ -218,7 +257,10 @@ function share() {
     records_label: "records behind the selected link",
   });
 }
-/** A neighbour's links, strongest first, and the records behind the first. */
+/**
+ * A neighbour's links, strongest first, and the records behind the first.
+ * @param {string} id
+ */
 function pick(id) {
   const node = active.nodes.find(function (n) {
     return n.id === id;
@@ -261,6 +303,7 @@ function pick(id) {
     "</p>";
   if (links.length) evidence(links[0].id);
 }
+/** @param {ToolData} d */
 function chips(d) {
   const counts = d.neighbour_types || {};
   let total = 0;
@@ -300,6 +343,10 @@ function chips(d) {
     "</div>"
   );
 }
+/**
+ * @param {ToolData} d
+ * @param {ToolData} seed
+ */
 function diagram(d, seed) {
   // A neighbour's weight is its strongest link; solid if any link is explicit.
   const weight = new Map();
@@ -326,9 +373,11 @@ function diagram(d, seed) {
       return r.group.key;
     }),
   ).size;
-  const cap = present <= 1 ? TOTAL : Math.max(3, Math.ceil(TOTAL / present)),
-    per = {},
-    shown = [];
+  const cap = present <= 1 ? TOTAL : Math.max(3, Math.ceil(TOTAL / present));
+  /** @type {Record<string, number>} */
+  const per = {};
+  /** @type {typeof ranked} */
+  const shown = [];
   ranked.forEach(function (r) {
     if (shown.length >= TOTAL || (per[r.group.key] || 0) >= cap) return;
     per[r.group.key] = (per[r.group.key] || 0) + 1;
@@ -426,6 +475,7 @@ function diagram(d, seed) {
   );
   return { svg: out.join(""), shown: shown.length, of: ranked.length };
 }
+/** @param {ToolData} d */
 function render(d) {
   if (!d.nodes) return;
   if (!active || active.seed !== d.seed) picked = null;

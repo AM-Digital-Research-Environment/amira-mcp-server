@@ -4,7 +4,7 @@
 // the page assembler just before it (declared in ./globals.d.ts).
 const amiraRoot = document.getElementById("root");
 /** The view for a result: the host's toolInfo first, else the result's shape.
- * @param {any} payload
+ * @param {Record<string, unknown>} payload
  * @returns {string | null} */
 function amiraViewFor(payload) {
   const named =amiraViewOfTool[window.amiraApp.toolName() || ""];

@@ -5,7 +5,11 @@
 // makes the file a module for those checks; the page assembler drops it.
 const esc = window.amiraApp.esc;
 
-/** Top-N of an object map, biggest first, with the tail folded into "Other". */
+/**
+ * Top-N of an object map, biggest first, with the tail folded into "Other".
+ * @param {ToolData | undefined} map label -> count
+ * @param {number} n
+ */
 function topRows(map, n) {
   const rows = Object.keys(map || {})
     .map(function (k) {
@@ -26,7 +30,10 @@ function topRows(map, n) {
   return head;
 }
 
-/** Shorten the long university labels so they fit the axis gutter. */
+/**
+ * Shorten the long university labels so they fit the axis gutter.
+ * @param {unknown} label
+ */
 function shortenUniversity(label) {
   return String(label)
     .replace("Université Joseph Ki-Zerbo", "Joseph Ki-Zerbo")
@@ -36,6 +43,11 @@ function shortenUniversity(label) {
     .replace("External collection", "External");
 }
 
+/**
+ * @param {number | undefined} n
+ * @param {string} label
+ * @param {string | null} [sub]
+ */
 function tile(n, label, sub) {
   if (n == null) return "";
   return (
@@ -50,6 +62,11 @@ function tile(n, label, sub) {
   );
 }
 
+/**
+ * @param {string} title
+ * @param {unknown[][]} rows [label, value] pairs
+ * @param {number} labelWidth
+ */
 function panel(title, rows, labelWidth) {
   if (!rows.length) return "";
   return (
@@ -67,8 +84,13 @@ function panel(title, rows, labelWidth) {
   );
 }
 
+/** @param {ToolData} d */
 function render(d) {
   const c = d.counts || {};
+  /**
+   * @param {number | undefined} part
+   * @param {number | undefined} whole
+   */
   const withText = function (part, whole) {
     return part == null || !whole ? null : part + " of " + whole + " with text";
   };

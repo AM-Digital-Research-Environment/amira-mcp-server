@@ -5,12 +5,16 @@
 // makes the file a module for those checks; the page assembler drops it.
 const api = window.amiraApp,
   esc = api.esc;
-let active,
-  picked = null;
+/** The result on screen. @type {ToolData} */
+let active;
+/** The opened place and the page of its records. @type {{ name: string, id: string | undefined, data: ToolData } | null} */
+let picked = null;
 // Countries are the hierarchy roots in the map's current scope, by name.
+/** @param {ToolData | undefined} scope */
 function countryKey(scope) {
   return "countries:" + JSON.stringify(scope || {});
 }
+/** @param {ToolData | undefined} scope */
 function countries(scope) {
   return pickerLoad(
     countryKey(scope),
@@ -26,6 +30,11 @@ function countries(scope) {
     },
   );
 }
+/**
+ * @param {string} name
+ * @param {number} offset
+ * @param {string} [id]
+ */
 async function records(name, offset, id) {
   try {
     const args = Object.assign(
@@ -103,6 +112,7 @@ function share() {
     records_label: "research items at the selected place",
   });
 }
+/** @param {ToolData} d */
 function render(d) {
   active = d;
   picked = null;

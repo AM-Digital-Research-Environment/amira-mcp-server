@@ -39,6 +39,7 @@ function subjects() {
   });
 }
 
+/** @param {ToolData} payload */
 function render(payload) {
   const rows = (payload && payload.results) || [];
   const root = document.getElementById("root");
@@ -217,6 +218,11 @@ function render(payload) {
   from.oninput = to.oninput = rangeLabels;
   rangeLabels();
   const baseFilters = Object.assign({}, (payload.filters || {}).filters || {});
+  /**
+   * @param {number} lo
+   * @param {number} hi
+   * @param {number} [offset]
+   */
   async function evidence(lo, hi, offset) {
     try {
       const args = Object.assign({}, baseFilters, {

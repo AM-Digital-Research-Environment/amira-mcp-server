@@ -6,9 +6,12 @@
 const api = window.amiraApp,
   esc = api.esc,
   selected = new Map();
-let active,
-  filters = {},
-  lastLanguages = null;
+/** @type {ToolData} */
+let active;
+/** @type {ToolData} */
+let filters = {};
+/** @type {PickerOption[] | null} */
+let lastLanguages = null;
 // Languages are counted for the current search without its own language filter,
 // so the other languages stay selectable. Authors are the whole bibliography.
 const LANGUAGE_SCOPE = [
@@ -22,9 +25,11 @@ const LANGUAGE_SCOPE = [
   "year_to",
   "added_since",
 ];
+/** @param {ToolData} scope */
 function languageKey(scope) {
   return "languages:" + JSON.stringify(scope);
 }
+/** @param {ToolData} scope */
 function languages(scope) {
   return pickerLoad(
     languageKey(scope),
@@ -46,6 +51,7 @@ function authors() {
     return { value: r.value };
   });
 }
+/** @param {number} [offset] */
 async function search(offset) {
   try {
     render(await api.callTool("search_publications", Object.assign({}, filters, { offset: offset || 0, limit: 20 })));
@@ -57,6 +63,7 @@ async function exportSelection() {
   button.disabled = true;
   const format = document.getElementById("export-format").value;
   try {
+    /** @type {unknown[]} */
     const entries = [];
     // Selected entries are capped at 25; two requests at a time avoid a burst against the host.
     const ids = Array.from(selected.keys());
@@ -95,6 +102,7 @@ function selection() {
 // What the model is told the reader is working with: the filters, and the
 // selected publications or, with none selected, the page in view. Titles are
 // data; selectionContext.ts bounds and labels them.
+/** @param {ToolData} p */
 function cite(p) {
   return {
     id: String(p.omeka_id || p.id),
@@ -124,12 +132,14 @@ function share() {
     records_label: picked.length ? "selected publications" : "publications on the current page",
   });
 }
+/** @param {ToolData} d */
 function render(d) {
   active = d;
   filters = Object.assign({}, d.filters || {});
   delete filters.citation_format;
-  const rows = d.results || [],
-    scope = {};
+  const rows = d.results || [];
+  /** @type {ToolData} */
+  const scope = {};
   LANGUAGE_SCOPE.forEach(function (k) {
     if (filters[k] !== undefined) scope[k] = filters[k];
   });

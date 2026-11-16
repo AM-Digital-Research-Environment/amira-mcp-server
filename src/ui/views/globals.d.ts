@@ -12,8 +12,18 @@
 /** The bridge the page exposes as window.amiraApp (src/ui/bridge.ts). */
 type AmiraApp = import("../bridge.js").AmiraApp;
 
-/** A tool's JSON result, as the views read it: by field name, unchecked. */
-type ToolData = Record<string, any>;
+/**
+ * A tool's JSON result, or one record of it, as the views read it: by field
+ * name, unchecked. The list fields the views walk are typed, so their
+ * callbacks get a record rather than an implicit any.
+ */
+interface ToolData {
+  [field: string]: any;
+  results?: ToolData[];
+  nodes?: ToolData[];
+  edges?: ToolData[];
+  related_publications?: ToolData[];
+}
 
 // The views were written against the untyped DOM: an event target is read as
 // the element it is, and a looked-up element as the input it is. These loose
@@ -33,5 +43,5 @@ interface PickerOption { value: string; label?: string; alt?: string }
 interface PickerSpec { name: string; kind: string; current?: unknown; any?: string; maxlength?: number; placeholder?: string }
 
 /** Written by the page assembler (src/ui/page.ts viewsScript) for ./_router.js. */
-declare var amiraViews: Record<string, { title: string; render: (payload: ToolData) => void }>;
+declare var amiraViews: Record<string, { title: string; render: (payload: Record<string, unknown>) => void }>;
 declare var amiraViewOfTool: Record<string, string>;
