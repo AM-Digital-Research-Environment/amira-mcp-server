@@ -4,7 +4,8 @@
 //   1. accent folding and ORIGINAL-string offsets (src/text.ts): decomposed
 //      accents shrink under folding, ligatures and ß grow, emoji are surrogate
 //      pairs — and the two offset implementations (the sparse shift index of
-//      foldedMatches and the per-character map of foldedRanges) must agree;
+//      foldedMatches and the per-character map of the foldedRanges oracle in
+//      test/helpers/folded-ranges.mjs) must agree;
 //   2. pagination: walking next_offset never skips or repeats a record and
 //      stops exactly at total_matches, whatever the limit, the start offset or
 //      the 40,000-character page budget does to a page;
@@ -20,8 +21,12 @@ import { buildFixture } from "../fixtures/fixture-data.mjs";
 import { hermeticEnv } from "../helpers/env.mjs";
 import { connectInMemory } from "../helpers/mcp.mjs";
 
+import { foldedRanges as naiveFoldedRanges } from "../helpers/folded-ranges.mjs";
+
 const { dataDir } = hermeticEnv({ dataDir: true });
 const lib = await import("../../server/lib.js");
+/** The per-character-map oracle (test/helpers/folded-ranges.mjs) over the server's fold. */
+const foldedRanges = (text, needle, limit, from) => naiveFoldedRanges(lib.fold, text, needle, limit, from);
 
 // --- 1. folding and offsets ---------------------------------------------------
 
@@ -70,7 +75,7 @@ test("property: foldedMatches and foldedRanges agree, and every range folds back
     fc.pre(q.length > 0);
     const matches = lib.foldedMatches(text, needle);
     const ranges = matches.ranges;
-    assert.deepEqual(lib.foldedRanges(text, needle, Number.MAX_SAFE_INTEGER), ranges);
+    assert.deepEqual(foldedRanges(text, needle, Number.MAX_SAFE_INTEGER), ranges);
     assert.equal(matches.total, ranges.length);
     assert.equal(matches.capped, false);
     assert.equal(lib.foldedIndexOf(text, needle), ranges.length ? ranges[0].start : -1);
@@ -132,8 +137,8 @@ test("property: foldedMatches skip/take and foldedRanges limit/from are windows 
       const page = lib.foldedMatches(text, needle, { skip, take });
       assert.equal(page.total, all.length);
       assert.deepEqual(page.ranges, all.slice(skip, skip + take));
-      const ranges = lib.foldedRanges(text, needle, Number.MAX_SAFE_INTEGER);
-      assert.deepEqual(lib.foldedRanges(text, needle, take, from), ranges.filter((r) => r.start >= from).slice(0, take));
+      const ranges = foldedRanges(text, needle, Number.MAX_SAFE_INTEGER);
+      assert.deepEqual(foldedRanges(text, needle, take, from), ranges.filter((r) => r.start >= from).slice(0, take));
       const capped = lib.foldedMatches(text, needle, { cap: 2 });
       assert.equal(capped.capped, all.length >= 2);
       assert.equal(capped.total, Math.min(all.length, 2));
@@ -145,8 +150,8 @@ test("foldedRanges agrees with foldedMatches when an expanding character carries
 }, () => {
   // "œ" + U+0301 folds to "oe"; a match on its "o" half:
   assert.deepEqual(lib.foldedMatches("œ\u0301", "o").ranges, [{ start: 0, end: 2 }]);
-  assert.deepEqual(lib.foldedRanges("œ\u0301", "o", 10), [{ start: 0, end: 2 }]); // actual: end 1, stranding the mark
-  assert.deepEqual(lib.foldedRanges("ß\u0301x", "s", 10), lib.foldedMatches("ß\u0301x", "s").ranges);
+  assert.deepEqual(foldedRanges("œ\u0301", "o", 10), [{ start: 0, end: 2 }]); // actual: end 1, stranding the mark
+  assert.deepEqual(foldedRanges("ß\u0301x", "s", 10), lib.foldedMatches("ß\u0301x", "s").ranges);
 });
 
 test("fold is invariant under Unicode normalization (NFC vs NFD)", {

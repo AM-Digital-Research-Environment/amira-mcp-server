@@ -117,19 +117,11 @@ function nearMissScore(name: string[], query: string[]): number | null {
 }
 
 /**
- * How near a person query comes to a stored name, in either name order and
- * ignoring accents: every query token pairs with a different token of the name
- * within the typo tolerance, and the name may carry extra tokens (a middle
- * name). Returns the edits per character compared (0 = the same tokens), or
- * null when the name is not a near miss.
- */
-export function nameNearMiss(candidate: string, query: string): number | null {
-  return nearMissScore(nameTokens(candidate), nameTokens(query));
-}
-
-/**
  * The records whose name or a name variant is a near miss for `query`, closest
- * first (ties by name), at most `limit` of them.
+ * first (ties by name), at most `limit` of them. A near miss, in either name
+ * order and ignoring accents: every query token pairs with a different token of
+ * the name within the typo tolerance, and the name may carry extra tokens (a
+ * middle name). Closeness is the edits per character compared (0 = the same tokens).
  */
 export function nearMissNames<T extends { name: string; alt_names?: string[] }>(records: readonly T[], query: string, limit = 5): T[] {
   const tokens = nameTokens(query);

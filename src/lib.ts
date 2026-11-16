@@ -5,8 +5,8 @@ export * from "./omekaJSON.js";
 export * from "./transform.js";
 export * from "./types.js";
 export { LanguageIndex } from "./languages.js";
-export { nameTokens, nameKey, samePerson, nameMatchesQuery, editDistance, nameNearMiss, nearMissNames } from "./names.js";
-export { fold, foldCached, foldedIndexOf, clearFoldCache } from "./text.js";
+export { samePerson, nameMatchesQuery, editDistance, nearMissNames } from "./names.js";
+export { fold, foldCached, foldedIndexOf } from "./text.js";
 export { ensureStore, currentStore, chooseInitial, DataStore, withStore } from "./data.js";
 export { warmIndexes } from "./warm.js";
 export { crawlSnapshot, isStale, loadSnapshot, probeRemote, writeSnapshot, writeSnapshotAtomic } from "./snapshot.js";
@@ -17,7 +17,6 @@ export { loadSkillCatalog } from "./skills.js";
 export { exposureLevel } from "./exposure.js";
 export { guidanceEnabled, stripSchemaText } from "./guidance.js";
 export { isTemplatePlaceholder, parseAllowedOriginHostnames, config } from "./config.js";
-
 export { publicationBibtex, publicationCitation } from "./publicationCitation.js";
 export { BRIDGE_JS } from "./ui/assets.js";
 export { ContextSync } from "./ui/contextSync.js";
@@ -27,7 +26,6 @@ export { APP_TOOLS, APP_URI, VIEW_OF_TOOL } from "./ui/viewContract.js";
 export { registerAppResources } from "./tools/apps.js";
 export * from "./snapshotIdentity.js";
 export { fetchJSON, readFingerprints, readManifest, readSnapshotPointer, snapshotFingerprints } from "./snapshot.js";
-export { foldedRanges } from "./text.js";
 export * from "./entityGraph.js";
 export { selectResearchItems } from "./researchItemQuery.js";
 export { INSTRUCTIONS, curatorInstructions } from "./mcpServer.js";
@@ -38,14 +36,13 @@ export { parseKeyword, keywordMatches, placeAliases, wordPrefixMatch, tokenize, 
 export { closestValues, keywordPredicate, literalPhrase, matchSnippet } from "./matching.js";
 export { placeMatcher, researchFilterError } from "./researchItemQuery.js";
 export { foldedMatches } from "./text.js";
-export { cleanArgs, ALWAYS_LOAD } from "./tools/policy.js";
+export { cleanArgs } from "./tools/policy.js";
 export { TOOL_PROFILES, allowedTools } from "./toolProfiles.js";
 export { exportUri } from "./resources.js";
 export { escBibtex } from "./citation.js";
-export { authorityIds } from "./omekaJSON.js";
 export { scrub } from "./tools/responses.js";
 export { describeMarkdown } from "./skills.js";
-export { fetchFulltextMaps, probeCuratorAuth } from "./snapshot.js";
+export { probeCuratorAuth } from "./snapshot.js";
 export { FULLTEXT_SOURCE, parseFulltextMaps, fulltextIndex, wordTrends } from "./fulltextMaps.js";
 export { fetchSemanticRelease } from "./snapshot.js";
 export {
@@ -60,7 +57,6 @@ export {
 export { publicView, splitVisibility, PRIVATE_CITATION_NOTE, RESTRICTED_NOTE } from "./visibility.js";
 export { publicNamesakeOf } from "./namesakes.js";
 export { cacheSnapshotDir, refreshNow, refreshStatus } from "./data.js";
-export { auditLine } from "./httpApp.js";
 export { adminItemUrl, adminItemSetUrl } from "./urls.js";
 // Curator presentation: the decoration step, for direct tests of URL forms.
 export { adminMediaUrl } from "./urls.js";

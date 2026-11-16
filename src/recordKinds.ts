@@ -110,25 +110,23 @@ export function recordTitle(r: AnyRecord): string {
   return "title" in r ? r.title : r.name;
 }
 
-/** Any record by Omeka id, with its kind. Omeka ids are unique across every
- * resource, so one map serves all kinds; built once per snapshot. */
-export function recordByOId(store: DataStore, oId: number): { kind: StoredKind; record: AnyRecord } | undefined {
+/** Every record by Omeka id, with its kind. Omeka ids are unique across every
+ * resource, so one map serves all kinds (the first kind in RECORD_KINDS order
+ * wins should one ever repeat); built once per snapshot. */
+export function recordsByOId(store: DataStore): ReadonlyMap<number, { kind: StoredKind; record: AnyRecord }> {
   return store.cached("records-by-oid", () => {
     const map = new Map<number, { kind: StoredKind; record: AnyRecord }>();
     for (const kind of Object.keys(RECORD_KINDS) as StoredKind[]) {
       for (const record of RECORD_KINDS[kind].rows(store)) if (!map.has(record.o_id)) map.set(record.o_id, { kind, record });
     }
     return map;
-  }).get(oId);
+  });
 }
 
-/** The `fetch` adapter's prefix → kind (`item` → research_item, `pub` → publication). */
-export const FETCH_PREFIXES: ReadonlyMap<string, StoredKind> = new Map(
-  (Object.keys(RECORD_KINDS) as StoredKind[]).flatMap((kind) => {
-    const prefix = RECORD_KINDS[kind].fetchPrefix;
-    return prefix ? [[prefix, kind] as const] : [];
-  }),
-);
+/** Any record by Omeka id, with its kind. */
+export function recordByOId(store: DataStore, oId: number): { kind: StoredKind; record: AnyRecord } | undefined {
+  return recordsByOId(store).get(oId);
+}
 
 /** The detail tool for a typed-id kind, when there is one (suggestions on a wrong-kind id). */
 export function detailToolOf(kind: RecordKind): string | undefined {

@@ -23,7 +23,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { DataStore } from "./data.js";
-import { RECORD_KINDS, recordTitle } from "./recordKinds.js";
+import { RECORD_KINDS, recordsByOId, recordTitle } from "./recordKinds.js";
 import type { SnapshotData } from "./types.js";
 import { itemUrl } from "./urls.js";
 
@@ -52,6 +52,7 @@ const PRODUCER_TYPES = {
 } as const;
 export const SEMANTIC_KINDS = ["research_item", "publication", "video", "podcast", "project", "section"] as const;
 export type SemanticKind = (typeof SEMANTIC_KINDS)[number];
+const isSemanticKind = (kind: string): kind is SemanticKind => (SEMANTIC_KINDS as readonly string[]).includes(kind);
 
 const omekaId = z.number().int().positive();
 const idKey = z.string().regex(/^[1-9]\d{0,9}$/);
@@ -365,13 +366,15 @@ async function clusterRows(v: Float32Array, dims: number, rows: { row: number; i
 export interface SemanticRecord { kind: SemanticKind; o_id: number; title: string }
 
 /** Every record of an embedded kind, by Omeka id: one shared object per
- * record, built once per snapshot. Resolving through six per-kind lookups
- * (and six closures) per call made the first semantic request take 170 ms. */
+ * record, built once per snapshot from the all-kinds id map (src/recordKinds.ts),
+ * whose first six kinds are SEMANTIC_KINDS in the same order. Resolving through
+ * six per-kind lookups (and six closures) per call made the first semantic
+ * request take 170 ms. */
 function semanticRecords(store: DataStore): Map<number, SemanticRecord> {
   return store.cached("semantic:records", () => {
     const map = new Map<number, SemanticRecord>();
-    for (const kind of SEMANTIC_KINDS) {
-      for (const r of RECORD_KINDS[kind].rows(store)) if (!map.has(r.o_id)) map.set(r.o_id, { kind, o_id: r.o_id, title: recordTitle(r) });
+    for (const [oId, { kind, record }] of recordsByOId(store)) {
+      if (isSemanticKind(kind)) map.set(oId, { kind, o_id: oId, title: recordTitle(record) });
     }
     return map;
   });

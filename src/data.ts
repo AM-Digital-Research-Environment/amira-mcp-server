@@ -256,18 +256,6 @@ export class DataStore {
   getOrganisationByOId(oId: number): OrganisationRec | undefined {
     return this.orgByOId.get(oId);
   }
-  /**
-   * Curator mode: the public person or organisation with the same (folded)
-   * name as `record`, when there is one other than `record` itself; undefined
-   * otherwise. Tells a tool that a private record (typically an authority
-   * duplicate retired by a merge) has a public namesake to point to. Always
-   * undefined in public mode, which holds no private record.
-   */
-  publicNamesake(record: { o_id: number; name: string; visibility?: string }, kind: "person" | "organisation"):
-    PersonRec | OrganisationRec | undefined {
-    const hit = (kind === "person" ? this.personByName : this.orgByName).get(fold(record.name.trim()));
-    return hit && hit.o_id !== record.o_id && hit.visibility !== "private" && fold(hit.name) === fold(record.name.trim()) ? hit : undefined;
-  }
   /** Subject authority by id or exact (folded) heading. */
   getSubject(key: number | string): SubjectRec | undefined {
     return typeof key === "number" ? this.subjectByOId.get(key) : this.subjectByName.get(fold(key.trim()));
@@ -278,7 +266,7 @@ export class DataStore {
   getSectionByOId(oId: number): SectionRec | undefined {
     return this.sectionByOId.get(oId);
   }
-  /** A section by exact (folded) name, Omeka id or typed id (`section:218`). */
+  /** A section by exact (folded) name, Omeka id or typed id (`section:<id>`). */
   resolveSection(nameOrId: string): SectionRec | undefined {
     const byName = this.getSection(nameOrId);
     if (byName) return byName;
