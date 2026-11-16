@@ -5,6 +5,26 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+### Curator mode
+
+- **`get_text_passages` searches private texts.** On the curator server it
+  accepts `research_item:ID` (and `item:ID`) and finds passages in the private
+  full text of research items (the ILAM *African Music* OCR text) and
+  publications, and in the private text of Cluster Chronicles works, so an
+  agent can read the paragraphs around a phrase instead of paging a whole
+  article 25,000 characters at a time. Matching, `radius`, `limit`, `offset` /
+  `next_offset` and the match cap work as for public texts; offsets index the
+  private text, as `fulltext_offset` / `text_offset` do on the detail tools. A
+  passage from a private text says `matched_in: "restricted_fulltext"` (or
+  `"restricted_text"`) and the result carries `restricted_match_note`, whose
+  wording now names passages too, so a private passage of a public record is
+  never presented as citable text. A publication gives its public passages
+  first. Private podcast and video transcripts are still not searched.
+- Public mode is unchanged: same schema, description and output, and research
+  item ids are still refused as `unsupported_kind`.
+
 ## 1.37.0 — 2026-11-16
 
 The Cluster Chronicles collection, with two new tools (38 core tools on stdio,

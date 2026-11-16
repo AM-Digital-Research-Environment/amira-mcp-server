@@ -54,10 +54,10 @@ export const PRIVATE_KEYWORD_NOTE =
   "Curator mode: the keyword filter also matches research items' private full text (the ILAM OCR text), so these counts " +
   "may include items matched only there. search_research_items marks such rows with matched_in.";
 
-/** Said on a search result with rows matched only in a private full text. */
+/** Said on a search result with rows matched only in a private full text, and on passages drawn from one. */
 export const RESTRICTED_MATCH_NOTE =
   "Rows with matched_in \"restricted_fulltext\" (or \"restricted_text\") matched only in a private full text: their " +
-  "fulltext_snippet (or text_snippet) is private. Do not quote or cite it as public.";
+  "fulltext_snippet (or text_snippet; a get_text_passages passage's text) is private. Do not quote or cite it as public.";
 
 /** The matched_in values of a row matched only in a private text. */
 const RESTRICTED_MATCHES = new Set(["restricted_fulltext", "restricted_text"]);

@@ -223,7 +223,8 @@ For close reading, `get_text_passages` finds bounded passages in selected
 `publication:ID`, `video:ID`, `podcast:ID` or `chronicle:ID` records, with exact original UTF-16
 offsets and citations. These are extracted-text offsets, not page numbers or
 timestamps. Every match is reachable through `next_offset`; `scanned_matches_capped`
-only flags a document with more than 10,000 matches. Full exposure is required.
+only flags a document with more than 10,000 matches. Full exposure is required. (On the curator
+server it also reads research items and private texts; see "Curator mode" below.)
 Typed ids are interchangeable across tools: the remote `search`/`fetch` pair's
 `item:ID` / `pub:ID` work in the graph, passage and `get_*` tools, and
 `research_item:ID` / `publication:ID` work in `fetch`.
@@ -284,7 +285,12 @@ MODE and results carry `visibility`. The public server never does.
 - Private full text (e.g. ILAM's OCR text) is searchable in `search_research_items` and
   `search_publications`: a row matched only there says `matched_in: "restricted_fulltext"` with a
   snippet. Read it with `include_fulltext` on `get_research_item` / `get_publication`, paged by
-  `fulltext_offset` / `fulltext_max_chars` like any long text.
+  `fulltext_offset` / `fulltext_max_chars` like any long text. To read around a phrase rather than
+  page the whole text, `get_text_passages` takes `research_item:ID` (or `item:ID`) here and searches
+  private full texts of research items, publications and chronicles: each such passage says
+  `matched_in` (`"restricted_fulltext"`, `"restricted_text"` for a chronicle), its offsets are
+  `fulltext_offset` values into that private text, and the result's `restricted_match_note` says the
+  passage text is private, even when the record itself is public.
 - Counts include private records (`get_collection_overview` splits them by `visibility`), so they
   differ from the public site's.
 

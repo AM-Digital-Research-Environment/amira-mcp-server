@@ -160,7 +160,8 @@ and the returned `snapshot_id` for stable evidence paging. Graphs cap at 100 nod
 `podcast:ID` or `chronicle:ID` identifiers. It returns at most 20 passages per page, original UTF-16
 offsets and source citations; every match is reachable through `next_offset`
 (`scanned_matches_capped` reports a document with more than 10,000 matches). These are extracted-text offsets, not
-PDF page numbers or audio timestamps. `get_snapshot_changes` requires two local
+PDF page numbers or audio timestamps. On a curator server it also takes
+research items and searches private texts ([docs/curator.md](docs/curator.md)). `get_snapshot_changes` requires two local
 same-source generations; it reports available history instead of inventing a diff.
 
 ### The ILAM full-text map
@@ -197,7 +198,9 @@ without stemming; years with few words are marked `sparse`. 657 articles are on
 the map: articles without full text, and those excluded as shared section text,
 journal furniture or under 300 words, are not. These surfaces need the
 `descriptive` exposure level. Searching passages of the text itself is a
-separate decision, with ILAM and Rhodes University, and is not offered.
+separate decision, with ILAM and Rhodes University, and is not offered on the
+public server; only the internal curator server, which already serves the text
+to curators, searches it ([docs/curator.md](docs/curator.md)).
 
 ### Example questions it can answer
 

@@ -87,11 +87,13 @@ test("curator: the private text sits under `restricted`, paged by include_text /
   assert.equal((await call("get_chronicle", { id: 560, include_text: true })).restricted.has_text, false);
 });
 
-test("curator: get_text_passages does not search a private chronicle text and says where to read it", async () => {
+test("curator: get_text_passages searches a private chronicle text and marks its passages", async () => {
   const r = await call("get_text_passages", { ids: ["chronicle:562"], keyword: "ocelot-private-chronicle-token" });
-  assert.equal(r.total_matches, 0);
-  assert.equal(r.unavailable[0].reason, "no_text");
-  assert.match(r.unavailable[0].note, /get_chronicle with include_text/);
+  assert.equal(r.total_matches, 1);
+  assert.equal(r.unavailable, undefined);
+  const [p] = r.results;
+  assert.deepEqual([p.matched_in, p.match_start, p.visibility], ["restricted_text", PRIVATE_TEXT.indexOf("ocelot"), "public"]);
+  assert.equal(r.restricted_match_note, lib.RESTRICTED_MATCH_NOTE);
 });
 
 test("curator: a depicted private duplicate is marked and points to its public namesake", async () => {

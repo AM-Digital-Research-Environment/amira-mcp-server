@@ -91,6 +91,24 @@ applied to every tool and resource, so no tool can forget it:
   `has_restricted_text`, and `get_chronicle` pages it under `restricted` with
   `include_text`, `text_offset` and `text_max_chars` (`restricted.text`,
   `has_text`, `text_length`, …).
+- **Passages of private text**: `get_text_passages` accepts `research_item:ID`
+  (and `item:ID`) in curator mode only, and searches the private full text of
+  research items and publications and the private text of Cluster Chronicles
+  works, with the same literal, accent-insensitive phrase matching, `radius`,
+  `limit`, `offset` / `next_offset` and match cap as for public texts. A
+  passage drawn from a private text carries the search tools' marker
+  (`matched_in: "restricted_fulltext"`, or `"restricted_text"` for a
+  chronicle), so the result gets `restricted_match_note`: the passage `text` is
+  private and not citable, even when the record itself is public (its row then
+  says `visibility: "public"` and keeps its `amira_url`; a private record's
+  row has `admin_url` instead). Its offsets are UTF-16 offsets into that
+  private text, the ones `get_research_item` / `get_publication`
+  `fulltext_offset` (`get_chronicle` `text_offset`) page, so a curator can read
+  around a passage without paging the whole text. A publication with both texts
+  gives its public passages first, then its private ones. A research item with
+  no private full text is listed in `unavailable` as `no_fulltext`. In public
+  mode the tool, its schema and its description are unchanged, and a research
+  item id is still refused as `unsupported_kind`.
 - **Keyword filters over research items match private full text everywhere**
   they apply, since every tool shares one selection: `list_years`,
   `list_locations` and `compare_collections` (their `filters.keyword`) and
@@ -382,7 +400,7 @@ and loading a snapshot drops any private record or `restricted` block again.
   custom connectors without the relay); see the issue.
 - A read-only Omeka role with `view-all`; the service account is a `reviewer`.
 - Private podcast and video transcripts are reported by length in `restricted`
-  but not paged; `get_text_passages` does not search private full text.
+  but not paged, and `get_text_passages` does not search them.
 - Item-set rows inside a collection (`item_sets: [{ id, code }]`) carry no
   `visibility`; the collection itself does.
 - The `search` output schema still describes `url` as the public record page;

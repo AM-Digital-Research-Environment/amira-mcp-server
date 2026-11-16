@@ -66,6 +66,8 @@ test("public tools: neither fixture appears in any tool, list, count or graph", 
     ["get_entity_graph", { seed: `project:${IDS.project}` }],
     ["search", { query: "Interview" }],
     ["fetch", { id: `research_item:${IDS.publicItem}` }],
+    ["get_text_passages", { ids: [`research_item:${IDS.publicItem}`, `publication:${IDS.publicPub}`], keyword: PRIVATE.fulltext }],
+    ["get_text_passages", { ids: [`publication:${IDS.publicPub}`], keyword: PRIVATE.pubText }],
   ];
   for (const [tool, args] of calls) {
     const result = await conn.raw(tool, args);
@@ -105,6 +107,26 @@ test("public mode: the tool surface is the one it always was (no curator-only pa
   assert.equal(item.inputSchema.properties.include_fulltext, undefined);
   const graph = tools.find((t) => t.name === "resolve_entity");
   assert.ok(graph.outputSchema.properties.results.items.required.includes("amira_url"), "amira_url stays required in public schemas");
+  const passages = tools.find((t) => t.name === "get_text_passages");
+  assert.ok(!passages.description.includes("Curator") && !passages.description.includes("research_item"));
+  assert.equal(passages.inputSchema.properties.ids.description, "publication:, video:, podcast: or chronicle: ids");
+  assert.equal(passages.outputSchema.properties.results.items.properties.matched_in, undefined);
+  assert.ok(passages.outputSchema.properties.results.items.required.includes("amira_url"));
+});
+
+test("public mode: get_text_passages still refuses research items, with the same error shape, and searches no private text", async () => {
+  const r = await conn.call("get_text_passages", { ids: [`research_item:${IDS.publicItem}`, `item:${IDS.privateItem}`], keyword: PRIVATE.fulltext });
+  const note = "Research items carry no public full text; read the record with get_research_item.";
+  assert.deepEqual(r.unavailable, [
+    { id: `research_item:${IDS.publicItem}`, reason: "unsupported_kind", note },
+    { id: `item:${IDS.privateItem}`, reason: "unsupported_kind", note },
+  ]);
+  assert.deepEqual([r.total_matches, r.count, r.results.length, r.scanned_matches_capped], [0, 0, 0, false]);
+  assert.equal(r.restricted_match_note, undefined);
+  // The publication whose bibo:content is private has no public text here.
+  const pub = await conn.call("get_text_passages", { ids: [`publication:${IDS.publicPub}`], keyword: PRIVATE.pubText });
+  assert.deepEqual(pub.unavailable, [{ id: `publication:${IDS.publicPub}`, reason: "no_fulltext" }]);
+  assertClean("get_text_passages", [r, pub]);
 });
 
 test("publicView drops private records and values from a snapshot labelled public (defence in depth at load)", () => {
