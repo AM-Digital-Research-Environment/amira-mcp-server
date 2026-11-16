@@ -8,6 +8,7 @@ import { LanguageIndex } from "./languages.js";
 import { fold, newFoldCaches } from "./text.js";
 import { stripTypedId } from "./typedIds.js";
 import type {
+  ChronicleRec,
   ItemSetRec,
   JournalRec,
   LinkedRef,
@@ -60,6 +61,8 @@ export class DataStore {
   readonly itemSets: ItemSetRec[];
   /** Subject authorities (empty when serving a v4 snapshot). */
   readonly subjects: SubjectRec[];
+  /** Cluster Chronicles works (empty when serving a snapshot older than v6). */
+  readonly chronicles: ChronicleRec[];
   readonly languageIndex: LanguageIndex;
   /** Folded copies of this snapshot's large texts (src/text.ts). */
   readonly folds = newFoldCaches();
@@ -85,6 +88,7 @@ export class DataStore {
   private readonly journalByOId = new Map<number, JournalRec>();
   private readonly podcastByOId = new Map<number, PodcastRec>();
   private readonly videoByOId = new Map<number, VideoRec>();
+  private readonly chronicleByOId = new Map<number, ChronicleRec>();
   private readonly playlistByOId = new Map<number, PlaylistRec>();
   private readonly itemSetByOId = new Map<number, ItemSetRec>();
   private readonly itemsByProjectOId = new Map<number, ResearchItemRec[]>();
@@ -150,6 +154,7 @@ export class DataStore {
     this.playlists = data.playlists;
     this.itemSets = data.item_sets;
     this.subjects = data.subjects ?? [];
+    this.chronicles = data.chronicles ?? [];
     this.languageIndex = new LanguageIndex(data.languages);
 
     // Every by-name map is keyed on the FOLDED name (src/text.ts), so a lookup
@@ -204,6 +209,7 @@ export class DataStore {
     for (const j of this.journals) this.journalByOId.set(j.o_id, j);
     for (const p of this.podcasts) this.podcastByOId.set(p.o_id, p);
     for (const v of this.videos) this.videoByOId.set(v.o_id, v);
+    for (const c of this.chronicles) this.chronicleByOId.set(c.o_id, c);
     for (const p of this.playlists) this.playlistByOId.set(p.o_id, p);
     for (const s of this.itemSets) this.itemSetByOId.set(s.o_id, s);
   }
@@ -269,6 +275,9 @@ export class DataStore {
   }
   getVideo(oId: number): VideoRec | undefined {
     return this.videoByOId.get(oId);
+  }
+  getChronicle(oId: number): ChronicleRec | undefined {
+    return this.chronicleByOId.get(oId);
   }
   getPlaylist(oId: number): PlaylistRec | undefined {
     return this.playlistByOId.get(oId);

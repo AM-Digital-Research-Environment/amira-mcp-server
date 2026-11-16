@@ -7,8 +7,43 @@ force and what comes next.
 
 ## Unreleased
 
-Fixes from a full test pass of the 38 tools through the curator relay and a
-review of the 1.36.0 code. No tool was added or removed.
+The Cluster Chronicles collection, with two new tools (38 core tools on stdio,
+40 over HTTP), and fixes from a full test pass of the 38 tools through the
+curator relay and a review of the 1.36.0 code.
+
+### Cluster Chronicles
+
+- **A new collection.** The cluster's writer-in-residence programme, catalogued
+  on AMIRA on 16 November 2026 (item set 50105: 60 works by Elnathan John, Jean
+  Luc Raharimanana, Umar Timol and Egara Kabaji), is a new snapshot corpus,
+  `chronicles`, with two tools. `search_chronicles` filters by chronicler (or
+  another credited or depicted person), form (essay, poem, still image, event,
+  video), year, subject, place, language and keyword, reaching into the essays'
+  and poems' verbatim text with a snippet; an unknown form or language returns
+  `did_you_mean`. `get_chronicle` gives the credits with roles, the people a
+  photograph depicts, linked and literal subjects and places, the related works
+  and the video and podcast records they link to as typed ids, the images, and
+  the text opt-in and pageable (`include_text`, `text_offset`,
+  `text_max_chars`). Every abstract was written by a language model, and the
+  record says so (`abstract_ai_generated`, `abstract_generated_by`).
+- **The cross-cutting tools read it.** `get_collection_overview` counts it
+  (`cluster_chronicles`, `chronicles_by_form`); `get_person` lists a person's
+  works (`chronicles[]`, role `Depicted` for someone a photo shows) and counts
+  shared works among collaborators (`shared_chronicles`); `find_related` counts
+  chronicles in its subject, place and person pivots (`matched_chronicles`,
+  `chronicle_count`, `related_chronicles` rows with ids); `get_entity_graph` has
+  `chronicle` nodes and a `chronicle_count` on edges; `get_text_passages` takes
+  `chronicle:` ids; `get_data_quality` counts essays and poems without text. A
+  chronicle's people (credits and people depicted) are the same in all three
+  people lists; a venue that is an institution's record and a relation to a
+  video or podcast join that record's graph node. `fetch` does not serve
+  chronicles (nor does `search` return them): it names `get_chronicle`.
+- **Curator mode:** chronicles join the visibility index and counts; a private
+  chronicle text is matched by `search_chronicles` (`matched_in:
+  "restricted_text"`, flagged `has_restricted_text`) and paged under
+  `restricted` by `get_chronicle`'s own `include_text` arguments.
+- Snapshot schema v6: an older snapshot still loads (with no chronicles) and is
+  reported stale, so a running server with live refresh recrawls it.
 
 ### Curator mode
 

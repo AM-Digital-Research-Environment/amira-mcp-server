@@ -5,10 +5,13 @@
 // map's group descriptions all read a record's links. Each used to fetch the
 // record by kind and pick the fields itself, three copies that had to agree.
 import type { DataStore } from "./data.js";
-import { personCredits } from "./personCredits.js";
+import { chronicleCredits, isOrganisationCredit, personCredits } from "./personCredits.js";
 import { RECORD_KINDS } from "./recordKinds.js";
 import type { SemanticKind } from "./semantic.js";
 import type { LinkedRef } from "./types.js";
+
+/** The kinds whose catalogue links are read: the embedded kinds, plus chronicles (not embedded). */
+export type LinkKind = SemanticKind | "chronicle";
 
 export interface RecordLinks {
   subjects: readonly LinkedRef[];
@@ -16,7 +19,7 @@ export interface RecordLinks {
   places: readonly LinkedRef[];
   /** The country of each place: the root of its ancestor chain. */
   countries: readonly LinkedRef[];
-  /** Credited people: contributors, authors and editors, speakers, PIs and members, as person credits
+  /** Credited people: contributors, authors and editors, speakers, PIs and members, chroniclers and people depicted, as person credits
    * (organisations and non-collaborative roles left out, src/personCredits.ts). */
   people: readonly LinkedRef[];
   /** A research item's project, or a project itself. */
@@ -29,7 +32,7 @@ export interface RecordLinks {
 const NONE: readonly LinkedRef[] = [];
 const EMPTY: RecordLinks = { subjects: NONE, places: NONE, countries: NONE, people: NONE, projects: NONE, sections: NONE, formats: NONE };
 
-function build(store: DataStore, kind: SemanticKind, oId: number): RecordLinks {
+function build(store: DataStore, kind: LinkKind, oId: number): RecordLinks {
   // People are person credits (src/personCredits.ts): no organisation, no
   // non-collaborative role, the definition get_person counts collaborators by.
   const people = (credits: Parameters<typeof personCredits>[1]) => personCredits(store, credits);
@@ -59,6 +62,20 @@ function build(store: DataStore, kind: SemanticKind, oId: number): RecordLinks {
       const p = store.getPodcast(oId);
       return p ? { ...EMPTY, people: people(p.people) } : EMPTY;
     }
+    case "chronicle": {
+      // The chroniclers and the people a work depicts both count as its people
+      // (chronicleCredits). A venue that is an institution's record is not a place.
+      const c = store.getChronicle(oId);
+      if (!c) return EMPTY;
+      const places = c.places.filter((p) => !isOrganisationCredit(store, p.o_id));
+      return {
+        ...EMPTY,
+        subjects: c.subjects,
+        places,
+        countries: places.map((p) => store.placeChainRefs(p).at(-1) ?? p),
+        people: people(chronicleCredits(c)),
+      };
+    }
     case "project": {
       const p = store.getProjectByOId(oId);
       return p ? { ...EMPTY, projects: [{ label: p.name, o_id: p.o_id }], sections: p.sections, people: people([...p.pis, ...p.members]) } : EMPTY;
@@ -71,6 +88,6 @@ function build(store: DataStore, kind: SemanticKind, oId: number): RecordLinks {
 }
 
 /** A record's catalogue links, cached for the most recent 4,096 records. */
-export function recordLinks(store: DataStore, kind: SemanticKind, oId: number): RecordLinks {
+export function recordLinks(store: DataStore, kind: LinkKind, oId: number): RecordLinks {
   return store.cachedRecent("record-links", `${kind}:${oId}`, () => build(store, kind, oId), 4096);
 }

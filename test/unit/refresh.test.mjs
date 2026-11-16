@@ -30,7 +30,7 @@ const SETS_MODIFIED = "2026-08-15T00:00:00+00:00";
 /** The /items queries crawlSnapshot issues, one per corpus (src/snapshot.ts). */
 const CORPUS_QUERIES = ["resource_template_id=4", "resource_template_id=2", "resource_template_id=3", "resource_template_id=5",
   "resource_template_id=7", "resource_template_id=10", "item_set_id=29918", "resource_template_id=23", "resource_template_id=21",
-  "resource_template_id=22", "item_set_id=39193", "item_set_id=19", "item_set_id=1852"];
+  "resource_template_id=22", "item_set_id=39193", "item_set_id=19", "item_set_id=1852", "item_set_id=50105"];
 /** What the stub serves per corpus query; everything else is empty. */
 const CORPUS_ITEMS = {
   "resource_template_id=4": [{ "o:id": 7001, "o:title": "Refreshed, Person" }],

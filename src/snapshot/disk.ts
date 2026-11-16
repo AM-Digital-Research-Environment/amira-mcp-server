@@ -10,9 +10,9 @@ import { fulltextManifestEntry, parseFulltextMaps, type FulltextMaps } from "../
 import { parseSemanticNeighbours, semanticManifestEntry, type SemanticNeighbours } from "../semantic.js";
 import {
   CORPORA,
+  CORPUS_SINCE,
   MIN_SNAPSHOT_SCHEMA_VERSION,
   SNAPSHOT_SCHEMA_VERSION,
-  V5_CORPORA,
   type CorpusName,
   type SnapshotData,
   type SnapshotManifest,
@@ -100,8 +100,9 @@ export async function loadSnapshot(dir: string, opts: { strict?: boolean } = {})
   }
   const data = {} as SnapshotData;
   for (const corpus of CORPORA) {
-    // A v4 snapshot predates these corpora; serve them empty.
-    if (manifest.schemaVersion < 5 && V5_CORPORA.includes(corpus) && manifest.counts?.[corpus] === undefined) {
+    // An older snapshot predates this corpus (subjects: v5, chronicles: v6); serve it empty.
+    const since = CORPUS_SINCE[corpus];
+    if (since !== undefined && manifest.schemaVersion < since && manifest.counts?.[corpus] === undefined) {
       (data as unknown as Record<string, unknown[]>)[corpus] = [];
       continue;
     }

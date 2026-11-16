@@ -4,6 +4,7 @@
 
 import {
   allStrings,
+  classId,
   annotationRef,
   annotationValues,
   authorityIds,
@@ -24,6 +25,7 @@ import {
   type OmekaItem,
 } from "./omekaJSON.js";
 import type {
+  ChronicleRec,
   Contributor,
   ItemDates,
   ItemSetRec,
@@ -498,6 +500,63 @@ export function transformVideo(item: OmekaItem, ctx: TransformContext): VideoRec
     duration: firstString(item, "dcterms:extent"),
     transcript_generated_by: transcriptGeneratedBy(item),
     ...stamps(item),
+  };
+}
+
+// --- Cluster Chronicles -----------------------------------------------------------
+
+/** Resource class → the friendly form a chronicle is filtered by. */
+const CHRONICLE_FORMS: Record<string, string> = {
+  "fabio:Essay": "essay",
+  "fabio:Poem": "poem",
+  "fabio:StillImage": "still image",
+  "bibo:Event": "event",
+  "bibo:AudioVisualDocument": "video",
+};
+
+/** The item's resource-class term: resolved by id, else read from its JSON-LD `@type`. */
+function classTermOf(item: OmekaItem, ctx: TransformContext, classOId: number | null): string | null {
+  const resolved = ctx.classTerm(classOId);
+  if (resolved) return resolved;
+  const types = item["@type"];
+  return Array.isArray(types) ? (types.find((t): t is string => typeof t === "string" && !t.startsWith("o:")) ?? null) : null;
+}
+
+/** "fabio:ConferencePaper" → "conference paper" for a class without a mapped form. */
+const formOfTerm = (term: string | null): string =>
+  term ? (CHRONICLE_FORMS[term] ?? term.slice(term.indexOf(":") + 1).replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()) : "other";
+
+export function transformChronicle(item: OmekaItem, ctx: TransformContext, classOId: number | null = classId(item)): ChronicleRec {
+  const date = firstString(item, "dcterms:date");
+  const number = Number.parseInt(firstString(item, "bibo:number") ?? "", 10);
+  const term = classTermOf(item, ctx, classOId);
+  const abstract = values(item, "dcterms:abstract").find((v) => valueText(v));
+  return {
+    o_id: oid(item),
+    title: omekaTitle(item),
+    title_language: languageTagged(item, "dcterms:title")[0]?.lang ?? null,
+    alt_titles: allStrings(item, "dcterms:alternative"),
+    form: formOfTerm(term),
+    resource_class: term,
+    series: firstLinked(item, "dcterms:isPartOf"),
+    number: Number.isFinite(number) ? number : null,
+    date,
+    year: yearOf(date),
+    people: contributorsOf(item, ctx),
+    depicts: linkedRefs(item, "foaf:depicts"),
+    subjects: linkedRefs(item, "dcterms:subject"),
+    places: linkedRefs(item, "dcterms:spatial"),
+    languages: linkedRefs(item, "dcterms:language"),
+    relations: linkedRefs(item, "dcterms:relation"),
+    urls: uriValues(item, "fabio:hasURL").map((u) => u.url),
+    identifier: firstString(item, "dcterms:identifier"),
+    abstract: abstract ? valueText(abstract) : null,
+    abstract_generated_by: abstract ? annotationRef(abstract, "dre:generatedBy") : null,
+    description: firstString(item, "dcterms:description"),
+    text: firstString(item, "bibo:content"),
+    thumbnail: thumbnailUrl(item),
+    ...stamps(item),
+    media: [],
   };
 }
 

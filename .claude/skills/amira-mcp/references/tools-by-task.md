@@ -1,6 +1,6 @@
 # Tools by task
 
-All 36 core tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
+All 38 core tools are read-only. Results are compact JSON. Search/list tools return a pagination envelope:
 `{ count, total_matches, offset, has_more, next_offset?, results[] }` (plus a `filters` echo of the
 filters you actually passed). Every tool clamps an excess `limit` and echoes `requested_limit` /
 `effective_limit`; a page that would exceed 40,000 characters stops early with `response_limited: true`
@@ -9,14 +9,15 @@ filters you actually passed). Every tool clamps an excess `limit` and echoes `re
 with `isError` whose text is `{ error: { code, message, suggested_tool?, available_values? } }`.
 String arguments are trimmed; a blank optional filter is ignored. Typed ids work in both vocabularies
 (`item:`/`research_item:`, `pub:`/`publication:`, `section:`, `person:`, `organisation:`, `project:`,
-`video:`, `podcast:`), including as the `id` of `get_*` tools. Every record carries a citable `amira_url`
+`video:`, `podcast:`, `chronicle:`), including as the `id` of `get_*` tools. Every record carries a citable `amira_url`
 (on the curator server, a private record carries `admin_url` and `citation_note` instead).
 
 **Curator server only:** `search_research_items` and `search_publications` also match private full
-text (rows say `matched_in: "restricted_fulltext"`); `get_research_item` gains `include_fulltext`,
-`fulltext_offset`, `fulltext_max_chars` for it, and `get_publication`'s same parameters reach private
-texts too. Private podcast and video transcripts are reported by length only, and
-`get_text_passages` does not search private text.
+text (rows say `matched_in: "restricted_fulltext"`), and `search_chronicles` a private chronicle text
+(`matched_in: "restricted_text"`); `get_research_item` gains `include_fulltext`, `fulltext_offset`,
+`fulltext_max_chars` for it, and `get_publication`'s same parameters (`get_chronicle`'s `include_text`,
+`text_offset`, `text_max_chars`) reach private texts too. Private podcast and video transcripts are
+reported by length only, and `get_text_passages` does not search private text.
 
 ## Scoping
 
@@ -65,7 +66,7 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Task | Tool | Key params |
 | --- | --- | --- |
 | Search people | `search_persons` | `keyword` (either name order), `affiliation` |
-| Full person profile (project and section PI/member, contributor, author, podcast/video speaker) | `get_person` | `id` for exact identity, or a complete `name` (homonyms and fragments return candidates) — either order resolves to 'Surname, Forename'; adds `identifiers` (GND…) and `top_collaborators` |
+| Full person profile (project and section PI/member, contributor, author, podcast/video speaker, chronicler or person depicted) | `get_person` | `id` for exact identity, or a complete `name` (homonyms and fragments return candidates) — either order resolves to 'Surname, Forename'; adds `identifiers` (GND…) and `top_collaborators` |
 | List / detail institutions | `list_institutions` / `get_institution` | `keyword` / `name` or `id`; acronyms such as "UJKZ" resolve (get_institution also resolves groups) |
 | Africa Multiple partner institutions by category | `list_cluster_partners` | Optional `category` (`amrc`, `privileged`, `cooperation`, `global`) |
 | List research groups | `list_groups` | `keyword` |
@@ -113,6 +114,8 @@ read the numbers from the payload and cite as usual.
 | --- | --- | --- |
 | Find podcast episodes | `search_podcasts` | `keyword`, `series`, `person`, `language`, year range; results carry `date_status` and `duration` |
 | One episode (transcript opt-in) | `get_podcast` | `id` (from search, or `podcast:ID`); duration, audio file, `transcript_generated_by` (the model that transcribed it); `include_transcript=true` + `transcript_offset`/`transcript_max_chars` for the text |
+| Find Cluster Chronicles works (writer-in-residence) | `search_chronicles` | `person` (chronicler, other credit or person depicted), `form` (essay, poem, still image, event, video), `year_from`/`year_to`, `subject`, `place` (any level, or a literal venue), `language`, `keyword` (text hits carry `matched_in: "text"` + `text_snippet`) |
+| One chronicle (text opt-in) | `get_chronicle` | `id` (from search, or `chronicle:ID`); credits with roles, `depicts`, subjects/places (literal ones have `amira_url: null`), `related` works/videos/podcasts as typed ids, media, `abstract_ai_generated` + `abstract_generated_by`; `include_text=true` + `text_offset`/`text_max_chars` for the text |
 | Find videos — incl. INSIDE transcripts | `search_videos` | `keyword` (transcript hits flagged `matched_in` + a `transcript_snippet`), `playlist`, `speaker`, `language`, year range |
 | One video (transcript opt-in) | `get_video` | `id` (from search; string or number both work); `include_transcript=true` to include it, paged via `transcript_offset`/`transcript_max_chars` (cap 25k chars/call) |
 
@@ -132,7 +135,7 @@ re-run a search in a second spelling.
 | --- | --- | --- |
 | What connects to X? | `find_related` | `entity_type` (subject/location/person/project) + `value`; a person is a full name or `person:<id>` (a surname shared by several people returns their ids) |
 | What themes does the collection fall into? | `get_semantic_map` | No arguments: the groups (largest first) with size, `by_type`, `top_subjects`, `top_countries`, `top_projects` and `closest_to_centre`; `group` lists one group's records (nearest the centre first, `types` to narrow); `id` finds the group a record falls in, with its `rank_in_group`. Groups are unnamed and renumbered per build |
-| What surrounds this record, by meaning? | `find_related` | `entity_type=record`, `value` = an `omeka_id` or typed id: its 20 closest records by meaning, of any type, stand in for the matched set; `related_*` counts what they share, per corpus (`research_item_count`, `publication_count`, `video_count`, `podcast_count`, `project_count`, `section_count`) |
+| What surrounds this record, by meaning? | `find_related` | `entity_type=record`, `value` = an `omeka_id` or typed id: its 20 closest records by meaning, of any type, stand in for the matched set; `related_*` counts what they share, per corpus (`research_item_count`, `publication_count`, `video_count`, `podcast_count`, `chronicle_count`, `project_count`, `section_count`) |
 | Which ILAM articles are closest in content? | `find_related` | `entity_type=research_item`, `value` = an *African Music* article id: its closest articles by full text (`closest_in_content`), with what they share in the `related_*` lists |
 | What reads like this record, in any corpus? | `get_similar_items` | `id` = an `omeka_id` or typed id (`publication:29919`) of a research item, publication, video, podcast, project or section; `types` to narrow (e.g. `["podcast","video"]`); `limit` ≤ 10. Cosine scores over EmbeddingGemma 2 vectors of catalogue descriptions. Each result has `basis`: `shared_metadata` with `shared` {subjects, places, people, project} it also shares, or `wording_only`. No neighbours → `no_neighbours` = `low_signal` (too little own text) or `not_in_release` (newer than the vector build) |
 | Recommendations while reading one record | `get_research_item` / `get_publication` / `get_podcast` / `get_video` / `get_project` | `include_similar: true` adds a `similar` block: the same five explained neighbours, or why there are none |
@@ -178,7 +181,7 @@ Arguments autocomplete from the snapshot's authority names in hosts that support
 
 | Resource | Content |
 | --- | --- |
-| `amira://record/{kind}/{id}` | Any record as JSON (`research_item`, `publication`, `project`, `section`, `person`, `organisation`, `podcast`, `video`, `location`, `subject`, `collection`, `journal`, `playlist`) |
+| `amira://record/{kind}/{id}` | Any record as JSON (`research_item`, `publication`, `project`, `section`, `person`, `organisation`, `podcast`, `video`, `chronicle`, `location`, `subject`, `collection`, `journal`, `playlist`) |
 | `amira://export/{corpus}/{format}/{query}` | The file behind an `export` link |
 | `amira://dataset` | schema.org Dataset description of the snapshot, for citing the data set |
 
@@ -211,7 +214,7 @@ Arguments autocomplete from the snapshot's authority names in hosts that support
 | Disambiguate a label or resolve a typed ID | `resolve_entity` | `query`, optional `type`, `limit` ≤50, `offset`. Read `ambiguous`, `resolved`, `omeka_id`, `amira_url`; literals have no fabricated authority URL |
 | Follow one entity's relationships | `get_entity_graph` | `seed` from resolver (or `item:`/`pub:` ids); optional `types` keeps only those neighbour types, applied before the bounds (`neighbour_types` counts all); ≤100 nodes, ≤200 edges, 42,000 JSON bytes. Edges distinguish explicit links from per-corpus co-occurrence; one source sample each, `truncated` marks omitted edges |
 | Read all evidence for an edge | `get_entity_graph` | Same `seed`, `edge_id`, returned `snapshot_id`, `offset`, `limit` ≤50. `snapshot_changed` means restart from a new graph |
-| Find cited passages in chosen documents | `get_text_passages` | `ids` (1–10 typed publication/video/podcast IDs; `pub:` works too), `keyword`, context `radius` ≤500, `limit` ≤20. Original UTF-16 offsets; every match reachable via `next_offset` (10,000 per document cap, flagged); requires full exposure |
+| Find cited passages in chosen documents | `get_text_passages` | `ids` (1–10 typed publication/video/podcast/chronicle IDs; `pub:` works too), `keyword`, context `radius` ≤500, `limit` ≤20. Original UTF-16 offsets; every match reachable via `next_offset` (10,000 per document cap, flagged); requires full exposure |
 | Compare projects or collections | `compare_collections` | `cohorts` (2–4 `{type: project/collection, id}` objects), common `filters`. Each cohort has total/matched items, missingness, date range and top type/language counts |
 | Check metadata coverage | `get_data_quality` | No args; snapshot provenance, missingness, text availability, unresolved references and refresh state |
 | Inspect local snapshot changes | `get_snapshot_changes` | Optional `from_id`, `to_id`, `corpus`, `offset`, `limit` ≤100; pin IDs for paging. `history_unavailable` is expected with fewer than two retained same-source snapshots |

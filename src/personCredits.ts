@@ -6,7 +6,23 @@
 // record in two tools but not in the third.
 import type { DataStore } from "./data.js";
 import { fold } from "./text.js";
-import type { LinkedRef } from "./types.js";
+import type { ChronicleRec, LinkedRef } from "./types.js";
+
+/** The role a Cluster Chronicles work gives the people it shows (foaf:depicts). */
+export const DEPICTED_ROLE = "Depicted";
+
+/**
+ * A Cluster Chronicles work's credits: its marcrel credits (author,
+ * photographer, translator, speaker…) and the people it depicts, in role
+ * "Depicted". Both place a person on the work, so get_person, find_related and
+ * get_entity_graph all read a chronicle's people through this one list.
+ */
+export function chronicleCredits(c: ChronicleRec): { name: string; o_id: number | null; role: string }[] {
+  return [
+    ...c.people.map((p) => ({ name: p.name, o_id: p.o_id, role: p.role })),
+    ...c.depicts.map((r) => ({ name: r.label, o_id: r.o_id, role: DEPICTED_ROLE })),
+  ];
+}
 
 /**
  * Credits that place a person on a record without sharing its work: production

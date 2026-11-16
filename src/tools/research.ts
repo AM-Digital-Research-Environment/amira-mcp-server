@@ -48,7 +48,7 @@ function unsupportedNote(store: DataStore,kind: string, key: string): string {
     }
     return "Research items carry no public full text; read the record with get_research_item.";
   }
-  return "Only publication, video and podcast texts are searched.";
+  return "Only publication, video, podcast and Cluster Chronicles texts are searched.";
 }
 
 export function registerResearchTools(server: Server, tools: ToolMap): void {
@@ -123,8 +123,8 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
 
   tools.get_text_passages = server.registerTool("get_text_passages", {
     title: "Find cited text passages", annotations: READ_ONLY,
-    description: "Find accent-insensitive passages of one literal phrase (quotes optional; words are not matched separately) in selected publication/video/podcast IDs. Original UTF-16 offsets, bounded context, citations. Requires full text exposure.",
-    inputSchema: schemaOnce("get_text_passages:in", () => z.strictObject({ ids: z.array(z.string().max(64)).min(1).max(10).describe("publication:, video: or podcast: ids"),
+    description: "Find accent-insensitive passages of one literal phrase (quotes optional; words are not matched separately) in selected publication/video/podcast/chronicle IDs. Original UTF-16 offsets, bounded context, citations. Requires full text exposure.",
+    inputSchema: schemaOnce("get_text_passages:in", () => z.strictObject({ ids: z.array(z.string().max(64)).min(1).max(10).describe("publication:, video:, podcast: or chronicle: ids"),
       keyword: querySchema, radius: z.number().int().min(20).max(500).optional(), offset: offsetParam,
       limit: LIMITS.get_text_passages.schema })),
     outputSchema: schemaOnce("get_text_passages:out", () => z.object({ ...pageShape, results: z.array(z.object({ id: z.string(), title: z.string(), amira_url: citedUrl(),
@@ -154,14 +154,21 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       // Deduplicate on the parsed id: publication:41915 and pub:41915 are one document.
       if (seen.has(id)) continue;
       seen.add(id);
-      if (parsed.kind !== "publication" && parsed.kind !== "video" && parsed.kind !== "podcast") {
+      if (parsed.kind !== "publication" && parsed.kind !== "video" && parsed.kind !== "podcast" && parsed.kind !== "chronicle") {
         unavailable.push({ id: raw, reason: "unsupported_kind", note: unsupportedNote(store, parsed.kind, parsed.key) });
         continue;
       }
       const rec = findRecord(store, parsed.kind, parsed.key);
       if (!rec) { unavailable.push({ id: raw, reason: "not_found" }); continue; }
-      const text = "fulltext" in rec ? rec.fulltext : rec.transcript;
-      if (!text) { unavailable.push({ id: raw, reason: parsed.kind === "publication" ? "no_fulltext" : "no_transcript" }); continue; }
+      const text = "fulltext" in rec ? rec.fulltext : "transcript" in rec ? rec.transcript : rec.text;
+      if (!text) {
+        // Curator mode: a private text is not searched here (as for research items); its detail tool pages it.
+        const pager = parsed.kind === "chronicle" ? "get_chronicle with include_text" : parsed.kind === "publication" ? "get_publication with include_fulltext" : null;
+        const privateText = pager && config.access === "curator" && rec.restricted?.fulltext
+          ? { note: `This tool does not search private text; ${pager} pages it.` } : {};
+        unavailable.push({ id: raw, reason: parsed.kind === "publication" ? "no_fulltext" : parsed.kind === "chronicle" ? "no_text" : "no_transcript", ...privateText });
+        continue;
+      }
       if (!foldCached(text).includes(needle)) continue;
       const { total, capped: hit } = foldedMatches(text, phrase, { take: 0, cap: MATCH_CAP });
       capped ||= hit;
@@ -252,7 +259,9 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
           location_coordinates: store.locations.filter((l) => l.latitude == null || l.longitude == null).length,
           person_identifier: store.persons.filter((p) => !p.identifiers?.length).length,
           publication_fulltext: store.publications.filter((p) => !p.fulltext).length,
-          podcast_transcript: store.podcasts.filter((p) => !p.transcript).length, video_transcript: store.videos.filter((v) => !v.transcript).length },
+          podcast_transcript: store.podcasts.filter((p) => !p.transcript).length, video_transcript: store.videos.filter((v) => !v.transcript).length,
+          // Only essays and poems carry a text; a photograph or an event has none to miss.
+          chronicle_text: store.chronicles.filter((c) => (c.form === "essay" || c.form === "poem") && !c.text).length },
         unresolved_entities: entities.filter((e) => e.omeka_id != null && !e.resolved).length,
         literal_entities: entities.filter((e) => e.omeka_id == null).length,
         // Records with neighbours, low-signal ones (none by design) and ones the vector build predates (#12).

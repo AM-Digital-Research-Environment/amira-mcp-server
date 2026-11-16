@@ -215,7 +215,7 @@ function datasetDescription(store: DataStore): Record<string, unknown> {
     name: "AMIRA — Africa Multiple Interactive Research Atlas: research data of the Africa Multiple Cluster of Excellence",
     description:
       "Metadata for the digitised research items, projects, research sections, people, institutions, publications, " +
-      "journals, podcasts and videos of the Africa Multiple Cluster of Excellence at the University of Bayreuth, as published " +
+      "journals, podcasts, videos and Cluster Chronicles works of the Africa Multiple Cluster of Excellence at the University of Bayreuth, as published " +
       "on its public Omeka S site. This description covers one snapshot served by the AMIRA MCP server.",
     url: `${SITE_BASE}/s/amira`,
     identifier: snapshotId(store.manifest),

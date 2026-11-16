@@ -9,7 +9,7 @@
 import type { DataStore } from "./data.js";
 import type { RecordKind } from "./typedIds.js";
 import type {
-  ItemSetRec, JournalRec, LanguageRec, LocationRec, OrganisationRec, PersonRec, PlaylistRec, PodcastRec, ProjectRec,
+  ChronicleRec, ItemSetRec, JournalRec, LanguageRec, LocationRec, OrganisationRec, PersonRec, PlaylistRec, PodcastRec, ProjectRec,
   PublicationRec, ResearchItemRec, SectionRec, SubjectRec, VideoRec,
 } from "./types.js";
 
@@ -19,6 +19,7 @@ export interface RecordTypes {
   publication: PublicationRec;
   video: VideoRec;
   podcast: PodcastRec;
+  chronicle: ChronicleRec;
   project: ProjectRec;
   section: SectionRec;
   person: PersonRec;
@@ -69,6 +70,10 @@ export const RECORD_KINDS: { [K in StoredKind]: KindDef<K> } = {
   podcast: {
     rows: (s) => s.podcasts, byKey: (s, k) => byOId((n) => s.getPodcast(n))(k),
     detail: { tool: "get_podcast", arg: idArg }, search: "search_podcasts", fetchPrefix: "podcast",
+  },
+  chronicle: {
+    rows: (s) => s.chronicles, byKey: (s, k) => byOId((n) => s.getChronicle(n))(k),
+    detail: { tool: "get_chronicle", arg: idArg }, search: "search_chronicles",
   },
   project: {
     rows: (s) => s.projects, byKey: (s, k) => s.getProject(k),

@@ -438,7 +438,8 @@ test("get_person: id, typed id and either name order agree; credits, projects, c
     videos: [{ role: "Speaker", id: "542", omeka_id: 542, title: "Round Table on Sound", date: "2024-05-01", amira_url: url(542) }],
     collaborators_note: "People credited with this person on the same records, not a measure of collaboration. " +
       "shared_authorships and shared_editorships count co-written and co-edited works (a volume once); " +
-      "shared_recordings counts joint podcast or video appearances; works with more than 10 authors are left out. " +
+      "shared_recordings counts joint podcast or video appearances, shared_chronicles Cluster Chronicles works " +
+      "(a person depicted counts); works with more than 10 authors are left out. " +
       "Report them as shared credits.",
     // Test Research Group, credited on item 504 too, is a group, not a collaborator.
     collaborator_count: 2,

@@ -31,7 +31,7 @@ import { guidanceEnabled } from "../guidance.js";
 import { resolveEntities } from "../entityGraph.js";
 import { fold } from "../text.js";
 import { duplicatePointer, publicFirst, withoutPrivateNamesakes } from "../namesakes.js";
-import { collaborativeRole, isPersonCredit } from "../personCredits.js";
+import { chronicleCredits, collaborativeRole, isPersonCredit } from "../personCredits.js";
 import { RECORD_KINDS, detailToolOf, recordByOId, recordTitle } from "../recordKinds.js";
 import { recordArg } from "./records.js";
 import { pastEndHint } from "./listHints.js";
@@ -69,7 +69,7 @@ function pubRole(p: PublicationRec, personOId: number | null, name: string): "au
   return null;
 }
 
-/** True when the name occurs as a full credit anywhere (contributor, author, editor, podcast or video speaker). */
+/** True when the name occurs as a full credit anywhere (contributor, author, editor, podcast or video speaker, chronicler or person depicted). */
 function creditedAnywhere(store: DataStore, name: string): string | null {
   return store.cached(`credited-names`, () => {
     const names = new Map<string, string>();
@@ -78,6 +78,7 @@ function creditedAnywhere(store: DataStore, name: string): string | null {
     for (const p of store.publications) for (const r of [...p.authors, ...p.editors]) add(r.label);
     for (const p of store.podcasts) for (const c of p.people) add(c.name);
     for (const v of store.videos) for (const c of v.speakers) add(c.name);
+    for (const c of store.chronicles) for (const p of chronicleCredits(c)) add(p.name);
     return names;
   }).get(nameKey(name)) ?? null;
 }
@@ -111,7 +112,8 @@ function editedWork(p: PublicationRec): string {
 const COLLABORATORS_NOTE =
   "People credited with this person on the same records, not a measure of collaboration. shared_authorships " +
   "and shared_editorships count co-written and co-edited works (a volume once); shared_recordings counts joint " +
-  `podcast or video appearances; works with more than ${LARGE_TEAM_AUTHORS} authors are left out. Report them ` +
+  "podcast or video appearances, shared_chronicles Cluster Chronicles works (a person depicted counts); " +
+  `works with more than ${LARGE_TEAM_AUTHORS} authors are left out. Report them ` +
   "as shared credits.";
 
 const SEARCH_LIMIT = limitParam(25, 100);
@@ -196,7 +198,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
     "get_person",
     {
       title: "Get person profile",
-      description: "Person affiliations, identifiers, project and section roles, credited items, publications, podcasts, videos and collaborators. Lists cap at 50 with totals. Use id to disambiguate.",
+      description: "Person affiliations, identifiers, project and section roles, credited items, publications, podcasts, videos, Cluster Chronicles works and collaborators. Lists cap at 50 with totals. Use id to disambiguate.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_person:in", () => z.strictObject({
         name: textParam()
@@ -262,7 +264,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       // collaborators. Each relation is counted once per record, and
       // co-editing once per edited volume (editedWork).
       type Collaborator = {
-        name: string; o_id: number | null; shared_items: number; shared_recordings: number;
+        name: string; o_id: number | null; shared_items: number; shared_recordings: number; shared_chronicles: number;
         authored: Set<string>; edited: Set<string>;
       };
       const collaborators = new Map<string, Collaborator>();
@@ -277,7 +279,7 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
           if (seen.has(key)) continue;
           seen.add(key);
           const row = collaborators.get(key) ??
-            { name: ref.label, o_id: ref.o_id, shared_items: 0, shared_recordings: 0, authored: new Set<string>(), edited: new Set<string>() };
+            { name: ref.label, o_id: ref.o_id, shared_items: 0, shared_recordings: 0, shared_chronicles: 0, authored: new Set<string>(), edited: new Set<string>() };
           count(row);
           collaborators.set(key, row);
         }
@@ -319,8 +321,20 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       };
       const podcasts = recordings(store.podcasts, (p) => p.people);
       const videos = recordings(store.videos, (v) => v.speakers);
+      // Cluster Chronicles works the person wrote, photographed, translated,
+      // spoke at or moderated, or is shown in (role "Depicted"): the credits
+      // find_related and get_entity_graph read too (src/personCredits.ts).
+      const chronicles: Record<string, unknown>[] = [];
+      for (const c of store.chronicles) {
+        const credits = chronicleCredits(c);
+        const credit = credits.find((p) => isPerson(p.name, p.o_id));
+        if (!credit) continue;
+        chronicles.push({ role: credit.role || "Contributor", id: String(c.o_id), omeka_id: c.o_id, title: c.title,
+          form: c.form, date: c.date, amira_url: itemUrl(c.o_id) });
+        tally(credits.map((p) => ({ label: p.name, o_id: p.o_id, role: p.role })), (row) => row.shared_chronicles++);
+      }
 
-      const shared = (c: Collaborator) => c.shared_items + c.authored.size + c.edited.size + c.shared_recordings;
+      const shared = (c: Collaborator) => c.shared_items + c.authored.size + c.edited.size + c.shared_recordings + c.shared_chronicles;
       const topCollaborators = [...collaborators.values()].sort((a, b) => shared(b) - shared(a) || a.name.localeCompare(b.name));
 
       return textResult({
@@ -349,12 +363,16 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
         video_count: videos.length,
         videos: videos.slice(0, 50),
         videos_truncated: videos.length > 50 || undefined,
+        ...(chronicles.length
+          ? { chronicle_count: chronicles.length, chronicles: chronicles.slice(0, 50), chronicles_truncated: chronicles.length > 50 || undefined }
+          : {}),
         ...(guidanceEnabled() ? { collaborators_note: COLLABORATORS_NOTE } : {}),
         collaborator_count: topCollaborators.length,
         top_collaborators: topCollaborators.slice(0, COLLABORATOR_CAP).map((c) => ({
           name: c.name, shared_items: c.shared_items, shared_publications: c.authored.size + c.edited.size,
           shared_authorships: c.authored.size, shared_editorships: c.edited.size,
-          shared_recordings: c.shared_recordings, amira_url: itemUrlOrNull(c.o_id),
+          shared_recordings: c.shared_recordings, ...(c.shared_chronicles ? { shared_chronicles: c.shared_chronicles } : {}),
+          amira_url: itemUrlOrNull(c.o_id),
         })),
         large_team_publication_count: largeTeamPublications || undefined,
         amira_url: itemUrlOrNull(oId),

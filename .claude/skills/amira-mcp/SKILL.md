@@ -68,6 +68,19 @@ episodes** (e.g. *Cluster Conversations*) with transcripts, and the cluster's **
 most with full **transcripts**. Use `search_podcasts keyword=…` and `search_videos keyword=…` for
 full-text search over talks and lectures.
 
+The **Cluster Chronicles** are the cluster's writer-in-residence programme, curated by Ute Fendler
+(Elnathan John 2021, Jean Luc Raharimanana 2023, Umar Timol 2024, Egara Kabaji 2026): one record per
+work — essays and poems (with their verbatim **full text**), photographs and drawings, events and a
+video. `search_chronicles` filters by `person` (a chronicler, another credited person or someone a
+photo depicts), `form` (essay, poem, still image, event, video), year, `subject`, `place` and
+`keyword` (reaching into the texts, with a `text_snippet`). `get_chronicle` gives the credits with
+roles, `depicts`, the `related` works and the existing video and podcast records they link to (typed
+ids), the images, and the text opt-in (`include_text=true`, paged by `text_offset` /
+`text_max_chars`). **Every chronicle abstract was written by a language model**
+(`abstract_ai_generated`, `abstract_generated_by`): say so when you quote one, and prefer the
+chronicler's own text. French titles carry `title_language: "fr"` and an `alternative_titles`
+translation.
+
 The data is **read from a snapshot of the public Omeka S API**. The server works offline from the
 bundled snapshot and needs no key or credentials; when live refresh is enabled, it may probe and
 refresh a local cache from the public API. `get_collection_overview` reports which snapshot source is
@@ -94,7 +107,7 @@ Every entity is an Omeka item with a stable public page: its **`amira_url`**
 number in that URL; use that when an identifier is needed.
 
 See [references/data-model.md](references/data-model.md) for field-level detail, and
-[references/tools-by-task.md](references/tools-by-task.md) for the full 36-tool catalogue (38 over HTTP),
+[references/tools-by-task.md](references/tools-by-task.md) for the full 38-tool catalogue (40 over HTTP),
 the five prompts and the resources.
 
 ## Workflow
@@ -150,7 +163,7 @@ linked institutions, typed identifiers, the attached **media** files and, when t
 **IIIF manifest** — plus a ready-to-paste `generated_citation` + `bibtex`. `get_project`, `get_research_section`, `get_person`, `get_institution`,
 `get_publication` (with citation exports, peer-review status, funders, linked contributors/publisher,
 conference/extent/access/thesis metadata, and the venue's `amira_url` when it is a Journal record),
-`get_podcast`, `get_video` complete the detail layer. `get_person` needs a **complete** name (either
+`get_podcast`, `get_video`, `get_chronicle` complete the detail layer. `get_person` needs a **complete** name (either
 order) or an id; a fragment returns candidates instead of a profile. It reports GND and other
 authority identifiers and the top collaborators (people credited on the same items or publications).
 `get_podcast` names the model that generated the transcript (`transcript_generated_by`): podcast
@@ -207,7 +220,7 @@ require resolving the graph again. Check `truncated` before describing coverage.
 `get_person id=…` selects an exact person; name lookup refuses homonyms.
 
 For close reading, `get_text_passages` finds bounded passages in selected
-`publication:ID`, `video:ID` or `podcast:ID` records, with exact original UTF-16
+`publication:ID`, `video:ID`, `podcast:ID` or `chronicle:ID` records, with exact original UTF-16
 offsets and citations. These are extracted-text offsets, not page numbers or
 timestamps. Every match is reachable through `next_offset`; `scanned_matches_capped`
 only flags a document with more than 10,000 matches. Full exposure is required.
@@ -319,6 +332,6 @@ MODE and results carry `visibility`. The public server never does.
 
 13. **Exact place identity.** `location` is a label search and may match homonyms.
     Use `location_id` from `list_locations` for one authority and its descendants.
-14. **Profiles.** Full mode has 36 core tools (38 over HTTP). Some deployments expose
+14. **Profiles.** Full mode has 38 core tools (40 over HTTP). Some deployments expose
     `research`, `discovery` or `visualization` subsets. Use the advertised catalogue;
     do not assume an omitted tool exists.

@@ -85,6 +85,7 @@ const DISCOVERED = new Set([
   "get_publication",
   "get_podcast",
   "get_video",
+  "get_chronicle",
   "find_related",
   "fetch",
   "resolve_entity", "get_entity_graph", "get_text_passages", "compare_collections",
@@ -211,6 +212,10 @@ export async function buildProbes(client) {
   const vid = (await results("search_videos", { limit: OVER_LIMIT })).find((v) => v.has_transcript);
   if (vid?.id) add("get_video@transcript", "get_video", { id: vid.id, include_transcript: true });
   else miss("get_video@transcript");
+
+  const chron = (await results("search_chronicles", { limit: OVER_LIMIT })).find((c) => c.has_text);
+  if (chron?.id) add("get_chronicle@text", "get_chronicle", { id: chron.id, include_text: true });
+  else miss("get_chronicle@text");
 
   // `fetch` with every text switch on is the heaviest single call the server can
   // be asked to make. Its ids are typed `<kind>:<omeka_id>` (src/tools/openai.ts).

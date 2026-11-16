@@ -39,7 +39,7 @@ const GROUPS = [
     key: "records",
     label: "Records",
     heading: "RECORDS",
-    types: ["research_item", "publication", "podcast", "video"],
+    types: ["research_item", "publication", "podcast", "video", "chronicle"],
   },
   {
     key: "formats",

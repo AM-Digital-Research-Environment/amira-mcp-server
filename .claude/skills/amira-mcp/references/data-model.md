@@ -68,9 +68,10 @@ hardcode it.
 url }`, e.g. GND), project roles `as_principal_investigator[]` and `as_member[]`, research-section roles
 `as_section_principal_investigator[]` and `as_section_member[]` (with `funding_phase`), `contributed_items[]` (slim refs with the
 person's `role`; capped at 50, total reported), `publications[]` (author/editor), `podcasts[]` and
-`videos[]` (episodes and videos with the person's `role`) and `top_collaborators[]` (`shared_items`,
+`videos[]` (episodes and videos with the person's `role`), `chronicles[]` (Cluster Chronicles works
+with the person's `role`, or `Depicted` for someone a photograph shows; only when there are any) and `top_collaborators[]` (`shared_items`,
 `shared_publications`, split into `shared_authorships` and `shared_editorships`, and
-`shared_recordings`). Publications pair people only in the same role, co-editing counts once per
+`shared_recordings`, and `shared_chronicles` when non-zero). Publications pair people only in the same role, co-editing counts once per
 volume, and works with more than ten authors are left out (`large_team_publication_count`). These are
 shared credits, not a measure of collaboration, as `collaborators_note` says. A `coverage_note` says
 how to read the counts: they describe AMIRA's records, and publications come from University of
@@ -138,6 +139,25 @@ detail tools (`get_video` / `get_podcast`) **omit the transcript text unless
 `include_transcript=true`** — then `transcript_offset` / `transcript_max_chars` page it (cap
 25k chars per call). The ChatGPT `search` / `fetch` tools use the AMIRA/Omeka page as the primary
 `url`; DOI, watch, or listen URLs appear in metadata/text as secondary links.
+
+## Cluster Chronicles work
+
+The writer-in-residence programme (item set 50105, series item 50106), one record per work.
+`search_chronicles` returns `{ id, omeka_id, title, alternative_title?, form, date, number?, people[]
+("Name (Role)"), url, has_text, has_media, amira_url }`. `get_chronicle` adds `title_language`
+(`fr` for the French titles), `alternative_titles[]` (the translation), `form` (essay, poem, still
+image, event, video) and its `resource_class` (`fabio:Essay`, `fabio:Poem`, `fabio:StillImage`,
+`bibo:Event`, `bibo:AudioVisualDocument`), `series`, `number` (the chronicler's numbering), `date`
+(a full date, or a year or year-month only), `identifier` (catalogue key), `abstract` with
+`abstract_ai_generated: true` and `abstract_generated_by` (the model, with its `amira_url`),
+`description`, `people[]` (`{ name, role, amira_url }`: author, photographer, artist, translator,
+speaker, moderator, curator), `depicts[]`, `subjects[]` and `places[]` (linked authorities or literal
+values with `amira_url: null`; a venue may be an institution record), `languages[]`, `related[]`
+(`{ title, kind, id, amira_url }`: other chronicles — poem↔photo, text↔images — and the existing
+video and podcast records), `urls[]` (the work on the cluster website), `media[]` (`{ type, url,
+source }`: images, or a YouTube embed whose `source` is the watch URL), `thumbnail`, and
+`has_text` / `text_length`; the verbatim text of an essay or poem only with `include_text=true`
+(`text_offset` / `text_max_chars` page it).
 
 ## Subjects and places
 
