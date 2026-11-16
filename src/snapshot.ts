@@ -489,6 +489,10 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     subjects: visible(raw.subjects, transformSubject),
   };
   if (droppedPrivate) log(`public mode: dropped ${droppedPrivate} private resource(s) the API returned`);
+  // Curator mode: every private item, inside the crawled corpora or not, so a
+  // link to any of them is classified (src/tools/curator.ts). Inside the window.
+  const privateItemIds = access === "curator"
+    ? (await crawlItems(fetchBase, "is_public=0", signal)).items.map(oid).sort((a, b) => a - b) : undefined;
 
   const probe = await probeRemote(fetchBase, signal);
   if (access === "curator") await probeCuratorAuth(fetchBase, signal);
@@ -503,6 +507,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     fetchedAt: new Date().toISOString(),
     apiBase,
     access,
+    ...(privateItemIds ? { privateItemIds } : {}),
     // Compare like with like: the runtime probe covers ALL items, including
     // authorities outside the crawled corpora. A corpus-only max would cause
     // repeated full crawls whenever such an authority was modified last.

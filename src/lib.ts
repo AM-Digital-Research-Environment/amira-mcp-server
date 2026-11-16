@@ -60,6 +60,12 @@ export { publicView, splitVisibility, PRIVATE_CITATION_NOTE, RESTRICTED_NOTE } f
 export { cacheSnapshotDir, refreshNow, refreshStatus } from "./data.js";
 export { auditLine } from "./httpApp.js";
 export { adminItemUrl, adminItemSetUrl } from "./urls.js";
+// Curator presentation: the decoration step, for direct tests of URL forms.
+export { adminMediaUrl } from "./urls.js";
+export { curatorText, curatorValue, PRIVATE_KEYWORD_NOTE, RESTRICTED_MATCH_NOTE } from "./tools/curator.js";
+export { PRIVATE_NOT_EMBEDDED, semanticCoverage } from "./semantic.js";
+export { noNeighboursReason } from "./tools/similar.js";
+export { neighboursNote } from "./fulltextMaps.js";
 // Curator relay (#26): the .mcpb's stdio-to-curator forwarder.
 export { curatorUrlError } from "./access.js";
 export { describeRelayError, normalizeCuratorToken, redactToken, startRelay, truncateForLog } from "./relay.js";

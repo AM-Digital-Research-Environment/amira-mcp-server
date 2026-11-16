@@ -119,7 +119,7 @@ function render(d) {
     '<p class="note">' + esc(d.matching || "") + "</p>" +
     '<details><summary>All returned relationships and counts</summary><table><thead><tr><th>Entity</th><th>Research items</th><th>Publications</th></tr></thead><tbody>' +
     SECTORS.map(function (s) { return (d[s[0]] || []).map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td>' + (r.research_item_count || 0) + '</td><td>' + (r.publication_count || 0) + '</td></tr>'; }).join(''); }).join('') + '</tbody></table></details>' +
-    ((d.related_publications || []).length ? '<h2>Publication evidence</h2><ul>' + d.related_publications.map(function (p) { return '<li><a data-citation href="' + esc(p.amira_url) + '">' + esc(p.title) + '</a></li>'; }).join('') + '</ul>' : '');
+    ((d.related_publications || []).length ? '<h2>Publication evidence</h2><ul>' + d.related_publications.map(function (p) { return '<li>' + citationLink(p) + '</li>'; }).join('') + '</ul>' : '');
 }
 
 export { render };

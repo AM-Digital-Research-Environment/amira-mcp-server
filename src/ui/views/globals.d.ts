@@ -53,8 +53,8 @@ declare function pickerNow(key: string): PickerOption[] | null;
 declare function pickerField(p: PickerSpec, list: PickerOption[] | null): string;
 /** Fill a rendered picker once its options arrive. */
 declare function pickerMount(p: PickerSpec, load: Promise<PickerOption[] | null>, shown?: PickerOption[] | null): void;
-/** A record's title as a citation link to its amira_url. */
-declare function citationLink(r: { amira_url: string; title: string }): string;
+/** A record's title (or `title`) as a citation link to its amira_url; plain text, marked when private, without one. */
+declare function citationLink(r: { amira_url?: string | null; title?: string; visibility?: string }, title?: string): string;
 /** Render a page of records into `target`, with "Next records" calling `onMore(next_offset)`. */
 declare function evidenceList(target: Element, heading: string, data: any, item: (r: any) => string, moreId: string,
   onMore: (offset: number) => void): void;

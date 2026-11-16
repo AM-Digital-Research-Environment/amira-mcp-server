@@ -412,6 +412,10 @@ export interface SnapshotManifest {
   /** Access mode of the crawl that wrote the snapshot (#26). Absent in snapshots
    * written before curator mode, which are public. Each mode refuses the other's. */
   access?: "public" | "curator";
+  /** Curator mode only: the id of every private item on the instance, crawled
+   * corpus or not (format authorities, AI-model items, …), so any linked record
+   * can be classified public or private (src/tools/curator.ts). Never served. */
+  privateItemIds?: number[];
   /** Global /api/items max o:modified (same scope as the freshness probe). */
   maxModified: string | null;
   /** Unfiltered /api/items total at crawl time (freshness probe pair, D11). */

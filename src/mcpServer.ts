@@ -122,7 +122,9 @@ const CURATOR_ABOUT =
   "Results come from an authenticated snapshot of its Omeka S API; get_collection_overview gives its date and the " +
   "public/private split.";
 export function curatorInstructions(skills = true): string {
-  const rules = INSTRUCTIONS.slice(0, INSTRUCTIONS.indexOf("\n\nABOUT:"));
+  // The public citation rules, restated for public records: a private one has no amira_url.
+  const rules = INSTRUCTIONS.slice(0, INSTRUCTIONS.indexOf("\n\nABOUT:"))
+    .replace("• Every record carries an `amira_url`", "• Every public record carries an `amira_url`");
   return CURATOR_RULES + (skills ? rules : rules.replace(SKILL_POINTER, "")) + CURATOR_ABOUT;
 }
 
