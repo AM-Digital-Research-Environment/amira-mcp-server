@@ -113,7 +113,10 @@ lifecycle runs `scripts/sync-version.mjs`, which copies the new version into
 `manifest.json`; `node scripts/sync-version.mjs --check` reports drift), and add
 an entry to `CHANGELOG.md` in the same commit: its `## X.Y.Z` section becomes the
 release notes (`scripts/release-notes.mjs`), and a tag without one fails before
-anything is published. Releases are tag-driven: pushing `v*` builds a fresh
+anything is published. Run `npm run stamp-citation` in that commit too: a unit
+test requires `CITATION.cff` to cite `package.json`'s version, so CI on `main`
+would fail between the bump and the release job's own stamp (which then finds
+nothing to change). Releases are tag-driven: pushing `v*` builds a fresh
 snapshot, packs the `.mcpb` and the companion skill, builds the image, and
 publishes the GitHub Release and the GHCR image. Released versions are
 immutable: `scripts/release-guard.mjs` refuses a version that already exists on

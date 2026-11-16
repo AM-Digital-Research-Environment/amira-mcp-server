@@ -5,7 +5,7 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.37.0 — 2026-11-16
 
 The Cluster Chronicles collection, with two new tools (38 core tools on stdio,
 40 over HTTP), and fixes from a full test pass of the 38 tools through the

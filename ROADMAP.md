@@ -15,7 +15,9 @@ November (`docs/review-2026-11-06.md`) shipped in 1.35.0 and was retired after
 
 ## Next priorities
 
-1. **Deploy 1.36.0 from the published image.** On 7 October the public endpoint
+1. **Deploy 1.37.0 from the published image.** The curator service must now set
+   `AMIRA_CACHE_DIR` explicitly and mount it as tmpfs, or it refuses to start
+   (see [docs/curator.md](docs/curator.md)). On 7 October the public endpoint
    still answered 1.17.0, while the MCP Registry already listed a newer release
    with that endpoint. From 1.31.1 every release pushes the tested image to
    `ghcr.io/am-digital-research-environment/amira-mcp-server:<version>`. In
