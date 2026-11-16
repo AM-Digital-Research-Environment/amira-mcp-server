@@ -39,9 +39,9 @@ function publicByKey(store: DataStore, kind: NamesakeKind): Map<string, Named> {
 
 /**
  * The public record with the same name as a PRIVATE `record` of `kind`, or
- * undefined (also for a public record). Same contract as the store-level
- * `DataStore.publicNamesake(record, kind)` (src/data.ts); people compare by
- * `nameKey`, so "Bationo, Fernand" and "Fernand Bationo" are namesakes.
+ * undefined (also for a public record). The one implementation of this rule:
+ * people compare by `nameKey`, so "Bationo, Fernand" and "Fernand Bationo" are
+ * namesakes; organisations by their folded name.
  */
 export function publicNamesakeOf<T extends Named>(store: DataStore, record: T | null | undefined, kind: NamesakeKind): T | undefined {
   if (!record || !isPrivateRecord(record)) return undefined;
