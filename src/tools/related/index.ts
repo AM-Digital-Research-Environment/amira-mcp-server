@@ -12,7 +12,7 @@ import { personMatches, samePerson } from "../../names.js";
 import { recordLinks } from "../../recordLinks.js";
 import { placeMatcher } from "../../researchItemQuery.js";
 import { stripTypedId } from "../../typedIds.js";
-import type { LinkedRef, PublicationRec, ResearchItemRec } from "../../types.js";
+import type { ChronicleRec, LinkedRef, PublicationRec, ResearchItemRec } from "../../types.js";
 import { itemUrl } from "../../urls.js";
 import {
   READ_ONLY, capLimit, containsCI, equalsCI, errorResult, exposureRestrictedResult, itemRef, limitEcho, textResult, type Server,
@@ -31,7 +31,7 @@ export function registerRelatedTools(server: Server, tools: ToolMap): void {
       title: "Find related entities",
       // Renders as a radial co-occurrence hub in MCP Apps hosts; plain JSON elsewhere.
       _meta: APP_UI_META,
-      description: "Subjects, people, places and projects connected through shared records. Per-corpus counts deduplicate each record; subject/person seeds also include publications. Returns ambiguity and cited samples.",
+      description: "Subjects, people, places and projects connected through shared records. Per-corpus counts deduplicate each record; subject/person seeds also include publications, subject/place/person seeds Cluster Chronicles works. Returns ambiguity and cited samples.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("find_related:in", () => z.strictObject({
         entity_type: z
@@ -109,6 +109,14 @@ function relatedByEntity(store: DataStore, type: "subject" | "location" | "perso
     type === "subject" ? store.publications.filter((p) => p.subjects.some((s) => containsCI(s.label, value)))
       : type === "person" ? store.publications.filter((p) => [...p.authors, ...p.editors].some((r) => matchesPerson(r.label, r.o_id)))
         : [];
+  // Cluster Chronicles works carry subjects, places and people (credits and the
+  // people a photograph depicts), so they join those three pivots.
+  const matchedChronicles: ChronicleRec[] =
+    type === "subject" ? store.chronicles.filter((c) => c.subjects.some((s) => containsCI(s.label, value)))
+      : type === "location" ? store.chronicles.filter((c) => c.places.some(matchesPlace))
+        : type === "person" ? store.chronicles.filter((c) =>
+          c.people.some((p) => matchesPerson(p.name, p.o_id)) || c.depicts.some((r) => matchesPerson(r.label, r.o_id)))
+          : [];
 
   // The pivot's own subject or person would top every list: leave it out.
   const skip = {
@@ -118,6 +126,7 @@ function relatedByEntity(store: DataStore, type: "subject" | "location" | "perso
   const lists = new RelatedLists();
   for (const it of seed) lists.add("research_item", recordLinks(store, "research_item", it.o_id), skip);
   for (const p of matchedPubs) lists.add("publication", recordLinks(store, "publication", p.o_id), skip);
+  for (const c of matchedChronicles) lists.add("chronicle", recordLinks(store, "chronicle", c.o_id), skip);
 
   const candidates = type === "person" ? personSeeds : resolveEntities(store, value, type);
   return textResult({
@@ -129,10 +138,15 @@ function relatedByEntity(store: DataStore, type: "subject" | "location" | "perso
     ...limitEcho(requested, 50, limit),
     matched_items: seed.length,
     ...(type === "subject" || type === "person" ? { matched_publications: matchedPubs.length } : {}),
+    ...(type !== "project" ? { matched_chronicles: matchedChronicles.length } : {}),
     ...lists.toResponse(limit),
     sample_items: seed.slice(0, 10).map(itemRef),
     ...(matchedPubs.length
       ? { related_publications: matchedPubs.slice(0, 10).map((p) => ({ title: p.title, year: p.year, amira_url: itemUrl(p.o_id) })) }
+      : {}),
+    ...(matchedChronicles.length
+      ? { related_chronicles: matchedChronicles.slice(0, 10).map((c) => ({ id: `chronicle:${c.o_id}`, title: c.title, form: c.form,
+          date: c.date, amira_url: itemUrl(c.o_id) })) }
       : {}),
   });
 }

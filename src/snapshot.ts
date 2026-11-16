@@ -11,6 +11,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { config } from "./config.js";
 import {
+  transformChronicle,
   transformItemSet,
   transformJournal,
   transformMedia,
@@ -38,7 +39,7 @@ import {
   CORPORA,
   MIN_SNAPSHOT_SCHEMA_VERSION,
   SNAPSHOT_SCHEMA_VERSION,
-  V5_CORPORA,
+  CORPUS_SINCE,
   type MediaRec,
   type CorpusName,
   type ProjectRec,
@@ -158,6 +159,8 @@ const CORPUS_QUERIES: Record<Exclude<CorpusName, "item_sets">, string> = {
   podcasts: "resource_template_id=21",
   videos: "resource_template_id=22",
   playlists: "item_set_id=39193",
+  // Cluster Chronicles: the writer-in-residence works (template 34, mixed resource classes).
+  chronicles: "item_set_id=50105",
   languages: "item_set_id=19",
   // Subject authorities: curated LCSH headings and free tags (template 6).
   subjects: "item_set_id=1852",
@@ -342,9 +345,9 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
   log(`crawled media: ${mediaCount}`);
   const mediaOf = (oId: number): MediaRec[] => mediaByOwner.get(oId) ?? [];
 
-  // Resolve the publication fabio classes (a handful of ids).
+  // Resolve the publication and chronicle classes (a handful of ids).
   const pubClassIds = new Set<number>();
-  for (const it of raw.publications) {
+  for (const it of [...raw.publications, ...raw.chronicles]) {
     const c = classId(it);
     if (c != null) pubClassIds.add(c);
   }
@@ -374,6 +377,7 @@ export async function crawlSnapshot(apiBase: string, log: (msg: string) => void 
     languages: raw.languages.map(transformLanguage),
     item_sets: raw.item_sets.map(transformItemSet),
     subjects: raw.subjects.map(transformSubject),
+    chronicles: raw.chronicles.map((it) => ({ ...transformChronicle(it, ctx), media: mediaOf(oid(it)) })),
   };
 
   const probe = await probeRemote(apiBase, signal);
@@ -467,8 +471,9 @@ export async function loadSnapshot(dir: string, opts: { strict?: boolean } = {})
   }
   const data = {} as SnapshotData;
   for (const corpus of CORPORA) {
-    // A v4 snapshot predates these corpora; serve them empty.
-    if (manifest.schemaVersion < 5 && V5_CORPORA.includes(corpus) && manifest.counts?.[corpus] === undefined) {
+    // An older snapshot predates this corpus (subjects: v5, chronicles: v6); serve it empty.
+    const since = CORPUS_SINCE[corpus];
+    if (since !== undefined && manifest.schemaVersion < since && manifest.counts?.[corpus] === undefined) {
       (data as unknown as Record<string, unknown[]>)[corpus] = [];
       continue;
     }

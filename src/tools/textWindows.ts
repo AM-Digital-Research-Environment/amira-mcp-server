@@ -4,12 +4,12 @@ import { guidanceEnabled } from "../guidance.js";
 // --- large-text windowing (transcripts, publication full text) ---------------
 //
 // One implementation behind get_podcast/get_video (`transcript`),
-// get_publication (`fulltext`) and the ChatGPT `fetch` adapter, so the opt-in +
+// get_publication (`fulltext`), get_chronicle (`text`) and the ChatGPT `fetch` adapter, so the opt-in +
 // offset/max paging contract can never drift between tools again (the v1.4.2
 // lesson). Content is exposure-gated: under AMIRA_EXPOSURE below `full`, the
 // existence flags stay but the text itself is reported as access-disabled.
 
-export type WindowField = "transcript" | "fulltext";
+export type WindowField = "transcript" | "fulltext" | "text";
 
 export interface WindowOpts {
   include?: boolean;

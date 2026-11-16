@@ -8,6 +8,7 @@ import { registerFacetTools } from "./facets.js";
 import { registerPublicationTools } from "./publications.js";
 import { registerRelatedTools } from "./related/index.js";
 import { registerMediaTools } from "./media.js";
+import { registerChronicleTools } from "./chronicles.js";
 import { registerAppResources } from "./apps.js";
 import { registerResearchTools } from "./research.js";
 import { registerOpenAITools } from "./openai.js";
@@ -19,7 +20,7 @@ import { allowedTools, type ToolProfile } from "../toolProfiles.js";
 import type { Server } from "./_shared.js";
 
 /**
- * Register every AMIRA tool (36 on stdio; 38 with the HTTP-only OpenAI
+ * Register every AMIRA tool (38 on stdio; 40 with the HTTP-only OpenAI
  * `search`/`fetch`), then apply the shared policy: profile filtering, argument
  * trimming, error shaping, discovery hints and, with `guidance: false`, the
  * removal of every title and description. App resources follow the tools: an
@@ -37,6 +38,7 @@ export function registerTools(server: Server, profile: ToolProfile = "full", opt
   registerPublicationTools(server, tools); // search_publications, get_publication, list_publication_facets, list_journals
   registerRelatedTools(server, tools); // find_related
   registerMediaTools(server, tools); // search_podcasts, get_podcast, search_videos, get_video
+  registerChronicleTools(server, tools); // search_chronicles, get_chronicle
   registerResearchTools(server, tools); // resolve_entity, get_entity_graph, get_text_passages, compare_collections, get_data_quality, get_snapshot_changes
   registerFulltextTools(server, tools); // get_fulltext_map
   registerSimilarTools(server, tools); // get_similar_items

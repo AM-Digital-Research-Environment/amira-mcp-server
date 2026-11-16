@@ -30,8 +30,9 @@ This server exposes AMIRA's **projects**, thematic **research sections**, ~4,000
 digitised **research items**, **people**, **institutions**, **groups**,
 **collections**, the cluster **bibliography with searchable full text** (extracted
 from the open-access PDFs) and its **journals**, **podcast episodes with
-transcripts**, and the cluster's **YouTube videos with searchable transcripts** —
-as 36 core tools an LLM can query, five research-workflow prompts, and resources
+transcripts**, the cluster's **YouTube videos with searchable transcripts**, and
+the **Cluster Chronicles**, its writer-in-residence works (essays and poems with
+their full text, photographs, events) — as 38 core tools an LLM can query, five research-workflow prompts, and resources
 for citable records and bulk exports. From one MCP interface, clients can move
 across records and the places, languages, and subjects that connect them.
 
@@ -78,7 +79,7 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `get_research_item` | Full metadata for one item (by Omeka `id` or typed id): typed dates, roles with the **affiliation at the time**, places with their region/country chain, provenance as linked institutions, typed identifiers, collections, related items, **media files** and the **IIIF manifest** — plus a **generated citation** and a BibTeX/RIS/CSL-JSON export (`citation_format`). ILAM *African Music* articles add `closest_in_content` and `full_text_map` (see below) |
 | `search_projects` / `get_project` | Projects by keyword or acronym, university, section, PI, member, funder — detail with item breakdown, top subjects and sample items |
 | `list_research_sections` / `get_research_section` | Thematic sections with funding phases (AM 1.0 / AM 2.0), PIs, counts, projects; detail by name or id |
-| `search_persons` / `get_person` | People (either name order works) — profile with GND and other authority identifiers, project and research-section roles, items, publications, podcasts, videos and top collaborators, with a `coverage_note` on how to read the counts. A name that matches nobody returns near-miss `suggestions` ("Rudigr Seeman" → `Seesemann, Rüdiger`); `get_person` lists them in its `not_found` error |
+| `search_persons` / `get_person` | People (either name order works) — profile with GND and other authority identifiers, project and research-section roles, items, publications, podcasts, videos, Cluster Chronicles works and top collaborators, with a `coverage_note` on how to read the counts. A name that matches nobody returns near-miss `suggestions` ("Rudigr Seeman" → `Seesemann, Rüdiger`); `get_person` lists them in its `not_found` error |
 | `list_institutions` / `get_institution` / `list_cluster_partners` / `list_groups` | Organisations (institutions, Africa Multiple partner categories, and research groups) by name, acronym or id, their projects, people and items |
 | `list_subjects` | Subject headings ranked by item frequency, each marked as a Library of Congress heading (with its id.loc.gov URI) or a free tag (`vocabulary=lcsh|tag`) |
 | `list_locations` | Every place — countries and the places under them in one flat list (hierarchy rolled up) — ranked by item count, with coordinates and Wikidata ids. Each row's `level` is `country` or `place` (a city, region or site, with its `country`); filter by country, name, `near` (radius) or `bbox` |
@@ -88,12 +89,13 @@ Call `get_collection_overview` first to scope the data, then drill in.
 | `search_publications` / `get_publication` | Filter the bibliography by author, subject, language, type, venue, year, date added and full-text availability; search abstracts in every language and extracted PDF text. Detail adds every abstract with its language, linked authorities, conference/extent/access/thesis metadata. `citation_format` selects BibTeX/RIS/CSL-JSON per page; `export` links the whole result as one file |
 | `list_publication_facets` | Counts by type, year, language, subject, author/editor or venue across the complete filtered bibliography; ranked and paginated |
 | `list_journals` | The journals the cluster publishes in, ranked by publication count, with ISSN and country — pair with the `venue` filter |
-| `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications), from an ILAM *African Music* article (`entity_type=research_item`) to its closest articles by full text, or from any embedded record (`entity_type=record`) to its closest records by meaning and what they share |
+| `find_related` | Cross-entity discovery: pivot from a subject/place/person/project to co-occurring entities (incl. publications, and Cluster Chronicles works for subject/place/person), from an ILAM *African Music* article (`entity_type=research_item`) to its closest articles by full text, or from any embedded record (`entity_type=record`) to its closest records by meaning and what they share |
+| `search_chronicles` / `get_chronicle` | The Cluster Chronicles, the cluster's writer-in-residence programme curated by Ute Fendler (Elnathan John 2021, Jean Luc Raharimanana 2023, Umar Timol 2024, Egara Kabaji 2026): one record per work, filterable by chronicler or other credited or depicted person, form (essay, poem, still image, event, video), year, subject, place and keyword (reaching into the essays' and poems' full text, with a snippet). Detail gives the credits with their roles (author, photographer, artist, translator, speaker, moderator), the people a photograph depicts, linked and literal subjects and places, the related works, videos and podcast episodes as typed ids, the images, and the abstract **flagged as AI-written with the model that wrote it**; the text is opt-in (`include_text`, paged with `text_offset` / `text_max_chars`) |
 | `search_podcasts` / `get_podcast` | Cluster podcast episodes with searchable transcripts, filterable by language; detail gives the duration, audio file and the **model that generated the transcript**; transcript text is opt-in |
 | `search_videos` / `get_video` | The cluster's YouTube videos — **full-text search over transcripts** (match snippets; thumbnail; transcript opt-in on detail) |
 | `resolve_entity` | Resolve names or typed IDs (either vocabulary: `item:9902` = `research_item:9902`); return separate candidates for homonyms and unreconciled literals. A query that resolves to nothing, untyped or with `type=person`, returns near-miss person `suggestions` |
 | `get_entity_graph` | Bounded one-hop graph with distinct explicit links/co-occurrences and paginated cited evidence |
-| `get_text_passages` | Find passages in selected publication/video/podcast records, with exact original-text offsets |
+| `get_text_passages` | Find passages in selected publication/video/podcast/chronicle records, with exact original-text offsets |
 | `compare_collections` | Compare 2–4 projects or collections using common filters, denominators and missingness |
 | `get_data_quality` | Snapshot coverage, missing metadata and unresolved-reference counts |
 | `get_snapshot_changes` | Page added, updated or deleted records across retained snapshots from the same instance |
@@ -126,7 +128,7 @@ add nothing to the per-turn tool payload.
 
 ### Profiles and research workflows
 
-`AMIRA_TOOL_PROFILE=full` is the default: 36 core tools, or 38 over HTTP.
+`AMIRA_TOOL_PROFILE=full` is the default: 38 core tools, or 40 over HTTP.
 `research`, `discovery` and `visualization` expose smaller documented subsets
 (23/12/14 core tools respectively; HTTP adds `search` and `fetch`). Profiles are
 fixed at startup; they reduce discovery cost, not access permissions. Tools
@@ -135,7 +137,7 @@ outside a profile are removed, and so are the apps that render them. See
 
 Typed ids work everywhere in either vocabulary (`item:` / `research_item:`,
 `pub:` / `publication:`, `section:`, `person:`, `organisation:`, `project:`,
-`video:`, `podcast:`), including the `id` of every `get_*` tool. Paged results
+`video:`, `podcast:`, `chronicle:`), including the `id` of every `get_*` tool. Paged results
 stop early, with `response_limited: true` and a correct `next_offset`, when a page
 would exceed 40,000 characters — Claude Code moves larger tool results out of
 the conversation. Error results carry the error as JSON text only. Structured
@@ -154,8 +156,8 @@ nor a shared subject establishes collaboration. Follow an edge with `edge_id`
 and the returned `snapshot_id` for stable evidence paging. Graphs cap at 100 nodes,
 200 edges and 42,000 JSON bytes, so check `truncated`.
 
-`get_text_passages` takes 1–10 `publication:ID` (or `pub:ID`), `video:ID` or
-`podcast:ID` identifiers. It returns at most 20 passages per page, original UTF-16
+`get_text_passages` takes 1–10 `publication:ID` (or `pub:ID`), `video:ID`,
+`podcast:ID` or `chronicle:ID` identifiers. It returns at most 20 passages per page, original UTF-16
 offsets and source citations; every match is reachable through `next_offset`
 (`scanned_matches_capped` reports a document with more than 10,000 matches). These are extracted-text offsets, not
 PDF page numbers or audio timestamps. `get_snapshot_changes` requires two local
@@ -282,8 +284,8 @@ The `.mcpb` is the local, offline option for Claude Desktop. The same server can
 also run as a **remote Streamable HTTP endpoint** — one HTTPS URL that ChatGPT,
 Claude (web + desktop remote connectors), the OpenAI and Anthropic APIs, Cursor,
 VS Code and other clients connect to by pasting a URL (no download, always-fresh
-data). The remote surface serves the same 36 tools **plus** the
-OpenAI-compatible `search` / `fetch` tools for ChatGPT research integrations (36
+data). The remote surface serves the same 38 tools **plus** the
+OpenAI-compatible `search` / `fetch` tools for ChatGPT research integrations (40
 total). Access is unauthenticated — the data is public and read-only.
 
 `search` takes plain keywords (matched term-by-term, not as an exact phrase),

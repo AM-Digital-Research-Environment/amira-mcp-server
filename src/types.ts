@@ -338,6 +338,53 @@ export interface VideoRec {
   modified?: string | null;
 }
 
+/** v6: a catalogued work of the Cluster Chronicles writer-in-residence programme (item set 50105, template 34). */
+export interface ChronicleRec {
+  o_id: number;
+  title: string;
+  /** The `@language` tag of the title ("fr" for the French titles), when tagged. */
+  title_language: string | null;
+  /** dcterms:alternative — the translated title. */
+  alt_titles: string[];
+  /** Friendly form from the resource class: essay, poem, still image, event, video. */
+  form: string;
+  /** The resource-class term, e.g. "fabio:Essay". */
+  resource_class: string | null;
+  /** dcterms:isPartOf → the series authority item ("Cluster Chronicles"). */
+  series: LinkedRef | null;
+  /** bibo:number — the position in the chronicler's series. */
+  number: number | null;
+  /** dcterms:date — a full date, or a year or year-month only. */
+  date: string | null;
+  year: number | null;
+  /** marcrel:* credits (author, photographer, artist, translator, speaker, moderator, curator). */
+  people: Contributor[];
+  /** foaf:depicts → the people a photograph or drawing shows. */
+  depicts: LinkedRef[];
+  /** dcterms:subject — linked subject authorities or literal keywords. */
+  subjects: LinkedRef[];
+  /** dcterms:spatial — linked locations or literal venues. */
+  places: LinkedRef[];
+  languages: LinkedRef[];
+  /** dcterms:relation → related works (poem↔photo, text↔images) and existing video and podcast records. */
+  relations: LinkedRef[];
+  /** fabio:hasURL — the work on the cluster website. */
+  urls: string[];
+  /** dcterms:identifier — the catalogue key, e.g. "kabaji-2026-chronicle-01". */
+  identifier: string | null;
+  /** dcterms:abstract. */
+  abstract: string | null;
+  /** The `dre:generatedBy` annotation on the abstract — the model that wrote it. */
+  abstract_generated_by: LinkedRef | null;
+  description: string | null;
+  /** bibo:content — the verbatim full text of an essay or poem. */
+  text: string | null;
+  thumbnail: string | null;
+  created?: string | null;
+  modified?: string | null;
+  media?: MediaRec[];
+}
+
 export interface PlaylistRec {
   o_id: number;
   title: string;
@@ -381,6 +428,8 @@ export interface SnapshotData {
   item_sets: ItemSetRec[];
   /** v5. Empty when a v4 snapshot is loaded. */
   subjects: SubjectRec[];
+  /** v6. Empty when an older snapshot is loaded. */
+  chronicles: ChronicleRec[];
 }
 
 export const CORPORA = [
@@ -398,6 +447,7 @@ export const CORPORA = [
   "languages",
   "item_sets",
   "subjects",
+  "chronicles",
 ] as const;
 export type CorpusName = (typeof CORPORA)[number];
 
@@ -421,9 +471,10 @@ export interface SnapshotManifest {
 
 /** v5: subjects corpus, media records, record timestamps, authority identifiers,
  * alternative names, value annotations (affiliation at the time, transcript
- * provenance, identifier types), all abstracts and languages. */
-export const SNAPSHOT_SCHEMA_VERSION = 5;
-/** Oldest snapshot schema the loader still serves; v5 fields are then absent. */
+ * provenance, identifier types), all abstracts and languages.
+ * v6: the Cluster Chronicles corpus. */
+export const SNAPSHOT_SCHEMA_VERSION = 6;
+/** Oldest snapshot schema the loader still serves; later fields are then absent. */
 export const MIN_SNAPSHOT_SCHEMA_VERSION = 4;
-/** Corpora a v4 snapshot does not carry. */
-export const V5_CORPORA: readonly CorpusName[] = ["subjects"];
+/** The schema version that introduced each corpus newer than v4: an older snapshot serves it empty. */
+export const CORPUS_SINCE: Partial<Record<CorpusName, number>> = { subjects: 5, chronicles: 6 };

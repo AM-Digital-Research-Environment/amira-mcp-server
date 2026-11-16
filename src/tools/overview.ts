@@ -46,6 +46,7 @@ export function registerOverviewTools(server: Server, tools: ToolMap): void {
       const pubsWithFulltext = store.publications.filter((p) => p.fulltext).length;
       const videosWithTranscript = store.videos.filter((v) => v.transcript).length;
       const podcastsWithTranscript = store.podcasts.filter((p) => p.transcript).length;
+      const chroniclesWithText = store.chronicles.filter((c) => c.text).length;
 
       return {
         collection_name: "Africa Multiple Cluster of Excellence — research data (AMIRA)",
@@ -64,6 +65,8 @@ export function registerOverviewTools(server: Server, tools: ToolMap): void {
           podcasts_with_transcript: podcastsWithTranscript,
           youtube_videos: store.videos.length,
           videos_with_transcript: videosWithTranscript,
+          cluster_chronicles: store.chronicles.length,
+          cluster_chronicles_with_text: chroniclesWithText,
         },
         // Relational breakdowns are structured-level metadata.
         ...(allowStructured()
@@ -75,6 +78,7 @@ export function registerOverviewTools(server: Server, tools: ToolMap): void {
               items_by_research_section: tally(store.items, (it) => store.sectionsOfItem(it)),
               items_by_resource_type: tally(store.items, (it) => it.type),
               items_by_language: tally(store.items, (it) => it.languages.map((l) => l.label)),
+              chronicles_by_form: tally(store.chronicles, (c) => c.form),
               research_sections: store.sections.map((s) => s.name),
             }
           : { items_by_resource_type: tally(store.items, (it) => it.type) }),

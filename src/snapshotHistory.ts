@@ -22,7 +22,7 @@ function storeData(store: DataStore): SnapshotData {
   return { persons: store.persons, organisations: store.organisations, locations: store.locations, projects: store.projects,
     research_sections: store.sections, research_items: store.items, publications: store.publications, journals: store.journals,
     podcasts: store.podcasts, videos: store.videos, playlists: store.playlists, languages: store.languageIndex.all,
-    item_sets: store.itemSets, subjects: store.subjects };
+    item_sets: store.itemSets, subjects: store.subjects, chronicles: store.chronicles };
 }
 
 /** Fingerprints of one retained directory, by snapshot id: a generation never changes, so they are read once. */

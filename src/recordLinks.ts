@@ -7,6 +7,9 @@
 import type { DataStore } from "./data.js";
 import { RECORD_KINDS } from "./recordKinds.js";
 import type { SemanticKind } from "./semantic.js";
+
+/** The kinds whose catalogue links are read: the embedded kinds, plus chronicles (not embedded). */
+export type LinkKind = SemanticKind | "chronicle";
 import type { LinkedRef } from "./types.js";
 
 export interface RecordLinks {
@@ -28,7 +31,7 @@ const NONE: readonly LinkedRef[] = [];
 const EMPTY: RecordLinks = { subjects: NONE, places: NONE, countries: NONE, people: NONE, projects: NONE, sections: NONE, formats: NONE };
 const credit = (c: { name: string; o_id: number | null }): LinkedRef => ({ label: c.name, o_id: c.o_id });
 
-function build(store: DataStore, kind: SemanticKind, oId: number): RecordLinks {
+function build(store: DataStore, kind: LinkKind, oId: number): RecordLinks {
   switch (kind) {
     case "research_item": {
       const it = RECORD_KINDS.research_item.byKey(store, String(oId));
@@ -55,6 +58,17 @@ function build(store: DataStore, kind: SemanticKind, oId: number): RecordLinks {
       const p = store.getPodcast(oId);
       return p ? { ...EMPTY, people: p.people.map(credit) } : EMPTY;
     }
+    case "chronicle": {
+      // The chroniclers and the people a photograph shows both count as the work's people.
+      const c = store.getChronicle(oId);
+      return c ? {
+        ...EMPTY,
+        subjects: c.subjects,
+        places: c.places,
+        countries: c.places.map((p) => store.placeChainRefs(p).at(-1) ?? p),
+        people: [...c.people.map(credit), ...c.depicts],
+      } : EMPTY;
+    }
     case "project": {
       const p = store.getProjectByOId(oId);
       return p ? { ...EMPTY, projects: [{ label: p.name, o_id: p.o_id }], sections: p.sections, people: [...p.pis, ...p.members] } : EMPTY;
@@ -67,6 +81,6 @@ function build(store: DataStore, kind: SemanticKind, oId: number): RecordLinks {
 }
 
 /** A record's catalogue links, cached for the most recent 4,096 records. */
-export function recordLinks(store: DataStore, kind: SemanticKind, oId: number): RecordLinks {
+export function recordLinks(store: DataStore, kind: LinkKind, oId: number): RecordLinks {
   return store.cachedRecent("record-links", `${kind}:${oId}`, () => build(store, kind, oId), 4096);
 }

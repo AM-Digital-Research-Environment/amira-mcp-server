@@ -85,8 +85,8 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
 
   tools.get_text_passages = server.registerTool("get_text_passages", {
     title: "Find cited text passages", annotations: READ_ONLY,
-    description: "Find literal accent-insensitive keyword passages in selected publication/video/podcast IDs. Original UTF-16 offsets, bounded context, and citations. Requires full text exposure; no semantic ranking.",
-    inputSchema: schemaOnce("get_text_passages:in", () => z.strictObject({ ids: z.array(z.string().max(64)).min(1).max(10).describe("publication:, video: or podcast: ids"),
+    description: "Find literal accent-insensitive keyword passages in selected publication/video/podcast/chronicle IDs. Original UTF-16 offsets, bounded context, and citations. Requires full text exposure; no semantic ranking.",
+    inputSchema: schemaOnce("get_text_passages:in", () => z.strictObject({ ids: z.array(z.string().max(64)).min(1).max(10).describe("publication:, video:, podcast: or chronicle: ids"),
       keyword: querySchema, radius: z.number().int().min(20).max(500).optional(), offset: offsetSchema,
       limit: z.number().int().min(1).optional().describe("Default 10, max 20") })),
     outputSchema: schemaOnce("get_text_passages:out", () => z.object({ ...pageShape, results: z.array(z.object({ id: z.string(), title: z.string(), amira_url: z.string(),
@@ -106,9 +106,9 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
     let capped = false;
     for (const raw of new Set(args.ids)) {
       const parsed = parseTypedId(raw);
-      const rec = parsed && (parsed.kind === "publication" || parsed.kind === "video" || parsed.kind === "podcast")
+      const rec = parsed && (parsed.kind === "publication" || parsed.kind === "video" || parsed.kind === "podcast" || parsed.kind === "chronicle")
         ? findRecord(store, parsed.kind, parsed.key) : undefined;
-      const text = rec && ("fulltext" in rec ? rec.fulltext : rec.transcript);
+      const text = rec && ("fulltext" in rec ? rec.fulltext : "transcript" in rec ? rec.transcript : rec.text);
       if (!text || !rec || !parsed) { unavailable.push(raw); continue; }
       const id = `${parsed.kind}:${parsed.key}`;
       if (!foldCached(text).includes(needle)) continue;
@@ -200,7 +200,9 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
           location_coordinates: store.locations.filter((l) => l.latitude == null || l.longitude == null).length,
           person_identifier: store.persons.filter((p) => !p.identifiers?.length).length,
           publication_fulltext: store.publications.filter((p) => !p.fulltext).length,
-          podcast_transcript: store.podcasts.filter((p) => !p.transcript).length, video_transcript: store.videos.filter((v) => !v.transcript).length },
+          podcast_transcript: store.podcasts.filter((p) => !p.transcript).length, video_transcript: store.videos.filter((v) => !v.transcript).length,
+          // Only essays and poems carry a text; a photograph or an event has none to miss.
+          chronicle_text: store.chronicles.filter((c) => (c.form === "essay" || c.form === "poem") && !c.text).length },
         unresolved_entities: entities.filter((e) => e.omeka_id != null && !e.resolved).length,
         literal_entities: entities.filter((e) => e.omeka_id == null).length,
         // Records with neighbours, low-signal ones (none by design) and ones the vector build predates (#12).

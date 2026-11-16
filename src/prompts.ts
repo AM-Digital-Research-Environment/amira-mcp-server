@@ -117,7 +117,7 @@ export function registerPrompts(server: McpServer): void {
       text(
         `Profile the researcher "${name}" from the AMIRA collection.\n\n` +
           `1. resolve_entity with query "${name}" and type person. If several candidates match, ask which one is meant.\n` +
-          "2. get_person with the chosen id — affiliations, authority identifiers, project and research-section roles, publications, credited items, podcasts, videos and collaborators.\n" +
+          "2. get_person with the chosen id — affiliations, authority identifiers, project and research-section roles, publications, credited items, podcasts, videos, Cluster Chronicles works and collaborators.\n" +
           "3. get_entity_graph with the person id — the subjects, places and projects around their work.\n" +
           "4. search_publications with author — the full publication list, newest first.\n" +
           "5. Summarise research themes, roles (PI, member, author, editor) and main collaborators.\n\n" +
@@ -149,14 +149,14 @@ export function registerPrompts(server: McpServer): void {
     "transcript_evidence",
     {
       title: "Evidence in transcripts and full texts",
-      description: "Find and quote passages on a theme across podcast and video transcripts and open-access publications.",
+      description: "Find and quote passages on a theme across podcast and video transcripts, open-access publications and Cluster Chronicles texts.",
       argsSchema: z.object({ query: z.string().describe("Word or quoted phrase to find") }),
     },
     ({ query }) =>
       text(
         `Find evidence about "${query}" in AMIRA transcripts and full texts.\n\n` +
-          `1. search_podcasts, search_videos and search_publications with keyword "${query}" — keep the records matched in transcript or fulltext.\n` +
-          "2. get_text_passages with up to ten of their typed ids (podcast:, video:, publication:) and the same keyword; follow next_offset.\n" +
+          `1. search_podcasts, search_videos, search_publications and search_chronicles with keyword "${query}" — keep the records matched in transcript, fulltext or text.\n` +
+          "2. get_text_passages with up to ten of their typed ids (podcast:, video:, publication:, chronicle:) and the same keyword; follow next_offset.\n" +
           "3. Quote short passages with their offsets; say who speaks or writes and when.\n" +
           "4. Transcripts may be machine-generated: report transcript_generated_by from get_podcast / get_video when present.\n\n" +
           CITE,

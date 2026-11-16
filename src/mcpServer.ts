@@ -84,7 +84,7 @@ const SKILL_POINTER = " Before substantial research, read skill://amira-mcp/SKIL
 export const INSTRUCTIONS =
   "CITATIONS — follow exactly:\n" +
   "• Every record carries an `amira_url`, its public AMIRA page. Whenever you mention an item, person, project, " +
-  "subject, place, publication, podcast or video, render its `amira_url` as a markdown link. For several records " +
+  "subject, place, publication, podcast, video or chronicle, render its `amira_url` as a markdown link. For several records " +
   "use one link each (a bulleted list is good) — never collapse them into an id range.\n" +
   "• Use only URLs returned by the tools; never invent one. DOI, watch or listen URLs may be added, but never " +
   "replace the AMIRA link.\n" +
@@ -95,8 +95,8 @@ export const INSTRUCTIONS =
   "WORKFLOW: call get_collection_overview first, then search_* / list_* to find records and get_* for detail. " +
   "resolve_entity turns a name into a typed id for get_entity_graph; find_related pivots on a subject, place, " +
   "person or project. Multi-word keywords match records containing every word; quote a phrase to match it " +
-  "exactly. Transcripts and publication full text are opt-in on the detail tools (include_transcript / " +
-  "include_fulltext, paged by offset)." +
+  "exactly. Transcripts and full texts are opt-in on the detail tools (include_transcript / include_fulltext / " +
+  "include_text, paged by offset)." +
   SKILL_POINTER +
   "\n\n" +
   "ABOUT: AMIRA (Africa Multiple Interactive Research Atlas) is the research-data platform of the Africa Multiple " +
