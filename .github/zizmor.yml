@@ -1,0 +1,8 @@
+# zizmor configuration (the CI `workflow-lint` job; https://docs.zizmor.sh).
+rules:
+  # GitHub's `uses: $/...` self-repository syntax (July 2026) is not adopted
+  # yet: actionlint and Dependabot's parsing of it are unverified here, and the
+  # local actions are only ever loaded from this repository's own checkout
+  # (no step clones code before them). Revisit with the next lint pass.
+  self-repository:
+    disable: true

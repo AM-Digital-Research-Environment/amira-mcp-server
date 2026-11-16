@@ -1,0 +1,21 @@
+name: Scan an image for fixable vulnerabilities
+description: >-
+  Trivy, failing on any high or critical vulnerability that already has a fix.
+  The CI container job runs it on every fresh build and the release runs it on
+  the image it is about to save and push; image-scan.yml scans the published
+  image weekly with the same pin but reports instead of failing.
+inputs:
+  image-ref:
+    description: Local image to scan
+    required: true
+runs:
+  using: composite
+  steps:
+    # Pinned to a full commit SHA like every workflow action; Dependabot's
+    # github-actions ecosystem bumps it (.github/dependabot.yml lists this directory).
+    - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ inputs.image-ref }}
+        severity: HIGH,CRITICAL
+        ignore-unfixed: true
+        exit-code: "1"

@@ -29,13 +29,35 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-deps
         with:
-          node-version: "24"
+          node-version: "26"
       # Type errors do not depend on the Node runtime, so this runs once here
       # rather than in every unit-test lane. @types/node tracks the declared
       # floor (Node 22), so code cannot typecheck against APIs the floor lacks.
       - run: npm run typecheck
       # Biome, lint rules only (formatting is not enforced); biome.json.
       - run: npm run lint
+
+  # Static analysis of the workflows, composite actions and dependabot.yml:
+  # template injection, credential persistence, cache poisoning, unpinned
+  # actions, excessive permissions, missing Dependabot cooldown, ...
+  # Configuration and the one disabled rule: .github/zizmor.yml. Gating: the
+  # tree was clean with zizmor 1.32.0 when this job was added.
+  workflow-lint:
+    name: Workflow lint (zizmor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          inputs: .github/
+          # An exact zizmor release rather than `latest`, so a new audit lands
+          # through a reviewed bump, not as a surprise red CI.
+          version: "1.32.0"
+          # Plain output in the log; SARIF upload would need security-events: write.
+          advanced-security: "false"
 
   test:
     name: Unit tests (${{ matrix.os }}, Node ${{ matrix.node }})
@@ -47,7 +69,9 @@ jobs:
         node: [22, 24, 26]
         os: [ubuntu-latest]
         include:
-          - node: 24
+          # Single-version lanes run the Active LTS line (Node 26 since 28
+          # October 2026; Node 24 is in maintenance and keeps its Linux lane).
+          - node: 26
             os: windows-latest
           # The exact floor manifest.json declares (`>=22.0.0`): the 22 lane
           # runs the newest 22.x, which can hide an API added in a later minor.
@@ -62,7 +86,8 @@ jobs:
           node-version: ${{ matrix.node }}
       # --strict: an invalid skill fails CI instead of being dropped from the
       # catalog with a warning, which is what a plain local build does.
-      - run: npm run build:strict
+      # --sourcemap: failing stacks name src/ lines (server/lib.js.map).
+      - run: npm run build:strict -- --sourcemap
       - run: node scripts/test.mjs unit
       # bash, not the Windows default pwsh: pwsh exits with the LAST command's
       # code only, so a failing fixture-snapshot was hidden by a passing pack.
@@ -122,6 +147,13 @@ jobs:
         env:
           AMIRA_REQUIRE_REAL_BUNDLE: "1"
         run: node --test test/unit/packaging.test.mjs
+      # The evaluation set's identity questions hold on any crawl of the public
+      # site; the unit lanes have no data/, so this is where CI replays them
+      # (release and data refresh do through prepack-mcpb:ci).
+      - name: Evaluation identities (crawled snapshot)
+        run: node --test test/unit/evaluation.test.mjs
+      # smoke, smoke:http and weigh do not build: they run on the build
+      # fetch-data (or the cache-hit step above) just made.
       - run: npm run smoke
       - run: npm run smoke:http
       # Response weight at every tool's maximum limit. Needs the real snapshot,
@@ -160,7 +192,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-deps
         with:
-          node-version: "24"
+          node-version: "26"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci-bundle
@@ -180,29 +212,21 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-deps
         with:
-          node-version: "24"
+          node-version: "26"
       - run: npm run build:strict
       - run: node scripts/fixture-snapshot.mjs
       - run: docker build --build-arg SNAPSHOT_STAGE=bundled -t amira-test .
       - run: |
           docker run -d --name amira-test -p 8787:8787 -e AMIRA_LIVE_REFRESH=0 amira-test
-          for attempt in $(seq 1 20); do
-            if curl --silent --fail --max-time 2 http://127.0.0.1:8787/healthz; then exit 0; fi
-            sleep 1
-          done
-          docker logs amira-test
-          exit 1
+          node scripts/wait-healthz.mjs http://127.0.0.1:8787/healthz 20 || { docker logs amira-test; exit 1; }
       # Fails on any high or critical vulnerability that already has a fix.
       # The runtime stage applies Debian's security updates and drops npm, so
-      # a fresh build should come back clean; image-scan.yml watches the
-      # published image between releases.
+      # a fresh build should come back clean; the release runs the same gate
+      # and image-scan.yml watches the published image between releases.
       - name: Scan for fixable high/critical vulnerabilities
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: ./.github/actions/scan-image
         with:
           image-ref: amira-test
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
       - if: always()
         run: docker rm -f amira-test || true
 
@@ -241,12 +265,7 @@ jobs:
         run: |
           export AMIRA_CACHE_DIR="$RUNNER_TEMP/amira-cache"
           nohup node server/http.js > "$RUNNER_TEMP/amira-http.log" 2>&1 &
-          for attempt in $(seq 1 30); do
-            if curl --silent --fail --max-time 2 http://127.0.0.1:8787/healthz; then exit 0; fi
-            sleep 1
-          done
-          cat "$RUNNER_TEMP/amira-http.log"
-          exit 1
+          node scripts/wait-healthz.mjs http://127.0.0.1:8787/healthz 30 || { cat "$RUNNER_TEMP/amira-http.log"; exit 1; }
       - name: Run the conformance suite
         run: >-
           npx --yes @modelcontextprotocol/conformance@0.2.0-alpha.12 server

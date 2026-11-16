@@ -53,10 +53,13 @@ jobs:
             exit 1
           fi
           echo "Tag ${GITHUB_REF_NAME} matches package.json ${pkg}."
+      # No npm cache in the release: a cache written by any other run (a PR,
+      # a branch) could otherwise feed the published artifacts (zizmor's
+      # cache-poisoning audit). npm ci from the lockfile costs a few seconds more.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
-          cache: npm
+          package-manager-cache: false
       - name: Refuse already-published versions before building
         if: github.ref_type == 'tag'
         env:
@@ -107,22 +110,49 @@ jobs:
         # unzip it straight into their Claude skills dir (~/.claude/skills/).
         run: (cd .claude/skills && zip -r "$GITHUB_WORKSPACE/amira-mcp-skill.zip" amira-mcp)
       # The image the publish-image job pushes, built from the snapshot this
-      # job crawled and tested, and checked for health before it is saved.
-      - name: Build and check the release image
+      # job crawled and tested, and checked for health and vulnerabilities
+      # before it is saved. (linux/amd64 only; arm64 is an open decision in
+      # ROADMAP.md.)
+      - name: Build and health-check the release image
         run: |
           docker build --build-arg SNAPSHOT_STAGE=bundled -t amira-mcp-release:ci .
           docker run -d --name amira-release -p 8787:8787 -e AMIRA_LIVE_REFRESH=0 amira-mcp-release:ci
-          for attempt in $(seq 1 30); do
-            if curl --silent --fail --max-time 2 http://127.0.0.1:8787/healthz; then break; fi
-            if [ "$attempt" = 30 ]; then docker logs amira-release; exit 1; fi
-            sleep 1
-          done
+          node scripts/wait-healthz.mjs http://127.0.0.1:8787/healthz 30 || { docker logs amira-release; exit 1; }
           docker rm -f amira-release
-          docker save -o amira-mcp-image.tar amira-mcp-release:ci
+      # The gate the CI container job runs, on the exact image that ships: a
+      # fixable high or critical vulnerability stops the release here, before
+      # anything is saved, uploaded or pushed.
+      - name: Scan the release image for fixable high/critical vulnerabilities
+        uses: ./.github/actions/scan-image
+        with:
+          image-ref: amira-mcp-release:ci
+      # SBOMs (CycloneDX) for the SBOM attestations next to the provenance
+      # ones in the publish jobs: the image's OS and Node packages, and the
+      # runtime npm dependencies the .mcpb bundles (dev dependencies are
+      # excluded by default). Same pinned scanner as the gate; exit-code 0
+      # because this step describes, the gate above decides.
+      - name: SBOM of the release image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: amira-mcp-release:ci
+          format: cyclonedx
+          output: amira-mcp-image.cdx.json
+          exit-code: "0"
+      - name: SBOM of the bundle's runtime dependencies
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: package-lock.json
+          format: cyclonedx
+          output: amira-mcp-server.cdx.json
+          exit-code: "0"
+      - name: Save the release image
+        run: docker save -o amira-mcp-image.tar amira-mcp-release:ci
       - name: Record artifact digests
         run: |
-          sha256sum amira-mcp-server.mcpb amira-mcp-skill.zip release-notes.md > release-checksums.sha256
-          sha256sum amira-mcp-image.tar > image.sha256
+          sha256sum amira-mcp-server.mcpb amira-mcp-skill.zip release-notes.md amira-mcp-server.cdx.json > release-checksums.sha256
+          sha256sum amira-mcp-image.tar amira-mcp-image.cdx.json > image.sha256
           cat release-checksums.sha256 image.sha256
       - name: Upload build artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -132,6 +162,7 @@ jobs:
             amira-mcp-server.mcpb
             amira-mcp-skill.zip
             release-notes.md
+            amira-mcp-server.cdx.json
             release-checksums.sha256
           if-no-files-found: error
       - name: Upload the tested image
@@ -140,6 +171,7 @@ jobs:
           name: amira-mcp-image
           path: |
             amira-mcp-image.tar
+            amira-mcp-image.cdx.json
             image.sha256
           if-no-files-found: error
           retention-days: 2
@@ -162,6 +194,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
+          package-manager-cache: false
       # No npm install, build, or package scripts run in this privileged job.
       - name: Download build artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -176,7 +209,7 @@ jobs:
           TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
         run: node scripts/release-guard.mjs
-      # SLSA build provenance for both release assets. Replaces MCPB signing,
+      # SLSA build provenance for both release assets (the SBOM is attested below). Replaces MCPB signing,
       # which was dropped with the vulnerable node-forge stack. Verify with:
       #   gh attestation verify amira-mcp-server.mcpb -R AM-Digital-Research-Environment/amira-mcp-server
       # actions/attest is what actions/attest-build-provenance v4 wraps; with
@@ -187,6 +220,14 @@ jobs:
           subject-path: |
             dist/amira-mcp-server.mcpb
             dist/amira-mcp-skill.zip
+      # SBOM attestation (CycloneDX) for the bundle: the runtime npm
+      # dependencies esbuild inlined. Verify with
+      #   gh attestation verify amira-mcp-server.mcpb -R AM-Digital-Research-Environment/amira-mcp-server --predicate-type https://cyclonedx.org/bom
+      - name: Attest the bundle's SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/amira-mcp-server.mcpb
+          sbom-path: dist/amira-mcp-server.cdx.json
       # Draft first, public last: a run that fails between the two leaves a
       # draft to delete, never a half-filled public release. No --clobber: the
       # guard has just proved the tag carries no release.
@@ -200,7 +241,9 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
             --title "$GITHUB_REF_NAME — AMIRA MCP server" \
             --notes-file dist/release-notes.md
-          gh release upload "$GITHUB_REF_NAME" dist/amira-mcp-server.mcpb dist/amira-mcp-skill.zip dist/release-checksums.sha256
+          # The SBOM ships too: release-checksums.sha256 lists it.
+          gh release upload "$GITHUB_REF_NAME" dist/amira-mcp-server.mcpb dist/amira-mcp-skill.zip \
+            dist/amira-mcp-server.cdx.json dist/release-checksums.sha256
           gh release edit "$GITHUB_REF_NAME" --draft=false
 
       # The stamp in `build` only reached the packed artifact; that checkout
@@ -208,8 +251,9 @@ jobs:
       # the file on the default branch, so main needs the same edit. Separate
       # checkout of main, because main may have moved on since the tag.
       # persist-credentials stays at its default (true) here on purpose: the
-      # step below pushes to main with exactly these checkout credentials.
-      - name: Check out main for the CITATION.cff bump
+      # step below pushes to main with exactly these checkout credentials, and
+      # no artifact is uploaded after it (hence the artipacked ignore).
+      - name: Check out main for the CITATION.cff bump # zizmor: ignore[artipacked]
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
@@ -284,6 +328,13 @@ jobs:
           subject-name: ${{ steps.push.outputs.image }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+      - name: Attest the image's SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.push.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: amira-mcp-image.cdx.json
+          push-to-registry: true
 
   # MCP Registry listing (https://registry.modelcontextprotocol.io, preview).
   # Non-blocking: the registry is in preview and a failure here must not red a
@@ -301,10 +352,14 @@ jobs:
       contents: read
       id-token: write # mcp-publisher login github-oidc
     env:
-      # Official v1.8.1 linux_amd64 artifact digest from the upstream release,
-      # verified before it runs (as the IWAC server does) instead of `latest`.
-      MCP_PUBLISHER_VERSION: v1.8.1
-      MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+      # Official v1.8.9 linux_amd64 artifact digest, from the upstream
+      # release's registry_1.8.9_checksums.txt, verified before it runs (as
+      # the IWAC server does) instead of `latest`. Dependabot cannot see this
+      # pin (it is a downloaded binary, not an action): bump the version and
+      # the digest together by hand, from
+      # https://github.com/modelcontextprotocol/registry/releases.
+      MCP_PUBLISHER_VERSION: v1.8.9
+      MCP_PUBLISHER_SHA256: 4d527ca8f1ced0394c962dc925c2a4a4addef441cbefd62501c875e9481823a8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -317,9 +372,12 @@ jobs:
       - name: Verify the bytes the build job tested
         working-directory: dist
         run: sha256sum -c release-checksums.sha256
-      # server.json in git describes the last release; point it at this one:
+      # server.json in git is a placeholder (version 0.0.0-stamped-by-release,
+      # a STAMPED_BY_RELEASE asset URL, a zero hash) so it is never mistaken
+      # for, or hand-published as, a real release. Stamp it for this one:
       # version from the tag, the .mcpb release-asset URL and its SHA-256
-      # (clients verify the hash before installing).
+      # (clients verify the hash before installing). test/unit/metadata.test.mjs
+      # keeps the placeholder and this step in agreement.
       - name: Stamp server.json for this release
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -331,6 +389,10 @@ jobs:
           ' server.json > server.json.tmp
           mv server.json.tmp server.json
           cat server.json
+          if grep -qE 'stamped-by-release|STAMPED_BY_RELEASE|"0{64}"' server.json; then
+            echo "::error::server.json still holds a placeholder after stamping"
+            exit 1
+          fi
       - name: Install the pinned, verified Registry publisher
         run: |
           curl -fL --retry 3 "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz" -o mcp-publisher.tar.gz
