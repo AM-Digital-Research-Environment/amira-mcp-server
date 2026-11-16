@@ -46,6 +46,8 @@ export const VIEWS: readonly AppView[] = [
 const SHARED_FILE = "_shared.js";
 /** The router, after the views: hands each result to the view that renders it. */
 const ROUTER_FILE = "_router.js";
+/** The page's plain inline script, which expands the gzip data element. */
+const BOOTSTRAP_FILE = "_bootstrap.js";
 
 /** A view's script as written in src/ui/views/, without the `export { render }`
  * that makes the file a module for its typecheck and lint. */
@@ -76,25 +78,6 @@ export function viewsScript(read: (file: string) => string): string {
   ].join("\n");
 }
 
-/** Expand the gzip data element into an inline script. */
-const BOOTSTRAP = `(async () => {
-  const data = document.getElementById("amira-app-bundle");
-  try {
-    if (typeof DecompressionStream !== "function") throw new Error("This host cannot decode gzip.");
-    const bytes = Uint8Array.from(atob(data.textContent.trim()), (c) => c.charCodeAt(0));
-    const source = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
-    const script = document.createElement("script");
-    script.textContent = source;
-    document.body.appendChild(script);
-    data.remove();
-  } catch (error) {
-    const root = document.getElementById("root");
-    root.textContent = "The AMIRA app could not start in this host. The tool result in the conversation is unaffected.";
-    root.setAttribute("role", "alert");
-    console.error("[amira] app startup failed", error);
-  }
-})();`;
-
 export interface AppPage {
   html: string;
   /** The decoded script: the bridge, a newline, then viewsScript(). */
@@ -104,12 +87,13 @@ export interface AppPage {
 
 /**
  * `minify` (esbuild's transform, passed in by scripts/build.mjs) compacts the
- * views script's whitespace and syntax. Identifiers stay as written: the views
- * share globals (pickerLoad, selectionControls) and the tests read
- * `api.<member>` uses.
+ * whitespace and syntax of the views script and of the bootstrap. Identifiers
+ * stay as written: the views share globals (pickerLoad, selectionControls) and
+ * the tests read `api.<member>` uses.
  */
 export function appPage(bridgeJs: string, read: (file: string) => string, minify: (js: string) => string = (js) => js): AppPage {
   const script = `${bridgeJs}\n${minify(viewsScript(read))}`;
+  const bootstrap = minify(scriptSource(BOOTSTRAP_FILE, read)).trim();
   const compressed = gzipSync(script, { level: 9 });
   const css = SHELL_CSS + VIEWS.map((view) => scopeCss(`[data-view="${view.name}"]`, view.css)).join("");
   const html = `<!doctype html>
@@ -124,7 +108,7 @@ export function appPage(bridgeJs: string, read: (file: string) => string, minify
 <div class="wrap" id="root"><p class="empty">Waiting for research data…</p></div>
 <p id="app-status" role="status" aria-live="polite"></p>
 <script id="amira-app-bundle" type="application/gzip">${compressed.toString("base64")}</script>
-<script>${BOOTSTRAP}</script>
+<script>${bootstrap}</script>
 </body>
 </html>
 `;
