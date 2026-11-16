@@ -21,6 +21,10 @@ const dir = new URL(`../test/${suite}/`, import.meta.url);
 const files = readdirSync(dir).filter((name) => name.endsWith(".test.mjs")).sort()
   .map((name) => fileURLToPath(new URL(name, dir)));
 if (!files.length) throw new Error(`No tests found in ${suite}`);
-const result = spawnSync(process.execPath, ["--test", `--test-timeout=${TEST_TIMEOUT_MS}`, ...files], { stdio: "inherit" });
+// --enable-source-maps: the runner passes it on to each test file's process, so
+// a stack through server/lib.js names src/ lines when `build --sourcemap` wrote
+// lib.js.map (npm test does); without a map it changes nothing.
+const result = spawnSync(process.execPath, ["--enable-source-maps", "--test", `--test-timeout=${TEST_TIMEOUT_MS}`, ...files],
+  { stdio: "inherit" });
 if (result.error) throw result.error;
 process.exitCode = result.status ?? 1;

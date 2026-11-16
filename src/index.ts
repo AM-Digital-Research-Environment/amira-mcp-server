@@ -60,7 +60,7 @@ async function main(): Promise<void> {
   // instance from the factory for the connection's lifetime. Connecting a bare
   // StdioServerTransport by hand would serve the 2025 era only — the modern
   // methods answer `-32601` because nothing marked the connection's era.
-  const stdio = serveStdio(() => createAmiraServer()); // stdio surface: the 34 core tools
+  const stdio = serveStdio(() => createAmiraServer()); // stdio surface: the core tools (manifest.json), without HTTP's search/fetch
   console.error(
     `[amira] AMIRA MCP server v${VERSION} running on stdio (site: ${config.siteBase}, live refresh: ${config.liveRefresh})`,
   );

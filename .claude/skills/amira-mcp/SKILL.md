@@ -119,7 +119,9 @@ Use the right entry point for the question:
   items that would surface), and `did_you_mean` names stored places close to an unmatched place —
   relax, don't give up.
 - Projects → `search_projects`. Sections → `list_research_sections`. People → `search_persons`.
-  Institutions → `list_institutions`. Bibliography → `search_publications` (keyword reaches INTO the
+  Institutions → `list_institutions`; the cluster's own partner network (Africa Multiple Research
+  Centres, privileged partner, cooperation and global partners) → `list_cluster_partners` (optional
+  `category`). Research groups → `list_groups`. Bibliography → `search_publications` (keyword reaches INTO the
   extracted full text of open-access publications — hits are flagged `matched_in: "fulltext"` with a
   `fulltext_snippet`; filter with `has_fulltext`, `venue`, `author`, `subject`, `language`, `type`, years).
   Use `list_publication_facets` for complete counts and publication vocabulary. Journals →
@@ -253,6 +255,25 @@ link.
   records and may stop earlier at the response byte limit. Combine strings with blank lines, or
   collect CSL objects into a JSON array. Exports omit abstracts/full text. See the bibliography
   section of [references/tools-by-task.md](references/tools-by-task.md) for details.
+
+## Curator mode (private records)
+
+An internal curator server, for AMIRA's developers and data curators with a personal token, also
+serves **private** records and values. You are on it when the server's instructions say CURATOR
+MODE and results carry `visibility`. The public server never does.
+
+- Every record says `visibility: "public"` or `"private"`. A private record has **no `amira_url`**:
+  it carries `admin_url` (its Omeka admin page, which only curators can open) and a
+  `citation_note`. Never cite, link or describe a private record as a public source; name it with
+  its `admin_url` and say it is private. Citations and exports of a private record say so too.
+- `restricted` on a detail result holds private values (`security_level`, `mongo_id`, `bitstream`,
+  other private `values`, private full text): for curation work only, never in public outputs.
+- Private full text (e.g. ILAM's OCR text) is searchable in `search_research_items` and
+  `search_publications`: a row matched only there says `matched_in: "restricted_fulltext"` with a
+  snippet. Read it with `include_fulltext` on `get_research_item` / `get_publication`, paged by
+  `fulltext_offset` / `fulltext_max_chars` like any long text.
+- Counts include private records (`get_collection_overview` splits them by `visibility`), so they
+  differ from the public site's.
 
 ## Caveats
 

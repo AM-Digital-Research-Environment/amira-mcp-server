@@ -9,7 +9,14 @@ filters you actually passed). Every tool clamps an excess `limit` and echoes `re
 with `isError` whose text is `{ error: { code, message, suggested_tool?, available_values? } }`.
 String arguments are trimmed; a blank optional filter is ignored. Typed ids work in both vocabularies
 (`item:`/`research_item:`, `pub:`/`publication:`, `section:`, `person:`, `organisation:`, `project:`,
-`video:`, `podcast:`), including as the `id` of `get_*` tools. Every record carries a citable `amira_url`.
+`video:`, `podcast:`), including as the `id` of `get_*` tools. Every record carries a citable `amira_url`
+(on the curator server, a private record carries `admin_url` and `citation_note` instead).
+
+**Curator server only:** `search_research_items` and `search_publications` also match private full
+text (rows say `matched_in: "restricted_fulltext"`); `get_research_item` gains `include_fulltext`,
+`fulltext_offset`, `fulltext_max_chars` for it, and `get_publication`'s same parameters reach private
+texts too. Private podcast and video transcripts are reported by length only, and
+`get_text_passages` does not search private text.
 
 ## Scoping
 
@@ -139,8 +146,9 @@ name in either order; location = any hierarchy level; project = id/label. The ru
 
 ## The ILAM full-text map
 
-The full text of ILAM's journal *African Music* (collection 27724) is private: no tool reads or
+The full text of ILAM's journal *African Music* (collection 27724) is private: no public tool reads or
 quotes it. DRE Visualizations derived public numbers from it offline, and the server serves those.
+(The curator server pages it for curation only, in `restricted`; never quote it in public outputs.)
 
 | Task | Tool | Key params |
 | --- | --- | --- |

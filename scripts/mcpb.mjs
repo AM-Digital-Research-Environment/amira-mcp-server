@@ -67,6 +67,35 @@ export function validateManifest(filename) {
   return manifest;
 }
 
+// The snapshot pointer as `writeSnapshotAtomic` writes it (src/snapshot.ts).
+const GENERATION = /^[a-zA-Z0-9-]+$/;
+const POINTER = "data/active.json";
+
+/**
+ * The snapshot generation a bundle ships. `npm run fetch-data` keeps the
+ * current generation and up to two previous ones under data/generations/; the
+ * server reads only the one data/active.json names, so the others would double
+ * a local bundle and carry records withdrawn upstream since. Returns null for
+ * the flat layout (no pointer), in which no generation is read either.
+ */
+function activeGeneration(root) {
+  if (!existsSync(path.join(root, ...POINTER.split("/")))) return null;
+  let pointer;
+  try {
+    pointer = JSON.parse(readBundleFile(root, POINTER).toString("utf8"));
+  } catch {
+    throw new Error(`${POINTER} is not valid JSON`);
+  }
+  if (typeof pointer?.current !== "string" || !GENERATION.test(pointer.current)) {
+    throw new Error(`${POINTER} names no valid current generation`);
+  }
+  const dir = path.join(root, "data", "generations", pointer.current);
+  if (!existsSync(dir) || !lstatSync(dir).isDirectory()) {
+    throw new Error(`${POINTER} names generation ${pointer.current}, which is missing from data/generations/`);
+  }
+  return pointer;
+}
+
 export function packBundle(directory, output) {
   const root = path.resolve(directory);
   const destination = path.resolve(output);
@@ -76,6 +105,7 @@ export function packBundle(directory, output) {
   if (existsSync(path.join(root, ".mcpbignore"))) {
     exclusions.add(readBundleFile(root, ".mcpbignore").toString("utf8"));
   }
+  const pointer = activeGeneration(root);
   const files = Object.create(null);
   function visit(relative = "") {
     const entries = readdirSync(path.join(root, relative), { withFileTypes: true })
@@ -84,6 +114,8 @@ export function packBundle(directory, output) {
       const name = relative ? `${relative}/${entry.name}` : entry.name;
       const candidate = name + (entry.isDirectory() ? "/" : "");
       if (alwaysExcluded.ignores(candidate) || exclusions.ignores(candidate)) continue;
+      // Only the active generation ships (activeGeneration above).
+      if (relative === "data/generations" && entry.name !== pointer?.current) continue;
       bundlePath(name);
       if (entry.isSymbolicLink()) throw new Error(`Symlinks are not supported: ${name}`);
       if (entry.isDirectory()) { visit(name); continue; }
@@ -97,6 +129,10 @@ export function packBundle(directory, output) {
     }
   }
   visit();
+  if (pointer && Object.hasOwn(files, POINTER)) {
+    // The bundle holds no previous generation, so its pointer lists none.
+    files[POINTER][0] = Buffer.from(JSON.stringify({ ...pointer, previous: [] }));
+  }
   const iconSources = (manifest.icons ?? []).map((icon) => icon.src);
   for (const name of ["manifest.json", "package.json", manifest.server.entry_point, manifest.icon, ...iconSources].filter(Boolean)) {
     if (!Object.hasOwn(files, name)) throw new Error(`Required file excluded from bundle: ${name}`);

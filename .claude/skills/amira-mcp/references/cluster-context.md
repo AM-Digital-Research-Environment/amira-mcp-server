@@ -75,7 +75,9 @@ long-term aim of developing fluid IT ontologies.
 <https://data.africamultiple.uni-bayreuth.de> — projects, digitised collections, people, bibliography,
 podcasts, and the cluster's YouTube videos. This MCP server is itself a DRE project: it reads the
 site's openly published REST API into an offline snapshot and re-exposes it as read-only tools, so
-every result can be cited back to its `amira_url` page on the site.
+every result can be cited back to its `amira_url` page on the site. A separate, internal curator
+server (personal tokens, for the DRE's developers and data curators) runs the same code with a
+service key and also serves records the site keeps private; those have no public page to cite.
 
 ## Other cluster bodies (context, not entities in the data)
 

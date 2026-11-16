@@ -5,8 +5,10 @@ name: Image scan
 # vulnerabilities that already have a fix. While any remain, one issue labelled
 # `image-vulnerabilities` stays open and assigned to the maintainer, so GitHub
 # notifies them: when it opens, and with a comment whenever the findings
-# change. A clean scan closes it. The CI container job runs the same scan on
-# every fresh build, so a release normally clears the issue.
+# change. A clean scan closes it. The CI container job and the release run the
+# same scan as a gate (.github/actions/scan-image) on every fresh build, so a
+# release normally clears the issue. This one reports instead of failing, so it
+# keeps its own step with the same pin.
 #
 # Least privilege: `scan` pulls the image and runs the third-party scanner with
 # a read-only token; only `report`, which runs no third-party code, can write

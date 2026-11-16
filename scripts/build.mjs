@@ -3,13 +3,13 @@
 //   server/http.js      — the MCP server, remote Streamable HTTP transport
 //   server/fetchCli.js  — the snapshot fetcher (build time + CI)
 //   server/tokenCli.js  — the curator-mode personal token generator (#26)
-//   server/lib.js       — the test library (src/lib.ts)
+//   server/lib.js       — the test library (src/lib.ts); `--sourcemap` adds lib.js.map
 //
 // No native bindings or optional cloud SDKs — the MCP SDK and zod inline
 // cleanly, so nothing is required from node_modules at runtime. The package
 // version is injected as __SERVER_VERSION__ (single source: package.json).
 import * as esbuild from "esbuild";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { buildSkillsSnapshot } from "./skills.mjs";
 
@@ -87,8 +87,7 @@ console.log(
     `${strictSkills ? " [strict]" : ""}`,
 );
 
-await esbuild.build({
-  entryPoints: ["./src/index.ts", "./src/http.ts", "./src/fetchCli.ts", "./src/tokenCli.ts", "./src/lib.ts"],
+const serverBuild = {
   outdir: "server",
   bundle: true,
   platform: "node",
@@ -120,4 +119,17 @@ await esbuild.build({
     ].join("\n"),
   },
   logLevel: "info",
-});
+};
+
+await esbuild.build({ ...serverBuild,
+  entryPoints: ["./src/index.ts", "./src/http.ts", "./src/fetchCli.ts", "./src/tokenCli.ts"] });
+
+// `--sourcemap` (npm test, CI's unit lanes): a linked map for the test library
+// only, so a failing test's stack points into src/ rather than into a 3 MB
+// bundle (scripts/test.mjs runs the tests with --enable-source-maps). The
+// runtime bundles never get one: the .mcpb ignores *.map, but the container
+// copies all of server/. Without the flag a stale map from an earlier build
+// is removed, so it can never describe a different lib.js.
+const libMap = process.argv.includes("--sourcemap");
+if (!libMap) rmSync(new URL("../server/lib.js.map", import.meta.url), { force: true });
+await esbuild.build({ ...serverBuild, entryPoints: ["./src/lib.ts"], sourcemap: libMap ? "linked" : false });

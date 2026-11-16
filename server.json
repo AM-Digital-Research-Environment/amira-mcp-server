@@ -3,7 +3,7 @@
   "name": "io.github.AM-Digital-Research-Environment/amira-mcp-server",
   "title": "AMIRA — Africa Multiple Research Data",
   "description": "Read-only access to AMIRA, the Africa Multiple research-data platform on Omeka S.",
-  "version": "1.18.1",
+  "version": "0.0.0-stamped-by-release",
   "websiteUrl": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server#readme",
   "repository": {
     "url": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server",
@@ -20,8 +20,8 @@
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server/releases/download/v1.18.1/amira-mcp-server.mcpb",
-      "fileSha256": "1e9dda9df4ad7f10678ede855630053896837c9bb6292e9e32defddab68e90fa",
+      "identifier": "https://github.com/AM-Digital-Research-Environment/amira-mcp-server/releases/download/STAMPED_BY_RELEASE/amira-mcp-server.mcpb",
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
       "transport": {
         "type": "stdio"
       }

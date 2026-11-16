@@ -1,6 +1,11 @@
 version: 2
 # Every Dependabot PR is assigned to the maintainer, so GitHub notifies them
 # however they watch the repository.
+#
+# Cooldown: a new release is proposed only once it is a week old (a major two
+# weeks), so a compromised or broken version that the ecosystem pulls within
+# days never reaches a PR. Security updates are not delayed: cooldown applies
+# to version updates only. The CI workflow lint (zizmor) checks for it.
 updates:
   - package-ecosystem: npm
     directory: /
@@ -8,10 +13,17 @@ updates:
       interval: weekly
     assignees: [fmadore]
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     groups:
       mcp-sdk:
         patterns:
           - "@modelcontextprotocol/*"
+      # The toolchain (TypeScript, esbuild, Biome, test helpers) in one PR;
+      # runtime dependencies keep their own PRs, since they reach the bundle.
+      dev-dependencies:
+        dependency-type: development
     ignore:
       # @types/node tracks the supported Node floor (engines ">=22"), not the
       # Node 26 runtime, so typecheck rejects APIs newer than the floor. Raise
@@ -19,21 +31,28 @@ updates:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
   # Workflows pin every action to a full commit SHA with a `# vX.Y.Z` comment;
-  # Dependabot bumps the SHA and the comment together.
+  # Dependabot bumps the SHA and the comment together. It cannot see the
+  # mcp-publisher binary pinned in release.yml: that one is bumped by hand.
   - package-ecosystem: github-actions
     # The workflows, and the composite actions they share.
     directories: ["/", "/.github/actions/*"]
     schedule:
       interval: monthly
     assignees: [fmadore]
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns:
           - "*"
   # Both FROM lines in the Dockerfile pin node:26-slim by digest; this keeps
   # the digest current (base-image security fixes) without a floating tag.
+  # The release image also takes Debian's security updates at build time, and
+  # image-scan.yml watches it weekly, so a week's cooldown delays no CVE fix.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
     assignees: [fmadore]
+    cooldown:
+      default-days: 7
