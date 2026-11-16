@@ -34,6 +34,7 @@ import {
   textParam,
   textResult,
   textWindowFields,
+  transcriptWindowParams,
   videoSummary,
   type Server,
 } from "./_shared.js";
@@ -48,8 +49,7 @@ type TranscriptRecord = PodcastRec | VideoRec;
 /** Shared opt-in transcript params for the get_podcast / get_video schemas. */
 const transcriptParams = {
   include_transcript: z.boolean().optional().describe("Default false — set true to include the transcript text"),
-  transcript_offset: z.number().int().min(0).optional().describe("Start offset into the transcript (chars), with include_transcript"),
-  transcript_max_chars: z.number().int().min(1).optional().describe("Max transcript characters to return (default/max 25000)"),
+  ...transcriptWindowParams,
 };
 const yearParams = {
   year_from: z.number().int().min(0).max(2200).optional().describe("Earliest year"),

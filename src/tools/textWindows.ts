@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { CHARACTER_LIMIT } from "./responses.js";
 import { allowFullText } from "../exposure.js";
 import { guidanceEnabled } from "../guidance.js";
@@ -10,6 +11,18 @@ import { guidanceEnabled } from "../guidance.js";
 // existence flags stay but the text itself is reported as access-disabled.
 
 export type WindowField = "transcript" | "fulltext";
+
+/** The paging arguments of an opt-in transcript (get_podcast, get_video, fetch). */
+export const transcriptWindowParams = {
+  transcript_offset: z.number().int().min(0).optional().describe("Start offset into the transcript (chars), with include_transcript"),
+  transcript_max_chars: z.number().int().min(1).optional().describe("Max transcript characters to return (default/max 25000)"),
+};
+
+/** The paging arguments of an opt-in publication full text (get_publication, fetch). */
+export const fulltextWindowParams = {
+  fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
+  fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
+};
 
 export interface WindowOpts {
   include?: boolean;

@@ -35,6 +35,8 @@ import {
   textParam,
   textResult,
   textWindowAppend,
+  fulltextWindowParams,
+  transcriptWindowParams,
   yearLabel,
   type Server,
   type WindowField,
@@ -461,11 +463,9 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
         id: textParam()
           .describe("A typed record id from search (item:9902, pub:30001, video:…, podcast:…, project:…, section:…) or resolve_entity"),
         include_transcript: z.boolean().optional().describe("Default false — set true to append the video/podcast transcript"),
-        transcript_offset: z.number().int().min(0).optional().describe("Start offset into the transcript (chars), with include_transcript"),
-        transcript_max_chars: z.number().int().min(1).optional().describe("Max transcript characters to return (default/max 25000)"),
+        ...transcriptWindowParams,
         include_fulltext: z.boolean().optional().describe("Default false — set true to append a publication's extracted full text"),
-        fulltext_offset: z.number().int().min(0).optional().describe("Start offset into the full text (chars), with include_fulltext"),
-        fulltext_max_chars: z.number().int().min(1).optional().describe("Max full-text characters to return (default/max 25000)"),
+        ...fulltextWindowParams,
         max_chars: z.number().int().min(1).optional().describe("Cap on the whole returned text body, default/max 25000"),
       })),
       outputSchema: schemaOnce("fetch:out", () => z.object({
