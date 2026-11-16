@@ -121,7 +121,7 @@ export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
     return textResult(pageOf(listed, offset, limit, semanticRef, {
       space: semanticSpace(index),
       ...describeGroup(store, groupId, members),
-      ...(seed ? { record: { ...semanticRef(seed), rank_in_group: members.findIndex((r) => r.o_id === seed!.o_id) + 1 } } : {}),
+      ...(seed ? { record: { ...semanticRef(seed), rank_in_group: members.findIndex((r) => r.o_id === seed.o_id) + 1 } } : {}),
       ...echo, ...note,
     }));
   });

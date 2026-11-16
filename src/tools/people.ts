@@ -184,8 +184,9 @@ export function registerPeopleTools(server: Server, tools: ToolMap): void {
       // Suggest spellings only when the keyword itself matched nobody: when an
       // affiliation filter removed the matches, the name was not the problem,
       // and the generic advice to relax filters applies instead.
-      const spelling = filtered.length || !args.keyword || store.persons.some((p) => keywordMatches(p, args.keyword!))
-        ? {} : personSuggestions(store.persons.filter(affiliated), args.keyword);
+      const { keyword } = args;
+      const spelling = filtered.length || !keyword || store.persons.some((p) => keywordMatches(p, keyword))
+        ? {} : personSuggestions(store.persons.filter(affiliated), keyword);
       return textResult({ ...page, ...("suggestions" in spelling ? spelling : emptySearchHint(filtered.length, args)), ...pastEndHint(page) });
     },
   );

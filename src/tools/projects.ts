@@ -63,25 +63,25 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       if (!allowStructured()) return exposureRestrictedResult("structured", "search_projects");
       const { limit, echo } = SEARCH_LIMIT.resolve(args.limit);
       const offset = capOffset(args.offset);
+      const { keyword, university, research_section: sectionArg, principal_investigator: pi, member, institution } = args;
       // A section by name or id; projects link to it by id (their label may be stale).
-      const section = args.research_section
-        ? resolveSectionLoose(store, args.research_section)
+      const section = sectionArg
+        ? resolveSectionLoose(store, sectionArg)
         : undefined;
       // Word semantics, as the server instructions promise: every word of a
       // multi-word keyword somewhere in the name, a variant or the description.
-      const keywordOk = keywordPredicate(args.keyword);
-      const inSection = (p: ProjectRec) => section
+      const keywordOk = keywordPredicate(keyword);
+      const inSection = (p: ProjectRec, name: string) => section
         ? p.sections.some((s) => s.o_id != null ? s.o_id === section.o_id : fold(s.label) === fold(section.name))
-        : p.sections.some((s) => equalsCI(s.label, args.research_section!));
+        : p.sections.some((s) => equalsCI(s.label, name));
 
       const filtered = store.projects.filter((p) => {
-        if (args.keyword && !keywordOk([p.name, p.description, ...(p.alt_names ?? [])])) return false;
-        if (args.university && !matchesUniversity(p.university, args.university)) return false;
-        if (args.research_section && !inSection(p)) return false;
-        if (args.principal_investigator && !p.pis.some((x) => personMatches(x.label, args.principal_investigator!)))
-          return false;
-        if (args.member && !p.members.some((x) => personMatches(x.label, args.member!))) return false;
-        if (args.institution && !anyContainsCI(refLabels(p.funded_by), args.institution)) return false;
+        if (keyword && !keywordOk([p.name, p.description, ...(p.alt_names ?? [])])) return false;
+        if (university && !matchesUniversity(p.university, university)) return false;
+        if (sectionArg && !inSection(p, sectionArg)) return false;
+        if (pi && !p.pis.some((x) => personMatches(x.label, pi))) return false;
+        if (member && !p.members.some((x) => personMatches(x.label, member))) return false;
+        if (institution && !anyContainsCI(refLabels(p.funded_by), institution)) return false;
         return true;
       });
 
@@ -89,11 +89,11 @@ export function registerProjectTools(server: Server, tools: ToolMap): void {
       const didYouMean: { filter: string; values: string[] }[] = [];
       const suggest = (filter: string, values: string[]) => { if (values.length) didYouMean.push({ filter, values }); };
       if (!filtered.length && guidanceEnabled()) {
-        if (args.university && !store.projects.some((p) => matchesUniversity(p.university, args.university!))) {
-          suggest("university", closestValues(args.university, universityValues()));
+        if (university && !store.projects.some((p) => matchesUniversity(p.university, university))) {
+          suggest("university", closestValues(university, universityValues()));
         }
-        if (args.research_section && !store.projects.some(inSection)) {
-          suggest("research_section", closestValues(args.research_section, store.sections.map((s) => s.name)));
+        if (sectionArg && !store.projects.some((p) => inSection(p, sectionArg))) {
+          suggest("research_section", closestValues(sectionArg, store.sections.map((s) => s.name)));
         }
       }
 
