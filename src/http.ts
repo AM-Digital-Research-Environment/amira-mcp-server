@@ -10,7 +10,7 @@ import { createServer } from "node:http";
 import { createHttpApp, MCP_PATH } from "./httpApp.js";
 import { VERSION } from "./mcpServer.js";
 import { config } from "./config.js";
-import { ensureStore, stopBackgroundRefresh } from "./data.js";
+import { loadInBackground, stopBackgroundRefresh } from "./data.js";
 import { refuseMisconfiguration } from "./access.js";
 
 // Fail closed (#26): a curator server without its key, its personal tokens or a
@@ -24,17 +24,7 @@ const app = createHttpApp({ startupError: () => startupError });
 const httpServer = createServer(app.listener);
 
 // Warm the snapshot (and kick off the background refresh) before traffic.
-void ensureStore()
-  .then((store) => {
-    console.error(
-      `[amira] loaded ${store.items.length} research items / ${store.projects.length} projects / ` +
-        `${store.videos.length} videos from ${store.source} snapshot (fetchedAt=${store.manifest.fetchedAt})`,
-    );
-  })
-  .catch((err) => {
-    startupError = (err as Error).message;
-    console.error(`[amira] initial data load failed: ${startupError}`);
-  });
+loadInBackground((message) => { startupError = message; });
 
 httpServer.listen(config.httpPort, config.httpHost, () => {
   const address = httpServer.address();

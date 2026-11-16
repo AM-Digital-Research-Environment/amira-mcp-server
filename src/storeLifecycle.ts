@@ -391,6 +391,27 @@ export async function ensureStore(): Promise<DataStore> {
   return loading;
 }
 
+/**
+ * Entry points: load the snapshot (and kick off the background refresh) without
+ * blocking startup, logging what was loaded or why it failed. Requests await
+ * ensureStore() themselves and surface any load error; `onFailure` receives the
+ * failure's message too (the HTTP entry reports it on /healthz).
+ */
+export function loadInBackground(onFailure?: (message: string) => void): void {
+  void ensureStore()
+    .then((store) =>
+      console.error(
+        `[amira] loaded ${store.items.length} research items / ${store.projects.length} projects / ` +
+          `${store.videos.length} videos from ${store.source} snapshot (fetchedAt=${store.manifest.fetchedAt})`,
+      ),
+    )
+    .catch((err) => {
+      const message = (err as Error).message;
+      onFailure?.(message);
+      console.error(`[amira] initial data load failed: ${message}`);
+    });
+}
+
 /** The store currently being served, or null before the first load resolves.
  * Read this (not a captured reference) so callers see post-refresh swaps.
  * In curator mode, also null while the data may not be served (unverified for
