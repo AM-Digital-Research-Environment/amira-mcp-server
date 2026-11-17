@@ -9,8 +9,8 @@ range, snapshot freshness), call `get_collection_overview` rather than quoting f
 
 The **Africa Multiple Cluster of Excellence** is based at the **University of Bayreuth** (Germany) and
 was established in **January 2019** through the Excellence Strategy of the German federal and state
-governments (DFG-funded). It builds on roughly fifty years of African Studies at Bayreuth and now hosts
-100+ scholars from three continents. Its programmatic subtitle, **"Reconfiguring African Studies"**,
+governments (DFG-funded, EXC 2052). It builds on roughly fifty years of African Studies at Bayreuth and
+now counts more than 300 affiliated people. Its programmatic subtitle, **"Reconfiguring African Studies"**,
 signals its aim: to address power imbalances in how knowledge about Africa is produced, through new
 inter- and transdisciplinary forms of collaborative research and theory-building.
 
@@ -39,17 +39,18 @@ to everything that co-occurs with it across the collection.
 
 ## Partner research centres
 
-The cluster operates through Africa Multiple Research Centres (AMRCs) and partner institutions worldwide,
-with the shared infrastructure coordinated from Bayreuth by the Digital Research Environment (DRE).
-Curation and description are joint efforts with the AMRC partners:
+The cluster conducts its research in five Africa Multiple Research Centres (AMRCs), earlier called
+African Cluster Centres (ACC), and with partner institutions worldwide. The shared infrastructure is
+coordinated from Bayreuth by the Digital Research Environment (DRE); curation and description are
+joint efforts across the centres:
 
+- **University of Bayreuth** (Germany) — also hosts the coordinating DRE infrastructure and metadata layer
 - **Université Joseph Ki-Zerbo**, Ouagadougou (Burkina Faso)
 - **Rhodes University**, Makhanda (South Africa) — hosts the International Library of African Music (ILAM)
 - **University of Lagos** (Nigeria)
 - **Moi University**, Eldoret (Kenya)
 
-The **University of Bayreuth** hosts the coordinating DRE infrastructure and metadata layer. The
-**Centro de Estudos Afro-Orientais (CEAO), Federal University of Bahia** (Brazil), is a privileged
+The **Centro de Estudos Afro-Orientais (CEAO), Federal University of Bahia** (Brazil), is a privileged
 partner, not an AMRC.
 
 In AMIRA's current data, projects are grouped under metadata/source prefixes — **UBT** (Bayreuth),

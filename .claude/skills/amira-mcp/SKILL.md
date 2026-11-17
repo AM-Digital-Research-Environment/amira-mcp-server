@@ -24,6 +24,10 @@ public **Omeka S site** at <https://data.africamultiple.uni-bayreuth.de> (the AM
 the site and this MCP server are built and maintained by the cluster's **Digital Research Environment
 (DRE)**.
 
+This skill is for research questions answered with the tools. The Omeka data model, the REST API
+and the pipelines behind the site are the subject of the DRE's separate `africa-multiple-data`
+skill, where a session has it.
+
 ## What this collection is
 
 The **Africa Multiple Cluster of Excellence** (University of Bayreuth, est. 2019) studies Africa and
@@ -33,10 +37,11 @@ relationships rather than fixed entities; `find_related` and `get_entity_graph` 
 into practice. See [references/cluster-context.md](references/cluster-context.md) for the fuller
 picture — mission, funding phases, research centres, the DRE.
 
-AMIRA connects research data across the Africa Multiple Research Centres (AMRCs) and partner
-institutions worldwide. The AMRC partners named by the DRE are Université Joseph Ki-Zerbo, Rhodes
-University, the University of Lagos, and Moi University. Bayreuth hosts the coordinating DRE
-infrastructure and metadata layer. Federal University of Bahia is a privileged partner, not an AMRC.
+AMIRA connects research data across the cluster's five Africa Multiple Research Centres (AMRCs) and
+partner institutions worldwide. The centres are at the University of Bayreuth, Université Joseph
+Ki-Zerbo, Rhodes University, the University of Lagos, and Moi University; older records call them
+African Cluster Centres (ACC). Bayreuth also hosts the coordinating DRE infrastructure and metadata
+layer. Federal University of Bahia is a privileged partner, not an AMRC.
 
 Each project's `university` field is a current AMIRA metadata/source facet, not a formal AMRC list:
 
@@ -45,24 +50,25 @@ Each project's `university` field is a current AMIRA metadata/source facet, not 
 - **UJKZ** — Université Joseph Ki-Zerbo, Ouagadougou (Burkina Faso)
 - **UFB** — Federal University of Bahia (Brazil)
 - **External** — outside collections, e.g. the International Library of African Music (ILAM, Rhodes
-  University; ~1,000 audio items) and Bayreuth Global / Bayreuth Postkolonial
+  University; mostly the articles of its journal *African Music*, with some audio) and Bayreuth
+  Global / Bayreuth Postkolonial
 
 Work is organised into thematic **research sections**, redefined between the cluster's two funding
 phases — so `list_research_sections` returns *two distinct groups* plus a synthetic grouping. Don't
 hardcode the list (read it from the tool), but expect:
 
 - **Phase 1 — AM 1.0 (2019–2025):** Affiliations, Arts & Aesthetics, Knowledges, Learning, Mobilities,
-  Moralities. These carry **all** the digitised projects and items in the current snapshot.
+  Moralities. These carry nearly all the projects and **all** the digitised items so far.
 - **Phase 2 — AM 2.0 (2026–2032):** Accumulation, Digitalities, Ecologies, In/securities,
-  Re:membering, Translating — **seeded but ~0 projects/items so far**; empty results from these are
-  expected, not a bug.
+  Re:membering, Translating — **a first few projects and no items yet**; sparse or empty results
+  from these are expected, not a bug.
 - **External:** the synthetic grouping for outside collections.
 
 Each section carries a `funding_phase` label and `date` range, so you can group or filter the two sets
 directly. Filter with the exact strings the tool returns (note "In/securities", "Re:membering").
 
-Beyond the research items, the collection carries the cluster **bibliography** (~560 publications;
-open-access ones carry the **extracted full text of their PDFs**, searchable via
+Beyond the research items, the collection carries the cluster **bibliography** (open-access
+publications carry the **extracted full text of their PDFs**, searchable via
 `search_publications keyword=…`), the **journals** they appear in (`list_journals`), **podcast
 episodes** (e.g. *Cluster Conversations*) with transcripts, and the cluster's **YouTube videos** —
 most with full **transcripts**. Use `search_podcasts keyword=…` and `search_videos keyword=…` for
@@ -81,8 +87,9 @@ ids), the images, and the text opt-in (`include_text=true`, paged by `text_offse
 chronicler's own text. French titles carry `title_language: "fr"` and an `alternative_titles`
 translation.
 
-The data is **read from a snapshot of the public Omeka S API**. The server works offline from the
-bundled snapshot and needs no key or credentials; when live refresh is enabled, it may probe and
+The data is **read from a snapshot of the public Omeka S API**. The public server works offline from
+the bundled snapshot and needs no key or credentials (the curator server, below, crawls with a
+service key); when live refresh is enabled, it may probe and
 refresh a local cache from the public API. `get_collection_overview` reports which snapshot source is
 serving and when it was fetched.
 
@@ -302,7 +309,7 @@ MODE and results carry `visibility`. The public server never does.
 1. **Snapshot, not live API.** Data reflects the last crawl (`get_collection_overview` →
    `data_snapshot`). The server may lag the live site.
 2. **Curated, not exhaustive.** Absence of a result is not proof of absence.
-3. **Coverage is uneven.** Item counts skew toward a few large collections (ILAM ≈ South Africa audio,
+3. **Coverage is uneven.** Item counts skew toward a few large collections (ILAM's *African Music* articles,
    the Liberia broadcasting tapes). Disclose this when comparing universities, places, or themes.
 4. **Projects ≠ items.** The registry is larger than the set of projects with digitised items; use
    `item_count` to tell them apart.
@@ -318,8 +325,8 @@ MODE and results carry `visibility`. The public server never does.
 7. **Languages are canonical records.** One record per language ("French", code `fra`); the server
    accepts names, ISO 639-1/2 codes and the legacy bibliographic codes (`fre`, `ger`) alike.
 8. **Transcripts and full text are opt-in on detail calls.** Podcast transcripts cover all episodes;
-   video transcripts cover most videos; publication full text covers the deposited PDF subset (~60 of
-   ~560 — `has_fulltext` on each result tells you, and `get_collection_overview` reports the counts).
+   video transcripts cover most videos; publication full text covers only the deposited PDF subset
+   (`has_fulltext` on each result tells you, and `get_collection_overview` reports the counts).
    ERef, which supplies most of the bibliography, is metadata-only; EPub deposits carry PDFs.
    Missing extracted text does not establish that a publication is closed access.
    Absence of a transcript or full text is not an error. The detail tools omit the text unless you
