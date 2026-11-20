@@ -382,6 +382,19 @@ test("search_publications: fulltext reach, snippet, has_fulltext/venue/author fi
   assert.equal((await call("search_publications", { author: "Ute Fendler" })).total_matches, 1); // reversed order
 });
 
+test("search_publications: include_abstract adds abstract and subjects, never filters", async () => {
+  const plain = await call("search_publications", { has_fulltext: true });
+  assert.ok(!("abstract" in plain.results[0]), "abstract omitted by default");
+  assert.ok(!("subjects" in plain.results[0]), "subjects omitted by default");
+
+  const rich = await call("search_publications", { has_fulltext: true, include_abstract: true });
+  assert.equal(rich.total_matches, plain.total_matches);
+  assert.equal(rich.results[0].abstract, "On architecture and decolonial thought.");
+  assert.deepEqual(rich.results[0].subjects, ["Architecture"]);
+  assert.ok(rich.results[0].amira_url.endsWith("/item/510"));
+  assert.ok(!("include_abstract" in (rich.filters ?? {})), "an output option is not echoed as a filter");
+});
+
 test("get_publication: fulltext opt-in, windowing, venue link, new fields", async () => {
   const def = await call("get_publication", { id: 510 });
   assert.equal(def.has_fulltext, true);

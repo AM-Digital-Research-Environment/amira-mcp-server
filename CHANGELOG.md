@@ -5,6 +5,20 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+### Publications
+
+- **Abstracts in search results, on request.** `search_publications` takes
+  `include_abstract`: each summary then carries its first abstract (cut at 1,200
+  characters, with `abstracts_total` when abstracts in other languages exist)
+  and its subject headings, so a reading list needs no `get_publication` per
+  record. Off by default; ordinary summaries are unchanged. The rows are longer,
+  so the page budget holds fewer of them (26 of the 148 full-text publications
+  per page, against 86 without), and `next_offset` pages the rest. The token
+  baseline gains a `search_publications@abstract` probe; the tool surface grows
+  by 29 tokens.
+
 ## 1.39.0 — 2026-11-20
 
 ### MCP Apps

@@ -8,7 +8,7 @@ import type { ToolMap } from "./policy.js";
 import { z } from "zod";
 import { includeSimilarSchema, similarBlock } from "./similar.js";
 import { callStore } from "./callStore.js";
-import type { LinkedRef } from "../types.js";
+import type { LinkedRef, PublicationRec } from "../types.js";
 import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
 import {
   READ_ONLY,
@@ -25,6 +25,7 @@ import {
   matchSnippet,
   offsetParam,
   pageOf,
+  publicationAbstractFields,
   publicationSummary,
   refLabels,
   restrictedTextFlag,
@@ -65,6 +66,7 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       inputSchema: schemaOnce("search_publications:in", () => z.strictObject({
         ...publicationFilters,
         citation_format: z.enum(["bibtex", "ris", "csl-json"]).optional().describe("Omit for summaries; pages carry bibtex, ris or csl_json"),
+        include_abstract: z.boolean().optional().describe("Add abstract (first 1,200 chars) and subjects to each summary"),
         export: z.enum(EXPORT_FORMATS.publications).optional().describe("Return a file link instead of rows"),
         limit: LIMITS.search_publications.schema,
         offset: offsetParam,
@@ -74,7 +76,9 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       const store = callStore();
       const { limit, echo } = (args.citation_format ? LIMITS.citation_rows : LIMITS.search_publications).resolve(args.limit);
       const offset = capOffset(args.offset);
-      const { citation_format, export: format, limit: _l, offset: _o, ...filters } = args;
+      const { citation_format, include_abstract, export: format, limit: _l, offset: _o, ...filters } = args;
+      const summary = (p: PublicationRec) =>
+        include_abstract ? { ...publicationSummary(p), ...publicationAbstractFields(p) } : publicationSummary(p);
       const invalid = publicationFilterError(filters);
       if (invalid) return queryErrorResult(invalid);
       const { records: filtered, fulltextOnly, restrictedOnly } = selectPublications(store, filters);
@@ -93,10 +97,10 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
           limit,
           (p) =>
             fulltextOnly.has(p.o_id)
-              ? { ...publicationSummary(p), matched_in: "fulltext", fulltext_snippet: matchSnippet(p.fulltext, args.keyword!) }
+              ? { ...summary(p), matched_in: "fulltext", fulltext_snippet: matchSnippet(p.fulltext, args.keyword!) }
               : restrictedOnly.has(p.o_id)
-                ? { ...publicationSummary(p), matched_in: "restricted_fulltext", fulltext_snippet: matchSnippet(p.restricted?.fulltext, args.keyword!) }
-                : publicationSummary(p),
+                ? { ...summary(p), matched_in: "restricted_fulltext", fulltext_snippet: matchSnippet(p.restricted?.fulltext, args.keyword!) }
+                : summary(p),
           extra,
         ),
         ...hint,

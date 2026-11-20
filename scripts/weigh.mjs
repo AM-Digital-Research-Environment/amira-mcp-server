@@ -56,6 +56,7 @@ const REQUIRED_ARGS = {
   search: [{ suffix: "max", args: { query: "Africa" } }],
   search_publications: [
     { suffix: "max", args: {} },
+    { suffix: "abstract", args: { include_abstract: true } },
     ...["bibtex", "ris", "csl-json"].map((citation_format) => ({ suffix: citation_format, args: { citation_format } })),
   ],
   list_publication_facets: ["type", "year", "language", "subject", "author", "venue"].map((facet) => ({ suffix: facet, args: { facet } })),

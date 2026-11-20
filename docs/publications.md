@@ -58,6 +58,16 @@ it defaults to 25 records and caps at 100 per call.
 {"language":"French","subject":"Islam","year_from":2019,"limit":10}
 ```
 
+Summaries carry no abstract by default. Set `include_abstract` to add each
+record's first abstract (cut at 1,200 characters, with `abstracts_total` when
+abstracts in other languages exist) and its subject headings, enough to read
+through a reading list without a `get_publication` call per record. The rows
+are longer, so fewer of them fit the page budget: follow `next_offset`.
+
+```json
+{"has_fulltext":true,"include_abstract":true}
+```
+
 For multi-word keyword queries, `search_publications` matches a phrase as a
 substring. The HTTP `search` adapter ranks individual terms across multiple
 corpora; its matching semantics differ.

@@ -5,7 +5,7 @@
 import type { DataStore } from "../data.js";
 import { UNIVERSITY_LABELS } from "../data.js";
 import { itemUrl, itemUrlOrNull } from "../urls.js";
-import { allowStructured } from "../exposure.js";
+import { allowDescriptive, allowStructured } from "../exposure.js";
 import { config } from "../config.js";
 import type {
   ChronicleRec,
@@ -156,6 +156,25 @@ export function publicationSummary(p: PublicationRec): Record<string, unknown> {
     has_fulltext: !!p.fulltext,
     ...restrictedTextFlag(p),
     amira_url: itemUrl(p.o_id),
+  };
+}
+
+/** Characters of an abstract that a search row carries with `include_abstract`. */
+export const ROW_ABSTRACT_CHARS = 1200;
+
+/**
+ * What `include_abstract` adds to a publication row: the first abstract, cut to
+ * a preview, and the subject headings, so a reading list needs no get_publication
+ * per record. `abstracts_total` says when other languages exist; every abstract
+ * at full length stays on get_publication.
+ */
+export function publicationAbstractFields(p: PublicationRec): Record<string, unknown> {
+  const abstractCount = p.abstracts?.length ?? 0;
+  return {
+    ...(allowDescriptive()
+      ? { abstract: brief(p.abstract, ROW_ABSTRACT_CHARS), ...(abstractCount > 1 ? { abstracts_total: abstractCount } : {}) }
+      : {}),
+    ...(allowStructured() ? capped("subjects", refLabels(p.subjects)) : {}),
   };
 }
 
