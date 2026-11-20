@@ -44,3 +44,13 @@ export function registerAppResources(
 
 /** `_meta` every app-rendering tool carries; the app picks the view itself. */
 export const APP_UI_META = { ui: { resourceUri: APP_URI, visibility: ["model", "app"] } };
+
+/**
+ * `_meta` of an app tool people can also open from Claude's sidebar and +
+ * menu, with no prompt. Claude reads the global entry point from the
+ * `openai/ui` key (from OpenAI's MCP extensions) and still needs
+ * `ui.resourceUri`, with `ui.visibility` including "model". The tool may be
+ * called with `{}`, so it must need no input, and its title must be at most 60
+ * characters. Other hosts ignore the key.
+ */
+export const APP_ENTRY_POINT_META = { ...APP_UI_META, "openai/ui": { entrypoints: [{ type: "global" }] } };

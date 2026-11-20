@@ -5,6 +5,23 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+### MCP Apps
+
+- **The collection overview is a Claude entry point.** `get_collection_overview`
+  carries `"openai/ui": { "entrypoints": [{ "type": "global" }] }` beside its
+  `ui.resourceUri`, so Claude lists it in the sidebar and the + menu and people
+  can open the overview without a prompt. Other hosts ignore the key; results are
+  unchanged.
+- **An icon for Claude.** `serverInfo.icons` carries the Africa Multiple emblem
+  as an inline 96 px PNG (2.6 KB, `src/ui/icon-96.png`), which Claude shows over
+  the app's views and on the overview's entry-point tile. Claude takes only an
+  inline PNG or JPEG of 64-128 px under 10 KB and fetches no icon URL.
+- **Safe-area insets.** The page pads itself by the host's
+  `hostContext.safeAreaInsets`, so content stays clear of notches and the
+  full-screen header.
+
 ## 1.38.1 — 2026-11-16
 
 ### Curator mode

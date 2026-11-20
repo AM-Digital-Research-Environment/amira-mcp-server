@@ -99,6 +99,8 @@ const serverBuild = {
   define: {
     __SERVER_VERSION__: JSON.stringify(pkg.version),
     __APP_HTML__: JSON.stringify(app.html),
+    // serverInfo.icons: Claude only takes an inline PNG/JPEG of 64-128 px under 10 KB.
+    __SERVER_ICON__: JSON.stringify(readFileSync(new URL("../src/ui/icon-96.png", import.meta.url)).toString("base64")),
     // Only src/lib.ts (the test library) references this one.
     __APP_BRIDGE__: JSON.stringify(bridgeJs),
     // Double-encoded on purpose: `define` substitutes SOURCE TEXT, so the outer

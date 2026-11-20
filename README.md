@@ -729,6 +729,10 @@ session. `npm run weigh` measures both and the baseline records them.
   | `list_locations` | `map` | Offline map, country dropdown, place table and item evidence |
   | `search_publications` | `bibliography` | Filterable bibliography (language dropdown, author suggestions) and selection export |
 
+  In Claude, `get_collection_overview` is also a global entry point: people can
+  open the overview from the sidebar or the + menu without a prompt
+  ([docs/apps.md](docs/apps.md#entry-point-in-claude)).
+
   One page renders every view: it picks the view from the host's `toolInfo`, or
   from the result's shape when a host sends none, so the Apps SDK ships once
   rather than seven times. The page is 181 KB, its gzip-compressed script 471 KB

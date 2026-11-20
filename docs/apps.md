@@ -57,6 +57,33 @@ fails the build above 300 KB for the resource or 500 KB for the decoded script:
 tripwires for a second SDK copy (about 400 KB) or a regressed locale stub, not
 for an ordinary new view. The build prints both sizes.
 
+## Entry point in Claude
+
+`get_collection_overview` is also a global entry point: Claude lists it in the
+sidebar and the + menu, so people can open the overview without writing a
+prompt. Its `_meta` adds `"openai/ui": { "entrypoints": [{ "type": "global" }] }`
+(`APP_ENTRY_POINT_META` in `src/tools/apps.ts`) beside `ui.resourceUri`; Claude
+reads the key from OpenAI's MCP extensions, and other hosts ignore it. An entry
+point opens a new conversation and may call the tool with `{}`, so the tool must
+need no input and show a useful view without one; the overview takes none. Its
+title must be at most 60 characters, and the tool name must not contain `__`,
+`..` or a dot next to an underscore. `test/unit/tools.test.mjs` checks these.
+
+Claude shows entry points to custom connectors and Verified directory listings
+(not Community ones), on remote servers, for organisations that have the
+feature and users with the combined chat-and-Cowork experience. A change can take
+about two hours to appear; "Refresh tools list" in the connector's menu under
+Customize > Connectors shows it at once. See Claude's
+[entry points guide](https://claude.com/docs/connectors/building/mcp-apps/entry-points).
+
+Claude shows the server's icon over the views and on the entry-point tile. It
+takes only an inline PNG or JPEG `data:` URI of 64-128 px under 10 KB from
+`serverInfo.icons`, fetches no icon URL, and drops the whole `serverInfo` above
+about 16,000 characters. `src/ui/icon-96.png` is the emblem of `icon.png`
+without the wordmark, which is unreadable at that size; the build inlines it
+(`__SERVER_ICON__`), and `test/unit/relay.test.mjs` checks size and format. The
+page also pads itself by `hostContext.safeAreaInsets` (`src/ui/bridge.ts`).
+
 ## The selection, shared with the model
 
 The bibliography, map and graph report what the reader is working with: the

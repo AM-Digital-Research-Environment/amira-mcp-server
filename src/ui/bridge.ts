@@ -31,6 +31,9 @@ function context(ctx?: Partial<McpUiHostContext>) {
     document.documentElement.style.maxHeight = height ? `${height}px` : "";
     document.documentElement.style.overflowY = "auto";
   }
+  // Keep content clear of host chrome (notches, the full-screen header) on hosts that report it.
+  const insets = ctx.safeAreaInsets;
+  if (insets) document.body.style.padding = `${insets.top}px ${insets.right}px ${insets.bottom}px ${insets.left}px`;
 }
 function payload(result: CallToolResult): Payload {
   let value = result.structuredContent as Payload | undefined;

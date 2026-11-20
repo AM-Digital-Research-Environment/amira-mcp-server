@@ -111,6 +111,14 @@ test("relay: the client sees the curator server as it is — tools, instructions
   const relay = await stdioClient(relayEnv());
   await relay.client.connect(relay.transport);
   assert.deepEqual(relay.client.getServerVersion(), direct.getServerVersion());
+  // The icon Claude shows over the app's views: an inline PNG it accepts (64-128 px, under 10 KB).
+  const [icon] = direct.getServerVersion().icons;
+  assert.equal(icon.mimeType, "image/png");
+  assert.match(icon.src, /^data:image\/png;base64,/);
+  const png = Buffer.from(icon.src.slice(icon.src.indexOf(",") + 1), "base64");
+  assert.ok(png.length < 10_240, `${png.length} bytes`);
+  assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [96, 96], "IHDR width and height");
+  assert.ok(JSON.stringify(direct.getServerVersion()).length < 16_000, "Claude drops a larger serverInfo");
   assert.deepEqual(relay.client.getServerCapabilities(), direct.getServerCapabilities());
   assert.equal(relay.client.getInstructions(), lib.curatorInstructions());
   assert.ok(relay.client.getInstructions().startsWith("CURATOR MODE"));

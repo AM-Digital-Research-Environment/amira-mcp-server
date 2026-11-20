@@ -116,6 +116,14 @@ test("toolName reads the host's toolInfo", async (t) => {
   assert.equal(bare.window.amiraApp.toolName(), undefined);
 });
 
+test("the page pads itself by the host's safe-area insets", async (t) => {
+  const h = await connected(t, {}, { theme: "light", safeAreaInsets: { top: 44, right: 0, bottom: 24, left: 8 } });
+  // The stub document's body is `element`.
+  assert.equal(h.element.style.padding, "44px 0px 24px 8px");
+  const bare = await connected(t);
+  assert.equal(bare.element.style.padding, undefined);
+});
+
 test("a host without ui/update-model-context or ui/message receives neither", async (t) => {
   const h = await connected(t);
   assert.equal(h.window.amiraApp.canShare(), false);

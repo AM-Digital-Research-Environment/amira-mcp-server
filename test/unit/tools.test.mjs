@@ -673,6 +673,14 @@ test("MCP Apps: every opted-in tool links to the one self-contained ui:// resour
     assert.deepEqual(t._meta.ui.visibility, ["model", "app"], tool);
   }
 
+  // Claude's global entry point (sidebar, + menu): the overview only, which takes
+  // no input and a title of at most 60 characters.
+  assert.deepEqual(tools.filter((t) => t._meta?.["openai/ui"]).map((t) => t.name), ["get_collection_overview"]);
+  const entry = tools.find((t) => t.name === "get_collection_overview");
+  assert.deepEqual(entry._meta["openai/ui"], { entrypoints: [{ type: "global" }] });
+  assert.ok(entry.title.length <= 60, entry.title);
+  assert.deepEqual(Object.keys(entry.inputSchema.properties ?? {}), []);
+
   assert.deepEqual(resources.filter((r) => r.uri.startsWith("ui://")).map((r) => r.uri), [APP_URI], "one app resource");
   const listed = resources.find((r) => r.uri === APP_URI);
   assert.equal(listed.mimeType, "text/html;profile=mcp-app");

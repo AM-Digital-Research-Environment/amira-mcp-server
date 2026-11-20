@@ -7,7 +7,7 @@ import { SITE_BASE, config } from "../config.js";
 import { visibilityCounts } from "./curator.js";
 import { allowStructured, exposureLevel } from "../exposure.js";
 import { READ_ONLY, textResult, type Server } from "./_shared.js";
-import { APP_UI_META } from "./apps.js";
+import { APP_ENTRY_POINT_META } from "./apps.js";
 import type { University } from "../types.js";
 import { overviewSchema } from "./outputSchemas.js";
 
@@ -27,8 +27,8 @@ export function registerOverviewTools(server: Server, tools: ToolMap): void {
     {
       title: "Africa Multiple collection overview",
       // Renders as stat tiles + ranked breakdowns in MCP Apps hosts; plain JSON
-      // everywhere else.
-      _meta: APP_UI_META,
+      // everywhere else. Also Claude's global entry point: it needs no input.
+      _meta: APP_ENTRY_POINT_META,
       description: "Start here: corpus counts, text coverage, breakdowns, dates, snapshot freshness and refresh status.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_collection_overview:in", () => z.strictObject({})),

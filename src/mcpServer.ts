@@ -174,6 +174,10 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
         "Read-only access to AMIRA, the research-data platform of the Africa Multiple Cluster of " +
         "Excellence at the University of Bayreuth (Omeka S).",
       websiteUrl: "https://data.africamultiple.uni-bayreuth.de",
+      // The Africa Multiple emblem, 96 px. Claude shows it over the app's views
+      // and on the overview's entry-point tile; it accepts only an inline PNG or
+      // JPEG (64-128 px, under 10 KB) and fetches no icon URL.
+      icons: [{ src: `data:image/png;base64,${__SERVER_ICON__}`, mimeType: "image/png", sizes: ["96x96"] }],
     },
     {
       ...(guidance

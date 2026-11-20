@@ -8,6 +8,9 @@ declare const __SERVER_VERSION__: string;
  */
 declare const __SKILLS_SNAPSHOT__: string;
 
+/** src/ui/icon-96.png as base64, the icon in serverInfo (scripts/build.mjs). */
+declare const __SERVER_ICON__: string;
+
 /** The one MCP App page, ui://amira/app.html (scripts/build.mjs, src/ui/page.ts). */
 declare const __APP_HTML__: string;
 
