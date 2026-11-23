@@ -5,6 +5,47 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## 1.43.0 — 2026-11-23
+
+Views that come back as they were left, an image of the map and graph for the
+assistant, and private transcripts for curators.
+
+### MCP Apps
+
+- **Views are restored after a replay** (#32). When a host shows the same
+  result again, for example after reopening a conversation or recreating the
+  iframe:
+  - the bibliography returns with its filters, page, selected publications and
+    export format;
+  - the map returns with the opened place and its records;
+  - the graph returns with its neighbour and the link whose records were listed.
+
+  Each result of `search_publications`, `list_locations` and `get_entity_graph`
+  carries a fresh `viewUUID` and its snapshot id in `_meta`, so two results never
+  share state. The state saved per result is small, versioned and kept in the
+  page's own storage. The saved call runs again, and its selection is applied
+  only on the snapshot it was saved on; otherwise the status line says the
+  selection was cleared. This has not yet been tried in a real host.
+- **The map and graph as an image** (#31). A host that calls an app's own tools
+  can ask the app for `get-screenshot`. It returns a PNG of the map or entity
+  graph as the reader sees it, with the filters, selection and theme, plus that
+  selection as text with each record's `amira_url`. The longest side is 64 to
+  2048 px (default 1024) and the image is at most 1.5 MB. It was checked in
+  Chromium; Safari and real hosts are not yet tested.
+- The map outlines the opened place.
+- **Curator mode:** a private record's title links to its Omeka admin page,
+  marked private and never as a citation (#26).
+
+### Curator mode
+
+- **Private podcast and video transcripts** are paged by `get_podcast` and
+  `get_video` (`include_transcript`, `transcript_offset`,
+  `transcript_max_chars`, under `restricted`). They are also searched by
+  `search_podcasts`, `search_videos` and `get_text_passages`, where rows and
+  passages matched only there say `matched_in: "restricted_transcript"` (#26).
+- A private item set says so on its own row in a collection, and the `search`
+  schema describes `url` as the admin page for a private record (#26).
+
 ## 1.42.0 — 2026-11-23
 
 The rest of the repository audit (#56–#59): protocol contracts, the curator
