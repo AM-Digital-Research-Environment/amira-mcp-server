@@ -28,6 +28,8 @@ const badKeyFile = path.join(secrets, "bad.key");
 writeFileSync(badKeyFile, `key_identity=${IDENTITY}\n`);
 const emptyTokens = path.join(secrets, "empty-tokens");
 writeFileSync(emptyTokens, "# nobody yet\n");
+const emptyTokenFile = path.join(secrets, "empty-token");
+writeFileSync(emptyTokenFile, "  \n");
 
 const CURATOR = { AMIRA_ACCESS: "curator", AMIRA_OMEKA_KEY_FILE: keyFile, AMIRA_MCP_TOKENS_FILE: tokensFile, AMIRA_LIVE_REFRESH: "0" };
 
@@ -59,6 +61,10 @@ const REFUSALS = [
   ["public HTTP holding a key", SERVER_HTTP, { AMIRA_OMEKA_KEY_FILE: keyFile }, /a public server never holds an Omeka key/],
   ["public stdio holding a key", SERVER_STDIO, { AMIRA_OMEKA_KEY_FILE: keyFile }, /a public server never holds an Omeka key/],
   ["public HTTP with a tokens file", SERVER_HTTP, { AMIRA_MCP_TOKENS_FILE: tokensFile }, /curator-mode setting/],
+  ["public HTTP with an unreadable bearer token file", SERVER_HTTP, { AMIRA_MCP_TOKEN_FILE: path.join(secrets, "nope") },
+    /AMIRA_MCP_TOKEN_FILE is set but no token was read/],
+  ["public HTTP with an empty bearer token file", SERVER_HTTP, { AMIRA_MCP_TOKEN_FILE: emptyTokenFile },
+    /AMIRA_MCP_TOKEN_FILE is set but no token was read/],
   ["an unknown access mode", SERVER_HTTP, { AMIRA_ACCESS: "curater" }, /must be "public" or "curator"/],
   ["curator with a relative AMIRA_API_BASE", SERVER_HTTP, { ...CURATOR, AMIRA_API_BASE: "web/api" }, /AMIRA_API_BASE must be an absolute http\(s\) URL/],
   ["public with an AMIRA_API_BASE carrying a query", SERVER_HTTP, { AMIRA_API_BASE: "http://web/api?key_identity=x" },
@@ -86,6 +92,10 @@ test("a complete curator configuration passes the startup check", () => {
     bearerTokenConfigured: false, liveRefresh: true, refreshIntervalHours: 1, curatorMaxStaleHours: 24 };
   assert.deepEqual(lib.accessConfigErrors("http", cfg), []);
   assert.deepEqual(lib.accessConfigErrors("http", { ...lib.config, omekaKeyFile: null, tokensFile: null }), [], "the default public setup");
+  // A token file that yielded a token, or an unreadable one backed by AMIRA_MCP_BEARER_TOKEN, keeps the guard.
+  const filed = { ...lib.config, omekaKeyFile: null, tokensFile: null, bearerTokenFileConfigured: true, bearerToken: "t" };
+  assert.deepEqual(lib.accessConfigErrors("http", filed), []);
+  assert.deepEqual(lib.accessConfigErrors("stdio", { ...filed, bearerToken: undefined }), [], "stdio serves no HTTP");
 });
 
 test("key files: key=value lines or JSON; errors never quote the content", () => {

@@ -440,6 +440,11 @@ export function accessConfigErrors(entry: EntryPoint, cfg: typeof config = confi
   if (cfg.access === "public") {
     if (cfg.omekaKeyFile) errors.push("AMIRA_OMEKA_KEY_FILE is set but AMIRA_ACCESS is public: a public server never holds an Omeka key");
     if (cfg.tokensFile) errors.push("AMIRA_MCP_TOKENS_FILE is a curator-mode setting; set AMIRA_ACCESS=curator or remove it");
+    // A configured guard must not vanish: a wrong mount path would otherwise
+    // serve /mcp and /metrics without the token the operator asked for.
+    if (entry === "http" && cfg.bearerTokenFileConfigured && !cfg.bearerToken) {
+      errors.push("AMIRA_MCP_TOKEN_FILE is set but no token was read from it (unreadable or empty), and AMIRA_MCP_BEARER_TOKEN is unset");
+    }
     return errors;
   }
   if (entry === "stdio") {

@@ -129,6 +129,7 @@ function readBearerToken(env: Env): string | undefined {
     try {
       const token = fs.readFileSync(file, "utf8").trim();
       if (token) return token;
+      console.error(`[amira] AMIRA_MCP_TOKEN_FILE ${JSON.stringify(file)} is empty; falling back to AMIRA_MCP_BEARER_TOKEN`);
     } catch {
       console.error(`[amira] AMIRA_MCP_TOKEN_FILE ${JSON.stringify(file)} is unreadable; falling back to AMIRA_MCP_BEARER_TOKEN`);
     }
@@ -249,6 +250,8 @@ export function loadConfig(env: Env) {
     curatorUrl: envValue("AMIRA_CURATOR_URL", env) ?? DEFAULT_CURATOR_URL,
     /** Whether a single shared bearer token is configured (refused in curator mode). */
     bearerTokenConfigured: envValue("AMIRA_MCP_TOKEN_FILE", env) !== undefined || envValue("AMIRA_MCP_BEARER_TOKEN", env) !== undefined,
+    /** Whether AMIRA_MCP_TOKEN_FILE is set: a public HTTP server refuses to start when it yields no token (#47). */
+    bearerTokenFileConfigured: envValue("AMIRA_MCP_TOKEN_FILE", env) !== undefined,
   };
 }
 
