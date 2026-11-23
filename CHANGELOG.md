@@ -5,6 +5,86 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## 1.41.0 — 2026-11-23
+
+Fixes from a repository audit (#44–#55), each with regression tests.
+
+### Tools and data
+
+- **Publication licences.** `get_publication` returns `license` ("CC BY 4.0")
+  and `license_url`, read from `dcterms:license`, where the publications sync
+  writes them (276 of 813 publications); citation notes include them (#45).
+- **Series are not journals.** A venue that is a Series item (not crawled) no
+  longer becomes a `journal` node in `get_entity_graph` and `resolve_entity`;
+  `get_publication` still links it (#45).
+- **`get_fulltext_map` counts the word asked for.** The exact form wins over an
+  accented namesake (`role`: 685, not `rôle`'s 29); a query with no exact form
+  counts every accented form under its own name (#44).
+- **Facet namesakes stay apart.** `list_publication_facets` keys buckets by the
+  linked record, so two authorities with one label keep their own counts and
+  ids (#53).
+- **Arguments.** An array of blank strings is `invalid_argument` instead of an
+  empty result; `resolve_entity("null")` no longer matches every unlinked
+  entity; `get_text_passages` counts an aliased id and its Omeka id once (#53).
+- **Cache hints.** The snapshot-backed resources (`amira://record/*`,
+  `amira://dataset`, `amira://export/*`) carry a 5-minute hint instead of
+  inheriting the app HTML's 24 h; `prompts/list` and
+  `resources/templates/list` get the fixed-list hint (#49).
+
+### MCP Apps
+
+- **Results that rendered empty or wrong now render:** `find_related` on a
+  record (closest records by meaning), seeds found only in Cluster Chronicles,
+  `get_entity_graph` edge evidence, and `search_publications` exports and
+  citation pages (#50).
+- **Only current selections are shared.** The graph clears a neighbour's
+  records before sharing the next one; filters take effect only when their call
+  succeeds; every view drops a slow earlier answer overtaken by a newer one;
+  the bibliography runs one export at a time; a timeline bar outside the year
+  filter explains itself instead of sending an inverted range (#51).
+- The bridge reports a link the host refuses and disconnects its resize
+  observer on teardown (#51).
+
+### Curator mode
+
+- **Pages keep their budget** after private rows gain `visibility`,
+  `citation_note` and `admin_url`; rows that no longer fit move to
+  `next_offset` (#54).
+- **Public then private full text, one stream.** On a record with both, the
+  private text starts once the public one is exhausted
+  (`restricted.fulltext_starts_at`) and shares the page, instead of arriving one
+  character per call; restricted values come with the first page only (#54).
+- The keyword note follows the exposure level and covers publication facets,
+  citation pages and exports; `get_publication`'s languages are gated like the
+  other structured fields (#54).
+- No shared caching for skills either; `/mcp` and `/metrics` answer with
+  `Cache-Control: no-store`, and CORS reflects the validated Origin (#49).
+- A media of a private record is private whatever its own flag, a private
+  record's thumbnail is null, and private URLs are rewritten in more text forms.
+- A non-JSON body gets 415 before parsing; an oversized body is refused without
+  being read to the end; the authentication probe requires every row to be
+  private; a redirected keyed request fails at once instead of being retried
+  with the key (#55).
+
+### Server and operations
+
+- The startup snapshot is released after a refresh or a curator revocation
+  instead of staying in memory (#46).
+- A public HTTP server refuses to start when `AMIRA_MCP_TOKEN_FILE` is set but
+  yields no token (#47), and when `AMIRA_TOOL_PROFILE` is not a known profile
+  (#55).
+- The snapshot writer removes a generation it failed to publish, survives a
+  corrupt pointer, keeps the snapshot when the full-text map is unreadable, and
+  clamps neighbour scores (#48).
+- HTTP and stdio errors are logged; loopback detection ignores case; wildcard
+  origins are refused in every spelling; a relay request id reused in flight
+  aborts the older exchange (#55).
+- CI's snapshot cache follows the crawler code; `refresh-data` builds the
+  public bundle without the npm cache, verifies its digest and attests it; the
+  weekly bundle keeps the full-text map through a GitHub outage; the release
+  stamps `CITATION.cff` on `main` only at the tag's version; the server bundles
+  drop zod's unused locales, about 360 KB each (#52).
+
 ## 1.40.0 — 2026-11-20
 
 ### Publications
