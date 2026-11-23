@@ -72,7 +72,8 @@ function wordsFile() {
     schemaVersion: 1, itemSetId: ILAM, generatedAt: "2026-11-04T06:10:11Z", minArticles: 10, articles: 4,
     years: [1958, 1962, 1975, 2015],
     totals: [20000, 40000, 30000, 3000],
-    words: { mbira: [1, 40, 2, 15], "hip-hop": [3, 6], hymn: [0, 10, 3, 1] },
+    // "role" and "rôle" fold to one key, the accented form stored last (#44).
+    words: { mbira: [1, 40, 2, 15], "hip-hop": [3, 6], hymn: [0, 10, 3, 1], role: [0, 30, 1, 20], "rôle": [2, 2] },
   };
 }
 const SOURCE = { repository: "AM-Digital-Research-Environment/DRE-Visualizations", tag: lib.FULLTEXT_SOURCE.tag,
@@ -265,6 +266,19 @@ test("get_fulltext_map words: rates per 10,000 words, sparse years, near forms",
   assert.deepEqual(ranged.years.map((y) => y.year), [1962, 1975, 2015]);
   assert.deepEqual(ranged.totals.hymn, { count: 1, per_10k: 0.14 });
   assert.equal((await call("get_fulltext_map", { words: ["mbira"], year_from: 2000, year_to: 1990 })).error.code, "invalid_range");
+});
+
+test("get_fulltext_map words: the exact form wins over an accent-folded namesake (#44)", async () => {
+  const plain = (await call("get_fulltext_map", { words: ["Role"] })).words;
+  assert.deepEqual(plain.counted, ["role"]);
+  assert.deepEqual(plain.totals.role.count, 50);
+  const accented = (await call("get_fulltext_map", { words: ["rôle"] })).words;
+  assert.deepEqual(accented.counted, ["rôle"]);
+  assert.equal(accented.totals["rôle"].count, 2);
+  // No exact form: every folded form is counted, each under its own name.
+  const folded = (await call("get_fulltext_map", { words: ["rõle"] })).words;
+  assert.deepEqual(folded.counted, ["role", "rôle"]);
+  assert.deepEqual([folded.totals.role.count, folded.totals["rôle"].count], [50, 2]);
 });
 
 test("no surface returns more than the public derived numbers", async () => {

@@ -117,8 +117,8 @@ export interface FulltextIndex {
   groups: Map<number, { id: number; label: string; members: number[] }>;
   /** Folded country name -> stored spelling. */
   countries: Map<string, string>;
-  /** Folded word -> stored word. */
-  words: Map<string, string>;
+  /** Folded word -> every stored form that folds to it. */
+  words: Map<string, string[]>;
   /** Mapped articles per year, from the snapshot's first content year (an approximation of the map's own year). */
   articlesByYear: Map<number, number>;
 }
@@ -149,7 +149,13 @@ export function fulltextIndex(store: DataStore): FulltextIndex | null {
       articles.set(id, { group, neighbours, countries: named });
       groups.get(group)?.members.push(id);
     }
-    const words = new Map(Object.keys(maps.words.words).map((w) => [fold(w), w]));
+    // Several stored forms can fold to one key ("role" and "rôle"): keep them all.
+    const words = new Map<string, string[]>();
+    for (const w of Object.keys(maps.words.words)) {
+      const key = fold(w);
+      const forms = words.get(key);
+      if (forms) forms.push(w); else words.set(key, [w]);
+    }
     return { maps, itemSetId: setId, collection, articles, groups, countries, words, articlesByYear };
   });
 }
@@ -235,14 +241,17 @@ export function wordTrends(index: FulltextIndex, requested: string[], yearFrom?:
   const counted: string[] = [];
   const not_counted: WordTrends["not_counted"] = [];
   for (const raw of requested) {
-    const q = fold(raw.trim());
-    const stored = index.words.get(q);
-    if (stored) { if (!counted.includes(stored)) counted.push(stored); continue; }
+    // The exact form wins ("role" is not "rôle"); only a query with no exact form
+    // falls back to its accent-folded forms, each counted separately.
+    const lower = raw.trim().toLowerCase();
+    const q = fold(lower);
+    const stored = Object.hasOwn(file.words, lower) ? [lower] : index.words.get(q);
+    if (stored) { for (const w of stored) if (!counted.includes(w)) counted.push(w); continue; }
     // Near forms ignore inner punctuation, so "hiphop" suggests "hip-hop".
     const bare = (w: string) => w.replace(/['’.-]/g, "");
     const stem = bare(q).slice(0, Math.max(3, bare(q).length - 2));
     const similar = stem.length >= 3 ? [...index.words].filter(([w]) => bare(w).startsWith(stem))
-      .map(([, w]) => w).sort((a, b) => a.length - b.length || a.localeCompare(b)).slice(0, 5) : [];
+      .flatMap(([, forms]) => forms).sort((a, b) => a.length - b.length || a.localeCompare(b)).slice(0, 5) : [];
     not_counted.push({ word: raw, ...(similar.length ? { similar } : {}) });
   }
   const series = new Map(counted.map((w) => {
