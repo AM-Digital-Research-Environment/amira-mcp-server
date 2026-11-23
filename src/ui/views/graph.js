@@ -475,9 +475,46 @@ function diagram(d, seed) {
   );
   return { svg: out.join(""), shown: shown.length, of: ranked.length };
 }
+/**
+ * get_entity_graph with edge_id, called by the model: one link's records and no
+ * nodes. Shown in the evidence panel when its graph is on screen, else alone.
+ * The edge id is not in the result: "Next records" reads it from the call's
+ * arguments, and is left out when the host gave none.
+ * @param {ToolData} d
+ */
+function renderEvidence(d) {
+  const item = function (/** @type {ToolData} */ r) {
+    return citation(r) + ' <span class="note">' + esc(r.corpus) + "</span>";
+  };
+  const heading = "Evidence · " + d.total_matches + " records";
+  const edgeId = api.input().edge_id;
+  const more = async function (/** @type {number} */ next) {
+    try {
+      renderEvidence(await api.callTool("get_entity_graph", { seed: d.seed, edge_id: edgeId, snapshot_id: d.snapshot_id, offset: next }));
+    } catch (_) {}
+  };
+  let panel = document.getElementById("evidence");
+  if (!(active && active.seed === d.seed && panel)) {
+    const root = document.getElementById("root");
+    root.onclick = root.onkeydown = null;
+    root.innerHTML =
+      "<h1>Records behind one link of " +
+      esc(d.seed) +
+      '</h1><section class="evidence" id="evidence"></section><p class="note">Open the entity graph of ' +
+      esc(d.seed) +
+      " to see all of its links.</p>";
+    panel = document.getElementById("evidence");
+  }
+  evidenceList(panel, heading, d, item, "more-evidence", more);
+  const button = document.getElementById("more-evidence");
+  if (button && typeof edgeId !== "string") button.remove();
+}
 /** @param {ToolData} d */
 function render(d) {
-  if (!d.nodes) return;
+  if (!d.nodes) {
+    if (Array.isArray(d.results)) renderEvidence(d);
+    return;
+  }
   if (!active || active.seed !== d.seed) picked = null;
   active = d;
   shown = null;

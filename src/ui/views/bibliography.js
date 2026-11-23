@@ -132,8 +132,76 @@ function share() {
     records_label: picked.length ? "selected publications" : "publications on the current page",
   });
 }
+const FORMAT_LABEL = { bibtex: "BibTeX", ris: "RIS", "csl-json": "CSL-JSON", csv: "CSV", jsonl: "JSONL" };
+/** @param {unknown} format */
+function formatLabel(format) {
+  return esc(/** @type {Record<string, string>} */ (FORMAT_LABEL)[String(format)] || format);
+}
+/**
+ * A citation entry's title, read from the entry itself (citation rows carry no `title`).
+ * @param {ToolData} r
+ * @param {string} format
+ */
+function citationTitle(r, format) {
+  const entry = format === "csl-json" ? r.csl_json : r[format];
+  if (entry && typeof entry === "object" && entry.title) return String(entry.title);
+  const text = typeof entry === "string" ? entry : "";
+  const found = format === "ris" ? /^TI {2}- (.+)$/m.exec(text) : /^\s*title\s*=\s*[{"](.+?)[}"],?\s*$/m.exec(text);
+  return found ? found[1].replace(/[{}]/g, "") : "Publication " + (r.omeka_id || r.id);
+}
+/**
+ * search_publications with `export` (a file link) or `citation_format` (a page
+ * of citation entries, without titles or authors): a read-only summary. The
+ * filterable list is the plain search.
+ * @param {ToolData} d
+ */
+function renderFile(d) {
+  const root = document.getElementById("root");
+  root.onchange = null;
+  if (d.export) {
+    const file = d.export;
+    root.innerHTML =
+      '<h1>Cluster bibliography</h1><p class="sub">' +
+      formatLabel(file.format) +
+      " export · " +
+      file.rows +
+      (file.rows === 1 ? " publication" : " publications") +
+      '</p><p class="note">The file is linked in the conversation (' +
+      esc(file.uri) +
+      "). " +
+      esc(d.hint || "") +
+      "</p>";
+    return;
+  }
+  const format = String(d.citation_format);
+  const rows = d.results || [];
+  root.innerHTML =
+    '<h1>Cluster bibliography</h1><p class="sub">' +
+    formatLabel(format) +
+    " citations · " +
+    d.total_matches +
+    " matching publications · " +
+    (rows.length ? "showing " + (d.offset + 1) + "–" + (d.offset + rows.length) : "no results") +
+    "</p>" +
+    (rows.length
+      ? "<ol start=\"" +
+        (d.offset + 1) +
+        '">' +
+        rows
+          .map(function (r) {
+            return "<li>" + citationLink(r, citationTitle(r, format)) + "</li>";
+          })
+          .join("") +
+        "</ol>"
+      : '<p class="empty">No publications match these filters. Try removing a filter.</p>') +
+    '<p class="note">The citation entries are in the conversation. Search without a citation format to browse, filter and select publications here.</p>';
+}
 /** @param {ToolData} d */
 function render(d) {
+  if (d.export || d.citation_format) {
+    renderFile(d);
+    return;
+  }
   active = d;
   filters = Object.assign({}, d.filters || {});
   delete filters.citation_format;

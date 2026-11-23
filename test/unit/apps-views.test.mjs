@@ -188,7 +188,15 @@ test("sections: plotted spans, item counts and the value table match list_resear
 
 /** Rows of every related_* list, in the app's sector order. */
 const SECTORS = ["related_subjects", "related_people", "related_projects", "related_countries", "related_research_sections", "related_formats"];
-const relatedRows = (d) => SECTORS.flatMap((k) => (d[k] ?? []).map((r) => [r.name, String(r.research_item_count), String(r.publication_count)]));
+// The Cluster Chronicles column appears only when a returned row counts one (#50).
+const relatedRows = (d) => {
+  const chronicles = SECTORS.some((k) => (d[k] ?? []).some((r) => r.chronicle_count > 0));
+  return SECTORS.flatMap((k) => (d[k] ?? []).map((r) => [r.name, String(r.research_item_count), String(r.publication_count),
+    ...(chronicles ? [String(r.chronicle_count ?? 0)] : [])]));
+};
+/** The chronicle part of the seed line and of the hub's caption. */
+const chronicleSub = (d) => (d.matched_chronicles ? ` · ${d.matched_chronicles} Cluster Chronicles works` : "");
+const chronicleSeed = (d) => (d.matched_chronicles ? ` · ${d.matched_chronicles} chron.` : "");
 
 test("related: hub, counts, value table and publication citations match find_related", async (t) => {
   const app = await mount(t, "find_related");
@@ -199,8 +207,8 @@ test("related: hub, counts, value table and publication citations match find_rel
 
   assert.equal(text(app.root.querySelector("h1")), "What co-occurs with Architecture");
   assert.match(text(app.root.querySelector(".sub")),
-    new RegExp(`^subject seed · ${d.matched_items} matching research items · ${d.matched_publications} publications\\.`));
-  assert.equal(text(app.root.querySelector(".seedsub")), `${d.matched_items} items · ${d.matched_publications} pubs`);
+    new RegExp(`^subject seed · ${d.matched_items} matching research items · ${d.matched_publications} publications${chronicleSub(d)}\\.`));
+  assert.equal(text(app.root.querySelector(".seedsub")), `${d.matched_items} items · ${d.matched_publications} pubs${chronicleSeed(d)}`);
   assert.deepEqual(rows(app.root.querySelector("details")), relatedRows(d));
   const spokes = SECTORS.flatMap((k) => (d[k] ?? []).slice(0, 4));
   assert.deepEqual([...app.root.querySelectorAll("line.spoke title")].map(text),
@@ -258,7 +266,7 @@ test("related: a location seed (no publication join) renders without a publicati
   assert.equal(d.matched_publications, undefined);
   app.show(d);
   assertHealthy(app);
-  assert.equal(text(app.root.querySelector(".seedsub")), `${d.matched_items} items`);
+  assert.equal(text(app.root.querySelector(".seedsub")), `${d.matched_items} items${chronicleSeed(d)}`);
   assert.doesNotMatch(text(app.root), /Publication evidence/);
   assert.deepEqual(rows(app.root.querySelector("details")), relatedRows(d));
 });
@@ -578,6 +586,100 @@ test("bibliography: pickers stay text fields when the host refuses their lists",
 });
 
 // --- across the views -----------------------------------------------------------
+
+// --- result shapes the views used to mis-render (#50) ---------------------------
+
+test("related: a seed found only in Cluster Chronicles renders its hub, not the empty message", async (t) => {
+  const app = await mount(t, "find_related");
+  const d = await payload("find_related", { entity_type: "subject", value: "residency" });
+  assert.deepEqual([d.matched_items, d.matched_publications, d.matched_chronicles], [0, 0, 1]);
+  app.show(d);
+  assertHealthy(app);
+  assert.ok(!app.root.querySelector(".empty"));
+  assert.match(text(app.root.querySelector(".sub")), /0 matching research items · 1 Cluster Chronicles works\./);
+  assert.equal(text(app.root.querySelector(".seedsub")), "0 items · 1 chron.");
+  assert.deepEqual(rows(app.root.querySelector("details")), relatedRows(d));
+  assert.equal(text(app.root.querySelectorAll("details th")[3]), "Cluster Chronicles");
+});
+
+test("related: a record pivot renders its closest records and their sectors", async (t) => {
+  const app = await mount(t, "find_related");
+  const base = await payload("find_related", { entity_type: "subject", value: "Architecture" });
+  const { matched_items: _i, matched_publications: _p, matched_chronicles: _c, ...sectors } = base;
+  const d = { ...sectors, entity_type: "record", value: "publication:510", seed_label: "Decolonial Architecture Futures", matched_records: 2,
+    closest: [{ title: "Fixture Working Paper on Migration", type: "publication", omeka_id: 511, amira_url: lib.itemUrl(511), score: 0.93 },
+      { title: "Yoruba Architecture Study", type: "research_item", omeka_id: 500, amira_url: lib.itemUrl(500), score: 0.91 }] };
+  app.show(d);
+  assertHealthy(app);
+  assert.ok(!app.root.querySelector(".empty"), "matched_records counts");
+  assert.match(text(app.root.querySelector(".sub")), /^record seed · 2 closest records by meaning\./);
+  assert.equal(text(app.root.querySelector(".seedsub")), "2 records");
+  assert.ok(app.root.querySelector("svg circle.seed"));
+  assert.deepEqual(citations(app.root).slice(0, 2), d.closest.map((r) => ({ href: r.amira_url, title: r.title })));
+});
+
+test("graph: an edge's evidence alone renders a cited list; with its graph on screen it fills the evidence panel", async (t) => {
+  const graph = await payload("get_entity_graph", { seed: "person:100" });
+  const edge = graph.edges[0];
+  const evidence = await payload("get_entity_graph", { seed: "person:100", edge_id: edge.id });
+  assert.equal(evidence.nodes, undefined);
+
+  const alone = await mount(t, "get_entity_graph");
+  alone.show(evidence);
+  assertHealthy(alone);
+  assert.match(text(alone.root.querySelector("h1")), /Records behind one link of person:100/);
+  assert.deepEqual(citations(alone.root), evidence.results.map((r) => ({ href: r.amira_url, title: r.title })));
+
+  const beside = await mount(t, "get_entity_graph");
+  beside.show(graph);
+  beside.show(evidence);
+  assertHealthy(beside);
+  assert.equal(text(beside.root.querySelector("h1")), graph.nodes.find((n) => n.id === "person:100").label, "the graph stays");
+  assert.match(text(beside.root.querySelector("#evidence h2")), new RegExp(`Evidence · ${evidence.total_matches} records`));
+});
+
+test("bibliography: an export link and a page of citation entries render summaries, not blank rows", async (t) => {
+  const app = await mount(t, "search_publications");
+  const file = await payload("search_publications", { export: "ris" });
+  app.show(file);
+  assertHealthy(app);
+  assert.match(text(app.root.querySelector(".sub")), new RegExp(`^RIS export · ${file.export.rows} publications$`));
+  assert.match(text(app.root), /amira:\/\/export\/publications\/ris\//);
+
+  for (const format of ["bibtex", "ris", "csl-json"]) {
+    const page = await payload("search_publications", { citation_format: format });
+    app.show(page);
+    assertHealthy(app);
+    assert.match(text(app.root.querySelector(".sub")), new RegExp(`citations · ${page.total_matches} matching publications`));
+    const titles = citations(app.root).map((c) => c.title);
+    assert.equal(titles.length, page.results.length);
+    assert.ok(titles.includes("Decolonial Architecture Futures"), `${format}: titles read from the entries (${titles})`);
+  }
+});
+
+test("without toolInfo, the new shapes route to their views, and an unknown result clears the old view's handlers", async (t) => {
+  const graph = await payload("get_entity_graph", { seed: "person:100" });
+  const shapes = [
+    ["find_related", await payload("find_related", { entity_type: "subject", value: "residency" })],
+    ["find_related", { entity_type: "record", value: "publication:510", seed_label: "x", matched_records: 0 }],
+    ["get_entity_graph", await payload("get_entity_graph", { seed: "person:100", edge_id: graph.edges[0].id })],
+    ["search_publications", await payload("search_publications", { export: "bibtex" })],
+    ["search_publications", await payload("search_publications", { citation_format: "ris" })],
+  ];
+  for (const [tool, d] of shapes) {
+    const app = await mount(t, tool, { toolInfo: false });
+    app.show(d);
+    assertHealthy(app);
+    assert.equal(app.root.dataset.view, lib.VIEW_OF_TOOL[tool], `${tool} ${Object.keys(d).join(",")}`);
+  }
+  const app = await mount(t, "get_entity_graph", { toolInfo: false });
+  app.show(graph);
+  assert.equal(typeof app.root.onclick, "function");
+  app.show({ something: "else" });
+  assert.equal(app.root.dataset.view, undefined);
+  assert.equal(app.root.onclick, null);
+  assert.equal(app.root.onkeydown, null);
+});
 
 test("without toolInfo, the shape fallback routes every result variant the views render", async (t) => {
   // The real results the tests above render, by tool: defaults, filtered,

@@ -62,12 +62,23 @@ function render(d) {
     return s.rows.length > 0;
   });
 
-  if (!(d.matched_items || d.matched_publications)) {
+  // A record pivot counts closest records; any seed may match only Cluster Chronicles works.
+  const record = d.entity_type === "record";
+  const matched = record
+    ? d.matched_records
+    : (d.matched_items || 0) + (d.matched_publications || 0) + (d.matched_chronicles || 0);
+  if (!matched) {
     root.innerHTML =
       "<h1>" + esc(seedName) + "</h1>" + '<p class="empty">Nothing co-occurs with this seed in the collection.</p>';
     return;
   }
 
+  // The table counts Cluster Chronicles works only when some returned row has one.
+  const chronicles = SECTORS.some(function (s) {
+    return (d[s[0]] || []).some(/** @param {ToolData} r */ function (r) {
+      return r.chronicle_count > 0;
+    });
+  });
   let max = 0;
   live.forEach(function (s) {
     s.rows.forEach(function (r) {
@@ -209,9 +220,12 @@ function render(d) {
       '" y="' +
       (y0 + lines.length * 12 + 3) +
       '" text-anchor="middle">' +
-      d.matched_items +
-      " items" +
-      (d.matched_publications ? " · " + d.matched_publications + " pubs" : "") +
+      (record
+        ? d.matched_records + " records"
+        : d.matched_items +
+          " items" +
+          (d.matched_publications ? " · " + d.matched_publications + " pubs" : "") +
+          (d.matched_chronicles ? " · " + d.matched_chronicles + " chron." : "")) +
       "</text>",
   );
   out.push("</svg>");
@@ -223,9 +237,12 @@ function render(d) {
     '<p class="sub">' +
     esc(d.entity_type) +
     " seed · " +
-    d.matched_items +
-    " matching research items" +
-    (d.matched_publications ? " · " + d.matched_publications + " publications" : "") +
+    (record
+      ? d.matched_records + " closest records by meaning"
+      : d.matched_items +
+        " matching research items" +
+        (d.matched_publications ? " · " + d.matched_publications + " publications" : "") +
+        (d.matched_chronicles ? " · " + d.matched_chronicles + " Cluster Chronicles works" : "")) +
     ". Spoke length counts distinct source records; each sector is one relation type.</p>" +
     '<div class="hub">' +
     out.join("") +
@@ -233,7 +250,9 @@ function render(d) {
     '<p class="note">' +
     esc(d.matching || "") +
     "</p>" +
-    "<details><summary>All returned relationships and counts</summary><table><thead><tr><th>Entity</th><th>Research items</th><th>Publications</th></tr></thead><tbody>" +
+    "<details><summary>All returned relationships and counts</summary><table><thead><tr><th>Entity</th><th>Research items</th><th>Publications</th>" +
+    (chronicles ? "<th>Cluster Chronicles</th>" : "") +
+    "</tr></thead><tbody>" +
     SECTORS.map(function (s) {
       return (d[s[0]] || [])
         .map(/** @param {ToolData} r */ function (r) {
@@ -244,12 +263,22 @@ function render(d) {
             (r.research_item_count || 0) +
             "</td><td>" +
             (r.publication_count || 0) +
+            (chronicles ? "</td><td>" + (r.chronicle_count || 0) : "") +
             "</td></tr>"
           );
         })
         .join("");
     }).join("") +
     "</tbody></table></details>" +
+    ((d.closest || []).length
+      ? "<h2>Closest records by meaning</h2><ul>" +
+        d.closest
+          .map(/** @param {ToolData} r */ function (r) {
+            return "<li>" + citationLink(r) + ' <span class="note">' + esc(r.type) + " · " + esc(r.score) + "</span></li>";
+          })
+          .join("") +
+        "</ul>"
+      : "") +
     ((d.related_publications || []).length
       ? "<h2>Publication evidence</h2><ul>" +
         d.related_publications
