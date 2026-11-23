@@ -5,7 +5,11 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
-## Unreleased
+## 1.43.1 — 2026-11-23
+
+Fixes from an audit of 1.43.0: views that a late answer could overwrite, saved
+state that a full storage could split, and retrieval scores that a tool's limit
+could distort.
 
 ### MCP Apps
 
