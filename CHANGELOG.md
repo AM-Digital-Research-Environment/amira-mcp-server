@@ -5,6 +5,56 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## 1.42.0 — 2026-11-23
+
+The rest of the repository audit (#56–#59): protocol contracts, the curator
+container's health check, test coverage, performance and documentation.
+
+### Prompts, completions and skills
+
+- **Prompts follow the tool profile.** A profile registers only the prompts
+  whose core tools it serves: `visualization`, for example, no longer offers
+  `person_profile` or `project_dossier`, which named tools it removes (#56).
+- **Completions follow the exposure level.** Below `structured`, prompt
+  arguments complete nothing, as the tools withhold those vocabularies; the
+  `amira://record` kind completes only the kinds the server answers (#56).
+- **`amira://record` keeps the real error.** A refusal or a deadline is
+  reported as itself (`exposure_restricted: …`) instead of "not found" (#56).
+- **Skills follow the SDK catalog's contract:** any spelling of a skill URI
+  the SDK accepts finds the same file, and an unknown cursor is refused (#56).
+- The companion skill covers Cluster Chronicles, `include_abstract` and
+  `added_since`, and names the one app resource, `ui://amira/app.html` (#59).
+
+### Container and operations
+
+- **Curator containers are not restarted during their first crawl.** The
+  image's health check allows a 10-minute start period (failures inside it do
+  not count, and the first success ends it) and checks the address in `HOST`
+  instead of always `127.0.0.1`; `docs/curator.md` shows how to lengthen it
+  (#57).
+- `npm version` also stamps `CITATION.cff`, so the version commit carries all
+  three version files (#59).
+
+### MCP Apps
+
+- The map and timeline charts no longer hide their clickable marks from
+  screen readers; the overview escapes the snapshot date, and the related
+  view's seed label wraps before escaping (#59).
+
+### Performance
+
+- `get_entity_graph` hashes each edge once instead of once per evidence row;
+  `list_groups` and collection counts no longer rescan every item per row.
+  Results are unchanged (#58).
+
+### Tests and tooling
+
+- Both smoke tests call `search_chronicles`, `get_chronicle`,
+  `list_publication_facets` and `get_fulltext_map`; the live API test runs
+  Cluster Chronicles and subject authorities through their transforms (#57).
+- `npm run lint` reports nothing; the packer refuses a truncated icon and never
+  packs local Claude settings or agent worktrees (#59).
+
 ## 1.41.0 — 2026-11-23
 
 Fixes from a repository audit (#44–#55), each with regression tests.
