@@ -35,12 +35,7 @@ November (`docs/review-2026-11-06.md`) shipped in 1.35.0 and was retired after
      Desktop custom connectors can reach the curator endpoint without a
      static header (Keycloak as the fallback if Pocket ID falls short);
    - a read-only Omeka role with `view-all`, replacing the `reviewer` service
-     account, which could edit;
-   - paging private podcast and video transcripts (reported only by length in
-     `restricted` today), and searching them with `get_text_passages`, which
-     covers the other private texts since 1.38.0;
-   - app views (map, graph, …) that link private records to their
-     `admin_url` instead of showing them without a link.
+     account, which could edit.
 3. **Retrieval effectiveness.** Build a blind multilingual query set with judged
    answers and citations, and score it with `npm run evaluate-retrieval`
    (precision, recall, nDCG and MRR at k, per query and on average, with the

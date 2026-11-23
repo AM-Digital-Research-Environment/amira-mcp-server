@@ -47,7 +47,8 @@ type Visibility = "public" | "private";
  * `text_max_chars`. The restricted window takes the tool's own field name, so
  * its paging hints name arguments the tool has.
  */
-const FULLTEXT_TOOLS = new Map<string, WindowField>([["get_research_item", "fulltext"], ["get_publication", "fulltext"], ["get_chronicle", "text"]]);
+const FULLTEXT_TOOLS = new Map<string, WindowField>([["get_research_item", "fulltext"], ["get_publication", "fulltext"], ["get_chronicle", "text"],
+  ["get_podcast", "transcript"], ["get_video", "transcript"]]);
 
 /** Tools other than search_research_items that select research items with the shared filters, keyword included. */
 const RESEARCH_FILTER_TOOLS = new Set(["list_years", "list_locations", "compare_collections"]);
@@ -64,12 +65,12 @@ export const PRIVATE_PUBLICATION_KEYWORD_NOTE =
 
 /** Said on a search result with rows matched only in a private full text, and on passages drawn from one. */
 export const RESTRICTED_MATCH_NOTE =
-  "Rows with matched_in \"restricted_fulltext\" (or \"restricted_text\") matched only in a private full text: their " +
-  "fulltext_snippet (or text_snippet; a get_text_passages passage's text) is private in AMIRA, not on the public site. " +
+  "Rows with matched_in \"restricted_fulltext\" (\"restricted_text\", \"restricted_transcript\") matched only in a private " +
+  "text: their fulltext_snippet (text_snippet, transcript_snippet; a get_text_passages passage's text) is private in AMIRA, not on the public site. " +
   "A public record is still cited by its amira_url; whether to quote the text is up to the curator.";
 
 /** The matched_in values of a row matched only in a private text. */
-const RESTRICTED_MATCHES = new Set(["restricted_fulltext", "restricted_text"]);
+const RESTRICTED_MATCHES = new Set(["restricted_fulltext", "restricted_text", "restricted_transcript"]);
 
 interface IndexedMedia { o_id: number; type: string | null; url: string | null; size: number | null; visibility?: string }
 

@@ -433,7 +433,9 @@ export function registerOpenAITools(server: Server, tools: ToolMap): void {
           z.object({
             id: z.string().describe("Typed record id, e.g. 'item:9902'"),
             title: z.string(),
-            url: z.string().describe("The AMIRA/Omeka record page"),
+            url: z.string().describe(config.access === "curator"
+              ? "The public AMIRA record page; for a private record, its Omeka admin page (curators only)"
+              : "The AMIRA/Omeka record page"),
           }),
         ),
         requested_limit: z.number().optional(),

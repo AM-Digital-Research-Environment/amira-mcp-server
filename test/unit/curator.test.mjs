@@ -192,6 +192,10 @@ test("curator: lists, people, publications, collections and the ChatGPT adapter 
   // The private item set files the project's private item, so the project's collection counts it.
   const sets = await call("list_collections", {});
   assert.ok(sets.results.length > 0 && sets.results.every((r) => r.visibility === "public"), JSON.stringify(sets.results));
+  // ...and the private set says so on its own row (#26); public sets carry no key.
+  const setRows = sets.results.flatMap((r) => r.item_sets);
+  assert.equal(setRows.filter((s) => s.visibility === "private").length, 1, JSON.stringify(setRows));
+  assert.ok(setRows.every((s) => s.visibility === undefined || s.visibility === "private"));
 
   const doc = await call("fetch", { id: `research_item:${IDS.privateItem}` });
   assert.equal(doc.url, adminItem(IDS.privateItem));

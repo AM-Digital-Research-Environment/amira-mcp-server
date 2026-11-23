@@ -1,6 +1,6 @@
 // Curator mode and get_text_passages: the private full text of research items
-// (the ILAM OCR text) and publications, and the private text of chronicles, are
-// searched; their passages say matched_in, carry the result-level
+// (the ILAM OCR text) and publications, the private text of chronicles and
+// private video transcripts are searched; their passages say matched_in, carry the result-level
 // restricted_match_note, and private records keep their admin URL. Served from
 // the curator cache partition of a never contacted instance (as in
 // curator-chronicles.test.mjs), with invented records. The public side is in
@@ -39,6 +39,9 @@ fx.data.publications[0] = { ...fx.data.publications[0], restricted: { fulltext: 
 const base = fx.data.chronicles[1];
 fx.data.chronicles.push({ ...base, o_id: 562, title: "Unpublished poem", relations: [], media: [], thumbnail: null, text: null,
   restricted: { fulltext: CHRONICLE_TEXT } });
+// 541: a public video whose only transcript is private (#26), long enough to page.
+const VIDEO_TEXT = `${"Panel opening remarks. ".repeat(40)}Then the ${TOKEN} is discussed. ${"Closing words. ".repeat(40)}`;
+fx.data.videos[1] = { ...fx.data.videos[1], restricted: { fulltext: VIDEO_TEXT } };
 fx.manifest.counts = Object.fromEntries(Object.entries(fx.data).map(([k, v]) => [k, v.length]));
 Object.assign(fx.manifest, { apiBase: `${SITE}/api`, fetchedAt: new Date().toISOString(), access: "curator" });
 await lib.writeSnapshotAtomic(lib.cacheSnapshotDir(), fx);
@@ -126,3 +129,29 @@ test("curator: a chronicle's private text is searched as restricted_text", async
 function fold(s) {
   return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
+
+test("curator: a private video transcript is paged by get_video and searched as restricted_transcript (#26)", async () => {
+  const plain = await call("get_video", { id: 541 });
+  assert.equal(plain.restricted.transcript_length, VIDEO_TEXT.length, "reported by length without include_transcript");
+  assert.equal(plain.restricted.transcript, undefined);
+
+  const first = await call("get_video", { id: 541, include_transcript: true, transcript_max_chars: 300 });
+  assert.equal(first.restricted.transcript, VIDEO_TEXT.slice(0, 300));
+  assert.equal(first.restricted.transcript_next_offset, 300);
+  const second = await call("get_video", { id: 541, include_transcript: true, transcript_offset: 300, transcript_max_chars: 300 });
+  assert.equal(second.restricted.transcript, VIDEO_TEXT.slice(300, 600), "the next page continues the private text");
+
+  const search = await call("search_videos", { keyword: TOKEN });
+  const row = search.results.find((r) => r.omeka_id === 541);
+  assert.equal(row?.matched_in, "restricted_transcript");
+  assert.match(row.transcript_snippet, /pangolin-private-ocr-token/i);
+  assert.equal(row.has_restricted_transcript, true);
+  assert.equal(search.restricted_match_note, lib.RESTRICTED_MATCH_NOTE);
+
+  const passages = await call("get_text_passages", { ids: ["video:541"], keyword: TOKEN });
+  assert.equal(passages.total_matches, 1);
+  assert.equal(passages.results[0].matched_in, "restricted_transcript");
+  const at = VIDEO_TEXT.indexOf(TOKEN);
+  assert.deepEqual([passages.results[0].match_start, passages.results[0].match_end], [at, at + TOKEN.length]);
+  assert.equal(passages.restricted_match_note, lib.RESTRICTED_MATCH_NOTE);
+});

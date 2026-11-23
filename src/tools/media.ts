@@ -14,6 +14,7 @@ import type { DataStore } from "../data.js";
 import type { RecordTypes } from "../recordKinds.js";
 import type { LinkedRef, MediaRec, PodcastRec, VideoRec } from "../types.js";
 import { allowDescriptive, allowFullText, allowStructured } from "../exposure.js";
+import { config } from "../config.js";
 import {
   READ_ONLY,
   capOffset,
@@ -63,20 +64,25 @@ const languageParam = () => textParam().optional().describe("Name or ISO code â€
 
 /**
  * Keyword + year selection shared by both corpora. A record matched only in its
- * transcript is remembered so the summary can carry a snippet.
+ * transcript is remembered so the summary can carry a snippet; in curator mode,
+ * one matched only in its private transcript too (#26).
  */
 function selectTranscribed<T extends TranscriptRecord>(
   records: T[], keyword: string | undefined, years: { year_from?: number; year_to?: number }, extra: (r: T) => boolean,
-): { filtered: T[]; transcriptOnly: Set<number> } {
+): { filtered: T[]; transcriptOnly: Set<number>; restrictedOnly: Set<number> } {
   const transcriptOnly = new Set<number>();
+  const restrictedOnly = new Set<number>();
+  const curator = config.access === "curator";
   const parsed = keyword ? parseKeyword(keyword) : null;
   const query = parsed && !emptyKeyword(parsed) ? parsed : null;
   const filtered = records.filter((r) => {
     if (query) {
       const meta = [r.title, allowDescriptive() ? r.abstract : null];
       if (!keywordMatches(query, meta)) {
-        if (!allowFullText() || !keywordMatches(query, [...meta, r.transcript])) return false;
-        transcriptOnly.add(r.o_id);
+        if (!allowFullText()) return false;
+        if (keywordMatches(query, [...meta, r.transcript])) transcriptOnly.add(r.o_id);
+        else if (curator && r.restricted?.fulltext && keywordMatches(query, [...meta, r.restricted.fulltext])) restrictedOnly.add(r.o_id);
+        else return false;
       }
     }
     if (years.year_from !== undefined && (r.year ?? -Infinity) < years.year_from) return false;
@@ -84,7 +90,12 @@ function selectTranscribed<T extends TranscriptRecord>(
     return extra(r);
   });
   filtered.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
-  return { filtered, transcriptOnly };
+  return { filtered, transcriptOnly, restrictedOnly };
+}
+
+/** Curator mode: `has_restricted_transcript` when the record's transcript is private (absent in public mode). */
+function restrictedTranscriptFlag(r: TranscriptRecord): Record<string, unknown> {
+  return config.access === "curator" && r.restricted?.fulltext ? { has_restricted_transcript: true } : {};
 }
 
 /** The `transcript_generated_by` block: who or what produced a transcript. */
@@ -140,14 +151,17 @@ function registerTranscribedSearch<R extends TranscriptRecord>(server: Server, t
       const { keyword } = args;
       const { language } = filters;
       const ownFilters = spec.matches(filters);
-      const { filtered, transcriptOnly } = selectTranscribed(spec.records(store), keyword, args, (r) =>
+      const { filtered, transcriptOnly, restrictedOnly } = selectTranscribed(spec.records(store), keyword, args, (r) =>
         ownFilters(r) && (!language || store.languageIndex.matches(r.languages, language)));
+      const summary = (r: R) => ({ ...spec.summary(r), ...restrictedTranscriptFlag(r) });
 
       return textResult({
         ...pageOf(filtered, offset, limit,
           (r) => transcriptOnly.has(r.o_id) && keyword
-            ? { ...spec.summary(r), matched_in: "transcript", transcript_snippet: matchSnippet(r.transcript, keyword) }
-            : spec.summary(r),
+            ? { ...summary(r), matched_in: "transcript", transcript_snippet: matchSnippet(r.transcript, keyword) }
+            : restrictedOnly.has(r.o_id) && keyword
+              ? { ...summary(r), matched_in: "restricted_transcript", transcript_snippet: matchSnippet(r.restricted?.fulltext, keyword) }
+              : summary(r),
           { ...echo, ...filtersEcho(raw) }),
         ...emptySearchHint(filtered.length, raw),
       });

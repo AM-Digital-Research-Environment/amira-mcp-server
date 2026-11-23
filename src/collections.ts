@@ -155,7 +155,8 @@ export function collectionFields(c: Collection) {
     // The project's name only when the set calls the collection something else.
     ...(c.project && c.project.name !== c.title ? { project: c.project.name } : {}),
     project_id: c.project?.dre_id ?? null,
-    item_sets: c.sets.map((s) => ({ id: s.o_id, code: s.code ?? null })),
+    // A private set (curator mode) says so on its own row too, not only on the collection (#26).
+    item_sets: c.sets.map((s) => ({ id: s.o_id, code: s.code ?? null, ...(s.visibility ? { visibility: s.visibility } : {}) })),
     iiif_collection: c.sets[0] ? iiifCollectionUrl(c.sets[0].o_id) : null,
     amira_url: c.amira_url,
   };

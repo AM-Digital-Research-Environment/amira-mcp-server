@@ -48,13 +48,14 @@ function unsupportedNote(kind: string): string {
 const PASSAGES_DESCRIPTION = "Find accent-insensitive passages of one literal phrase (quotes optional; words are not matched separately) in selected publication/video/podcast/chronicle IDs. Original UTF-16 offsets, bounded context, citations. Requires full text exposure.";
 /**
  * Curator mode only (#26): the private full text of research items (the ILAM
- * OCR text) and publications, and the private text of chronicles, are searched
- * too. A passage from one carries the `matched_in` value the search tools give a
+ * OCR text) and publications, the private text of chronicles and private podcast
+ * and video transcripts are searched too. A passage from one carries the `matched_in` value the search tools give a
  * row matched only there, so the single decoration step (src/tools/curator.ts)
  * adds `restricted_match_note`. Absent from the public surface.
  */
-const CURATOR_PASSAGES = " Curator mode: research_item: ids too, and private texts; their passages say matched_in and are not on the public site.";
-const PRIVATE_MATCHED_IN = { research_item: "restricted_fulltext", publication: "restricted_fulltext", chronicle: "restricted_text" } as const;
+const CURATOR_PASSAGES = " Curator mode: research_item: ids too, and private texts and transcripts; their passages say matched_in and are not on the public site.";
+const PRIVATE_MATCHED_IN = { research_item: "restricted_fulltext", publication: "restricted_fulltext", chronicle: "restricted_text",
+  podcast: "restricted_transcript", video: "restricted_transcript" } as const;
 
 export function registerResearchTools(server: Server, tools: ToolMap): void {
   tools.resolve_entity = server.registerTool("resolve_entity", {
@@ -134,7 +135,7 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       keyword: querySchema, radius: z.number().int().min(20).max(500).optional(), offset: offsetParam,
       limit: LIMITS.get_text_passages.schema })),
     outputSchema: schemaOnce("get_text_passages:out", () => z.object({ ...pageShape, results: z.array(z.object({ id: z.string(), title: z.string(), amira_url: citedUrl(),
-      ...(config.access === "curator" ? { matched_in: z.enum(["restricted_fulltext", "restricted_text"]).optional() } : {}),
+      ...(config.access === "curator" ? { matched_in: z.enum(["restricted_fulltext", "restricted_text", "restricted_transcript"]).optional() } : {}),
       start: z.number(), end: z.number(), match_start: z.number(), match_end: z.number(), text: z.string() })),
       snapshot_id: z.string(), scanned_matches_capped: z.boolean(), unavailable_ids: z.array(z.string()),
       unavailable: z.array(z.object({ id: z.string(), reason: z.string(), note: z.string().optional() })).optional() })),
@@ -178,8 +179,8 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       const sources: { text: string; matched_in?: string }[] = [];
       const publicText = "fulltext" in rec ? rec.fulltext : "transcript" in rec ? rec.transcript : "text" in rec ? rec.text : null;
       if (publicText) sources.push({ text: publicText });
-      // Private podcast and video transcripts are not searched: nothing pages them yet.
-      const privateKind = curator && kind !== "video" && kind !== "podcast" ? kind : null;
+      // Every kind's private text, podcast and video transcripts included: get_podcast / get_video page them (#26).
+      const privateKind = curator ? kind : null;
       const privateText = privateKind ? rec.restricted?.fulltext : undefined;
       if (privateKind && privateText) sources.push({ text: privateText, matched_in: PRIVATE_MATCHED_IN[privateKind] });
       if (!sources.length) {

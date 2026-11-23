@@ -104,14 +104,20 @@ applied to every tool and resource, so no tool can forget it:
   `has_restricted_text`, and `get_chronicle` pages it under `restricted` with
   `include_text`, `text_offset` and `text_max_chars` (`restricted.text`,
   `has_text`, `text_length`, …).
+  A private podcast or video transcript does the same under `transcript`:
+  `search_podcasts` / `search_videos` mark rows matched only there with
+  `matched_in: "restricted_transcript"` (a private `transcript_snippet`, the
+  same note) and `has_restricted_transcript`, and `get_podcast` / `get_video`
+  page it under `restricted` with `include_transcript`, `transcript_offset` and
+  `transcript_max_chars`.
 - **Passages of private text**: `get_text_passages` accepts `research_item:ID`
   (and `item:ID`) in curator mode only, and searches the private full text of
-  research items and publications and the private text of Cluster Chronicles
-  works, with the same literal, accent-insensitive phrase matching, `radius`,
+  research items and publications, the private text of Cluster Chronicles
+  works and private podcast and video transcripts, with the same literal, accent-insensitive phrase matching, `radius`,
   `limit`, `offset` / `next_offset` and match cap as for public texts. A
   passage drawn from a private text carries the search tools' marker
-  (`matched_in: "restricted_fulltext"`, or `"restricted_text"` for a
-  chronicle), so the result gets `restricted_match_note`: the passage `text` is
+  (`matched_in: "restricted_fulltext"`, `"restricted_text"` for a chronicle,
+  `"restricted_transcript"` for a podcast or video), so the result gets `restricted_match_note`: the passage `text` is
   private and not on the public site, even when the record itself is public (its row then
   says `visibility: "public"` and keeps its `amira_url`; a private record's
   row has `admin_url` instead). Its offsets are UTF-16 offsets into that
@@ -148,6 +154,10 @@ applied to every tool and resource, so no tool can forget it:
   private counts per corpus (languages included) and how many records carry
   private values or a private full text; `amira://dataset` carries the same
   split. Facet counts (subjects, places, years, …) include private records.
+- **App views link a private record to its admin page.** Its title (and the
+  graph's node panel) links to `admin_url`, marked "(private)" and titled as a
+  curators-only page, never as a citation; the host opens it like any link.
+  Item-set rows inside a collection carry `visibility` when the set is private.
 - **Semantic neighbours**: the corpus vectors are built from the public API, so
   a private record has none, and the semantic tools say so;
   `get_data_quality` counts private records apart (`private_not_embedded`).
@@ -438,9 +448,3 @@ and loading a snapshot drops any private record or `restricted` block again.
 - OAuth sign-in (Pocket ID) for claude.ai and ChatGPT (and Claude Desktop
   custom connectors without the relay); see the issue.
 - A read-only Omeka role with `view-all`; the service account is a `reviewer`.
-- Private podcast and video transcripts are reported by length in `restricted`
-  but not paged, and `get_text_passages` does not search them.
-- Item-set rows inside a collection (`item_sets: [{ id, code }]`) carry no
-  `visibility`; the collection itself does.
-- The `search` output schema still describes `url` as the public record page;
-  for a private row it is the admin page.
