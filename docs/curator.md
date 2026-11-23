@@ -35,7 +35,9 @@ Fields the transformation never reads are not exposed by authentication alone.
 Media are listed (each row with `visibility`), never downloaded or served: Omeka
 serves `/files/…` statically, so a private media row has no file `url`, only
 its `admin_url` (the Omeka admin page of the media), and an item `thumbnail`
-drawn from a private media is null.
+drawn from a private media is null. A media of a private record counts as
+private whatever its own flag, and a private record's `thumbnail` (a video's
+included) is null.
 
 Besides the crawled corpora, the curator crawl lists the id of every private
 item on the instance (`items?is_public=0`, kept in the snapshot manifest and
@@ -63,8 +65,11 @@ applied to every tool and resource, so no tool can forget it:
   named as private rather than linked as if public. Any other URL of a private record inside a
   string (a generated citation, a `fetch` document, an export), whether its
   public page (`https://` or `http://`), its API URL (`/api/items/<id>`) or its
-  IIIF manifest or collection, is rewritten to its admin URL, and a private
-  media file's URL to the media's admin page. Percent-encoded URLs are not
+  IIIF manifest or collection (any IIIF path under its id, such as a canvas),
+  is rewritten to its admin URL, and a private media file's URL to the media's
+  admin page (a private record's thumbnail file without a listed media: the
+  record's admin page). Punctuation right after a URL (`.`, `,`, `;`, `)`) is
+  kept after the rewritten URL. Percent-encoded URLs are not
   recognised. The `iiif_manifest` / `iiif_collection` field of a private record
   is null: Omeka answers an anonymous request for it with 404.
 - **`restricted`**: a detail result (`get_research_item`, `get_publication`,

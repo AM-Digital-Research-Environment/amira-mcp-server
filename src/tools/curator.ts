@@ -11,8 +11,9 @@
 //     string (a citation, a `fetch` document, a BibTeX entry, an API or IIIF
 //     URL), becomes its admin URL; a private media file's URL becomes the
 //     media's admin page, so no private file is ever linked directly;
-//   - media rows carry `visibility`; a private one has no file `url`, only
-//     `admin_url`; a `thumbnail` drawn from a private media, and the IIIF
+//   - media rows carry `visibility`; a media of a private record is private
+//     too; a private one has no file `url`, only `admin_url`; a private
+//     record's `thumbnail` or one drawn from a private media, and the IIIF
 //     manifest or collection of a private record, are null;
 //   - a detail result (top-level `omeka_id`) gains the record's `restricted`
 //     block: its private values, and its private full text, windowed like
@@ -63,11 +64,15 @@ export const RESTRICTED_MATCH_NOTE =
 /** The matched_in values of a row matched only in a private text. */
 const RESTRICTED_MATCHES = new Set(["restricted_fulltext", "restricted_text"]);
 
+interface IndexedMedia { o_id: number; type: string | null; url: string | null; size: number | null; visibility?: string }
+
 interface Indexed {
   o_id: number;
   visibility?: string;
   restricted?: RestrictedValues;
-  media?: { o_id: number; url: string | null; visibility?: string }[];
+  /** The record's own thumbnail (videos carry one and list no media). */
+  thumbnail?: string | null;
+  media?: IndexedMedia[];
 }
 
 /** Every record of the store, the corpus it belongs to first. */
@@ -91,8 +96,14 @@ interface Indexes {
   privateItems: Set<number> | null;
   /** Media by file URL, for media rows. */
   mediaByUrl: Map<string, { id: number; visibility: Visibility }>;
-  /** Private media by file stem (`/files/<size>/<stem>.<ext>`: originals and thumbnails share it). */
-  privateFiles: Map<string, number>;
+  /** Media by owner, in the order detail tools list them (recovers the id of a media row without a file URL). */
+  mediaOf: Map<number, IndexedMedia[]>;
+  /**
+   * Admin URL of every private file by stem (`/files/<size>/<stem>.<ext>`:
+   * originals and thumbnails share it): a private media's files, and the
+   * thumbnail of a private record (its admin page when no listed media owns it).
+   */
+  privateFiles: Map<string, string>;
 }
 
 const fileStem = (url: string): string | null => {
@@ -106,25 +117,36 @@ function indexes(store: DataStore): Indexes {
     const restricted = new Map<number, RestrictedValues>();
     const media = new Set<number>();
     const mediaByUrl = new Map<string, { id: number; visibility: Visibility }>();
-    const privateFiles = new Map<string, number>();
-    for (const [, list] of corpora(store)) {
+    const mediaOf = new Map<number, IndexedMedia[]>();
+    const privateFiles = new Map<string, string>();
+    for (const [corpus, list] of corpora(store)) {
       for (const r of list) {
-        visibility.set(r.o_id, r.visibility === "private" ? "private" : "public");
+        const isPrivate = r.visibility === "private";
+        visibility.set(r.o_id, isPrivate ? "private" : "public");
         if (r.restricted) restricted.set(r.o_id, r.restricted);
+        if (r.media?.length) mediaOf.set(r.o_id, r.media);
         for (const m of r.media ?? []) {
-          const vis: Visibility = m.visibility === "private" ? "private" : "public";
+          // A media of a private record is private, whatever its own flag:
+          // Omeka serves its files to anyone who has the URL.
+          const vis: Visibility = isPrivate || m.visibility === "private" ? "private" : "public";
           visibility.set(m.o_id, vis);
           media.add(m.o_id);
           if (!m.url) continue;
           mediaByUrl.set(m.url, { id: m.o_id, visibility: vis });
           const stem = vis === "private" ? fileStem(m.url) : null;
-          if (stem) privateFiles.set(stem, m.o_id);
+          if (stem) privateFiles.set(stem, adminMediaUrl(m.o_id));
+        }
+        // A private record's own thumbnail, which a record without a media list
+        // (a video) has too; a listed media's admin page wins over the record's.
+        const thumb = isPrivate && typeof r.thumbnail === "string" ? fileStem(r.thumbnail) : null;
+        if (thumb && !privateFiles.has(thumb)) {
+          privateFiles.set(thumb, corpus === "item_sets" ? adminItemSetUrl(r.o_id) : adminItemUrl(r.o_id));
         }
       }
     }
     const listed = store.manifest.privateItemIds;
     return {
-      visibility, restricted, media, mediaByUrl, privateFiles,
+      visibility, restricted, media, mediaByUrl, mediaOf, privateFiles,
       itemSets: new Set(store.itemSets.map((s) => s.o_id)),
       privateItems: Array.isArray(listed) ? new Set(listed) : null,
     };
@@ -163,10 +185,18 @@ const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 const SITE_HOST = SITE_BASE.replace(/^https?:\/\//, "");
 const ROOT = `https?://${escapeRe(SITE_HOST)}`;
 const PAGE = `/s/${escapeRe(SITE_SLUG)}/(item|item-set|media)/(\\d+)`;
-/** Every URL form that names one resource: its public page, its API URL, its IIIF manifest or collection, a file. */
+/**
+ * Path segments after a IIIF id (`/manifest`, `/canvas/p1`, an image request's
+ * `/0,0,512,512/max/0/default.jpg`): a comma only before a digit, so the comma
+ * of a CSV row or a sentence is not taken for part of the URL.
+ */
+const IIIF_TAIL = "(?:/(?:[A-Za-z0-9_.~%=+:!-]|,(?=\\d))*)*";
+/** Every URL form that names one resource: its public page, its API URL, a IIIF URL under its id, a file. */
 const ANY_URL = new RegExp(
-  `${ROOT}(?:${PAGE}(?!\\d)|/api/(items|item_sets|media)/(\\d+)(?!\\d)|/iiif/3/(?:(collection)/)?(\\d+)(?:/manifest)?(?!\\d)` +
+  `${ROOT}(?:${PAGE}(?!\\d)|/api/(items|item_sets|media)/(\\d+)(?!\\d)|/iiif/3/(?:(collection)/)?(\\d+)(?!\\d)(${IIIF_TAIL})` +
   `|/files/[A-Za-z0-9_-]+/([^\\s"'<>?#/\\\\]+))`, "g");
+/** Punctuation that may end a sentence, a CSV field or a bracket right after a URL. */
+const URL_END = /[.,;:!)\]}*|]/;
 const PUBLIC_URL_EXACT = new RegExp(`^${ROOT}${PAGE}$`);
 const IIIF_EXACT = new RegExp(`^${ROOT}/iiif/3/(?:(collection)/)?(\\d+)(?:/manifest)?$`);
 
@@ -197,21 +227,35 @@ function lookup(ctx: Ctx, id: number): Visibility | undefined {
 /** The kind of an id met without a URL (an `omeka_id`). */
 const kindOf = (ctx: Ctx, id: number): Kind => (ctx.itemSets.has(id) ? "item-set" : ctx.media.has(id) ? "media" : "item");
 
+/**
+ * The admin URL of a private file named in running text, followed by what the
+ * file segment caught beyond the name (`abc.pdf.`, `abc.pdf,next`, `abc.pdf)`),
+ * or null. The segment is tried whole, then cut before each trailing
+ * punctuation mark, longest first; each candidate loses its extension as in
+ * `fileStem`. Cutting can only add matches, so a doubt masks the URL.
+ */
+function privateFileInText(file: string, ctx: Ctx): string | null {
+  for (let cut = file.length; cut > 0; cut--) {
+    if (cut < file.length && !URL_END.test(file[cut]!)) continue;
+    const admin = ctx.privateFiles.get(file.slice(0, cut).replace(/\.[A-Za-z0-9]+$/, ""));
+    if (admin) return admin + file.slice(cut);
+  }
+  return null;
+}
+
 /** Every URL of a private resource in `text`, replaced by its admin URL. */
 function rewriteUrls(text: string, ctx: Ctx): string {
   if (!text.includes(SITE_HOST)) return text;
   return text.replace(ANY_URL, (url, page?: string, pageId?: string, api?: string, apiId?: string, iiif?: string, iiifId?: string,
-    file?: string) => {
-    if (file !== undefined) {
-      const stem = file.replace(/\.[A-Za-z0-9]+$/, "");
-      const media = ctx.privateFiles.get(stem);
-      return media != null ? adminMediaUrl(media) : url;
-    }
+    iiifTail?: string, file?: string) => {
+    if (file !== undefined) return privateFileInText(file, ctx) ?? url;
     const id = Number(pageId ?? apiId ?? iiifId);
     if (lookup(ctx, id) !== "private") return url;
     const kind: Kind = page ? (page as Kind) : api ? (api === "items" ? "item" : api === "item_sets" ? "item-set" : "media")
       : iiif ? "item-set" : kindOf(ctx, id);
-    return adminUrl(kind, id);
+    // A IIIF sub-path (`/manifest`, `/canvas/p1`) has no admin counterpart: the
+    // whole URL becomes the admin page, keeping only sentence punctuation after it.
+    return adminUrl(kind, id) + (iiifTail ? /[.:!]*$/.exec(iiifTail)![0] : "");
   });
 }
 
@@ -254,21 +298,42 @@ function restrictedBlock(r: RestrictedValues | undefined, ctx: Ctx, publicWindow
   return scrub(walk(out, ctx, 1) as Record<string, unknown>);
 }
 
-/** One media row: `visibility` always; a private one has no direct file URL, only its admin page. */
-function mediaRow(row: Record<string, unknown>, ctx: Ctx): Record<string, unknown> {
+/**
+ * One media row: `visibility` always; a private one has no direct file URL,
+ * only its admin page. A row is private when its media is, or when the record
+ * listing it is (`ownerPrivate`). `rec` is the store's media at the row's
+ * position, which gives the id of a row without a file URL.
+ */
+function mediaRow(row: Record<string, unknown>, ctx: Ctx, ownerPrivate: boolean, rec: IndexedMedia | undefined): Record<string, unknown> {
   const known = typeof row.url === "string" ? ctx.mediaByUrl.get(row.url) : undefined;
-  const isPrivate = row.visibility === "private" || known?.visibility === "private";
+  const id = rec?.o_id ?? known?.id;
+  const isPrivate = ownerPrivate || row.visibility === "private" || known?.visibility === "private" ||
+    (id != null && ctx.visibility.get(id) === "private");
   const out: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(row)) {
     if (key === "visibility") continue;
     out[key] = isPrivate && key === "url" ? null : walk(v, ctx, 2);
   }
-  if (isPrivate && known) out.admin_url = adminMediaUrl(known.id);
+  if (isPrivate && id != null) out.admin_url = adminMediaUrl(id);
   out.visibility = isPrivate ? "private" : "public";
   return out;
 }
 
 const isMediaList = (v: unknown[]): boolean => v.every((m) => isPlain(m) && "url" in m && "type" in m);
+
+/**
+ * The owner's media, when the rows are exactly its media list in order (same
+ * type, file URL and, where shown, size): detail tools list every media of the
+ * record without its id. Anything else returns null and the rows go by URL.
+ */
+function alignedMedia(ctx: Ctx, owner: number | undefined, rows: unknown[]): IndexedMedia[] | null {
+  const recs = owner != null ? ctx.mediaOf.get(owner) : undefined;
+  if (!recs || recs.length !== rows.length) return null;
+  return rows.every((row, i) => {
+    const r = row as Record<string, unknown>, m = recs[i]!;
+    return r.type === m.type && r.url === m.url && (!("size" in r) || r.size === m.size);
+  }) ? recs : null;
+}
 
 /** The most restrictive of two classifications (either may be unknown). */
 const strictest = (a: Visibility | undefined, b: Visibility | undefined): Visibility | undefined =>
@@ -283,8 +348,10 @@ function walk(value: unknown, ctx: Ctx, depth: number): unknown {
   const cited = citesBy ? parsePublicUrl(value[citesBy]) : null;
   const citedVis = cited ? lookup(ctx, cited.id) : undefined;
   // The record's own id, when it differs from the page it cites (a collection
-  // cites its project's page): the most restrictive of the two wins.
-  const ownId = citesBy && typeof value.omeka_id === "number" && value.omeka_id !== cited?.id ? value.omeka_id : null;
+  // cites its project's page): the most restrictive of the two wins. Rows of
+  // get_snapshot_changes carry it as a numeric `id` (Omeka has one id space).
+  const own = typeof value.omeka_id === "number" ? value.omeka_id : typeof value.id === "number" ? value.id : null;
+  const ownId = citesBy && own != null && own !== cited?.id ? own : null;
   const ownVis = ownId != null ? lookup(ctx, ownId) : undefined;
   const vis = strictest(citedVis, ownVis);
   const out: Record<string, unknown> = {};
@@ -301,10 +368,12 @@ function walk(value: unknown, ctx: Ctx, depth: number): unknown {
       }
     }
     if (key === "media" && Array.isArray(v) && isMediaList(v)) {
-      out.media = v.map((m) => mediaRow(m as Record<string, unknown>, ctx));
+      const recs = alignedMedia(ctx, typeof value.omeka_id === "number" ? value.omeka_id : cited?.id, v);
+      out.media = v.map((m, i) => mediaRow(m as Record<string, unknown>, ctx, vis === "private", recs?.[i]));
       continue;
     }
-    if (key === "thumbnail" && isPrivateFile(v, ctx)) {
+    // A private record's thumbnail is null even if the index missed its file.
+    if (key === "thumbnail" && (vis === "private" || isPrivateFile(v, ctx))) {
       out.thumbnail = null;
       continue;
     }

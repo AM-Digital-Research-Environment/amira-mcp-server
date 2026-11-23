@@ -6,8 +6,9 @@
 //
 // The Omeka stub gets extra fixtures (all invented): a private and a public
 // format authority outside every crawled corpus, a private language, a public
-// item linking to all three with a private media as its thumbnail and a long
-// private value, and a private item with a public media (IIIF manifest).
+// item linking to all three with a private media as its thumbnail, a private
+// media without a file and a long private value, a private item with a public
+// media (IIIF manifest, thumbnail), and a private video with a thumbnail.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -25,7 +26,7 @@ const tokensFile = path.join(secrets, "tokens");
 writeFileSync(tokensFile, `carol ${createHash("sha256").update("amira_cur_carol-test-token-0123456789abcdefghijklmn").digest("hex")}\n`);
 
 const X = { privateFormat: 7601, publicFormat: 7602, privateLanguage: 7701, linkedItem: 7105, privateDigitised: 7104,
-  publicOfPrivate: 9903, privateThumbMedia: 9904 };
+  publicOfPrivate: 9903, privateThumbMedia: 9904, fileless: 9905, privateVideo: 7802 };
 const LONG_PRIVATE = "walrus-long-private-value ".repeat(1100); // > 25,000 characters
 const stamp = { "o:created": { "@value": "2026-10-01T00:00:00+00:00" }, "o:modified": { "@value": "2026-11-01T00:00:00+00:00" } };
 const lit = (v, extra = {}) => ({ type: "literal", "@value": v, is_public: true, ...extra });
@@ -39,7 +40,7 @@ const stub = await startOmekaStub({
     ["resource_template_id=99", item(X.publicFormat, true, "Field Recording Format")],
     ["item_set_id=19", item(X.privateLanguage, false, "Secret Language")],
     ["resource_template_id=10", item(X.linkedItem, true, "Linked Public Item", {
-      "o:media": [{ "o:id": X.privateThumbMedia }],
+      "o:media": [{ "o:id": X.privateThumbMedia }, { "o:id": X.fileless }],
       thumbnail_display_urls: { large: `${STUB_BASE}/files/large/private-thumb-stem.jpg` },
       "dcterms:type": [lit("Image")], "dcterms:isPartOf": [res(IDS.project, "Curator Fixture Project")],
       "dcterms:format": [res(X.privateFormat, "Retired Format Authority"), res(X.publicFormat, "Field Recording Format")],
@@ -48,7 +49,10 @@ const stub = await startOmekaStub({
       "dcterms:created": [lit("1999")] })],
     ["resource_template_id=10", item(X.privateDigitised, false, "Private Digitised Item", {
       "o:media": [{ "o:id": X.publicOfPrivate }], "dcterms:type": [lit("Text")],
+      thumbnail_display_urls: { large: `${STUB_BASE}/files/large/public-of-private.jpg` },
       "dcterms:isPartOf": [res(IDS.project, "Curator Fixture Project")], "dcterms:created": [lit("2001")] })],
+    ["resource_template_id=22", item(X.privateVideo, false, "Private Lecture Video", {
+      thumbnail_display_urls: { large: `${STUB_BASE}/files/large/private-video-thumb.jpg` }, "dcterms:date": [lit("2024-05-01")] })],
   ],
   extraMedia: [
     { "o:id": X.publicOfPrivate, "@id": `${STUB_BASE}/api/media/${X.publicOfPrivate}`, "o:is_public": true,
@@ -57,6 +61,8 @@ const stub = await startOmekaStub({
     { "o:id": X.privateThumbMedia, "@id": `${STUB_BASE}/api/media/${X.privateThumbMedia}`, "o:is_public": false,
       "o:item": { "o:id": X.linkedItem }, "o:media_type": "image/tiff",
       "o:original_url": `${STUB_BASE}/files/original/private-thumb-stem.tif`, "o:source": "thumb.tif", "o:size": 20 },
+    { "o:id": X.fileless, "@id": `${STUB_BASE}/api/media/${X.fileless}`, "o:is_public": false,
+      "o:item": { "o:id": X.linkedItem }, "o:media_type": "text/html", "o:source": "https://example.org/page", "o:size": null },
   ],
 });
 test.after(() => stub.close());
@@ -150,7 +156,6 @@ test("a private record has no IIIF manifest; a private item set no IIIF collecti
   const priv = await call("get_research_item", { id: X.privateDigitised });
   assert.equal(priv.visibility, "private");
   assert.equal(priv.iiif_manifest, null);
-  assert.equal(priv.media[0].visibility, "public");
   // The fixture's private set belongs to a public project's collection, so it is cited as the set itself here.
   const set = lib.curatorValue({ omeka_id: IDS.privateSet, amira_url: `${SITE}/s/amira/item-set/${IDS.privateSet}`,
     iiif_collection: `${SITE}/iiif/3/collection/${IDS.privateSet}` }, store());
@@ -158,6 +163,71 @@ test("a private record has no IIIF manifest; a private item set no IIIF collecti
   assert.equal(set.amira_url, undefined);
   assert.equal(set.admin_url, `${SITE}/admin/item-set/${IDS.privateSet}`);
   assert.equal(set.iiif_collection, null);
+});
+
+test("a private record's media are private whatever their own flag; its thumbnail is null", async () => {
+  const priv = await call("get_research_item", { id: X.privateDigitised });
+  assert.equal(priv.visibility, "private");
+  assert.equal(priv.thumbnail, null);
+  const [media] = priv.media;
+  assert.equal(media.visibility, "private");
+  assert.equal(media.url, null);
+  assert.equal(media.admin_url, `${SITE}/admin/media/${X.publicOfPrivate}`);
+  assert.ok(!JSON.stringify(priv).includes("public-of-private"));
+  assert.equal(lib.curatorText(`${SITE}/files/large/public-of-private.jpg`, store()), `${SITE}/admin/media/${X.publicOfPrivate}`);
+  assert.equal(lib.curatorText(`${SITE}/api/media/${X.publicOfPrivate}`, store()), `${SITE}/admin/media/${X.publicOfPrivate}`);
+});
+
+test("a private video's thumbnail is null and its file is never linked", async () => {
+  const video = await call("get_video", { id: X.privateVideo });
+  assert.equal(video.visibility, "private");
+  assert.equal(video.thumbnail, null);
+  assert.equal(lib.curatorText(`See ${SITE}/files/large/private-video-thumb.jpg.`, store()), `See ${adminItem(X.privateVideo)}.`);
+  // A private record's thumbnail is dropped even when the index does not know its file.
+  const row = lib.curatorValue({ omeka_id: X.privateVideo, amira_url: publicItem(X.privateVideo),
+    thumbnail: `${SITE}/files/large/unindexed.jpg` }, store(), { detail: false });
+  assert.equal(row.thumbnail, null);
+});
+
+test("a private media without a file URL still gets its admin page", async () => {
+  const linked = await call("get_research_item", { id: X.linkedItem });
+  const row = linked.media.find((m) => m.type === "text/html");
+  assert.equal(row.url, null);
+  assert.equal(row.visibility, "private");
+  assert.equal(row.admin_url, `${SITE}/admin/media/${X.fileless}`);
+});
+
+test("a private file URL followed by punctuation is rewritten, the punctuation kept", () => {
+  const s = store();
+  const file = `${SITE}/files/original/${PRIVATE.mediaUrl}`;
+  const admin = `${SITE}/admin/media/${IDS.privateMedia}`;
+  for (const after of [".", ",next", ")", ";", ").", ":", ""]) {
+    assert.equal(lib.curatorText(`See ${file}${after}`, s), `See ${admin}${after}`, JSON.stringify(after));
+  }
+  assert.equal(lib.curatorText(`id,url,title\n1,${file},Scan\n2,[scan](${file});x`, s), `id,url,title\n1,${admin},Scan\n2,[scan](${admin});x`);
+  const pub = `${SITE}/files/original/public-recording.mp3`;
+  assert.equal(lib.curatorText(`${pub}, ${pub}.`, s), `${pub}, ${pub}.`, "a public file is left alone");
+});
+
+test("a IIIF sub-path of a private resource becomes its clean admin URL", () => {
+  const s = store();
+  const base = `${SITE}/iiif/3/${X.privateDigitised}`;
+  const admin = adminItem(X.privateDigitised);
+  assert.equal(lib.curatorText(`${base}/canvas/p1 ${base}/manifest. ${base}/canvas/p1,next (${base}/canvas/p2)`, s),
+    `${admin} ${admin}. ${admin},next (${admin})`);
+  const pub = `${SITE}/iiif/3/${X.linkedItem}/canvas/p1`;
+  assert.equal(lib.curatorText(pub, s), pub);
+});
+
+test("a get_snapshot_changes row (`id`, no `omeka_id`): a private item set under a public project is private", () => {
+  const { results: [row] } = lib.curatorValue({ results: [{ corpus: "item_sets", id: IDS.privateSet, change: "added",
+    title: "Set", amira_url: publicItem(IDS.project) }] }, store());
+  assert.equal(row.visibility, "private");
+  assert.equal(row.amira_url, publicItem(IDS.project), "the public project page stays");
+  assert.equal(row.admin_url, `${SITE}/admin/item-set/${IDS.privateSet}`);
+  const { results: [pub] } = lib.curatorValue({ results: [{ corpus: "item_sets", id: IDS.publicSet, change: "added",
+    title: "Set", amira_url: publicItem(IDS.project) }] }, store());
+  assert.equal(pub.visibility, "public");
 });
 
 test("every URL form of a private resource in a string is rewritten", () => {
