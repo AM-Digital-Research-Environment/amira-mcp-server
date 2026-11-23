@@ -9,7 +9,9 @@ import { VIEW_CALLABLE_TOOLS } from "./viewContract.js";
 
 type Payload = Record<string, unknown>;
 declare const __SERVER_VERSION__: string;
-const app = new App({ name: "amira-mcp-app", version: __SERVER_VERSION__ }, { availableDisplayModes: ["inline", "fullscreen"] }, { autoResize: true });
+// Resizing is set up after connecting, by hand, so teardown can disconnect its observer (#51).
+const app = new App({ name: "amira-mcp-app", version: __SERVER_VERSION__ }, { availableDisplayModes: ["inline", "fullscreen"] }, { autoResize: false });
+let stopResize: (() => void) | undefined;
 let render: ((payload: Payload) => void) | undefined;
 let input: Payload = {};
 let ready: Promise<void> | undefined;
@@ -52,8 +54,15 @@ app.ontoolresult = (result) => {
   catch (error) { status((error as Error).message); }
 };
 app.ontoolcancelled = () => status("Request cancelled. Run the tool again to continue.");
-app.onteardown = async () => { connected = false; sync.stop(); lifecycle.abort(); return {}; };
-window.addEventListener("pagehide", () => { connected = false; sync.stop(); lifecycle.abort(); void app.close(); }, { once: true });
+function shutDown(): void {
+  connected = false;
+  sync.stop();
+  lifecycle.abort();
+  stopResize?.();
+  stopResize = undefined;
+}
+app.onteardown = async () => { shutDown(); return {}; };
+window.addEventListener("pagehide", () => { shutDown(); void app.close(); }, { once: true });
 
 // --- the selection, shared with the model ------------------------------------
 // Interactive views report their current selection (bibliography filters and
@@ -91,7 +100,11 @@ const bridge = {
   esc: (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!),
   onResult(callback: (value: Payload) => void) {
     render = callback;
-    ready ??= app.connect(undefined, { timeout: 10_000, signal: lifecycle.signal }).then(() => { connected = true; context(app.getHostContext()); });
+    ready ??= app.connect(undefined, { timeout: 10_000, signal: lifecycle.signal }).then(() => {
+      connected = true;
+      if (!lifecycle.signal.aborted) stopResize = app.setupSizeChangedNotifications();
+      context(app.getHostContext());
+    });
     void ready.catch(() => status("The app could not connect. Reopen it in an MCP Apps host to use its controls."));
   },
   input: () => ({ ...input }),
@@ -135,7 +148,9 @@ const bridge = {
   async openLink(url: string) {
     if (!/^https?:\/\//i.test(url)) return;
     await ready;
-    await app.openLink({ url }, { timeout: 10_000, signal: lifecycle.signal });
+    const result = await app.openLink({ url }, { timeout: 10_000, signal: lifecycle.signal });
+    // A host that refuses the link says so in the result, not by throwing.
+    if (result.isError) throw new Error("The host did not open the link.");
   },
   /**
    * Save a file through the host, or show the text to copy when the host cannot.

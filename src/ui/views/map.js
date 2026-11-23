@@ -9,6 +9,9 @@ const api = window.amiraApp,
 let active;
 /** The opened place and the page of its records. @type {{ name: string, id: string | undefined, data: ToolData } | null} */
 let picked = null;
+/** The map's loads, and a place's records: each answers only its latest request (#51). */
+const mapOrder = requestOrder(),
+  recordsOrder = requestOrder();
 // Countries are the hierarchy roots in the map's current scope, by name.
 /** @param {ToolData | undefined} scope */
 function countryKey(scope) {
@@ -35,15 +38,14 @@ function countries(scope) {
  * @param {number} offset
  * @param {string} [id]
  */
-async function records(name, offset, id) {
-  try {
-    const args = Object.assign(
-      {},
-      (active.filters || {}).filters || {},
-      { limit: 20, offset: offset || 0 },
-      id ? { location_id: Number(id) } : { location: name },
-    );
-    const data = await api.callTool("search_research_items", args);
+function records(name, offset, id) {
+  const args = Object.assign(
+    {},
+    (active.filters || {}).filters || {},
+    { limit: 20, offset: offset || 0 },
+    id ? { location_id: Number(id) } : { location: name },
+  );
+  return latestCall(recordsOrder, "search_research_items", args, function (data) {
     evidenceList(
       document.getElementById("map-evidence"),
       esc(name) + " · " + data.total_matches + " matching records",
@@ -56,7 +58,7 @@ async function records(name, offset, id) {
     );
     picked = { name: name, id: id, data: data };
     share();
-  } catch (_) {}
+  });
 }
 // What the model is told: the map's filters and, once the reader opens a
 // place, that place and the page of its research items in view. Names and
@@ -114,6 +116,9 @@ function share() {
 }
 /** @param {ToolData} d */
 function render(d) {
+  // This result supersedes every map or records request still loading.
+  mapOrder.next();
+  recordsOrder.next();
   active = d;
   picked = null;
   const rows = d.results || [],
@@ -232,32 +237,23 @@ function render(d) {
       records(event.target.dataset.place, 0, event.target.dataset.placeId);
     }
   };
-  document.getElementById("map-filter").onsubmit = async function (event) {
+  document.getElementById("map-filter").onsubmit = function (event) {
     event.preventDefault();
-    try {
-      render(
-        await api.callTool("list_locations", {
-          country: new FormData(/** @type {HTMLFormElement} */ (event.target)).get("country") || undefined,
-          filters: (d.filters || {}).filters,
-          limit: 100,
-        }),
-      );
-    } catch (_) {}
+    latestCall(
+      mapOrder,
+      "list_locations",
+      {
+        country: new FormData(/** @type {HTMLFormElement} */ (event.target)).get("country") || undefined,
+        filters: (d.filters || {}).filters,
+        limit: 100,
+      },
+      render,
+    );
   };
   const next = document.getElementById("more-places");
   if (next)
-    next.onclick = async function () {
-      try {
-        render(
-          await api.callTool(
-            "list_locations",
-            Object.assign({}, d.filters || {}, {
-              offset: d.next_offset,
-              limit: 100,
-            }),
-          ),
-        );
-      } catch (_) {}
+    next.onclick = function () {
+      latestCall(mapOrder, "list_locations", Object.assign({}, d.filters || {}, { offset: d.next_offset, limit: 100 }), render);
     };
 }
 

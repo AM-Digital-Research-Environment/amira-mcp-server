@@ -13,6 +13,9 @@ let picked;
 let filter = null;
 /** The link whose records are listed, and that page of records. @type {{ edge: ToolData | undefined, data: ToolData } | null} */
 let shown = null;
+/** Graph loads, and the evidence panel's pages: each answers only its latest request (#51). */
+const graphOrder = requestOrder(),
+  evidenceOrder = requestOrder();
 // Sectors, clockwise from twelve o'clock. Every entity type belongs to one.
 const GROUPS = [
   { key: "people", label: "People", heading: "PEOPLE", types: ["person"] },
@@ -146,27 +149,25 @@ function relationText(e) {
 function other(e) {
   return e.source === active.seed ? e.target : e.source;
 }
-/** @param {string} seed */
-async function load(seed) {
+/**
+ * The type filter is a candidate until the graph loads: render() commits it
+ * from the result, so a failed load leaves the filter on screen in force (#51).
+ * @param {string} seed
+ * @param {string[] | null} types
+ */
+function load(seed, types) {
   /** @type {ToolData} */
   const args = { seed: seed };
-  if (filter) args.types = filter;
-  try {
-    render(await api.callTool("get_entity_graph", args));
-  } catch (_) {}
+  if (types) args.types = types;
+  return latestCall(graphOrder, "get_entity_graph", args, render);
 }
 /**
  * @param {string} id
  * @param {number} [offset]
  */
-async function evidence(id, offset) {
-  try {
-    const data = await api.callTool("get_entity_graph", {
-      seed: active.seed,
-      edge_id: id,
-      snapshot_id: active.snapshot_id,
-      offset: offset || 0,
-    });
+function evidence(id, offset) {
+  const args = { seed: active.seed, edge_id: id, snapshot_id: active.snapshot_id, offset: offset || 0 };
+  return latestCall(evidenceOrder, "get_entity_graph", args, function (data) {
     evidenceList(
       document.getElementById("evidence"),
       "Evidence · " + data.total_matches + " records",
@@ -186,7 +187,7 @@ async function evidence(id, offset) {
       data: data,
     };
     share();
-  } catch (_) {}
+  });
 }
 // What the model is told: the graph's centre and type filter, the selected
 // neighbour, and the link whose records are listed, with that page of records.
@@ -265,7 +266,18 @@ function pick(id) {
   const node = active.nodes.find(function (n) {
     return n.id === id;
   });
-  if (!node) return;
+  // The previous neighbour's records must not be shared with this one, even
+  // while its own load (or if it fails): clear them first (#51).
+  shown = null;
+  evidenceOrder.next();
+  const panel = document.getElementById("evidence");
+  if (panel) panel.innerHTML = "";
+  if (!node) {
+    // The neighbour left the graph (a type filter): it is no longer selected.
+    picked = null;
+    share();
+    return;
+  }
   picked = id;
   share();
   document.querySelectorAll("g.node-link").forEach(function (g) {
@@ -483,15 +495,14 @@ function diagram(d, seed) {
  * @param {ToolData} d
  */
 function renderEvidence(d) {
+  evidenceOrder.next(); // a page from the host supersedes one still loading
   const item = function (/** @type {ToolData} */ r) {
     return citation(r) + ' <span class="note">' + esc(r.corpus) + "</span>";
   };
   const heading = "Evidence · " + d.total_matches + " records";
   const edgeId = api.input().edge_id;
-  const more = async function (/** @type {number} */ next) {
-    try {
-      renderEvidence(await api.callTool("get_entity_graph", { seed: d.seed, edge_id: edgeId, snapshot_id: d.snapshot_id, offset: next }));
-    } catch (_) {}
+  const more = function (/** @type {number} */ next) {
+    latestCall(evidenceOrder, "get_entity_graph", { seed: d.seed, edge_id: edgeId, snapshot_id: d.snapshot_id, offset: next }, renderEvidence);
   };
   let panel = document.getElementById("evidence");
   if (!(active && active.seed === d.seed && panel)) {
@@ -515,6 +526,9 @@ function render(d) {
     if (Array.isArray(d.results)) renderEvidence(d);
     return;
   }
+  // This result supersedes every graph or evidence request still loading.
+  graphOrder.next();
+  evidenceOrder.next();
   if (!active || active.seed !== d.seed) picked = null;
   active = d;
   shown = null;
@@ -591,11 +605,9 @@ function render(d) {
       at = event.target.closest("[data-pick]"),
       node = event.target.closest("[data-node]"),
       edge = event.target.closest("[data-edge]");
-    if (types) {
-      filter = types.dataset.types ? types.dataset.types.split(",") : null;
-      load(active.seed);
-    } else if (edge) evidence(edge.dataset.edge);
-    else if (node) load(node.dataset.node);
+    if (types) load(active.seed, types.dataset.types ? types.dataset.types.split(",") : null);
+    else if (edge) evidence(edge.dataset.edge);
+    else if (node) load(node.dataset.node, filter);
     else if (at) pick(at.dataset.pick);
   };
   root.onkeydown = function (event) {

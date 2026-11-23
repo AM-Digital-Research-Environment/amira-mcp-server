@@ -320,3 +320,49 @@ function evidenceList(target, heading, data, item, moreId, onMore) {
       onMore(data.next_offset);
     };
 }
+
+// --- request order -------------------------------------------------------------
+// A view can have several requests in flight (a filter change, then another, a
+// page of records, a host result arriving meanwhile). Without an order a slow
+// earlier response overwrote a newer one (#51). Each stream of requests that
+// replaces one part of the screen keeps its own order; a newer request, or a
+// render from the host, makes every older response in that stream stale.
+
+/** @returns {{ next: () => number, isLatest: (ticket: number) => boolean }} */
+function requestOrder() {
+  let last = 0;
+  return {
+    next: function () {
+      return ++last;
+    },
+    isLatest: function (ticket) {
+      return ticket === last;
+    },
+  };
+}
+/**
+ * Call a tool and apply its result only if no newer request in `order` was made
+ * meanwhile. A failure applies nothing (the bridge reports it on the status
+ * line), so state is committed only by `apply`, on success.
+ * @param {{ next: () => number, isLatest: (ticket: number) => boolean }} order
+ * @param {string} tool
+ * @param {Record<string, unknown>} args
+ * @param {(data: ToolData) => void} apply
+ * @returns {Promise<void>}
+ */
+async function latestCall(order, tool, args, apply) {
+  const ticket = order.next();
+  let data;
+  try {
+    data = await window.amiraApp.callTool(tool, args);
+  } catch (_) {
+    return;
+  }
+  if (!order.isLatest(ticket)) return;
+  try {
+    apply(data);
+  } catch (error) {
+    // A page torn down while the call ran has nothing left to render into.
+    window.amiraApp.status("This view could not show the result: " + /** @type {Error} */ (error).message);
+  }
+}

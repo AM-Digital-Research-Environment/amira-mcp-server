@@ -122,3 +122,111 @@ test("graph: shares its centre, type chips, selected spoke and the records behin
   assert.equal(app.root.querySelector("#ask-selection"), null, "no Ask button without the message capability");
   assertHealthy(app);
 });
+
+// --- stale selections, uncommitted filters, request order (#51) -----------------
+
+/** Hold the host's answers to calls that `match`, until the returned `release` runs. */
+function holdCalls(app, match) {
+  const host = app.win.__amiraHost, original = host.callTool;
+  const held = [];
+  host.callTool = (name, args) => {
+    if (!match(name, args)) return original.call(host, name, args);
+    return new Promise((resolve, reject) => held.push({ run: () => original.call(host, name, args).then(resolve, reject) }));
+  };
+  return { held, release: (i) => held[i].run(), restore: () => { host.callTool = original; } };
+}
+
+test("graph: picking a neighbour never shares the previous neighbour's records", async (t) => {
+  const app = await mount(t, "get_entity_graph", { canShare: true });
+  app.show(await payload("get_entity_graph", { seed: "person:100" }));
+  const spokes = [...app.root.querySelectorAll("g.node-link")];
+  assert.ok(spokes.length >= 2, "two neighbours to pick");
+  app.click(spokes[0].querySelector("text.label"));
+  await app.waitFor(() => app.lastShared().records?.length > 0, "first evidence shared");
+
+  const gate = holdCalls(app, (name, args) => name === "get_entity_graph" && args.edge_id);
+  t.after(gate.restore);
+  app.click(spokes[1].querySelector("text.label"));
+  const shared = app.lastShared();
+  assert.equal(shared.focus[1].id, spokes[1].getAttribute("data-pick"));
+  assert.deepEqual(shared.records, [], "nothing listed while the new records load");
+  assert.equal(app.root.querySelector("#evidence").textContent, "", "the old records are cleared");
+  assertHealthy(app);
+});
+
+test("graph: a failed type filter is not committed; a filter that hides the selected neighbour unselects it", async (t) => {
+  const app = await mount(t, "get_entity_graph", { canShare: true });
+  const d = await payload("get_entity_graph", { seed: "person:100" });
+  app.show(d);
+  const host = app.win.__amiraHost, original = host.callTool;
+  let refused = 0;
+  host.callTool = async (name, args) => {
+    if (args.types) { refused++; throw new Error("The request failed. Try again."); }
+    return original.call(host, name, args);
+  };
+  app.click(app.root.querySelector('.chips button[data-types="person"]'));
+  await app.waitFor(() => refused === 1, "filter requested");
+  host.callTool = original;
+  // Re-centring on a neighbour afterwards loads it unfiltered: the failed filter never took effect.
+  app.click(app.root.querySelector("tbody button[data-node]"));
+  await app.waitFor(() => app.calls.some((c) => c.name === "get_entity_graph"), "re-centred");
+  assert.equal(app.calls.at(-1).args.types, undefined);
+
+  // Select a non-person neighbour, then filter to people: it is unselected and the selection re-shared.
+  const fresh = await mount(t, "get_entity_graph", { canShare: true });
+  fresh.show(d);
+  const other = d.nodes.find((n) => n.id !== d.seed && n.type !== "person");
+  const spoke = fresh.root.querySelector(`g.node-link[data-pick="${other.id}"]`);
+  fresh.click(spoke.querySelector("text.label"));
+  await fresh.waitFor(() => fresh.lastShared().focus?.[1]?.id === other.id, "neighbour selected");
+  fresh.show(await payload("get_entity_graph", { seed: "person:100", types: ["person"] }));
+  assert.equal(fresh.lastShared().focus.length, 1, "only the centre remains");
+  assert.deepEqual(fresh.lastShared().records, []);
+});
+
+test("bibliography: a slow earlier search cannot overwrite a newer one, and a failed one keeps the filters", async (t) => {
+  const app = await mount(t, "search_publications", { canShare: true });
+  app.show(await payload("search_publications"));
+  const gate = holdCalls(app, (name, args) => name === "search_publications" && args.keyword === "Decolonial");
+  t.after(gate.restore);
+  const form = app.root.querySelector("#publication-search");
+  form.querySelector('input[name="keyword"]').value = "Decolonial";
+  app.submit(form);
+  await app.waitFor(() => gate.held.length === 1, "first search held");
+  form.querySelector('input[name="keyword"]').value = "Migration";
+  app.submit(form);
+  await app.waitFor(() => app.lastShared().filters?.keyword === "Migration", "second search shown");
+  gate.release(0);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(app.lastShared().filters.keyword, "Migration", "the late answer is dropped");
+  assert.equal(app.root.querySelector('input[name="keyword"]').value, "Migration");
+
+  const host = app.win.__amiraHost, original = host.callTool;
+  host.callTool = async () => { throw new Error("The request failed. Try again."); };
+  app.root.querySelector('input[name="keyword"]').value = "Nothing";
+  app.submit(app.root.querySelector("#publication-search"));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  host.callTool = original;
+  app.click(app.root.querySelector("#next") ?? app.root.querySelector("#clear-selection"));
+  assert.equal(app.lastShared().filters.keyword, "Migration", "the failed filter was never committed");
+});
+
+test("timeline: a bar outside the filtered years explains itself instead of sending an inverted range", async (t) => {
+  const app = await mount(t, "list_years");
+  const d = await payload("list_years", { bucket: "decade", filters: { year_from: 2000 } });
+  // An item dated 1995–2005 counts in the 1990s bar too, although the filter starts in 2000.
+  d.results.unshift({ decade: "1990s", from: 1990, to: 1999, item_count: 1 });
+  app.show(d);
+  const early = [...app.root.querySelectorAll("rect[data-year]")].find((r) => Number(r.getAttribute("data-year")) < 2000);
+  assert.ok(early, "a ranged item draws a bar before the filter's first year");
+  const before = app.calls.length;
+  app.click(early);
+  assert.equal(app.calls.slice(before).filter((c) => c.name === "search_research_items").length, 0);
+  assert.match(app.root.querySelector("#timeline-evidence").textContent, /widen the year filter/);
+  const late = [...app.root.querySelectorAll("rect[data-year]")].find((r) => Number(r.getAttribute("data-year")) >= 2000);
+  app.click(late);
+  await app.waitFor(() => app.calls.some((c) => c.name === "search_research_items"), "records requested");
+  const args = app.calls.findLast((c) => c.name === "search_research_items").args;
+  assert.ok(args.year_from <= args.year_to && args.year_from >= 2000);
+  assertHealthy(app);
+});

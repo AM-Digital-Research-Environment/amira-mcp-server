@@ -12,6 +12,9 @@ let active;
 let filters = {};
 /** @type {PickerOption[] | null} */
 let lastLanguages = null;
+/** Searches answer only their latest request; one export runs at a time (#51). */
+const searchOrder = requestOrder();
+let exporting = false;
 // Languages are counted for the current search without its own language filter,
 // so the other languages stay selectable. Authors are the whole bibliography.
 const LANGUAGE_SCOPE = [
@@ -51,14 +54,18 @@ function authors() {
     return { value: r.value };
   });
 }
-/** @param {number} [offset] */
-async function search(offset) {
-  try {
-    render(await api.callTool("search_publications", Object.assign({}, filters, { offset: offset || 0, limit: 20 })));
-  } catch (_) {}
+/**
+ * `next` is a candidate: render() commits the filters the result echoes, so a
+ * failed search leaves the filters on screen in force (#51).
+ * @param {number} [offset]
+ * @param {ToolData} [next]
+ */
+function search(offset, next) {
+  return latestCall(searchOrder, "search_publications", Object.assign({}, next || filters, { offset: offset || 0, limit: 20 }), render);
 }
 async function exportSelection() {
-  if (!selected.size) return;
+  if (!selected.size || exporting) return;
+  exporting = true;
   const button = document.getElementById("export-selected");
   button.disabled = true;
   const format = document.getElementById("export-format").value;
@@ -90,13 +97,15 @@ async function exportSelection() {
   } catch (error) {
     api.status(/** @type {Error} */ (error).message);
   } finally {
-    button.disabled = selected.size === 0;
+    exporting = false;
+    const current = document.getElementById("export-selected"); // the page may have re-rendered
+    if (current) current.disabled = selected.size === 0;
   }
 }
 function selection() {
   const count = document.getElementById("selection-count");
   count.textContent = selected.size + " selected (maximum 25)";
-  document.getElementById("export-selected").disabled = !selected.size;
+  document.getElementById("export-selected").disabled = exporting || !selected.size;
   share();
 }
 // What the model is told the reader is working with: the filters, and the
@@ -198,6 +207,8 @@ function renderFile(d) {
 }
 /** @param {ToolData} d */
 function render(d) {
+  // This result supersedes every search still loading.
+  searchOrder.next();
   if (d.export || d.citation_format) {
     renderFile(d);
     return;
@@ -279,12 +290,10 @@ function render(d) {
       if (entry[1]) next[entry[0]] = entry[0].startsWith("year_") ? Number(entry[1]) : entry[1];
       else delete next[entry[0]];
     }
-    filters = next;
-    search();
+    search(0, next);
   };
   document.getElementById("clear-filters").onclick = function () {
-    filters = {};
-    search();
+    search(0, {});
   };
   document.getElementById("root").onchange = function (event) {
     const box = event.target;

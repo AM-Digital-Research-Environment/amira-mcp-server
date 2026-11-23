@@ -12,6 +12,10 @@ const W = 720,
   PAD_T = 10,
   PAD_B = 26;
 
+/** The chart's loads, and the bar's records: each answers only its latest request (#51). */
+const chartOrder = requestOrder(),
+  recordsOrder = requestOrder();
+
 // Projects with research items, by name; a project is chosen by id but a name
 // passed by the model still selects it. Subjects are suggestions, ranked by use.
 function projects() {
@@ -41,6 +45,9 @@ function subjects() {
 
 /** @param {ToolData} payload */
 function render(payload) {
+  // This result supersedes every chart or records request still loading.
+  chartOrder.next();
+  recordsOrder.next();
   const rows = (payload && payload.results) || [];
   const root = document.getElementById("root");
   const isDecade = payload.bucket === "decade";
@@ -218,23 +225,30 @@ function render(payload) {
   from.oninput = to.oninput = rangeLabels;
   rangeLabels();
   const baseFilters = Object.assign({}, (payload.filters || {}).filters || {});
+  const windowFrom = (payload.filters || {}).from,
+    windowTo = (payload.filters || {}).to;
   /**
+   * The records of one bar, within the active window and year filters: a
+   * ranged item drawn in an earlier bar must not turn the bounds into an
+   * inverted range (#51).
    * @param {number} lo
    * @param {number} hi
    * @param {number} [offset]
    */
-  async function evidence(lo, hi, offset) {
-    try {
-      const args = Object.assign({}, baseFilters, {
-        year_from: Math.max(lo, baseFilters.year_from || 0),
-        year_to: Math.min(hi, baseFilters.year_to || 2200),
-        offset: offset || 0,
-        limit: 20,
-      });
-      const d = await api.callTool("search_research_items", args);
+  function evidence(lo, hi, offset) {
+    const from = Math.max(lo, windowFrom ?? lo, baseFilters.year_from ?? lo),
+      to = Math.min(hi, windowTo ?? hi, baseFilters.year_to ?? hi);
+    if (from > to) {
+      recordsOrder.next();
+      document.getElementById("timeline-evidence").innerHTML =
+        '<p class="note">This bar counts items whose date ranges reach into it from the filtered years; widen the year filter to list them.</p>';
+      return;
+    }
+    const args = Object.assign({}, baseFilters, { year_from: from, year_to: to, offset: offset || 0, limit: 20 });
+    latestCall(recordsOrder, "search_research_items", args, function (d) {
       evidenceList(
         document.getElementById("timeline-evidence"),
-        lo + "–" + hi + " · " + d.total_matches + " matching records",
+        from + "–" + to + " · " + d.total_matches + " matching records",
         d,
         citationLink,
         "next-evidence",
@@ -242,7 +256,7 @@ function render(payload) {
           evidence(lo, hi, next);
         },
       );
-    } catch (_) {}
+    });
   }
   root.onclick = function (event) {
     const el = event.target.closest("[data-year]");
@@ -254,49 +268,39 @@ function render(payload) {
       event.target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     }
   };
-  document.getElementById("timeline-filter").onsubmit = async function (event) {
+  document.getElementById("timeline-filter").onsubmit = function (event) {
     event.preventDefault();
     if (Number(from.value) > Number(to.value)) {
       api.status("From year must precede to year.");
       return;
     }
     const form = new FormData(/** @type {HTMLFormElement} */ (event.target));
-    baseFilters.subject = form.get("subject") || undefined;
-    baseFilters.project_id = form.get("project_id") || undefined;
-    try {
-      render(
-        await api.callTool("list_years", {
-          bucket: payload.bucket,
-          from: Number(from.value),
-          to: Number(to.value),
-          filters: baseFilters,
-          limit: 200,
-        }),
-      );
-    } catch (_) {}
+    // Candidate filters: committed by render() from the result, never before it (#51).
+    const filters = Object.assign({}, baseFilters, {
+      subject: form.get("subject") || undefined,
+      project_id: form.get("project_id") || undefined,
+    });
+    latestCall(
+      chartOrder,
+      "list_years",
+      { bucket: payload.bucket, from: Number(from.value), to: Number(to.value), filters: filters, limit: 200 },
+      render,
+    );
   };
   const nextBuckets = document.getElementById("next-buckets");
   if (nextBuckets)
-    nextBuckets.onclick = async function () {
-      try {
-        render(
-          await api.callTool(
-            "list_years",
-            Object.assign({}, payload.filters || {}, {
-              bucket: payload.bucket,
-              offset: payload.next_offset,
-              limit: 200,
-            }),
-          ),
-        );
-      } catch (_) {}
+    nextBuckets.onclick = function () {
+      latestCall(
+        chartOrder,
+        "list_years",
+        Object.assign({}, payload.filters || {}, { bucket: payload.bucket, offset: payload.next_offset, limit: 200 }),
+        render,
+      );
     };
 }
 
-async function reset() {
-  try {
-    render(await api.callTool("list_years", { bucket: "decade", limit: 200 }));
-  } catch (_) {}
+function reset() {
+  latestCall(chartOrder, "list_years", { bucket: "decade", limit: 200 }, render);
 }
 
 export { render };

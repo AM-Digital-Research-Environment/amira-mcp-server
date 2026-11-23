@@ -726,13 +726,17 @@ test("every tool name a view passes to callTool or pickerLoad is on the bridge's
       if (m[2]) used.add(m[2]);
       else dynamic.push(`${file}: callTool(${m[1]}`);
     }
-    // pickerLoad(key, tool, ...): the tool is the second argument.
+    // latestCall(order, tool, ...) and pickerLoad(key, tool, ...): the tool is the second argument.
+    for (const m of source.matchAll(/\blatestCall\(\s*[^,]+,\s*("([a-z_]+)"|[^,\s]+)/g)) {
+      if (m[2]) used.add(m[2]);
+      else if (!file.startsWith("_shared")) dynamic.push(`${file}: latestCall(…, ${m[1]}`);
+    }
     for (const m of source.matchAll(/\bpickerLoad\(\s*[^,]+,\s*("([a-z_]+)"|[^,\s]+)/g)) {
       if (m[2]) used.add(m[2]);
       else if (!file.startsWith("_shared")) dynamic.push(`${file}: pickerLoad(…, ${m[1]}`);
     }
   }
-  // The one call with a variable tool name is pickerLoad's own, fed by the literals above.
-  assert.deepEqual(dynamic, ["_shared.js: callTool(tool"]);
+  // The calls with a variable tool name are pickerLoad's and latestCall's own, fed by the literals above.
+  assert.deepEqual(dynamic, ["_shared.js: callTool(tool", "_shared.js: callTool(tool"]);
   assert.deepEqual([...used].sort(), [...BRIDGE_TOOLS].sort());
 });
