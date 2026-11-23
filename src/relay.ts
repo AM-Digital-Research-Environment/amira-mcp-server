@@ -179,22 +179,26 @@ export async function startRelay(opts: RelayOptions): Promise<RelayHandle> {
     if (isJSONRPCRequest(message)) {
       const key = keyOf(message.id);
       const controller = new AbortController();
+      // Whether the pending entry for this id is still this request's: a client
+      // reusing an id in flight hands it to the newer request (#55).
+      const ours = () => pending.get(key)?.controller === controller;
       // The relay's own deadline: without it, a request whose answer never
       // comes (a hung server that keeps the stream open) would wait forever.
       const timer = setTimeout(() => {
-        if (!pending.has(key)) return;
+        if (!ours()) return;
         answerWithError(key, Object.assign(new Error("relay timeout"), { name: "RelayTimeout", timeoutSeconds: Math.round(timeoutMs / 1000) }));
         controller.abort();
       }, timeoutMs);
       timer.unref?.();
-      settle(key); // a client reusing an id in flight: the newer request owns it
+      // A client reusing an id in flight: the newer request owns it, and the older exchange is aborted.
+      settle(key)?.controller.abort();
       pending.set(key, { id: message.id, method: message.method, controller, timer });
       remote
         .send(message, {
           requestSignal: controller.signal,
           // The response stream ended (after any reconnection attempts) without an answer.
           onRequestStreamEnd: () => {
-            if (!controller.signal.aborted && pending.has(key)) {
+            if (!controller.signal.aborted && ours()) {
               answerWithError(key, Object.assign(new Error("no answer"), { name: "StreamClosedError" }));
             }
           },
@@ -202,8 +206,8 @@ export async function startRelay(opts: RelayOptions): Promise<RelayHandle> {
         .catch((err) => {
           if (err && typeof err === "object") handled.add(err);
           if (controller.signal.aborted) {
-            if (pending.get(key)?.controller === controller) settle(key);
-          } else answerWithError(key, err);
+            if (ours()) settle(key);
+          } else if (ours()) answerWithError(key, err);
         });
       return;
     }

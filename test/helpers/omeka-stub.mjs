@@ -188,6 +188,11 @@ export async function startOmekaStub(state = {}) {
     // Omeka (or the proxy in front of it) briefly down: every API request fails.
     if (state.mode === "down") return reply(502, { error: "Bad Gateway" });
     if (keyed && state.mode === "deny") return reply(state.denyStatus, { errors: { error: "Invalid API key" } });
+    // A misconfigured AMIRA_API_BASE behind a redirecting proxy (the key would go along).
+    if (state.mode === "redirect") {
+      res.writeHead(302, { Location: `http://elsewhere.test${url.pathname}${url.search}`, Connection: "close" });
+      return res.end();
+    }
     // An unknown key is silently ignored, as Omeka does: the request is served as anonymous.
     const validKey = state.keyAccepted && url.searchParams.get("key_identity") === KEY.identity &&
       url.searchParams.get("key_credential") === KEY.credential;

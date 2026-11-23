@@ -152,6 +152,9 @@ test("bound to loopback, the Host header must be loopback too (DNS-rebinding gua
   for (const host of ["localhost", "localhost:8787", "127.0.0.1", "[::1]:8787"]) {
     assert.equal((await send(local.base, { headers: { Host: host } })).status, 200, host);
   }
+  // Host names are case-insensitive: HOST=Localhost binds loopback too, and gets the guard (#55).
+  const mixed = await serve({ host: "Localhost" });
+  assert.equal((await send(mixed.base, { headers: { Host: "evil.example" } })).status, 403);
   // A public bind (behind a proxy) does not apply the loopback Host guard.
   const pub = await serve({ host: "0.0.0.0" });
   assert.equal((await send(pub.base, { headers: { Host: "amira.example.org" } })).status, 200);

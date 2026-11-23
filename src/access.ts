@@ -18,6 +18,7 @@ import * as path from "node:path";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { config } from "./config.js";
 import { normalizeApiBase } from "./snapshotIdentity.js";
+import { resolveToolProfile } from "./toolProfiles.js";
 
 export interface OmekaKey {
   identity: string;
@@ -417,6 +418,12 @@ export function accessConfigErrors(entry: EntryPoint, cfg: typeof config = confi
   }
   if (entry === "http" && !(Number.isInteger(cfg.httpPort) && cfg.httpPort >= 0 && cfg.httpPort <= 65535)) {
     errors.push(`PORT / AMIRA_HTTP_PORT must be an integer from 0 to 65535 (got ${JSON.stringify(String(cfg.httpPortSetting).slice(0, 40))})`);
+  }
+  // A typo would otherwise keep /healthz at 200 while every request fails (#55).
+  try {
+    resolveToolProfile(cfg.toolProfileSetting);
+  } catch (err) {
+    errors.push((err as Error).message);
   }
   if (cfg.apiBaseSetting !== null) {
     try {

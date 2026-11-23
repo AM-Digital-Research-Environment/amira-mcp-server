@@ -413,6 +413,33 @@ test("relay: stdin closing with a request in flight shuts the relay down and abo
   assert.ok(!stderr.includes(ALICE));
 });
 
+test("relay: a client reusing an id in flight aborts the older exchange; only the newer request answers (#55)", async () => {
+  const fake = await startFake();
+  const child = spawn(process.execPath, [SERVER_STDIO], { env: childEnv({ AMIRA_CACHE_DIR: tempDir("relay-cache"), ...relayEnv(ALICE, fake.url) }),
+    stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  let stdout = "", stderr = "";
+  child.stdout.on("data", (c) => (stdout += c));
+  child.stderr.on("data", (c) => (stderr += c));
+  const exited = new Promise((r) => child.once("exit", r));
+  const line = (m) => child.stdin.write(`${JSON.stringify(m)}\n`);
+  const answers = () => stdout.split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((m) => m.id === 7);
+  line({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } } });
+  line({ jsonrpc: "2.0", method: "notifications/initialized" });
+  line({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "hang", arguments: {} } });
+  for (let i = 0; i < 100 && !fake.seen.posts.some((p) => p.method === "tools/call"); i++) await new Promise((r) => setTimeout(r, 50));
+  line({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "slow", arguments: {} } });
+  for (let i = 0; i < 100 && !answers().length; i++) await new Promise((r) => setTimeout(r, 50));
+  await new Promise((r) => setTimeout(r, 200)); // a late second answer would arrive here
+  // Checked before stdin closes: shutting the relay down would abort it anyway.
+  const abortedWhileRunning = fake.seen.aborted.includes(7);
+  child.stdin.end();
+  const timer = setTimeout(() => child.kill("SIGKILL"), 10_000);
+  await exited;
+  clearTimeout(timer);
+  assert.deepEqual(answers().map((m) => m.result?.content?.[0]?.text ?? m.error?.message), ["done"], stderr);
+  assert.ok(abortedWhileRunning, "the displaced exchange was aborted when its id was reused");
+});
+
 test("the token appears in no relay's stderr, an upstream body echoing it is never logged, and no relay writes a cache", async () => {
   // Self-contained: its own relay, against the fake remote whose 502 body echoes the token.
   const fake = await startFake();

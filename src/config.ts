@@ -105,7 +105,7 @@ export function parseAllowedOriginHostnames(raw: string | undefined): string[] {
     if (!value) continue;
     try {
       const url = new URL(value.includes("://") ? value : `http://${value}`);
-      if (!url.hostname || value === "*") throw new Error("wildcards are not valid origins");
+      if (!url.hostname || url.hostname.includes("*")) throw new Error("wildcards are not valid origins");
       allowed.add(url.hostname.toLowerCase());
     } catch {
       console.error(
@@ -248,6 +248,8 @@ export function loadConfig(env: Env) {
     curatorRelay: envValue("AMIRA_CURATOR_TOKEN", env) !== undefined,
     /** Curator relay: the curator endpoint it forwards to (AMIRA_CURATOR_URL). */
     curatorUrl: envValue("AMIRA_CURATOR_URL", env) ?? DEFAULT_CURATOR_URL,
+    /** AMIRA_TOOL_PROFILE as given, validated at startup (src/access.ts) and resolved per server (src/toolProfiles.ts). */
+    toolProfileSetting: envValue("AMIRA_TOOL_PROFILE", env) ?? "full",
     /** Whether a single shared bearer token is configured (refused in curator mode). */
     bearerTokenConfigured: envValue("AMIRA_MCP_TOKEN_FILE", env) !== undefined || envValue("AMIRA_MCP_BEARER_TOKEN", env) !== undefined,
     /** Whether AMIRA_MCP_TOKEN_FILE is set: a public HTTP server refuses to start when it yields no token (#47). */

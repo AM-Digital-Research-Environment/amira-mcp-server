@@ -280,12 +280,21 @@ function readBody(req: IncomingMessage, limit: number): Promise<string | null> {
     const chunks: Buffer[] = [];
     let size = 0;
     let over = false;
-    req.on("data", (chunk: Buffer) => {
+    const onData = (chunk: Buffer) => {
       size += chunk.length;
-      if (size > limit) over = true;
-      else if (!over) chunks.push(chunk);
-    });
-    req.on("end", () => resolve(over ? null : Buffer.concat(chunks).toString("utf8")));
+      if (size <= limit) {
+        chunks.push(chunk);
+        return;
+      }
+      // Over the limit: stop reading at once rather than draining a chunked
+      // body to its end before answering 413 (#55).
+      over = true;
+      req.off("data", onData);
+      req.pause();
+      resolve(null);
+    };
+    req.on("data", onData);
+    req.on("end", () => { if (!over) resolve(Buffer.concat(chunks).toString("utf8")); });
     req.on("error", reject);
   });
 }
@@ -345,7 +354,8 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
   // clients must use localhost or a hostname configured in AMIRA_ALLOWED_ORIGINS.
   // When bound to loopback, also apply the SDK's Host-header guard.
   const validateOrigin = originValidation(opts.allowedOriginHostnames ?? config.allowedOriginHostnames);
-  const validateHost = ["127.0.0.1", "localhost", "::1", "[::1]"].includes(host) ? localhostHostValidation() : null;
+  // Host names are case-insensitive: HOST=Localhost is loopback too (#55).
+  const validateHost = ["127.0.0.1", "localhost", "::1", "[::1]"].includes(host.toLowerCase()) ? localhostHostValidation() : null;
   const access = opts.access ?? config.access;
   let tokens: TokenStore | null = null;
   if (access === "curator") {
@@ -360,7 +370,12 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
   const auditRefusal = cappedLog(AUTH_LOG_LINES_PER_MINUTE, audit);
   const authorized = tokens ? null : bearerCheck(opts.bearerToken ?? config.bearerToken);
   const metrics = createRequestMetrics();
-  const mcpEntry = createMcpHandler(() => createAmiraServer({ openai: true }), { maxRequestBodySize: MAX_REQUEST_BYTES });
+  // The handler reports factory and protocol failures to its own onerror, not
+  // to toNodeHandler's: without this one they were silent (#55).
+  const mcpEntry = createMcpHandler(() => createAmiraServer({ openai: true }), {
+    maxRequestBodySize: MAX_REQUEST_BYTES,
+    onerror: (err) => console.error(`[amira] mcp handler error: ${err.message}`),
+  });
   const mcpHandler = toNodeHandler(mcpEntry, {
     maxRequestBodySize: MAX_REQUEST_BYTES,
     onerror: (err) => console.error("[amira] mcp handler error:", err),
@@ -370,10 +385,17 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
   const curatorRequest = async (req: IncomingMessage, res: ServerResponse, curator: string): Promise<void> => {
     let body: unknown;
     if (req.method === "POST") {
+      // As the SDK answers in public mode, before reading the body (#55).
+      if (!String(req.headers["content-type"] ?? "").toLowerCase().includes("application/json")) {
+        sendJson(res, 415, { jsonrpc: "2.0", error: { code: -32000, message: "Unsupported Media Type: Content-Type must be application/json" }, id: null });
+        audit(`[amira] audit curator=${curator} rejected=unsupported_media_type`);
+        return;
+      }
       const raw = await readBody(req, MAX_REQUEST_BYTES);
       if (raw === null) {
         res.writeHead(413, { "Content-Type": "application/json", Connection: "close" });
-        res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message: "Request body too large" }, id: null }));
+        // The rest of an oversized body is never read: the connection goes once the answer is out.
+        res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message: "Request body too large" }, id: null }), () => req.destroy());
         audit(`[amira] audit curator=${curator} rejected=body_too_large`);
         return;
       }

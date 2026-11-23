@@ -465,9 +465,23 @@ test("a bogus key is refused before any crawl, and no curator snapshot is writte
 
 test("probeCuratorAuth fails closed on an empty array, a non-array or a public result", async () => {
   await lib.probeCuratorAuth(stub.api);
-  for (const path of ["items?is_public=0&per_page=1&resource_template_id=999", "items?is_public=1&per_page=1", "media?per_page=10", "resource_classes/1"]) {
+  // properties: rows without o:is_public prove nothing about the key (#55).
+  for (const path of ["items?is_public=0&per_page=1&resource_template_id=999", "items?is_public=1&per_page=1", "media?per_page=10", "resource_classes/1",
+    "properties?per_page=1"]) {
     await assert.rejects(lib.probeCuratorAuth(stub.api, undefined, path), (err) => err.omekaAuth === true && /lacks view-all/.test(err.message), path);
   }
+});
+
+test("a keyed request that is redirected fails at once, without following or retrying (#55)", async () => {
+  stub.state.mode = "redirect";
+  const before = stub.requests.length;
+  try {
+    await assert.rejects(lib.fetchJSON(`${stub.api}/items?per_page=1`), (err) =>
+      /HTTP 302: the API redirected a request that carries the key/.test(err.message) && !err.message.includes(KEY.credential));
+  } finally {
+    stub.state.mode = "auth";
+  }
+  assert.equal(stub.requests.length - before, 1, "asked once, not four times");
 });
 
 // --- secrets ---------------------------------------------------------------------------------------

@@ -251,6 +251,34 @@ test("curator responses are never stored by intermediaries, and CORS reflects th
   assert.notEqual(open.headers["cache-control"], "no-store");
 });
 
+test("curator requests: a non-JSON body is 415 before it is parsed; an oversized one is refused without reading to the end (#55)", async (t) => {
+  const audit = [];
+  const app = lib.createHttpApp({ access: "curator", tokensFile, tokenReloadMs: 0, rateLimitPerMinute: 0, audit: (l) => audit.push(l) });
+  const server = createServer(app.listener);
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  t.after(async () => { server.closeAllConnections(); await new Promise((r) => server.close(r)); await app.close(); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const auth = { Authorization: `Bearer ${TOKEN}` };
+  const plain = await send(base, { ...auth, "Content-Type": "text/plain" });
+  assert.equal(plain.status, 415, "as in public mode");
+  assert.match(audit.at(-1), /rejected=unsupported_media_type$/);
+
+  // A chunked body that never ends: the 413 must come once the limit is passed.
+  const status = await new Promise((resolve, reject) => {
+    const req = request(new URL("/mcp", base), { method: "POST", agent: false,
+      headers: { ...auth, "Content-Type": "application/json", "Transfer-Encoding": "chunked" } }, (res) => {
+      res.resume();
+      resolve(res.statusCode);
+      req.destroy();
+    });
+    req.on("error", (err) => { if (err.code !== "ECONNRESET" && err.code !== "EPIPE") reject(err); });
+    for (let i = 0; i < 70; i++) req.write(" ".repeat(1024));
+    // deliberately not ended
+  });
+  assert.equal(status, 413);
+  assert.match(audit.at(-1), /rejected=body_too_large$/);
+});
+
 // --- name lookups ------------------------------------------------------------------------
 
 test("a retired private duplicate never shadows the public authority of the same name", () => {

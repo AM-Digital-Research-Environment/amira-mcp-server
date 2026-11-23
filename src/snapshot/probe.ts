@@ -21,8 +21,10 @@ export const KEY_NOT_ACCEPTED = "Omeka key not accepted or lacks view-all";
  */
 export async function probeCuratorAuth(apiBase: string, signal?: AbortSignal, probePath = config.curatorAuthProbe): Promise<void> {
   const { body } = await fetchJSON<unknown>(`${apiBase}/${probePath}`, signal);
+  // Every row must be a resource marked private: a row without o:is_public
+  // proves nothing about the key (#55).
   const ok = Array.isArray(body) && body.length > 0 &&
-    !body.some((r) => r && typeof r === "object" && (r as Record<string, unknown>)["o:is_public"] === true);
+    body.every((r) => r !== null && typeof r === "object" && (r as Record<string, unknown>)["o:is_public"] === false);
   if (!ok) {
     throw Object.assign(new Error(`${KEY_NOT_ACCEPTED}: the authentication probe found no private resource`), { omekaAuth: true });
   }

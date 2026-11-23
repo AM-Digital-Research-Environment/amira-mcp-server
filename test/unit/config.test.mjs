@@ -94,6 +94,15 @@ test("a real value still overrides, and the placeholder guard is narrow", () => 
   assert.equal(lib.isTemplatePlaceholder(undefined), true);
 
   assert.deepEqual(lib.parseAllowedOriginHostnames(undefined), ["localhost", "127.0.0.1", "[::1]"]);
+  // A wildcard is refused in every spelling, not only the bare `*` (#55).
+  assert.deepEqual(lib.parseAllowedOriginHostnames("*,http://*,https://*.example.org,app.example.org"),
+    ["localhost", "127.0.0.1", "[::1]", "app.example.org"]);
+});
+
+test("AMIRA_TOOL_PROFILE is checked at startup, not on the first request (#55)", () => {
+  assert.deepEqual(lib.accessConfigErrors("http", { ...lib.config, toolProfileSetting: "research" }), []);
+  assert.match(lib.accessConfigErrors("http", { ...lib.config, toolProfileSetting: "reserch" }).join(" "),
+    /AMIRA_TOOL_PROFILE must be full, research, discovery or visualization/);
 });
 
 // --- loadConfig: other environments, in-process ------------------------------------

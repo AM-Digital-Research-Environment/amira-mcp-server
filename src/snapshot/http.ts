@@ -78,7 +78,16 @@ export async function fetchRetrying<T>(url: string, read: (res: Response) => Pro
       keyed = key !== null;
       const timeout = AbortSignal.timeout(timeoutMs);
       const res = await fetch(key ? withOmekaKey(url, key) : url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-        headers: { "User-Agent": USER_AGENT, ...opts.headers }, ...(key ? { redirect: "error" as const } : {}) });
+        headers: { "User-Agent": USER_AGENT, ...opts.headers }, ...(key ? { redirect: "manual" as const } : {}) });
+      // A keyed request never follows a redirect. With redirect "error" the
+      // refusal was a TypeError, classed as transient, so a redirecting
+      // AMIRA_API_BASE was asked four times, key in the query each time (#55).
+      // The answer is read as a final error instead; its Location is not logged.
+      if (key && res.status >= 300 && res.status < 400) {
+        await res.body?.cancel();
+        throw Object.assign(new Error(`HTTP ${res.status}: the API redirected a request that carries the key; check AMIRA_API_BASE`),
+          { status: res.status });
+      }
       if (!res.ok) {
         const header = res.headers.get("retry-after");
         retryAfter = header ? (Number.isFinite(Number(header)) ? Number(header) * 1000 : Date.parse(header) - Date.now()) : 0;
