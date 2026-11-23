@@ -271,14 +271,15 @@ test("get_fulltext_map words: rates per 10,000 words, sparse years, near forms",
 test("get_fulltext_map words: the exact form wins over an accent-folded namesake (#44)", async () => {
   const plain = (await call("get_fulltext_map", { words: ["Role"] })).words;
   assert.deepEqual(plain.counted, ["role"]);
-  assert.deepEqual(plain.totals.role.count, 50);
-  const accented = (await call("get_fulltext_map", { words: ["rôle"] })).words;
-  assert.deepEqual(accented.counted, ["rôle"]);
-  assert.equal(accented.totals["rôle"].count, 2);
+  assert.equal(plain.totals.role.count, 50);
+  const ACCENTED = "rôle";
+  const accented = (await call("get_fulltext_map", { words: [ACCENTED] })).words;
+  assert.deepEqual(accented.counted, [ACCENTED]);
+  assert.equal(accented.totals[ACCENTED].count, 2);
   // No exact form: every folded form is counted, each under its own name.
   const folded = (await call("get_fulltext_map", { words: ["rõle"] })).words;
-  assert.deepEqual(folded.counted, ["role", "rôle"]);
-  assert.deepEqual([folded.totals.role.count, folded.totals["rôle"].count], [50, 2]);
+  assert.deepEqual(folded.counted, ["role", ACCENTED]);
+  assert.deepEqual([folded.totals.role.count, folded.totals[ACCENTED].count], [50, 2]);
 });
 
 test("no surface returns more than the public derived numbers", async () => {
