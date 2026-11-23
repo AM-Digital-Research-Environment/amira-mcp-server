@@ -145,10 +145,10 @@ process.stdout.write(JSON.stringify(out) + "\\n"); // then exit naturally: nothi
 `;
 
 /** Run CHILD against `stub` and resolve its report plus its stderr log. */
-async function runChild(stub, { manifest, env, extra } = {}) {
+async function runChild(stub, { manifest, env, extra, script = CHILD, nodeArgs = [] } = {}) {
   const dataDir = await writeFixture(stub, manifest, extra);
   const cacheDir = tempDir("refresh-cache");
-  const child = spawn(process.execPath, ["--input-type=module", "-e", CHILD], {
+  const child = spawn(process.execPath, [...nodeArgs, "--input-type=module", "-e", script], {
     cwd: REPO_ROOT, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
     env: refreshEnv(stub, dataDir, cacheDir, {
       T_LIB: LIB_URL, T_MCP: pathToFileURL(path.join(REPO_ROOT, "test", "helpers", "mcp.mjs")).href, ...env,
@@ -219,6 +219,30 @@ test("a refreshed snapshot is swapped in with its indexes already built", { time
   assert.equal(report.swapped, true, stderr);
   // Built before the swap (src/warm.ts): no request on the new snapshot pays for it.
   assert.equal(report.warm, true);
+});
+
+// Nothing may keep the startup store alive once a refresh has replaced it (#46).
+const GC_CHILD = `
+const lib = await import(process.env.T_LIB);
+let first = await lib.ensureStore();
+const firstRef = new WeakRef(first);
+first = null;
+for (const deadline = Date.now() + 8000; Date.now() < deadline;) {
+  const r = lib.refreshStatus();
+  if (r.last_attempt && !r.in_flight) break;
+  await new Promise((r) => setTimeout(r, 20));
+}
+const swapped = lib.currentStore() !== firstRef.deref();
+for (let i = 0; i < 5 && firstRef.deref(); i++) { await new Promise((r) => setTimeout(r, 20)); globalThis.gc(); }
+process.stdout.write(JSON.stringify({ swapped, firstCollected: firstRef.deref() === undefined }) + "\\n");
+`;
+
+test("the startup store is collected once a refresh has replaced it", { timeout: 20_000 }, async (t) => {
+  const stub = await startStub({ maxModified: REMOTE_MODIFIED, total: 3 });
+  t.after(stub.close);
+  const { report, stderr } = await runChild(stub, { script: GC_CHILD, nodeArgs: ["--expose-gc"] });
+  assert.equal(report.swapped, true, stderr);
+  assert.equal(report.firstCollected, true, "the settled initial load must not retain the first store");
 });
 
 test("an unreachable vector release keeps the neighbours already served; AMIRA_SEMANTIC_RELEASE=off drops them", { timeout: 30_000 }, async (t) => {

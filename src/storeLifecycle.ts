@@ -372,6 +372,9 @@ export async function ensureStore(): Promise<DataStore> {
     loading = loadInitial()
       .then((store) => {
         current = store;
+        // Settled: drop the promise, or it would keep this first store alive
+        // after a refresh replaces it or a curator revocation drops it (#46).
+        loading = null;
         if (config.access === "curator") {
           // Loaded: a pending timer-driven retry is no longer needed.
           if (curator.retryTimer) clearTimeout(curator.retryTimer);
