@@ -199,6 +199,11 @@ function snapshotIds(data: SnapshotData): Record<SemanticKind, Set<number>> {
   return out;
 }
 
+
+/** A cosine as stored: ten-thousandths, clamped to ±10,000, since rows whose
+ * norms are just over 1 (verification allows 1e-3) can score above 1 (#48). */
+export const storedScore = (score: number): number => Math.max(-10_000, Math.min(10_000, Math.round(score * 10_000)));
+
 /**
  * Top neighbours of every embedded record present in `data`, by cosine (dot
  * product of L2-normalised rows): the best NEIGHBOURS_PER_TYPE of each record
@@ -233,10 +238,13 @@ export async function computeNeighbours(release: VerifiedRelease, data: Snapshot
     for (let b = 0; b < rows.length; b++) {
       const ob = rows[b]!.row * dims;
       let s0 = 0, s1 = 0, s2 = 0, s3 = 0;
-      for (let d = 0; d < dims; d += 4) {
+      let d = 0;
+      for (; d + 3 < dims; d += 4) {
         s0 += v[oa + d]! * v[ob + d]!; s1 += v[oa + d + 1]! * v[ob + d + 1]!;
         s2 += v[oa + d + 2]! * v[ob + d + 2]!; s3 += v[oa + d + 3]! * v[ob + d + 3]!;
       }
+      // A dimension count that is not a multiple of four must not read past the row (#48).
+      for (; d < dims; d++) s0 += v[oa + d]! * v[ob + d]!;
       scores[b] = s0 + s1 + s2 + s3;
     }
     // Per kind, keep the best `perType` (ties broken by Omeka id, so builds are reproducible).
@@ -251,7 +259,7 @@ export async function computeNeighbours(release: VerifiedRelease, data: Snapshot
       while (at > 0 && better(b, list[at - 1]!)) { list[at] = list[at - 1]!; list[--at] = b; }
     }
     const merged = best.flat().sort((x, y) => (better(x, y) ? -1 : 1));
-    if (merged.length) neighbours[String(rows[a]!.id)] = merged.flatMap((b) => [rows[b]!.id, Math.round(scores[b]! * 10_000)]);
+    if (merged.length) neighbours[String(rows[a]!.id)] = merged.flatMap((b) => [rows[b]!.id, storedScore(scores[b]!)]);
   }
   return {
     source: { repository: SEMANTIC_SOURCE.repository, tag: release.tag, model: release.manifest.model,

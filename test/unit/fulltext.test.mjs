@@ -118,13 +118,16 @@ test("validation rejects malformed or inconsistent files", () => {
   assert.throws(parse(mapFile(), badWords((w) => { w.words["the mbira is"] = [0, 1]; })));
 });
 
-test("a snapshot whose map file disagrees with its manifest does not load", async () => {
+test("a map file that disagrees with its manifest is dropped, or refused by a strict read (#48)", async () => {
   const dir = tempDir("amira-fulltext-");
   await lib.writeSnapshot(dir, { ...fixture, fulltext });
   const manifestPath = path.join(dir, "manifest.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   await writeFile(manifestPath, JSON.stringify({ ...manifest, fulltextMaps: { ...manifest.fulltextMaps, tag: "v0.0.1" } }));
-  await assert.rejects(lib.loadSnapshot(dir), /fulltext_maps\.json/);
+  const loaded = await lib.loadSnapshot(dir);
+  assert.equal(loaded.fulltext, null);
+  assert.equal(loaded.manifest.fulltextMaps, undefined);
+  await assert.rejects(lib.loadSnapshot(dir, { strict: true }), /fulltext_maps\.json/);
 });
 
 test("a snapshot carrying an older pin is stale, one without a map is not", () => {

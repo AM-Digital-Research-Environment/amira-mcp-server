@@ -47,7 +47,7 @@ export { scrub } from "./tools/responses.js";
 export { describeMarkdown } from "./skills.js";
 export { FULLTEXT_SOURCE, parseFulltextMaps, fulltextIndex, wordTrends } from "./fulltextMaps.js";
 export {
-  NEIGHBOURS_PER_TYPE, SEMANTIC_SOURCE, computeNeighbours, parseSemanticNeighbours, pickSemantic, semanticIndex, servableSemantic,
+  NEIGHBOURS_PER_TYPE, SEMANTIC_SOURCE, computeNeighbours, parseSemanticNeighbours, pickSemantic, semanticIndex, servableSemantic, storedScore,
   verifySemanticRelease,
 } from "./semantic.js";
 // Curator mode (#26).

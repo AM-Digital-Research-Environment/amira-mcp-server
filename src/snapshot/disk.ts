@@ -118,35 +118,41 @@ export async function loadSnapshot(dir: string, opts: { strict?: boolean } = {})
     }
     (data as unknown as Record<string, unknown[]>)[corpus] = arr;
   }
-  let fulltext: FulltextMaps | null = null;
-  if (manifest.fulltextMaps) {
-    fulltext = parseFulltextMaps(JSON.parse(await fs.readFile(path.join(dir, FULLTEXT_FILE), "utf8")));
-    const entry = fulltextManifestEntry(fulltext);
-    if (entry.tag !== manifest.fulltextMaps.tag || entry.articles !== manifest.fulltextMaps.articles) {
-      throw new Error(`snapshot ${FULLTEXT_FILE}: ${entry.tag} with ${entry.articles} articles, manifest says ${manifest.fulltextMaps.tag} with ${manifest.fulltextMaps.articles}`);
-    }
-  }
-  let semantic: SemanticNeighbours | null = null;
-  if (manifest.semanticNeighbours) {
+  // The full-text map and the neighbours are optional enrichments: an
+  // unreadable file (a torn write, a future format) must cost their tools, not
+  // the snapshot (#48). The writer verifies strictly, so a bad file is never published.
+  let served = manifest;
+  const optional = async <T>(file: string, entryKey: "fulltextMaps" | "semanticNeighbours", read: () => Promise<T>): Promise<T | null> => {
+    if (!manifest[entryKey]) return null;
     try {
-      semantic = parseSemanticNeighbours(JSON.parse(await fs.readFile(path.join(dir, SEMANTIC_FILE), "utf8")));
-      const entry = semanticManifestEntry(semantic);
-      if (entry.tag !== manifest.semanticNeighbours.tag || entry.sources !== manifest.semanticNeighbours.sources) {
-        throw new Error(`${entry.tag} with ${entry.sources} sources, manifest says ` +
-          `${manifest.semanticNeighbours.tag} with ${manifest.semanticNeighbours.sources}`);
-      }
+      return await read();
     } catch (err) {
-      // The neighbours are an optional enrichment: an unreadable file (a torn
-      // write, a future format) must cost the semantic tools, not the snapshot.
-      // The writer verifies strictly, so a bad file is never published.
-      if (opts.strict) throw new Error(`snapshot ${SEMANTIC_FILE}: ${(err as Error).message}`);
-      console.error(`[amira] snapshot ${SEMANTIC_FILE} ignored: ${(err as Error).message}`);
-      semantic = null;
-      const { semanticNeighbours: _unread, ...rest } = manifest;
-      return { data, manifest: rest, fulltext, semantic };
+      if (opts.strict) throw new Error(`snapshot ${file}: ${(err as Error).message}`);
+      console.error(`[amira] snapshot ${file} ignored: ${(err as Error).message}`);
+      const { [entryKey]: _unread, ...rest } = served;
+      served = rest;
+      return null;
     }
-  }
-  return { data, manifest, fulltext, semantic };
+  };
+  const fulltext = await optional(FULLTEXT_FILE, "fulltextMaps", async (): Promise<FulltextMaps> => {
+    const maps = parseFulltextMaps(JSON.parse(await fs.readFile(path.join(dir, FULLTEXT_FILE), "utf8")));
+    const entry = fulltextManifestEntry(maps);
+    const stated = manifest.fulltextMaps!;
+    if (entry.tag !== stated.tag || entry.articles !== stated.articles) {
+      throw new Error(`${entry.tag} with ${entry.articles} articles, manifest says ${stated.tag} with ${stated.articles}`);
+    }
+    return maps;
+  });
+  const semantic = await optional(SEMANTIC_FILE, "semanticNeighbours", async (): Promise<SemanticNeighbours> => {
+    const neighbours = parseSemanticNeighbours(JSON.parse(await fs.readFile(path.join(dir, SEMANTIC_FILE), "utf8")));
+    const entry = semanticManifestEntry(neighbours);
+    const stated = manifest.semanticNeighbours!;
+    if (entry.tag !== stated.tag || entry.sources !== stated.sources) {
+      throw new Error(`${entry.tag} with ${entry.sources} sources, manifest says ${stated.tag} with ${stated.sources}`);
+    }
+    return neighbours;
+  });
+  return { data, manifest: served, fulltext, semantic };
 }
 
 /**
@@ -161,7 +167,9 @@ export async function readSnapshotPointer(dir: string): Promise<SnapshotPointer 
   try { text = await fs.readFile(path.join(dir, "active.json"), "utf8"); }
   catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; throw err; }
   const value = JSON.parse(text) as SnapshotPointer;
-  if (!GENERATION.test(value.current) || !Array.isArray(value.previous) || value.previous.some((s) => !GENERATION.test(s))) {
+  // typeof first: GENERATION.test(undefined) tests the string "undefined" (#48).
+  const valid = (s: unknown): s is string => typeof s === "string" && GENERATION.test(s);
+  if (!value || typeof value !== "object" || !valid(value.current) || !Array.isArray(value.previous) || !value.previous.every(valid)) {
     throw new Error("Invalid snapshot generation pointer");
   }
   return value;
@@ -193,6 +201,9 @@ export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, sig
   const generation = randomUUID();
   const dir = path.join(destDir, "generations", generation);
   const pointerTmp = path.join(destDir, `active-${generation}.tmp`);
+  // Generations written by this call; removed again unless the pointer was published (#48).
+  const unpublished = [dir];
+  let published = false;
   try {
     await lock.writeFile(String(process.pid));
     // Only the manifest: parsing the whole served snapshot to read one date
@@ -203,12 +214,17 @@ export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, sig
     if (existing && Date.parse(existing.fetchedAt) > Date.parse(out.manifest.fetchedAt)) return null;
     await writeSnapshot(dir, out);
     const written = await loadSnapshot(dir, { strict: true });
-    let previous = await readSnapshotPointer(destDir);
+    // A pointer that cannot be parsed must not block every later write: replace it (#48).
+    let previous = await readSnapshotPointer(destDir).catch((err: Error) => {
+      console.error(`[amira] snapshot pointer in ${destDir} unreadable (${err.message}); replacing it`);
+      return null;
+    });
     if (!previous) {
       // Preserve a pre-generation cache on the first successful publication.
       const legacy = existing ? await loadSnapshot(destDir).catch(() => null) : null;
       if (legacy) {
         const legacyId = randomUUID();
+        unpublished.push(path.join(destDir, "generations", legacyId));
         await writeSnapshot(path.join(destDir, "generations", legacyId), legacy);
         previous = { current: legacyId, previous: [] };
       }
@@ -225,6 +241,7 @@ export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, sig
     finally { await pointer.close(); }
     signal?.throwIfAborted();
     await fs.rename(pointerTmp, path.join(destDir, "active.json"));
+    published = true;
     // Retain three generations and a 24h grace period for concurrent readers.
     for (const name of await fs.readdir(path.join(destDir, "generations"))) {
       if (!GENERATION.test(name) || name === generation || history.includes(name)) continue;
@@ -237,7 +254,10 @@ export async function writeSnapshotAtomic(destDir: string, out: CrawlOutput, sig
     return written;
   } finally {
     await fs.unlink(pointerTmp).catch(() => {});
-    await lock.close();
-    await fs.unlink(lockPath);
+    // A failed or aborted write (ENOSPC on the curator tmpfs) must not leave
+    // its generation behind to fill the disk further.
+    if (!published) for (const d of unpublished) await fs.rm(d, { recursive: true, force: true }).catch(() => {});
+    // The lock is removed even when closing its handle fails: nothing else reclaims it.
+    try { await lock.close(); } finally { await fs.unlink(lockPath); }
   }
 }

@@ -25,6 +25,7 @@ const {
   readFingerprints,
   readManifest,
   snapshotFingerprints,
+  storedScore,
 } = await import("../../server/lib.js");
 
 async function tempDir() {
@@ -235,6 +236,73 @@ test("failed promotion leaves the prior generation readable, and concurrent writ
   assert.equal((await fs.readdir(dir)).includes("writer.lock"), false);
   await writeSnapshotAtomic(dir, old);
   assert.equal((await loadSnapshot(dir)).manifest.fetchedAt, other.manifest.fetchedAt, "late older crawl cannot roll back the active snapshot");
+});
+
+const generationsOf = async (dir) => (await fs.readdir(path.join(dir, "generations"))).sort();
+
+test("a failed or aborted write leaves no generation and no lock behind (#48)", async (t) => {
+  const dir = await tempDir();
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const old = buildFixture(SNAPSHOT_SCHEMA_VERSION);
+  await writeSnapshotAtomic(dir, old);
+  const before = await generationsOf(dir);
+  const next = structuredClone(old);
+  next.manifest.fetchedAt = "2026-10-02T00:00:00Z";
+  const rename = fsDefault.rename;
+  const mock = t.mock.method(fsDefault, "rename", async (from, to) => {
+    if (path.basename(to) === "active.json") throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+    return rename(from, to);
+  });
+  await assert.rejects(writeSnapshotAtomic(dir, next), /ENOSPC/);
+  mock.mock.restore();
+  assert.deepEqual(await generationsOf(dir), before, "the unpublished generation was removed");
+  assert.equal((await fs.readdir(dir)).includes("writer.lock"), false);
+  // Aborted before the pointer moves: the same.
+  const controller = new AbortController();
+  const sync = fsDefault.open;
+  const abortMock = t.mock.method(fsDefault, "open", async (file, ...rest) => {
+    if (path.basename(String(file)).startsWith("active-")) controller.abort(new Error("aborted mid-write"));
+    return sync(file, ...rest);
+  });
+  await assert.rejects(writeSnapshotAtomic(dir, next, controller.signal), /aborted mid-write/);
+  abortMock.mock.restore();
+  assert.deepEqual(await generationsOf(dir), before);
+  assert.equal((await fs.readdir(dir)).includes("writer.lock"), false);
+});
+
+test("a corrupt generation pointer is replaced by the next write; non-string entries are invalid (#48)", async (t) => {
+  const dir = await tempDir();
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, "active.json"), "{not json");
+  const out = buildFixture(SNAPSHOT_SCHEMA_VERSION);
+  await writeSnapshotAtomic(dir, out);
+  assert.equal((await loadSnapshot(dir)).manifest.fetchedAt, out.manifest.fetchedAt);
+  for (const bad of [{ previous: [] }, { current: "a", previous: [null] }, { current: "a", previous: [undefined, 1] }, null]) {
+    await fs.writeFile(path.join(dir, "active.json"), JSON.stringify(bad));
+    await assert.rejects(readSnapshotPointer(dir), /Invalid snapshot generation pointer/, JSON.stringify(bad));
+  }
+});
+
+test("an unreadable full-text map costs the map, not the snapshot, unless the read is strict (#48)", async (t) => {
+  const dir = await tempDir();
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  await writeSnapshot(dir, buildFixture(SNAPSHOT_SCHEMA_VERSION));
+  const manifestPath = path.join(dir, "manifest.json");
+  const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+  await fs.writeFile(manifestPath, JSON.stringify({ ...manifest, fulltextMaps: { tag: "v1.0.0", articles: 3 } }));
+  await fs.writeFile(path.join(dir, "fulltext_maps.json"), "{torn");
+  const loaded = await loadSnapshot(dir);
+  assert.equal(loaded.fulltext, null);
+  assert.equal(loaded.manifest.fulltextMaps, undefined, "the manifest no longer claims the map");
+  assert.equal(loaded.data.persons.length, manifest.counts.persons);
+  await assert.rejects(loadSnapshot(dir, { strict: true }), /fulltext_maps\.json/);
+});
+
+test("stored neighbour scores are clamped to the range the reader accepts (#48)", () => {
+  assert.equal(storedScore(1.00004), 10_000);
+  assert.equal(storedScore(-1.0003), -10_000);
+  assert.equal(storedScore(0.93014), 9301);
 });
 
 test("refresh retries transient errors, rejects permanent errors and accepts cancellation", async (t) => {
