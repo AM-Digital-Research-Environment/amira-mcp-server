@@ -679,12 +679,15 @@ function render(d) {
   };
   document.getElementById("resolve").onsubmit = async function (event) {
     event.preventDefault();
+    const generation = currentGeneration();
     try {
       /** @type {ToolData} */
       const result = await api.callTool("resolve_entity", {
         query: new FormData(/** @type {HTMLFormElement} */ (event.target)).get("query"),
         limit: 20,
       });
+      // A host result replaced the graph meanwhile: these candidates have nowhere to go.
+      if (generation !== currentGeneration()) return;
       document.getElementById("candidates").innerHTML = result.results.length
         ? "<p>" +
           result.total_matches +

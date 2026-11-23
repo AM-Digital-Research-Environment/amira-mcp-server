@@ -340,6 +340,28 @@ function evidenceList(target, heading, data, item, moreId, onMore) {
 // earlier response overwrote a newer one (#51). Each stream of requests that
 // replaces one part of the screen keeps its own order; a newer request, or a
 // render from the host, makes every older response in that stream stale.
+//
+// Across views, the generation: the page shows one host result at a time, and a
+// host may deliver the next one, for another view, to the same frame while a
+// request of the first is still loading. The router advances the generation on
+// every host result, before any view renders it. A response requested under an
+// older generation belongs to a view no longer on screen: it neither renders
+// nor saves state, even when it is the latest of its own stream, since that
+// view's streams only advance when that view renders again.
+
+let amiraGeneration = 0;
+/** Called by the router (./_router.js) on each host result. */
+function nextGeneration() {
+  amiraGeneration++;
+}
+/**
+ * The generation on screen. Read it before an await, and compare after: a
+ * change means the result on screen is no longer the one that asked.
+ * @returns {number}
+ */
+function currentGeneration() {
+  return amiraGeneration;
+}
 
 /** @returns {{ next: () => number, isLatest: (ticket: number) => boolean }} */
 function requestOrder() {
@@ -355,8 +377,9 @@ function requestOrder() {
 }
 /**
  * Call a tool and apply its result only if no newer request in `order` was made
- * meanwhile. A failure applies nothing (the bridge reports it on the status
- * line), so state is committed only by `apply`, on success.
+ * meanwhile and no host result replaced the view (the generation). A failure
+ * applies nothing (the bridge reports it on the status line), so state is
+ * committed only by `apply`, on success.
  * @param {{ next: () => number, isLatest: (ticket: number) => boolean }} order
  * @param {string} tool
  * @param {Record<string, unknown>} args
@@ -364,14 +387,15 @@ function requestOrder() {
  * @returns {Promise<void>}
  */
 async function latestCall(order, tool, args, apply) {
-  const ticket = order.next();
+  const ticket = order.next(),
+    generation = currentGeneration();
   let data;
   try {
     data = await window.amiraApp.callTool(tool, args);
   } catch (_) {
     return;
   }
-  if (!order.isLatest(ticket)) return;
+  if (!order.isLatest(ticket) || generation !== currentGeneration()) return;
   try {
     apply(data);
   } catch (error) {

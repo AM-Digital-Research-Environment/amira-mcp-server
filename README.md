@@ -438,8 +438,9 @@ npm run smoke:http    # test/smoke/http.mjs: spawn the HTTP server on a free por
 npm run weigh         # token budget report (needs ./data — run fetch-data first)
 npm run benchmark     # offline latency baseline against ./data (30 warm samples per query)
 npm run lint          # Biome, lint rules only (biome.json)
-npm run evaluate-retrieval -- --judgments judgments.json --output report.json
-                      # precision, recall, nDCG and MRR at k against researcher-authored judgments
+npm run evaluate-retrieval -- --judgments judgments.json --output report.json [--k 10]
+                      # precision, recall, nDCG and MRR at k against researcher-authored judgments;
+                      # refuses a k a tool cannot return (cross-corpus search: 50)
 ```
 
 ### Token budgets

@@ -26,6 +26,9 @@ function amiraViewFor(payload) {
   return null;
 }
 window.amiraApp.onResult(function (payload) {
+  // Every request still loading now answers for a view no longer on screen
+  // (_shared.js, request order), whichever view this result opens.
+  nextGeneration();
   const name = amiraViewFor(payload),
     view = name && amiraViews[name];
   if (!view) {

@@ -63,10 +63,15 @@ function payload(result: CallToolResult): Payload {
 app.onhostcontextchanged = context;
 app.ontoolinput = (params) => { input = params.arguments ?? {}; };
 app.ontoolresult = (result) => {
+  let value: Payload;
+  // A failed result leaves the view on screen, and so its instance: what that
+  // view saves next is still its own (#32).
+  try { value = payload(result); }
+  catch (error) { status((error as Error).message); return; }
   const key = instanceKey(result, app.getHostContext()?.toolInfo?.id);
   instance = { key, pending: views.load(key), delivered: true };
   snapshot = snapshotOf(result) ?? snapshot;
-  try { status(""); render?.(payload(result)); }
+  try { status(""); render?.(value); }
   catch (error) { status((error as Error).message); }
 };
 app.ontoolcancelled = () => status("Request cancelled. Run the tool again to continue.");

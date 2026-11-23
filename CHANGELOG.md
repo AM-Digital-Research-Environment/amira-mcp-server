@@ -5,6 +5,39 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## Unreleased
+
+### MCP Apps
+
+- **A view switch drops what the previous view was still loading.** When a host
+  delivered a result for another view to the same frame while a request was
+  in flight, for example a map while a bibliography search was loading, the
+  late answer drew the old view over the new one. It also saved its state
+  under the new result's instance. Every host result now advances a
+  generation shared by all views. A response requested under an older
+  generation neither renders nor saves, and neither do the graph's name
+  lookup candidates. Whether a real host reuses a frame this way is untested.
+- A failed host result leaves the view on screen, and its saved state now
+  stays with it: the instance key changes only when a result renders.
+- **Saved view state is written in one piece.** The entries and their eviction
+  order were written separately, so a full storage quota could leave an entry
+  that loaded although `save()` reported failure, and that was never evicted.
+  The whole collection is now one versioned value (`amira-views`), and a
+  refused write leaves the previous collection as it was. The per-instance keys
+  1.43.0 wrote are removed on the first save, so state saved by 1.43.0 is not
+  restored.
+
+### Tooling
+
+- **`npm run evaluate-retrieval` refuses a depth a tool cannot serve.** It
+  asked cross-corpus `search` for at most 50 rows yet scored at the requested
+  `k`, so `--k 80` reported missing rows as misses (precision and recall capped
+  at 0.625 with every result relevant). A query is now scored only if its tool
+  returned k rows or ran out of matches. A tool that caps its `limit`, a page
+  the response budget cut short, or a judgment whose own `limit` is below `k`
+  stops the run with the queries named, and no report is written. `--data`
+  scores a snapshot directory other than `data/`.
+
 ## 1.43.0 — 2026-11-23
 
 Views that come back as they were left, an image of the map and graph for the

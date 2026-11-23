@@ -14,7 +14,10 @@
 // every access is guarded, and a refusal, a corrupt entry or an entry of
 // another version yields "nothing saved", never an error. Entries are small
 // (filters, ids, offsets; no transcripts, full text or exports), capped in
-// size, and the oldest are evicted past a fixed count.
+// size, and the oldest are evicted past a fixed count. All of them live in one
+// value, written in one setItem: a write the storage refuses (a full quota)
+// leaves the previous collection whole, never an entry without its place in
+// the eviction order.
 
 /** Bumped when the saved shape changes; other versions are ignored. */
 export const VIEW_STATE_VERSION = 1;
@@ -23,8 +26,10 @@ export const VIEW_STATE_MAX_CHARS = 16_000;
 /** Instances remembered; the least recently saved are evicted. */
 export const VIEW_STATE_MAX_ENTRIES = 40;
 
-const PREFIX = "amira-view:";
-const INDEX = `${PREFIX}index`;
+/** The one key holding every saved view, oldest first. */
+const STORE_KEY = "amira-views";
+/** 1.43.0 wrote one key per instance plus an index under this prefix; removed on the first save. */
+const LEGACY_PREFIX = "amira-view:";
 
 /** The `_meta` keys the server stamps on restorable results (src/tools/policy.ts). */
 export const VIEW_UUID_META = "viewUUID";
@@ -74,54 +79,71 @@ function defaultStorage(): Storage | null {
   }
 }
 
+/** An entry as saved, or null when it is unusable (another version, a malformed state). */
+function usable(value: unknown): SavedView | null {
+  const saved = value as Partial<SavedView> | null;
+  if (saved?.v !== VIEW_STATE_VERSION || typeof saved.view !== "string" || !saved.state || typeof saved.state !== "object"
+    || Array.isArray(saved.state)) return null;
+  return { v: VIEW_STATE_VERSION, view: saved.view, snapshot: typeof saved.snapshot === "string" ? saved.snapshot : null,
+    saved_at: typeof saved.saved_at === "number" ? saved.saved_at : 0, state: saved.state as Record<string, unknown> };
+}
+
 /** Saved states by instance key, over a Storage that may fail at any call. */
 export class ViewStore {
+  private legacyChecked = false;
+
   constructor(private readonly storage: () => Storage | null = defaultStorage) {}
 
-  private get(name: string): string | null {
+  /** The saved collection as [key, entry] pairs, oldest first; empty when unreadable. */
+  private entries(): [string, unknown][] {
     try {
-      return this.storage()?.getItem(name) ?? null;
-    } catch {
-      return null;
-    }
-  }
-
-  private index(): string[] {
-    try {
-      const list = JSON.parse(this.get(INDEX) ?? "[]");
-      return Array.isArray(list) ? list.filter((k): k is string => typeof k === "string") : [];
+      const raw = this.storage()?.getItem(STORE_KEY);
+      if (!raw) return [];
+      const stored = JSON.parse(raw) as { v?: unknown; entries?: unknown };
+      if (stored?.v !== VIEW_STATE_VERSION || !Array.isArray(stored.entries)) return [];
+      return stored.entries.filter((pair): pair is [string, unknown] => Array.isArray(pair) && typeof pair[0] === "string");
     } catch {
       return [];
     }
   }
 
-  /** The state saved for `key`, or null when there is none or it is unusable. */
-  load(key: string): SavedView | null {
-    const raw = this.get(PREFIX + key);
-    if (!raw) return null;
+  /** Write the whole collection at once; throws when the storage refuses it. */
+  private write(storage: Storage, entries: [string, unknown][]): void {
+    storage.setItem(STORE_KEY, JSON.stringify({ v: VIEW_STATE_VERSION, entries }));
+  }
+
+  /** Drop the per-instance keys an earlier release wrote, once per page. */
+  private dropLegacy(storage: Storage): void {
+    if (this.legacyChecked) return;
+    this.legacyChecked = true;
     try {
-      const saved = JSON.parse(raw) as Partial<SavedView>;
-      if (saved?.v !== VIEW_STATE_VERSION || typeof saved.view !== "string" || !saved.state || typeof saved.state !== "object"
-        || Array.isArray(saved.state)) return null;
-      return { v: VIEW_STATE_VERSION, view: saved.view, snapshot: typeof saved.snapshot === "string" ? saved.snapshot : null,
-        saved_at: typeof saved.saved_at === "number" ? saved.saved_at : 0, state: saved.state as Record<string, unknown> };
+      const old: string[] = [];
+      for (let i = 0; i < storage.length; i++) {
+        const name = storage.key(i);
+        if (name?.startsWith(LEGACY_PREFIX)) old.push(name);
+      }
+      for (const name of old) storage.removeItem(name);
     } catch {
-      return null;
+      /* left for the next page */
     }
   }
 
-  /** Save `state` for `key`; false when it is too large or the storage refused it. */
+  /** The state saved for `key`, or null when there is none or it is unusable. */
+  load(key: string): SavedView | null {
+    const found = this.entries().find(([k]) => k === key);
+    return found ? usable(found[1]) : null;
+  }
+
+  /** Save `state` for `key`; false when it is too large or the storage refused it, and then nothing changed. */
   save(key: string, view: string, snapshot: string | null, state: Record<string, unknown>): boolean {
     const entry: SavedView = { v: VIEW_STATE_VERSION, view, snapshot, saved_at: Date.now(), state };
-    const json = JSON.stringify(entry);
-    if (json.length > VIEW_STATE_MAX_CHARS) return false;
+    if (JSON.stringify(entry).length > VIEW_STATE_MAX_CHARS) return false;
     try {
       const storage = this.storage();
       if (!storage) return false;
-      storage.setItem(PREFIX + key, json);
-      const keys = [...this.index().filter((k) => k !== key), key];
-      for (const old of keys.splice(0, Math.max(0, keys.length - VIEW_STATE_MAX_ENTRIES))) storage.removeItem(PREFIX + old);
-      storage.setItem(INDEX, JSON.stringify(keys));
+      const entries = [...this.entries().filter(([k]) => k !== key), [key, entry] as [string, unknown]];
+      this.write(storage, entries.slice(-VIEW_STATE_MAX_ENTRIES));
+      this.dropLegacy(storage);
       return true;
     } catch {
       return false;
@@ -132,9 +154,8 @@ export class ViewStore {
   forget(key: string): void {
     try {
       const storage = this.storage();
-      if (!storage) return;
-      storage.removeItem(PREFIX + key);
-      storage.setItem(INDEX, JSON.stringify(this.index().filter((k) => k !== key)));
+      const entries = this.entries();
+      if (storage && entries.some(([k]) => k === key)) this.write(storage, entries.filter(([k]) => k !== key));
     } catch {
       /* nothing to drop */
     }

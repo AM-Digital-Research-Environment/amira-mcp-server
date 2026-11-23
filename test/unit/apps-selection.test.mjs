@@ -211,6 +211,47 @@ test("bibliography: a slow earlier search cannot overwrite a newer one, and a fa
   assert.equal(app.lastShared().filters.keyword, "Migration", "the failed filter was never committed");
 });
 
+test("a search still loading when the host switches the frame to another view neither renders nor saves", async (t) => {
+  // Shape routing, so one frame takes both a bibliography and a map result.
+  const app = await mount(t, "search_publications", { toolInfo: false, canShare: true });
+  app.show(await payload("search_publications"), { instance: "bibliography" });
+  const gate = holdCalls(app, (name, args) => name === "search_publications" && args.keyword === "Decolonial");
+  t.after(gate.restore);
+  const form = app.root.querySelector("#publication-search");
+  form.querySelector('input[name="keyword"]').value = "Decolonial";
+  app.submit(form);
+  await app.waitFor(() => gate.held.length === 1, "search held");
+
+  app.show(await payload("list_locations"), { instance: "map" });
+  assert.equal(app.root.dataset.view, "map");
+  const heading = app.root.querySelector("h1").textContent, saves = app.saves, shared = app.shared.length;
+  const mapState = app.storage.get("map");
+  gate.release(0);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(app.root.dataset.view, "map", "the map stays on screen");
+  assert.equal(app.root.querySelector("h1").textContent, heading);
+  assert.equal(app.saves, saves, "nothing saved by the late answer");
+  assert.equal(app.storage.get("map"), mapState, "the map's saved state is untouched");
+  assert.equal(app.shared.length, shared, "no bibliography selection shared over the map");
+  assertHealthy(app);
+});
+
+test("graph: candidates for a name still resolving when a new graph arrives are dropped", async (t) => {
+  const app = await mount(t, "get_entity_graph");
+  app.show(await payload("get_entity_graph", { seed: "person:100" }));
+  const gate = holdCalls(app, (name) => name === "resolve_entity");
+  t.after(gate.restore);
+  const form = app.root.querySelector("#resolve");
+  form.querySelector('input[name="query"]').value = "Okafor";
+  app.submit(form);
+  await app.waitFor(() => gate.held.length === 1, "lookup held");
+  app.show(await payload("get_entity_graph", { seed: "person:100", types: ["person"] }));
+  gate.release(0);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(app.root.querySelector("#candidates").innerHTML, "", "the new graph shows no stale candidates");
+  assertHealthy(app);
+});
+
 test("timeline: a bar outside the filtered years explains itself instead of sending an inverted range", async (t) => {
   const app = await mount(t, "list_years");
   const d = await payload("list_years", { bucket: "decade", filters: { year_from: 2000 } });

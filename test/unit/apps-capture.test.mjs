@@ -10,14 +10,15 @@ import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { lib, payload, mount } from "../helpers/apps-harness.mjs";
 
-/** The real bridge in an iframe with `body` markup, under a host page that answers the handshake. */
-async function hostedBridge(t, body) {
+/** The real bridge in an iframe with `body` markup, under a host page that answers the handshake.
+ * `onResult` is the views' callback, as script source. */
+async function hostedBridge(t, body, onResult = "function () {}") {
   const host = new Window({ url: "https://host.test/", settings: { enableJavaScriptEvaluation: true, suppressInsecureJavaScriptEnvironmentWarning: true } });
   t.after(() => host.happyDOM.close());
   host.document.write("<!doctype html><html><body></body></html>");
   const frame = host.document.createElement("iframe");
   frame.srcdoc = `<!doctype html><html><body><p id="app-status"></p>${body}<script>${lib.BRIDGE_JS}</script>` +
-    "<script>window.amiraApp.onResult(function () {});</script></body></html>";
+    `<script>window.amiraApp.onResult(${onResult});</script></body></html>`;
   const replies = new Map();
   let initialized = false;
   host.addEventListener("message", (event) => {
@@ -41,7 +42,9 @@ async function hostedBridge(t, body) {
     assert.ok(replies.has(id), `${method} answered`);
     return replies.get(id);
   };
-  return { request };
+  /** A host notification, such as a tool result. */
+  const notify = (method, params) => frame.contentWindow.postMessage({ jsonrpc: "2.0", method, params }, "*");
+  return { request, notify, frame };
 }
 
 test("the bridge lists get-screenshot as an app tool with a bounded maxDimension", async (t) => {
@@ -108,4 +111,27 @@ test("captureSize keeps the aspect ratio and the bounds", () => {
   assert.deepEqual(lib.captureSize(720, 360, 10), { width: lib.CAPTURE_MIN_DIMENSION, height: 32 }, "never below the minimum");
   assert.deepEqual(lib.captureSize(720, 360, 99999), { width: 1440, height: 720 }, "never upscaled past 2x");
   assert.deepEqual(lib.CAPTURE_TARGETS, { map: ".map svg", graph: ".graph svg" });
+});
+
+test("a failed host result keeps the instance on screen, so the view's next save stays its own (#32)", async (t) => {
+  const { notify, frame } = await hostedBridge(t, '<main id="root"></main>',
+    'function (d) { window.amiraApp.saveState("map", { n: d.n }); }');
+  const win = frame.contentWindow;
+  const wait = async (predicate, what) => {
+    for (let i = 0; i < 200 && !predicate(); i++) await new Promise((r) => setTimeout(r, 5));
+    assert.ok(predicate(), what);
+  };
+  const saved = (key) => {
+    const entries = JSON.parse(win.localStorage.getItem("amira-views") ?? "null")?.entries ?? [];
+    return entries.find(([k]) => k === key)?.[1].state ?? null;
+  };
+  notify("ui/notifications/tool-result", { structuredContent: { n: 1 }, content: [], _meta: { viewUUID: "first" } });
+  await wait(() => saved("uuid:first")?.n === 1, "the first result is saved under its viewUUID");
+
+  notify("ui/notifications/tool-result", { isError: true, content: [{ type: "text", text: "{\"error\":{\"message\":\"Bad seed\"}}" }],
+    _meta: { viewUUID: "failed" } });
+  await wait(() => win.document.getElementById("app-status").textContent === "Bad seed", "the failure is reported");
+  win.amiraApp.saveState("map", { n: 2 });
+  assert.equal(saved("uuid:first").n, 2, "a later save still belongs to the view on screen");
+  assert.equal(saved("uuid:failed"), null, "nothing is saved for the failed result");
 });

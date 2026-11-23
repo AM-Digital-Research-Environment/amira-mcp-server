@@ -178,20 +178,26 @@ test("restorable tools stamp a fresh viewUUID and their snapshot in _meta; other
   assert.equal(error._meta?.[lib.VIEW_UUID_META], undefined);
 });
 
-/** A Storage over a Map, optionally failing. */
+/** A Storage over a Map, optionally failing; `full` makes every setItem a quota error. */
 function memoryStorage({ fail = false } = {}) {
   const map = new Map();
   const guard = () => {
     if (fail) throw new Error("SecurityError");
   };
-  return {
+  const storage = {
     map,
+    full: false,
+    get length() {
+      return map.size;
+    },
+    key: (i) => [...map.keys()][i] ?? null,
     getItem: (k) => {
       guard();
       return map.has(k) ? map.get(k) : null;
     },
     setItem: (k, v) => {
       guard();
+      if (storage.full) throw new Error("QuotaExceededError");
       map.set(k, String(v));
     },
     removeItem: (k) => {
@@ -199,6 +205,7 @@ function memoryStorage({ fail = false } = {}) {
       map.delete(k);
     },
   };
+  return storage;
 }
 
 test("ViewStore: versioned, bounded, evicting, and silent when storage fails", () => {
@@ -209,11 +216,18 @@ test("ViewStore: versioned, bounded, evicting, and silent when storage fails", (
   assert.deepEqual({ ...store.load("x"), saved_at: 0 },
     { v: lib.VIEW_STATE_VERSION, view: "map", snapshot: "snap", saved_at: 0, state: { place: null } });
 
-  // Another version, a non-object state, or corrupt JSON is nothing saved.
-  storage.setItem("amira-view:y", JSON.stringify({ v: 99, view: "map", state: {} }));
-  storage.setItem("amira-view:z", JSON.stringify({ v: 1, view: "map", state: [1] }));
-  storage.setItem("amira-view:w", "{");
-  for (const key of ["y", "z", "w"]) assert.equal(store.load(key), null, key);
+  // An entry of another version or with a non-object state is nothing saved;
+  // so is a collection of another version, or corrupt JSON.
+  const entries = JSON.parse(storage.getItem("amira-views")).entries;
+  storage.setItem("amira-views", JSON.stringify({ v: 1, entries: [...entries,
+    ["y", { v: 99, view: "map", state: {} }], ["z", { v: 1, view: "map", state: [1] }]] }));
+  for (const key of ["y", "z"]) assert.equal(store.load(key), null, key);
+  assert.equal(store.load("x").view, "map", "the usable entry beside them still loads");
+  storage.setItem("amira-views", JSON.stringify({ v: 99, entries }));
+  assert.equal(store.load("x"), null, "a collection of another version");
+  storage.setItem("amira-views", "{");
+  assert.equal(store.load("x"), null, "corrupt JSON");
+  assert.equal(store.save("x", "map", "snap", { place: null }), true, "a corrupt collection is replaced");
 
   assert.equal(store.save("big", "bibliography", null, { text: "x".repeat(lib.VIEW_STATE_MAX_CHARS) }), false, "over the cap");
   assert.equal(store.load("big"), null);
@@ -235,6 +249,38 @@ test("ViewStore: versioned, bounded, evicting, and silent when storage fails", (
   });
   assert.equal(refused.save("x", "map", null, {}), false);
   assert.equal(refused.load("x"), null);
+});
+
+test("ViewStore: a save the storage refuses (a full quota) changes nothing", () => {
+  const storage = memoryStorage();
+  const store = new lib.ViewStore(() => storage);
+  assert.equal(store.save("a", "map", null, { n: 1 }), true);
+  const before = storage.getItem("amira-views");
+  storage.full = true;
+  assert.equal(store.save("b", "graph", null, { n: 2 }), false);
+  assert.equal(store.save("a", "map", null, { n: 3 }), false);
+  assert.equal(store.load("b"), null, "the refused entry is not saved");
+  assert.deepEqual(store.load("a").state, { n: 1 }, "the previous entry is unchanged");
+  assert.equal(storage.getItem("amira-views"), before, "the collection is unchanged");
+  store.forget("a");
+  assert.deepEqual(store.load("a").state, { n: 1 }, "a refused forget keeps the entry too");
+
+  // Once there is room again, the eviction order is whole: every saved entry counts.
+  storage.full = false;
+  for (let i = 0; i < lib.VIEW_STATE_MAX_ENTRIES; i++) assert.equal(store.save(`k${i}`, "graph", null, { i }), true);
+  assert.equal(store.load("a"), null, "the oldest entry is evicted");
+  assert.equal(JSON.parse(storage.getItem("amira-views")).entries.length, lib.VIEW_STATE_MAX_ENTRIES);
+});
+
+test("ViewStore: the first save drops what 1.43.0 saved under one key per instance", () => {
+  const storage = memoryStorage();
+  storage.setItem("amira-view:index", JSON.stringify(["uuid:old"]));
+  storage.setItem("amira-view:uuid:old", JSON.stringify({ v: 1, view: "map", state: {} }));
+  storage.setItem("amira-view:uuid:orphan", JSON.stringify({ v: 1, view: "graph", state: {} }));
+  storage.setItem("unrelated", "kept");
+  const store = new lib.ViewStore(() => storage);
+  assert.equal(store.save("x", "map", null, {}), true);
+  assert.deepEqual([...storage.map.keys()].sort(), ["amira-views", "unrelated"]);
 });
 
 test("instanceKey: the viewUUID, else the host's call id, else the content", () => {
