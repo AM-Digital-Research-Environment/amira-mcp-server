@@ -797,9 +797,13 @@ work on the entry points:
 
 Concretely on the wire: `server/discover` advertises `["2026-07-28"]`, results
 carry `resultType`, and the cacheable results carry real `ttlMs` / `cacheScope`
-(1 h `public` on `tools/list`, `resources/list` and `server/discover`; 24 h on
-`resources/read`, whose `ui://` app HTML is immutable per build) rather than the
-SDK's conservative `{ ttlMs: 0, cacheScope: "private" }` default. Back-compat is
+(1 h `public` on `tools/list`, `prompts/list`, `resources/list`,
+`resources/templates/list` and `server/discover`; 24 h on the `ui://` app HTML
+and the skill files, immutable per build; 5 minutes on the data resources,
+which a live refresh can change) rather than the SDK's conservative
+`{ ttlMs: 0, cacheScope: "private" }` default. A curator server sends that
+private default for every method, answers `/mcp` and `/metrics` with
+`Cache-Control: no-store`, and reflects the validated `Origin` instead of `*`. Back-compat is
 the handler's `legacy: 'stateless'` default, which answers 2025-era traffic with
 a fresh instance per request — the same shape this server always had.
 

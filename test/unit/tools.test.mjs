@@ -77,6 +77,36 @@ test("Skills extension returns finalized completion, caching and byte-size contr
   }
 });
 
+test("cache hints: data reads follow the snapshot, the app HTML is a day, fixed lists an hour (#49)", { timeout: 15000 }, async () => {
+  const ct = new StdioClientTransport({ command: process.execPath, args: [SERVER_STDIO],
+    env: childEnv({ AMIRA_DATA_DIR: fixtureDir }), stderr: "pipe" });
+  const modernClient = new Client({ name: "cache-hints", version: "1.0.0" }, { versionNegotiation: { mode: { pin: "2026-07-28" } } });
+  const raw = new Map();
+  try {
+    await modernClient.connect(ct);
+    const receive = ct.onmessage;
+    ct.onmessage = (message, extra) => {
+      if (message.result && message.id !== undefined) raw.set(message.id, message.result);
+      receive(message, extra);
+    };
+    const hintOf = async (run) => {
+      const before = new Set(raw.keys());
+      await run();
+      const id = [...raw.keys()].find((k) => !before.has(k));
+      const { ttlMs, cacheScope } = raw.get(id);
+      return { ttlMs, cacheScope };
+    };
+    const hour = { ttlMs: 3_600_000, cacheScope: "public" };
+    assert.deepEqual(await hintOf(() => modernClient.listPrompts()), hour);
+    assert.deepEqual(await hintOf(() => modernClient.listResourceTemplates()), hour);
+    assert.deepEqual(await hintOf(() => modernClient.readResource({ uri: "ui://amira/app.html" })), { ttlMs: 86_400_000, cacheScope: "public" });
+    assert.deepEqual(await hintOf(() => modernClient.readResource({ uri: "amira://dataset" })), { ttlMs: 300_000, cacheScope: "public" });
+    assert.deepEqual(await hintOf(() => modernClient.readResource({ uri: "amira://record/person/100" })), { ttlMs: 300_000, cacheScope: "public" });
+  } finally {
+    await modernClient.close();
+  }
+});
+
 /** The error object of an isError result. Errors are text-only since 1.19:
  * structured content on an error would not match the tool's output schema. */
 function toolError(result) {

@@ -43,15 +43,19 @@ import {
   type SkillCatalog,
   type SkillSource,
 } from "@modelcontextprotocol/server/ext/skills";
+import { config } from "./config.js";
 import { bool } from "./env.js";
 
 /**
  * Skill files are immutable for the life of a build, so every skill result is
- * shareable across clients for a day — the same reasoning as the
- * `resources/read` entry in mcpServer.ts CACHE_HINTS. The SDK sends it on
- * 2026-07-28 connections only, where the fields exist.
+ * shareable across clients for a day — the same reasoning as the app HTML's
+ * hint (src/tools/apps.ts). A curator server keeps its rule of no shared
+ * caching whatever the method (#49), although the skill text itself is public.
+ * The SDK sends it on 2026-07-28 connections only, where the fields exist.
  */
-const SKILLS_CACHE_HINT = { ttlMs: 86_400_000, cacheScope: "public" } as const;
+const skillsCacheHint = () => config.access === "curator"
+  ? ({ ttlMs: 0, cacheScope: "private" } as const)
+  : ({ ttlMs: 86_400_000, cacheScope: "public" } as const);
 
 /** Paths under .claude/skills/: lossless UTF-8 as text, anything else base64. */
 export type SkillsSnapshot = { text: Record<string, string>; base64: Record<string, string> };
@@ -78,7 +82,7 @@ export function loadSkillCatalog(snapshot: SkillsSnapshot): Promise<SkillCatalog
   for (const [path, base64] of Object.entries(snapshot.base64)) {
     files[path] = new Uint8Array(Buffer.from(base64, "base64"));
   }
-  return SkillsExtension.load(memorySkillFiles(files), { cacheHint: SKILLS_CACHE_HINT, strict: true });
+  return SkillsExtension.load(memorySkillFiles(files), { cacheHint: skillsCacheHint(), strict: true });
 }
 
 const BASE = "skill://";
@@ -182,7 +186,7 @@ export function snapshotSource(entries: readonly Skill[], snapshot: SkillsSnapsh
 export async function loadSkillsExtension(snapshot: SkillsSnapshot): Promise<SkillsExtension | undefined> {
   const catalog = await loadSkillCatalog(snapshot);
   if (catalog.entries.length === 0) return undefined;
-  return new SkillsExtension({ source: snapshotSource(catalog.entries, snapshot), cacheHint: SKILLS_CACHE_HINT, strict: true });
+  return new SkillsExtension({ source: snapshotSource(catalog.entries, snapshot), cacheHint: skillsCacheHint(), strict: true });
 }
 
 /**

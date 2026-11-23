@@ -53,13 +53,19 @@ const PROTOCOL_VERSIONS = [MODERN_PROTOCOL_VERSION, ...SUPPORTED_PROTOCOL_VERSIO
  *
  * An hour is a freshness hint, not a contract: the surface changes only on
  * redeploy, which ends every connection anyway.
- * `resources/read` gets longer because the app HTML is immutable per build.
+ *
+ * `resources/read` is different: the data resources (amira://record/*,
+ * amira://dataset, amira://export/*) follow the snapshot, which a live refresh
+ * replaces, so their reads keep a short hint (#49). The app HTML, immutable per
+ * build, carries its own day-long hint (src/tools/apps.ts), as do the skill files.
  */
 const CACHE_HINTS = {
   "tools/list": { ttlMs: 3_600_000, cacheScope: "public" },
+  "prompts/list": { ttlMs: 3_600_000, cacheScope: "public" },
   "resources/list": { ttlMs: 3_600_000, cacheScope: "public" },
+  "resources/templates/list": { ttlMs: 3_600_000, cacheScope: "public" },
   "server/discover": { ttlMs: 3_600_000, cacheScope: "public" },
-  "resources/read": { ttlMs: 86_400_000, cacheScope: "public" },
+  "resources/read": { ttlMs: 300_000, cacheScope: "public" },
 } as const;
 
 /**
@@ -126,7 +132,9 @@ export function curatorInstructions(skills = true): string {
 /** Curator results hold private data: no shared caching, whatever the method. */
 const CURATOR_CACHE_HINTS = {
   "tools/list": { ttlMs: 0, cacheScope: "private" },
+  "prompts/list": { ttlMs: 0, cacheScope: "private" },
   "resources/list": { ttlMs: 0, cacheScope: "private" },
+  "resources/templates/list": { ttlMs: 0, cacheScope: "private" },
   "server/discover": { ttlMs: 0, cacheScope: "private" },
   "resources/read": { ttlMs: 0, cacheScope: "private" },
 } as const;

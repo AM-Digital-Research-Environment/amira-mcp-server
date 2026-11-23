@@ -193,15 +193,21 @@ export function createRateLimiter(perMinute: number, keyOf: (req: IncomingMessag
   };
 }
 
-/** Public, read-only data → permissive CORS so browser-based clients can connect.
+/** Public, read-only data → permissive CORS so browser-based clients can connect;
+ * curator mode reflects the validated Origin instead.
  *
  * The allow-list spans both protocol revisions: `Mcp-Session-Id`,
  * `MCP-Protocol-Version` and `Last-Event-ID` for clients on 2025-11-25 and
  * earlier, `Mcp-Method` / `Mcp-Name` / `X-Mcp-Header` for the stateless
  * 2026-07-28 revision, which requires them on every Streamable HTTP POST
  * (SEP-2243). Omitting the new pair fails preflight for browser clients. */
-function setCors(res: ServerResponse): void {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+function setCors(req: IncomingMessage, res: ServerResponse, curator: boolean): void {
+  if (!curator) res.setHeader("Access-Control-Allow-Origin", "*");
+  else if (req.headers.origin) {
+    // Curator mode (#49): reflect the Origin validation already accepted, never `*`.
+    res.setHeader("Access-Control-Allow-Origin", req.headers.origin);
+    res.setHeader("Vary", "Origin");
+  }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
@@ -386,7 +392,9 @@ export function createHttpApp(opts: HttpAppOptions = {}) {
   const listener = (req: IncomingMessage, res: ServerResponse): void => {
     if ((validateHost && !validateHost(req, res)) || !validateOrigin(req, res)) return;
     const path = (req.url ?? "/").split("?")[0];
-    setCors(res);
+    setCors(req, res, tokens !== null);
+    // Curator responses hold private data: no intermediary may store them (#49).
+    if (tokens && (path === MCP_PATH || path === "/metrics")) res.setHeader("Cache-Control", "no-store");
 
     if (req.method === "OPTIONS") {
       res.writeHead(204);

@@ -226,6 +226,31 @@ test("the failure log is capped, whatever the flood", async (t) => {
   assert.equal(audit.length, 30);
 });
 
+test("curator responses are never stored by intermediaries, and CORS reflects the validated Origin (#49)", async (t) => {
+  const app = lib.createHttpApp({ access: "curator", tokensFile, tokenReloadMs: 0, rateLimitPerMinute: 0, audit: () => {} });
+  const server = createServer(app.listener);
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  t.after(async () => { server.closeAllConnections(); await new Promise((r) => server.close(r)); await app.close(); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const auth = { Authorization: `Bearer ${TOKEN}` };
+  const browser = await send(base, { ...auth, Origin: "http://localhost:5173" }, "/metrics");
+  assert.equal(browser.status, 200);
+  assert.equal(browser.headers["cache-control"], "no-store");
+  assert.equal(browser.headers["access-control-allow-origin"], "http://localhost:5173");
+  assert.match(browser.headers.vary ?? "", /Origin/);
+  const plain = await send(base, auth, "/metrics");
+  assert.equal(plain.headers["access-control-allow-origin"], undefined, "no Origin, no CORS grant");
+  assert.equal((await send(base, {}, "/mcp")).headers["cache-control"], "no-store", "a refusal is not stored either");
+
+  const pub = lib.createHttpApp({ access: "public", rateLimitPerMinute: 0 });
+  const publicServer = createServer(pub.listener);
+  await new Promise((r) => publicServer.listen(0, "127.0.0.1", r));
+  t.after(async () => { publicServer.closeAllConnections(); await new Promise((r) => publicServer.close(r)); await pub.close(); });
+  const open = await send(`http://127.0.0.1:${publicServer.address().port}`, {}, "/metrics");
+  assert.equal(open.headers["access-control-allow-origin"], "*", "public data keeps permissive CORS");
+  assert.notEqual(open.headers["cache-control"], "no-store");
+});
+
 // --- name lookups ------------------------------------------------------------------------
 
 test("a retired private duplicate never shadows the public authority of the same name", () => {

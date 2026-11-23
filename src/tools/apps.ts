@@ -6,6 +6,7 @@
 // ONE resource renders every tool's view (src/ui/page.ts explains why: a
 // resource per view meant a copy of the Apps SDK per view). It is registered
 // only when at least one tool that renders it survives the active profile.
+import { config } from "../config.js";
 import { APP_HTML } from "../ui/assets.js";
 import { APP_TOOLS, APP_URI } from "../ui/viewContract.js";
 import type { Server } from "./_shared.js";
@@ -37,6 +38,9 @@ export function registerAppResources(
       // No csp domains: the page inlines all of its CSS and JS and loads
       // nothing from the network, so it runs in the strictest sandbox.
       _meta: { ui: { prefersBorder: false } },
+      // Immutable per build: a day in public mode. A curator server takes the
+      // no-shared-caching rule for every read (src/mcpServer.ts).
+      ...(config.access === "curator" ? {} : { cacheHint: { ttlMs: 86_400_000, cacheScope: "public" as const } }),
     },
     () => ({ contents: [{ uri: APP_URI, mimeType: APP_MIME, text: APP_HTML, _meta: { ui: { prefersBorder: false } } }] }),
   );
