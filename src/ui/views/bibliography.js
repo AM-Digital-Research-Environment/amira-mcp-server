@@ -15,6 +15,15 @@ let lastLanguages = null;
 /** Searches answer only their latest request; one export runs at a time (#51). */
 const searchOrder = requestOrder();
 let exporting = false;
+/** The citation format of the next export. */
+let exportFormat = "bibtex";
+/**
+ * Saved state being restored (#32): its filters and page are searched again,
+ * and the render of that search applies the selection. Nothing is saved meanwhile.
+ * @type {{ snapshot: string | null, state: ToolData } | null}
+ */
+let restoring = null;
+const EXPORT_FORMATS = ["bibtex", "ris", "csl-json"];
 // Languages are counted for the current search without its own language filter,
 // so the other languages stay selectable. Authors are the whole bibliography.
 const LANGUAGE_SCOPE = [
@@ -68,7 +77,10 @@ async function exportSelection() {
   exporting = true;
   const button = document.getElementById("export-selected");
   button.disabled = true;
-  const format = document.getElementById("export-format").value;
+  // The select on screen is the truth; remember it for the saved state.
+  const chosen = document.getElementById("export-format").value;
+  if (EXPORT_FORMATS.indexOf(chosen) >= 0) exportFormat = chosen;
+  const format = exportFormat;
   try {
     /** @type {unknown[]} */
     const entries = [];
@@ -121,7 +133,39 @@ function cite(p) {
     amira_url: p.amira_url,
   };
 }
+/** Save what reconstructs this view: filters, page, selection and format (#32). */
+function save() {
+  if (restoring) return;
+  api.saveState("bibliography", {
+    filters: filters,
+    offset: active.offset || 0,
+    selected: Array.from(selected.values()),
+    format: exportFormat,
+  });
+}
+/**
+ * Apply a saved state once its search has answered. The selection's ids and
+ * titles hold for the snapshot they were saved on only: on another (or an
+ * unknown) snapshot the selection is dropped, and the reader told.
+ * @param {{ snapshot: string | null, state: ToolData }} saved
+ */
+function applyRestore(saved) {
+  const state = saved.state;
+  if (EXPORT_FORMATS.indexOf(state.format) >= 0) exportFormat = state.format;
+  const picks = Array.isArray(state.selected) ? state.selected.slice(0, 25) : [];
+  if (!picks.length) return;
+  if (!saved.snapshot || saved.snapshot !== api.snapshot()) {
+    api.status("The collection has been updated since this view was saved, so its selection was cleared.");
+    return;
+  }
+  picks.forEach(function (/** @type {ToolData} */ p) {
+    if (p && (typeof p.id === "string" || typeof p.id === "number")) {
+      selected.set(String(p.id), cite(p));
+    }
+  });
+}
 function share() {
+  save();
   const picked = Array.from(selected.values()),
     page = (active.results || []).map(cite);
   api.shareSelection({
@@ -209,13 +253,35 @@ function renderFile(d) {
 function render(d) {
   // This result supersedes every search still loading.
   searchOrder.next();
+  // A result from the host starts its own instance: its saved state, if any,
+  // replaces the selection in memory (#32).
+  const saved = api.restoreState("bibliography");
+  if (saved !== undefined) {
+    restoring = null;
+    selected.clear();
+    exportFormat = "bibtex";
+  }
   if (d.export || d.citation_format) {
     renderFile(d);
     return;
   }
+  let apply = null;
+  if (saved) {
+    restoring = saved;
+    const state = saved.state,
+      again = state.filters && typeof state.filters === "object" && !Array.isArray(state.filters) ? state.filters : {};
+    search(Math.max(0, Number(state.offset) || 0), again).then(function () {
+      // A search that failed leaves the fresh view, which is then saved as it is.
+      if (restoring === saved) restoring = null;
+    });
+  } else if (restoring) {
+    apply = restoring;
+    restoring = null;
+  }
   active = d;
   filters = Object.assign({}, d.filters || {});
   delete filters.citation_format;
+  if (apply) applyRestore(apply);
   const rows = d.results || [];
   /** @type {ToolData} */
   const scope = {};
@@ -248,7 +314,11 @@ function render(d) {
     '"></label><label>To year<input type="number" min="0" max="2200" name="year_to" value="' +
     esc(filters.year_to || "") +
     '"></label><button>Search bibliography</button><button type="button" id="clear-filters">Clear filters</button></div></form>' +
-    '<div class="controls"><span id="selection-count"></span><label>Export format<select id="export-format"><option value="bibtex">BibTeX</option><option value="ris">RIS</option><option value="csl-json">CSL-JSON</option></select></label><button id="export-selected">Download selection</button><button id="clear-selection">Clear selection</button></div>' +
+    '<div class="controls"><span id="selection-count"></span><label>Export format<select id="export-format">' +
+    EXPORT_FORMATS.map(function (f) {
+      return '<option value="' + f + '"' + (f === exportFormat ? " selected" : "") + ">" + formatLabel(f) + "</option>";
+    }).join("") +
+    '</select></label><button id="export-selected">Download selection</button><button id="clear-selection">Clear selection</button></div>' +
     selectionControls() +
     (rows.length
       ? "<table><thead><tr><th>Select</th><th>Publication</th><th>Year</th></tr></thead><tbody>" +
@@ -297,6 +367,11 @@ function render(d) {
   };
   document.getElementById("root").onchange = function (event) {
     const box = event.target;
+    if (box.matches("#export-format")) {
+      exportFormat = box.value;
+      save();
+      return;
+    }
     if (!box.dataset.id) return;
     if (box.checked) {
       if (selected.size >= 25) {

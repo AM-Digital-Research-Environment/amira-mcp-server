@@ -16,6 +16,42 @@ let shown = null;
 /** Graph loads, and the evidence panel's pages: each answers only its latest request (#51). */
 const graphOrder = requestOrder(),
   evidenceOrder = requestOrder();
+/**
+ * Saved state being restored (#32): its seed and type filter are loaded
+ * again, and the render of that load reselects the neighbour and link.
+ * @type {{ snapshot: string | null, state: ToolData } | null}
+ */
+let restoring = null;
+/** Save what reconstructs this view: seed, type filter, neighbour, link and its page of records (#32). */
+function save() {
+  if (restoring || !active) return;
+  api.saveState("graph", {
+    seed: active.seed,
+    types: filter,
+    picked: picked || null,
+    edge: shown && shown.edge ? shown.edge.id : null,
+    offset: shown ? shown.data.offset || 0 : 0,
+  });
+}
+/**
+ * Reselect a saved neighbour and link once their graph has loaded, on the
+ * snapshot they were saved on only: edge ids and evidence pages belong to it.
+ * @param {{ snapshot: string | null, state: ToolData }} saved
+ */
+function applyRestore(saved) {
+  const state = saved.state;
+  if (typeof state.picked !== "string") return;
+  if (!saved.snapshot || saved.snapshot !== active.snapshot_id) {
+    api.status("The collection has been updated since this view was saved, so the selected neighbour was cleared.");
+    return;
+  }
+  pick(state.picked);
+  if (picked !== state.picked || typeof state.edge !== "string") return;
+  const edge = active.edges.find(function (e) {
+    return e.id === state.edge;
+  });
+  if (edge) evidence(edge.id, Math.max(0, Number(state.offset) || 0));
+}
 // Sectors, clockwise from twelve o'clock. Every entity type belongs to one.
 const GROUPS = [
   { key: "people", label: "People", heading: "PEOPLE", types: ["person"] },
@@ -206,6 +242,7 @@ function entity(n, role) {
   };
 }
 function share() {
+  save();
   const nodes = new Map(
       active.nodes.map(function (n) {
         return [n.id, n];
@@ -311,7 +348,11 @@ function pick(id) {
     '">Centre the graph on ' +
     esc(node.label) +
     "</button>" +
-    (node.amira_url ? ' <a data-citation href="' + esc(node.amira_url) + '">Open in AMIRA</a>' : "") +
+    (node.amira_url
+      ? ' <a data-citation href="' + esc(node.amira_url) + '">Open in AMIRA</a>'
+      : node.admin_url
+        ? " " + adminLink(node.admin_url, "Open in the Omeka admin") + ' <span class="note">(private)</span>'
+        : "") +
     "</p>";
   if (links.length) evidence(links[0].id);
 }
@@ -529,6 +570,23 @@ function render(d) {
   // This result supersedes every graph or evidence request still loading.
   graphOrder.next();
   evidenceOrder.next();
+  // A result from the host starts its own instance: reload its saved seed, if any (#32).
+  const saved = api.restoreState("graph");
+  let apply = null;
+  if (saved !== undefined) {
+    restoring = null;
+    picked = null;
+  }
+  if (saved && typeof saved.state.seed === "string") {
+    restoring = saved;
+    const types = Array.isArray(saved.state.types) ? saved.state.types : null;
+    load(saved.state.seed, types).then(function () {
+      if (restoring === saved) restoring = null;
+    });
+  } else if (restoring) {
+    apply = restoring;
+    restoring = null;
+  }
   if (!active || active.seed !== d.seed) picked = null;
   active = d;
   shown = null;
@@ -597,7 +655,10 @@ function render(d) {
     '<div class="scroll"><table><caption>Relationships and source records</caption><thead><tr><th>Entity</th><th>Relationship</th><th>Evidence</th></tr></thead><tbody>' +
     rows +
     "</tbody></table></div>";
-  if (picked) pick(picked);
+  if (apply) {
+    share();
+    applyRestore(apply);
+  } else if (picked) pick(picked);
   else share();
   const root = document.getElementById("root");
   root.onclick = function (event) {

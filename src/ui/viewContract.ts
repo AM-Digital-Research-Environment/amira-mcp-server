@@ -46,6 +46,14 @@ export const VIEW_CALLABLE_TOOLS = [
   "list_subjects",
 ] as const;
 
+/**
+ * Tools whose view keeps state worth restoring when the host re-delivers the
+ * result (#32): the server stamps their results with a viewUUID and the
+ * snapshot id (src/tools/policy.ts), and the view saves its filters,
+ * selections and paging under that instance (src/ui/viewState.ts).
+ */
+export const RESTORABLE_TOOLS = ["search_publications", "list_locations", "get_entity_graph"] as const;
+
 /** Tools that render the app, in registration order. */
 // Marked pure so a bundle that imports only VIEW_CALLABLE_TOOLS (the bridge)
 // drops this and VIEW_OF_TOOL.

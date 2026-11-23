@@ -32,8 +32,12 @@ import { errorResult } from "./responses.js";
 import { currentStore, ensureStore } from "../data.js";
 import { runWithCallStore } from "./callStore.js";
 import { dropSafeIntegerBounds, dropSchemaNoise, withJsonSchema, withoutSchemaText } from "../guidance.js";
+import { randomUUID } from "node:crypto";
 import { config } from "../config.js";
 import { curatorToolResult } from "./curator.js";
+import { snapshotId } from "../snapshotIdentity.js";
+import { RESTORABLE_TOOLS } from "../ui/viewContract.js";
+import { SNAPSHOT_META, VIEW_UUID_META } from "../ui/viewState.js";
 import type { DataStore } from "../data.js";
 
 /** How long one tool call may run before the client gets an error. Every
@@ -123,6 +127,20 @@ export function cleanArgs(args: unknown, shape?: Shape): { args: unknown } | { e
 
 const withoutStructuredError = <T>(result: T): T => withoutStructured(result, { errorsOnly: true });
 
+const RESTORABLE = new Set<string>(RESTORABLE_TOOLS);
+
+/**
+ * A restorable view's result names its instance and its snapshot in `_meta`
+ * (#32): a fresh viewUUID per call, which a replay of the same result keeps,
+ * and the snapshot its ids and offsets refer to. Neither reaches the model.
+ */
+function stampView<T>(name: string, result: T, store: DataStore): T {
+  if (!RESTORABLE.has(name) || !result || typeof result !== "object") return result;
+  const r = result as { isError?: boolean; _meta?: Record<string, unknown> };
+  if (r.isError) return result;
+  return { ...r, _meta: { ...r._meta, [VIEW_UUID_META]: randomUUID(), [SNAPSHOT_META]: snapshotId(store.manifest) } } as T;
+}
+
 /** Remove tools outside the profile and wrap the rest with the shared policy. */
 export function applyToolPolicy(tools: ToolMap, allowed: ReadonlySet<string> | null, opts: { guidance?: boolean } = {}): void {
   const guidance = opts.guidance ?? true;
@@ -144,7 +162,7 @@ export function applyToolPolicy(tools: ToolMap, allowed: ReadonlySet<string> | n
           return withoutStructuredError(errorResult("invalid_argument", `\`${cleaned.emptyRequired}\` must not be empty.`));
         }
         const run = inStore(() => handler(cleaned.args, ctx)).then(({ result, store }) =>
-          config.access === "curator" ? curatorToolResult(name, result, cleaned.args, store) : result);
+          stampView(name, config.access === "curator" ? curatorToolResult(name, result, cleaned.args, store) : result, store));
         const result = withoutStructuredError(
           await withDeadline(run, CALL_DEADLINE_MS, () =>
             errorResult("deadline_exceeded", `${name} did not answer within ${CALL_DEADLINE_MS / 1000} s; narrow the call and retry.`),

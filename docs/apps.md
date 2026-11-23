@@ -145,6 +145,107 @@ collaboration, causation or social ties. Map marker positions are source coordin
 hollow roots may denote entire countries. Missing coordinates remain in the table.
 Timeline ranges overlap, and a capped page is not the complete histogram.
 
+## Restoring a view after a replay
+
+When a host delivers the same tool result again, the bibliography, map and graph
+come back as the reader left them. A host does this when a conversation is
+reopened, a page is refreshed or the iframe is recreated. `src/ui/viewState.ts`
+holds the format; the views save from the same `share()` that reports their
+selection.
+
+- **What is saved.**
+  - Bibliography: its filters, page, selected publications (up to 25: id, title,
+    year, type and link) and export format.
+  - Map: its filters, page, and the opened place with its page of records.
+  - Graph: its seed, type filter, selected neighbour, and the link whose records
+    are listed, with its page.
+
+  Nothing else is stored: no transcripts, full text, exports or result rows. An
+  entry is versioned and capped at 16,000 characters, and only the 40 most
+  recently saved instances are kept.
+- **Which instance.** One tool result is one instance. The server stamps each
+  result of `search_publications`, `list_locations` and `get_entity_graph` with
+  a fresh `viewUUID` and the snapshot id in `_meta` (neither reaches the model).
+  A replay carries the same `viewUUID`, and a new call gets a new one, so two
+  instances of a view never share state. A host that drops `_meta` on replay
+  falls back to its id for the originating call (`toolInfo.id`), then to a hash
+  of the result. With the hash, two calls with byte-identical results, on a host
+  that sends neither, share their state.
+- **How it comes back.** The view first renders the delivered result. It then
+  repeats the saved call (filters and page), and applies the saved selection to
+  that fresh answer. This means the counts on screen come from the current
+  snapshot, not the saved one.
+- **When the data changed.** Ids, edge ids and evidence pages belong to a
+  snapshot. The saved selection, place or neighbour is applied only when the
+  repeated call names the snapshot it was saved on. Otherwise the filters
+  still apply, the selection is dropped, and the status line says the collection
+  has been updated. A record that left the collection cannot come back as
+  selected.
+- **When storage fails.** The state lives in the page's own `localStorage`.
+  A sandbox that refuses it, a corrupt entry or one of another version all mean
+  "nothing saved", and the view starts fresh.
+- **Clearing.** "Clear selection" and "Clear filters" save the cleared state, so a
+  later replay does not bring the old selection back.
+
+Restoring across a reopened conversation needs a host that both replays the
+result and keeps the iframe's `localStorage` for the app's origin. Hosts that
+give each iframe a fresh opaque origin restore only within the page's lifetime.
+This has not yet been checked in a real host; `test/unit/apps-restore.test.mjs`
+covers replays, recreated iframes, instance isolation, stale snapshots, corrupt
+storage and resets against the stub bridge.
+
+## The view as an image
+
+The bridge registers one tool on the app itself, `get-screenshot`, using
+`App.registerTool`, the pattern of the ext-apps 2.0.4 map example. A host that
+lists and calls a view's tools can ask for a PNG of the research-places map or
+the entity graph currently on screen. The PNG shows the filters, the opened place
+(marked on the map) or the selected neighbour, and the theme. The result carries
+two parts:
+
+- **The image itself.** The longest side is `maxDimension` pixels: 64 to 2048,
+  default 1024. A PNG over 1.5 MB is retried at half the size, then refused.
+- **A text block.** It names the view and says the image shows current results,
+  not additional evidence. It then gives the bounded selection the view shares
+  with the model, with each record's `amira_url`.
+
+On any other view, the tool answers with an error saying there is nothing to
+capture.
+
+`src/ui/capture.ts` does the work:
+
+- It clones the SVG and writes each element's computed paint and text properties
+  onto the clone, so CSS variables, the theme and the picked state are baked in.
+- It adds a background in the page's surface colour.
+- It draws the result on a canvas from a `data:` URL. Nothing is fetched and no
+  asset is added, so the page stays offline and within its size budget (about
+  2 KB).
+
+A `data:` SVG without `foreignObject` does not taint the canvas in Chromium, which
+is where this was validated. An engine that still taints it makes `toDataURL`
+throw, and the tool then reports that the capture failed.
+
+Hosts that never call app tools keep the JSON, citations and selection sharing
+unchanged.
+
+How it is tested:
+
+- **Automated** (`test/unit/apps-capture.test.mjs`): the real bridge in a
+  happy-dom iframe answers a host's `tools/list` and `tools/call`. The tests
+  cover the bounds, the error with no map or graph on screen, and a clean failure
+  where the canvas cannot draw. The SVG serialisation and sizing are tested
+  directly.
+- **Real PNG, checked by hand** in Chromium through `npm run preview:apps`:
+  - the graph at 512×512;
+  - the map in the dark theme at 1024×512, after opening a place;
+  - the map in the light theme with Nigeria opened.
+
+  Each decoded as a PNG of the requested size, and its labels, the dashed and
+  solid spokes, and the markers matched the view.
+
+Not yet checked: a real MCP Apps host calling the tool, and Safari/WebKit
+rendering.
+
 ## Preview and validation
 
 ```bash

@@ -12,6 +12,35 @@ let picked = null;
 /** The map's loads, and a place's records: each answers only its latest request (#51). */
 const mapOrder = requestOrder(),
   recordsOrder = requestOrder();
+/**
+ * Saved state being restored (#32): its filters are loaded again, and the
+ * render of that load reopens the place. Nothing is saved meanwhile.
+ * @type {{ snapshot: string | null, state: ToolData } | null}
+ */
+let restoring = null;
+/** Save what reconstructs this view: filters, page, and the opened place with its page of records (#32). */
+function save() {
+  if (restoring) return;
+  api.saveState("map", {
+    filters: active.filters || {},
+    offset: active.offset || 0,
+    place: picked ? { name: picked.name, id: picked.id || null, offset: picked.data.offset || 0 } : null,
+  });
+}
+/**
+ * Reopen a saved place once its map has loaded, on the snapshot it was saved
+ * on only: elsewhere its records may have moved, so the map stays as loaded.
+ * @param {{ snapshot: string | null, state: ToolData }} saved
+ */
+function applyRestore(saved) {
+  const place = saved.state.place;
+  if (!place || typeof place.name !== "string") return;
+  if (!saved.snapshot || saved.snapshot !== api.snapshot()) {
+    api.status("The collection has been updated since this view was saved, so the selected place was closed.");
+    return;
+  }
+  records(place.name, Math.max(0, Number(place.offset) || 0), place.id == null ? undefined : String(place.id));
+}
 // Countries are the hierarchy roots in the map's current scope, by name.
 /** @param {ToolData | undefined} scope */
 function countryKey(scope) {
@@ -57,6 +86,10 @@ function records(name, offset, id) {
       },
     );
     picked = { name: name, id: id, data: data };
+    // Mark the opened place on the map too, so a capture of the view shows it (#31).
+    document.querySelectorAll("circle.place").forEach(function (c) {
+      c.classList.toggle("picked", id ? c.dataset.placeId === String(id) : c.dataset.place === name);
+    });
     share();
   });
 }
@@ -64,6 +97,7 @@ function records(name, offset, id) {
 // place, that place and the page of its research items in view. Names and
 // titles are data; selectionContext.ts bounds and labels them.
 function share() {
+  save();
   const f = active.filters || {},
     rows = active.results || [];
   const place =
@@ -119,6 +153,21 @@ function render(d) {
   // This result supersedes every map or records request still loading.
   mapOrder.next();
   recordsOrder.next();
+  // A result from the host starts its own instance: reload its saved filters, if any (#32).
+  const saved = api.restoreState("map");
+  let apply = null;
+  if (saved !== undefined) restoring = null;
+  if (saved) {
+    restoring = saved;
+    const again = saved.state.filters && typeof saved.state.filters === "object" ? saved.state.filters : {};
+    latestCall(mapOrder, "list_locations", Object.assign({}, again, { offset: Math.max(0, Number(saved.state.offset) || 0), limit: 100 }), render)
+      .then(function () {
+        if (restoring === saved) restoring = null;
+      });
+  } else if (restoring) {
+    apply = restoring;
+    restoring = null;
+  }
   active = d;
   picked = null;
   const rows = d.results || [],
@@ -227,6 +276,7 @@ function render(d) {
       '<section id="map-evidence" class="evidence" aria-live="polite"></section>';
   pickerMount(country, countries(scope), countryList);
   share();
+  if (apply) applyRestore(apply);
   document.getElementById("root").onclick = function (event) {
     const place = event.target.closest("[data-place]");
     if (place) records(place.dataset.place, 0, place.dataset.placeId);

@@ -29,6 +29,7 @@ const CSS = String.raw`
 .place { fill: var(--bar); stroke: var(--ink); stroke-width: .6; cursor: pointer; }
 .place.root { fill: none; stroke: var(--bar); stroke-width: 2; stroke-dasharray: 3 2; }
 .place:focus-visible { stroke: var(--ink-strong); stroke-width: 3; outline: none; }
+.place.picked { stroke: var(--ink-strong); stroke-width: 2.5; }
 .map { border: 1px solid var(--border); margin: 12px 0; }
 .name-button { text-align: left; padding: 0; border: none; color: var(--bar); }
 table { table-layout: fixed; }

@@ -115,10 +115,14 @@ const STUB_JS = String.raw`(function () {
     callTool: function (name, args) { return host.callTool(name, args); },
     openLink: function (url) { return host.openLink(url); },
     download: function (text, extension) { return host.download(text, extension); },
+    restoreState: function (view) { return host.restoreState(view); },
+    saveState: function (view, state) { host.saveState(view, JSON.stringify(state)); },
+    snapshot: function () { return host.snapshot; },
     status: function (message) { var el = document.getElementById("app-status"); if (el) el.textContent = message; },
   };
 })();`;
-const STUB_API = ["ask", "callTool", "canAsk", "canShare", "download", "esc", "input", "onResult", "openLink", "shareSelection", "status", "toolName"];
+const STUB_API = ["ask", "callTool", "canAsk", "canShare", "download", "esc", "input", "onResult", "openLink", "restoreState", "saveState",
+  "shareSelection", "snapshot", "status", "toolName"];
 
 /** The bridge's own result unwrapping (src/ui/bridge.ts `payload`). */
 function payloadOf(result) {
@@ -152,8 +156,13 @@ const AMIRA_URL = /^https:\/\/data\.africamultiple\.uni-bayreuth\.de\/s\/amira\/
  * router's render callback (as `show`), and logs of everything the page asked
  * of its host, the selections it shared included. `show` hands the app a
  * structured clone, as postMessage would.
+ *
+ * Saved view state (#32) lives in `storage`, a Map of instance key to JSON:
+ * pass one Map to two mounts to recreate an iframe. `show(d, { instance })`
+ * delivers a host result for that instance (default "default"); the app's own
+ * calls record the snapshot their result names, as the bridge does.
  */
-async function mount(t, tool, { toolInfo = true, canAsk = false, canShare = false } = {}) {
+async function mount(t, tool, { toolInfo = true, canAsk = false, canShare = false, storage = new Map() } = {}) {
   const uri = APP_OF.get(tool);
   assert.equal(uri, lib.APP_URI, `${tool} declares the app`);
   const html = `${PAGE.slice(0, BUNDLE.index)}<script>${STUB_JS}</script>\n<script>${VIEWS_JS}</script>\n</body>\n</html>\n`;
@@ -174,8 +183,23 @@ async function mount(t, tool, { toolInfo = true, canAsk = false, canShare = fals
       },
     },
   });
-  const app = { win, uri, requests, errors: [], calls: [], downloads: [], shared: [], asked: 0, render: null };
+  const app = { win, uri, requests, errors: [], calls: [], downloads: [], shared: [], asked: 0, render: null, storage, saves: 0 };
+  let delivery = null;
   win.__amiraHost = {
+    snapshot: null,
+    restoreState(view) {
+      if (!delivery) return undefined;
+      const raw = storage.get(delivery);
+      delivery = null;
+      // Like ViewStore.load: a corrupt or foreign entry is nothing saved.
+      let saved = null;
+      try { saved = raw ? JSON.parse(raw) : null; } catch { saved = null; }
+      return saved && saved.v === 1 && saved.view === view && saved.state ? saved : null;
+    },
+    saveState(view, json) {
+      app.saves++;
+      storage.set(app.instance, JSON.stringify({ v: 1, view, snapshot: win.__amiraHost.snapshot, saved_at: Date.now(), state: JSON.parse(json) }));
+    },
     toolName: toolInfo ? tool : undefined,
     canAsk,
     canShare,
@@ -186,7 +210,9 @@ async function mount(t, tool, { toolInfo = true, canAsk = false, canShare = fals
       const plain = JSON.parse(JSON.stringify(args ?? {})); // postMessage drops undefined
       app.calls.push({ name, args: plain });
       if (!BRIDGE_TOOLS.has(name)) throw new Error("This tool is not available in the app.");
-      return structuredClone(await payload(name, plain));
+      const raw = await conn.raw(name, plain);
+      win.__amiraHost.snapshot = raw._meta?.["amira/snapshot"] ?? win.__amiraHost.snapshot;
+      return structuredClone(payloadOf(raw));
     },
     async ask() { app.asked++; },
     openLink: async () => {},
@@ -203,7 +229,12 @@ async function mount(t, tool, { toolInfo = true, canAsk = false, canShare = fals
   app.doc = win.document;
   app.root = win.document.getElementById("root");
   app.status = () => text(win.document.getElementById("app-status"));
-  app.show = (value) => app.render(structuredClone(value));
+  app.show = (value, { instance = "default", snapshot } = {}) => {
+    app.instance = instance;
+    delivery = instance;
+    if (snapshot !== undefined) win.__amiraHost.snapshot = snapshot;
+    return app.render(structuredClone(value));
+  };
   app.lastShared = () => app.shared.at(-1);
   app.waitFor = async (predicate, what, ms = 2_000) => {
     for (const deadline = Date.now() + ms; Date.now() < deadline; await sleep(5)) {

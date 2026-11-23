@@ -274,18 +274,31 @@ document.addEventListener("click", function (event) {
 
 // --- evidence lists -----------------------------------------------------------------
 /**
- * A record's title (or `title`) as a citation link to its amira_url; plain
- * text, marked when private, without one.
- * @param {ToolData} r a record: its amira_url, title and visibility are read
+ * A record's title (or `title`) as a citation link to its amira_url. A private
+ * record (curator mode) has no public page: it links to its Omeka admin page,
+ * which only curators can open, marked private and never as a citation (#26);
+ * plain text when it has neither.
+ * @param {ToolData} r a record: its amira_url, admin_url, title and visibility are read
  * @param {string} [title]
  * @returns {string}
  */
 function citationLink(r, title) {
   const esc = window.amiraApp.esc,
     label = esc(title == null ? r.title : title);
-  // A private record (curator mode) has no public page: plain text, never an empty link.
-  if (!r.amira_url) return label + (r.visibility === "private" ? ' <span class="note">(private)</span>' : "");
-  return '<a data-citation href="' + esc(r.amira_url) + '">' + label + "</a>";
+  if (r.amira_url) return '<a data-citation href="' + esc(r.amira_url) + '">' + label + "</a>";
+  const mark = r.visibility === "private" ? ' <span class="note">(private)</span>' : "";
+  if (r.admin_url) return adminLink(r.admin_url, label) + mark;
+  return label + mark;
+}
+/**
+ * A link to an Omeka admin page: opened through the host like a citation, but
+ * marked so it is never mistaken for (or shared as) a public source.
+ * @param {string} url
+ * @param {string} label markup (escaped by the caller)
+ * @returns {string}
+ */
+function adminLink(url, label) {
+  return '<a data-admin href="' + window.amiraApp.esc(url) + '" title="Omeka admin page, for AMIRA curators only">' + label + "</a>";
 }
 /**
  * A page of records behind a mark (a graph edge, a place, a span of years):
