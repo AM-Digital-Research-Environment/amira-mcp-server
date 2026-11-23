@@ -3,7 +3,7 @@
 
 import { config } from "../config.js";
 import { FULLTEXT_SOURCE, parseFulltextMaps, type FulltextMaps } from "../fulltextMaps.js";
-import { SEMANTIC_SOURCE, semanticBuild, verifySemanticRelease, type VerifiedRelease } from "../semantic.js";
+import { SEMANTIC_SOURCE, semanticBuild, servableSemantic, verifySemanticRelease, type SemanticNeighbours, type VerifiedRelease } from "../semantic.js";
 import { fetchJSON, fetchRetrying } from "./http.js";
 
 /** GitHub endpoints of the enrichments, or their stand-ins under AMIRA_ENRICHMENT_BASE (tests). */
@@ -68,4 +68,33 @@ export async function fetchSemanticRelease(setting: string, log: (msg: string) =
     }
   }
   throw lastError ?? new Error("semantic release: nothing to verify");
+}
+
+/**
+ * The optional GitHub enrichments a crawl could not fetch (GitHub unreachable),
+ * carried over from the snapshot being replaced: the server's live refresh
+ * (the store it serves) and fetch-data (the snapshot on disk) both use it (#52).
+ * Without this a crawl during a GitHub outage publishes a snapshot without
+ * them, and nothing later notices they are missing.
+ *  - The pinned full-text files never change: kept when the tag still matches.
+ *  - The neighbours: kept when the semantic setting still serves them; they are
+ *    filtered to the new snapshot at load, so a deleted record is never cited.
+ * Returns what was carried, for the log.
+ */
+export function carryEnrichments(
+  out: { fulltext?: FulltextMaps | null; semantic?: SemanticNeighbours | null },
+  previous: { fulltext?: FulltextMaps | null; semantic?: SemanticNeighbours | null } | null,
+  semanticSetting: string,
+): string[] {
+  const carried: string[] = [];
+  if (!out.fulltext && previous?.fulltext?.source.tag === FULLTEXT_SOURCE.tag) {
+    out.fulltext = previous.fulltext;
+    carried.push(`full-text map ${previous.fulltext.source.tag}`);
+  }
+  const semantic = out.semantic ? null : servableSemantic(previous?.semantic, semanticSetting);
+  if (semantic) {
+    out.semantic = semantic;
+    carried.push(`semantic neighbours ${semantic.source.tag}`);
+  }
+  return carried;
 }

@@ -262,6 +262,14 @@ jobs:
       - name: Commit CITATION.cff to main
         working-directory: main-checkout
         run: |
+          # A tag pushed after main moved to a later version must not stamp the
+          # older one there: the skipped CI would hide the failing
+          # release-scripts test (#52).
+          main_version=$(node -p "require('./package.json').version")
+          if [ "$main_version" != "${GITHUB_REF_NAME#v}" ]; then
+            echo "::notice::main is at ${main_version}, not ${GITHUB_REF_NAME#v}: CITATION.cff on main is left to that release."
+            exit 0
+          fi
           node scripts/stamp-citation.mjs \
             --version "${GITHUB_REF_NAME#v}" \
             --date "$(date -u +%Y-%m-%d)"

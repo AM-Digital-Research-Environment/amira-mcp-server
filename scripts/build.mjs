@@ -15,7 +15,7 @@ import { buildSkillsSnapshot } from "./skills.mjs";
 
 const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
-// --- zod locale stubbing (browser bundle only) --------------------------------
+// --- zod locale stubbing (browser bridge and server bundles) -----------------
 // From the IWAC server (mcpb/scripts/bundle.mjs). zod's `v4/locales/index.js`
 // re-exports 50+ error-message catalogues and `v4/classic/external.js`
 // re-exports that index as `z.locales`, so every catalogue lands in every
@@ -120,6 +120,8 @@ const serverBuild = {
       "const __dirname = __pathDirname(__filename);",
     ].join("\n"),
   },
+  // The server bundles carry zod too: about 368 KB of unused catalogues each (#52).
+  plugins: [stubZodLocales],
   logLevel: "info",
 };
 

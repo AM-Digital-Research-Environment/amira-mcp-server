@@ -341,3 +341,22 @@ test("each snapshot carries per-record fingerprints; one written before them fal
   await fs.rm(path.join(flat, "fingerprints.json"));
   assert.equal(await readFingerprints(flat), null);
 });
+
+test("a crawl that missed the GitHub enrichments carries the previous ones, as fetch-data and the refresh both do (#52)", async () => {
+  const { carryEnrichments, FULLTEXT_SOURCE } = await import("../../server/lib.js");
+  const fulltext = { source: { tag: FULLTEXT_SOURCE.tag } };
+  const semantic = { source: { tag: "semantic-embeddings-v1-7" } };
+  const out = { fulltext: null, semantic: null };
+  assert.deepEqual(carryEnrichments(out, { fulltext, semantic }, "latest"),
+    [`full-text map ${FULLTEXT_SOURCE.tag}`, "semantic neighbours semantic-embeddings-v1-7"]);
+  assert.deepEqual([out.fulltext, out.semantic], [fulltext, semantic]);
+  // An older pin of the map, a switched-off or differently pinned vector setting: nothing carried.
+  const none = { fulltext: null, semantic: null };
+  assert.deepEqual(carryEnrichments(none, { fulltext: { source: { tag: "v0.0.1" } }, semantic }, "off"), []);
+  assert.deepEqual(carryEnrichments(none, { semantic }, "semantic-embeddings-v1-9"), []);
+  // What the crawl fetched itself is kept.
+  const fresh = { fulltext: { source: { tag: "new" } }, semantic: { source: { tag: "new" } } };
+  assert.deepEqual(carryEnrichments(fresh, { fulltext, semantic }, "latest"), []);
+  assert.equal(fresh.fulltext.source.tag, "new");
+  assert.deepEqual(carryEnrichments({ fulltext: null, semantic: null }, null, "latest"), []);
+});

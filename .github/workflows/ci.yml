@@ -134,7 +134,8 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: data
-          key: snapshot-${{ steps.week.outputs.week }}-${{ hashFiles('src/snapshot.ts', 'src/transform.ts', 'src/omekaJSON.ts', 'src/types.ts', 'src/semantic.ts', 'src/fulltextMaps.ts') }}
+          # Every file the crawl runs through: src/snapshot.ts only re-exports src/snapshot/ (#52).
+          key: snapshot-${{ steps.week.outputs.week }}-${{ hashFiles('src/snapshot.ts', 'src/snapshot/*.ts', 'src/transform.ts', 'src/omekaJSON.ts', 'src/types.ts', 'src/semantic.ts', 'src/fulltextMaps.ts', 'src/config.ts', 'src/urls.ts', 'src/fetchCli.ts') }}
       - run: npm run fetch-data
         if: steps.data-cache.outputs.cache-hit != 'true'
         env:

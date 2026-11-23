@@ -12,7 +12,7 @@
 //   disk.ts         disk layout, fingerprints and the atomic publish
 export { fetchJSON } from "./snapshot/http.js";
 export { crawlSnapshot, type CrawlOutput } from "./snapshot/crawl.js";
-export { fetchFulltextMaps, fetchSemanticRelease } from "./snapshot/enrichments.js";
+export { carryEnrichments, fetchFulltextMaps, fetchSemanticRelease } from "./snapshot/enrichments.js";
 export { isStale, KEY_NOT_ACCEPTED, probeCuratorAuth, probeRemote, type RemoteProbe } from "./snapshot/probe.js";
 export {
   loadSnapshot, readFingerprints, readManifest, readSnapshotPointer, snapshotFingerprints, writeSnapshot, writeSnapshotAtomic,

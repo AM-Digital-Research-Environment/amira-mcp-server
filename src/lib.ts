@@ -10,7 +10,7 @@ export { fold, foldCached, foldedIndexOf } from "./text.js";
 export { ensureStore, currentStore, chooseInitial, DataStore, withStore } from "./data.js";
 export { warmIndexes } from "./warm.js";
 export {
-  crawlSnapshot, fetchJSON, fetchSemanticRelease, isStale, loadSnapshot, probeCuratorAuth, probeRemote, readFingerprints, readManifest,
+  carryEnrichments, crawlSnapshot, fetchJSON, fetchSemanticRelease, isStale, loadSnapshot, probeCuratorAuth, probeRemote, readFingerprints, readManifest,
   readSnapshotPointer, snapshotFingerprints, writeSnapshot, writeSnapshotAtomic,
 } from "./snapshot.js";
 export { itemUrl, itemUrlOrNull } from "./urls.js";

@@ -57,9 +57,9 @@ test("the repository's CITATION.cff cites package.json's version (stamp-citation
 const SNAPSHOT = { data: { research_items: [{ o_id: 1, title: "A" }] }, semantic: { source: { tag: "semantic-v1" } },
   manifest: { fetchedAt: "2026-11-01T00:00:00Z" } };
 
-test("snapshotSignature hashes the code version, the data and the vector build, nothing else", () => {
+test("snapshotSignature hashes the code version, the data, the vector build and the full-text map, nothing else", () => {
   const expected = createHash("sha256").update("amira-mcp-server@1.0.0\n").update(JSON.stringify(SNAPSHOT.data))
-    .update(JSON.stringify(SNAPSHOT.semantic.source)).digest("hex");
+    .update(JSON.stringify(SNAPSHOT.semantic.source)).update("null").digest("hex");
   const base = snapshotSignature("1.0.0", SNAPSHOT);
   assert.equal(base, expected, "the formula the published signatures were computed with");
   assert.match(base, /^[0-9a-f]{64}$/);
@@ -71,6 +71,8 @@ test("snapshotSignature hashes the code version, the data and the vector build, 
   assert.notEqual(snapshotSignature("1.0.0", { ...SNAPSHOT, data: { research_items: [{ o_id: 1, title: "B" }] } }), base, "changed data");
   assert.notEqual(snapshotSignature("1.0.0", { ...SNAPSHOT, semantic: { source: { tag: "semantic-v2" } } }), base, "a new vector build");
   assert.notEqual(snapshotSignature("1.0.0", { ...SNAPSHOT, semantic: undefined }), base, "vectors withdrawn");
+  // A bundle published without the full-text map (GitHub down) is republished once the map is back (#52).
+  assert.notEqual(snapshotSignature("1.0.0", { ...SNAPSHOT, fulltext: { source: { tag: "v1.0.0" } } }), base, "the full-text map");
 });
 
 test("syncManifestVersion sets only the top-level version and keeps the layout", () => {

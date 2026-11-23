@@ -6,7 +6,7 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { API_BASE, config } from "./config.js";
-import { crawlSnapshot, loadSnapshot, writeSnapshotAtomic } from "./snapshot.js";
+import { carryEnrichments, crawlSnapshot, loadSnapshot, writeSnapshotAtomic } from "./snapshot.js";
 import { refuseMisconfiguration } from "./access.js";
 
 // The bundled snapshot is public by definition (#26): never crawl it with a key.
@@ -19,14 +19,11 @@ console.error(`[fetch] crawling ${config.fetchBase} -> ${dest}`);
 const started = Date.now();
 const out = await crawlSnapshot(API_BASE, (m) => console.error(`[fetch] ${m}`), undefined,
   { semanticRelease: config.semanticRelease, fetchBase: config.fetchBase });
-// No verified corpus-vector release this time: keep the neighbours of the snapshot being replaced
-// (they are filtered to the new snapshot at load, so a deleted record is never cited).
-if (!out.semantic && config.semanticRelease !== "off") {
+// GitHub unreachable this time: keep the enrichments of the snapshot being
+// replaced, as the server's live refresh does (src/snapshot/enrichments.ts).
+if (!out.fulltext || !out.semantic) {
   const previous = await loadSnapshot(dest).catch(() => null);
-  if (previous?.semantic) {
-    out.semantic = previous.semantic;
-    console.error(`[fetch] kept semantic neighbours ${previous.semantic.source.tag} from the previous snapshot`);
-  }
+  for (const kept of carryEnrichments(out, previous, config.semanticRelease)) console.error(`[fetch] kept ${kept} from the previous snapshot`);
 }
 await writeSnapshotAtomic(dest, out);
 console.error(

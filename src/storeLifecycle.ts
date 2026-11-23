@@ -14,10 +14,9 @@
 // The store itself (records and indexes) is src/store.ts.
 
 import { config } from "./config.js";
-import { FULLTEXT_SOURCE } from "./fulltextMaps.js";
 import { pickSemantic, semanticManifestEntry, servableSemantic, type SemanticNeighbours } from "./semantic.js";
 import {
-  crawlSnapshot, isStale, KEY_NOT_ACCEPTED, loadSnapshot, probeCuratorAuth, probeRemote, writeSnapshotAtomic, type CrawlOutput,
+  carryEnrichments, crawlSnapshot, isStale, KEY_NOT_ACCEPTED, loadSnapshot, probeCuratorAuth, probeRemote, writeSnapshotAtomic, type CrawlOutput,
 } from "./snapshot.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { setFoldCacheProvider } from "./text.js";
@@ -204,18 +203,10 @@ function scheduleCuratorRetry(kind: "auth" | "transient" = "auth"): void {
   curator.retryTimer.unref?.();
 }
 
-/**
- * The optional GitHub enrichments a crawl could not fetch (GitHub unreachable),
- * carried over from the snapshot being served, in both modes. Without this a
- * refresh would publish a snapshot without them, and `isStale` would then see
- * nothing to refetch until the next Omeka change.
- */
-function carryEnrichments(out: CrawlOutput): void {
-  // The pinned full-text files never change: when GitHub was unreachable, keep the ones already served.
-  if (!out.fulltext && current?.fulltextMaps?.source.tag === FULLTEXT_SOURCE.tag) out.fulltext = current.fulltextMaps;
-  // No verified release this time: keep the neighbours already served (filtered to the new snapshot at load).
+/** Carry the enrichments of the store being served into a crawl that could not fetch them (src/snapshot/enrichments.ts). */
+function carryServedEnrichments(out: CrawlOutput): void {
   // `current.semantic` already satisfies the setting, so a pinned build is never replaced by another.
-  if (!out.semantic && current?.semantic) out.semantic = current.semantic;
+  carryEnrichments(out, current ? { fulltext: current.fulltextMaps, semantic: current.semantic } : null, config.semanticRelease);
 }
 
 /** Crawl with the key and publish to the curator cache; the published snapshot. Runs inside a background refresh only. */
@@ -224,7 +215,7 @@ async function curatorCrawl(signal: AbortSignal): Promise<CrawlOutput> {
   const out = await crawlSnapshot(config.apiBase, (m) => console.error(`[amira] refresh: ${m}`), signal,
     { semanticRelease: config.semanticRelease, access: "curator", fetchBase: config.fetchBase });
   signal.throwIfAborted();
-  carryEnrichments(out);
+  carryServedEnrichments(out);
   const published = (await writeSnapshotAtomic(cacheSnapshotDir(), out, signal)) ?? await loadSnapshot(cacheSnapshotDir());
   assertSnapshotSource(published.manifest, config.apiBase, "curator");
   return published;
@@ -493,7 +484,7 @@ async function backgroundRefresh(): Promise<void> {
       const out: CrawlOutput = await crawlSnapshot(config.apiBase, (m) => console.error(`[amira] refresh: ${m}`), signal,
         { semanticRelease: config.semanticRelease, fetchBase: config.fetchBase });
       signal.throwIfAborted();
-      carryEnrichments(out);
+      carryServedEnrichments(out);
       // The writer returns what it verified; only when another process published
       // a newer generation first is the served snapshot read back from disk.
       published = (await writeSnapshotAtomic(cacheSnapshotDir(), out, signal)) ?? await loadSnapshot(cacheSnapshotDir());
