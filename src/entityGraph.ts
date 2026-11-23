@@ -189,7 +189,7 @@ export function resolveEntities(store: DataStore, query: string, type?: EntityTy
   // A person's full name matches in either order ("Fernand Bationo" = "Bationo, Fernand").
   const key = nameKey(raw);
   let exact = all.filter(({ entity, label, key: k }) =>
-    entity.id === typed || String(entity.omeka_id) === raw || label === q || (!!k && k === key)).map(({ entity }) => entity);
+    entity.id === typed || (entity.omeka_id != null && String(entity.omeka_id) === raw) || label === q || (!!k && k === key)).map(({ entity }) => entity);
   if (exact.length) {
     // A retired private duplicate gives way to its public namesake (curator mode).
     if (curator && exact.length > 1) {

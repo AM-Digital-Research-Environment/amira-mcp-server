@@ -171,6 +171,10 @@ export function registerResearchTools(server: Server, tools: ToolMap): void {
       }
       const rec = findRecord(store, kind, parsed.key);
       if (!rec) { unavailable.push({ id: raw, reason: "not_found" }); continue; }
+      // And on the record: an alias (publication:eref-94882) and its Omeka id are one document too (#53).
+      const recordKey = `${kind}#${rec.o_id}`;
+      if (seen.has(recordKey)) continue;
+      seen.add(recordKey);
       const sources: { text: string; matched_in?: string }[] = [];
       const publicText = "fulltext" in rec ? rec.fulltext : "transcript" in rec ? rec.transcript : "text" in rec ? rec.text : null;
       if (publicText) sources.push({ text: publicText });

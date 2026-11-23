@@ -258,24 +258,43 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
       if (invalid) return queryErrorResult(invalid);
       const store = callStore();
       const { records } = selectPublications(store, filters);
+      const literal = (value: string | null): LinkedRef[] => value ? [{ label: value, o_id: null }] : [];
+      const refsOf = (p: (typeof records)[number]): LinkedRef[] => facet === "author" ? [...p.authors, ...p.editors]
+        : facet === "subject" ? p.subjects
+        : facet === "venue" ? p.venue_ref ? [p.venue_ref] : literal(p.venue)
+        : facet === "year" ? literal(p.year == null ? null : String(p.year))
+        : facet === "language" ? languagesOf(p).map((label) => ({ label, o_id: null }))
+        : literal(p[facet]);
+      // Buckets are keyed by the linked record, so two authorities with one
+      // label keep their own counts and ids (#53). An unlinked label joins the
+      // linked bucket of that label when exactly one exists.
+      const linkedByLabel = new Map<string, Set<number>>();
+      for (const p of records) {
+        for (const ref of refsOf(p)) {
+          if (ref.o_id == null) continue;
+          const label = fold(ref.label.trim());
+          if (!linkedByLabel.has(label)) linkedByLabel.set(label, new Set());
+          linkedByLabel.get(label)!.add(ref.o_id);
+        }
+      }
+      const keyOf = (ref: LinkedRef, label: string): string => {
+        if (ref.o_id != null) return `id:${ref.o_id}`;
+        const linked = linkedByLabel.get(label);
+        return linked?.size === 1 ? `id:${[...linked][0]}` : `label:${label}`;
+      };
       const buckets = new Map<string, { value: string; publication_count: number; amira_url?: string }>();
       let missing = 0;
       for (const p of records) {
-        const literal = (value: string | null): LinkedRef[] => value ? [{ label: value, o_id: null }] : [];
-        const refs = facet === "author" ? [...p.authors, ...p.editors]
-          : facet === "subject" ? p.subjects
-          : facet === "venue" ? p.venue_ref ? [p.venue_ref] : literal(p.venue)
-          : facet === "year" ? literal(p.year == null ? null : String(p.year))
-          : facet === "language" ? languagesOf(p).map((label) => ({ label, o_id: null }))
-          : literal(p[facet]);
         const seen = new Set<string>();
-        for (const ref of refs) {
-          const key = fold(ref.label.trim());
-          if (!key || seen.has(key)) continue;
+        for (const ref of refsOf(p)) {
+          const label = fold(ref.label.trim());
+          if (!label) continue;
+          const key = keyOf(ref, label);
+          if (seen.has(key)) continue;
           seen.add(key);
           const bucket = buckets.get(key) ?? { value: ref.label, publication_count: 0 };
           bucket.publication_count++;
-          if (ref.o_id != null) bucket.amira_url ??= itemUrl(ref.o_id);
+          if (key.startsWith("id:")) bucket.amira_url ??= itemUrl(Number(key.slice(3)));
           buckets.set(key, bucket);
         }
         if (!seen.size) missing++;

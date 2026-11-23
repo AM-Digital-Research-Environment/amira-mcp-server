@@ -108,9 +108,12 @@ export function cleanArgs(args: unknown, shape?: Shape): { args: unknown } | { e
   const out = trimObject(args, true);
   for (const [key, value] of Object.entries(out)) {
     if (Array.isArray(value)) {
-      out[key] = value
+      const kept = value
         .map((v) => (typeof v === "string" ? v.trim() : isPlainObject(v) ? trimObject(v, false) : v))
         .filter((v) => v !== "");
+      // Validation ran on the untrimmed array: `["  "]` passed `.min(1)` and must not reach the handler as `[]`.
+      if (!kept.length && value.length && shape?.[key]?.safeParse?.([]).success === false) return { emptyRequired: key };
+      out[key] = kept;
     } else if (isPlainObject(value)) {
       out[key] = trimObject(value, true); // nested filter objects: every field is optional
     }
