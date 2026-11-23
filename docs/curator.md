@@ -88,9 +88,16 @@ applied to every tool and resource, so no tool can forget it:
   `include_fulltext`, `fulltext_offset` and `fulltext_max_chars`, paged like
   every other long text. `get_research_item` gains those three parameters in
   curator mode only. Asked for with `include_fulltext` on a record that has
-  none, `restricted` says `has_fulltext: false`. On `get_publication` the public
-  and the private window share one 25,000-character budget: the private window
-  gets what the public one left (`fulltext_truncated` then says there is more).
+  none, `restricted` says `has_fulltext: false`. On a record with both texts
+  the public and the private text are one stream on `fulltext_offset`: the
+  private text starts once the public one is exhausted, at
+  `restricted.fulltext_starts_at` (the public text's length), and the two
+  windows share one 25,000-character page. `restricted.fulltext_offset` and
+  `restricted.fulltext_next_offset` are stream offsets; while the public text
+  still has pages, `restricted` names where the private text starts instead of
+  returning a sliver of it. A record with private text only pages it from 0,
+  as before. The restricted `values` and `bitstream` come with the first page
+  (`fulltext_offset` 0) only.
   A Cluster Chronicles work's private text follows the same rules under its own
   field name: `search_chronicles` marks rows matched only there with
   `matched_in: "restricted_text"` (a private `text_snippet`, the same note) and
@@ -108,9 +115,11 @@ applied to every tool and resource, so no tool can forget it:
   private and not on the public site, even when the record itself is public (its row then
   says `visibility: "public"` and keeps its `amira_url`; a private record's
   row has `admin_url` instead). Its offsets are UTF-16 offsets into that
-  private text, the ones `get_research_item` / `get_publication`
-  `fulltext_offset` (`get_chronicle` `text_offset`) page, so a curator can read
-  around a passage without paging the whole text. A publication with both texts
+  private text: on a record without public text they are the
+  `get_research_item` / `get_publication` `fulltext_offset` (`get_chronicle`
+  `text_offset`) to page from, and on one with both texts add
+  `restricted.fulltext_starts_at`, so a curator can read around a passage
+  without paging the whole text. A publication with both texts
   gives its public passages first, then its private ones. A research item with
   no private full text is listed in `unavailable` as `no_fulltext`. In public
   mode the tool, its schema and its description are unchanged, and a research
@@ -120,7 +129,15 @@ applied to every tool and resource, so no tool can forget it:
   `list_locations` and `compare_collections` (their `filters.keyword`) and
   research-item exports count items matched only in a private full text, with
   no row marker. The three tools add a result-level `curator_note` saying so;
-  an export cannot carry one.
+  an export cannot carry one. The publication paths whose rows carry no
+  `matched_in` (`list_publication_facets`, and `search_publications` with
+  `citation_format` or `export`) add one too when the keyword can match a
+  publication's private full text. Below `AMIRA_EXPOSURE=full` no private text
+  is searched and no note is added.
+- **Pages keep their budget after decoration**: a private row grows by
+  `visibility`, `citation_note` and `admin_url`, so a page is re-sized after
+  decoration; the rows that no longer fit move to `next_offset`, with
+  `response_limited: true`.
 - **Citations and exports mark private records** rather than refusing them: the
   generated citation, BibTeX, RIS and CSL-JSON of a private record carry the
   private-record note and no AMIRA URL (a DOI or repository link, which is the

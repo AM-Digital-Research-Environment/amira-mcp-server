@@ -185,6 +185,8 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
               places_of_publication: refLabels(p.places_of_publication),
               relations: p.relations,
               series: p.series ?? [],
+              language: p.language,
+              languages: languagesOf(p),
             }
           : {}),
         volume: p.volume,
@@ -196,8 +198,6 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
         isbn: p.isbn,
         issn: p.issn,
         status: p.status,
-        language: p.language,
-        languages: languagesOf(p),
         abstract: allowDescriptive() && p.abstract ? capText(p.abstract).text : null,
         // Every abstract with its language tag; the first alone hid 46 non-English ones.
         ...(allowDescriptive() && (p.abstracts?.length ?? 0) > 1

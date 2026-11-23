@@ -61,7 +61,8 @@ export { cacheSnapshotDir, refreshNow, refreshStatus } from "./data.js";
 export { adminItemUrl, adminItemSetUrl } from "./urls.js";
 // Curator presentation: the decoration step, for direct tests of URL forms.
 export { adminMediaUrl } from "./urls.js";
-export { curatorText, curatorValue, PRIVATE_KEYWORD_NOTE, RESTRICTED_MATCH_NOTE } from "./tools/curator.js";
+export { PAGE_CHAR_BUDGET } from "./tools/pagination.js";
+export { curatorText, curatorToolResult, curatorValue, PRIVATE_KEYWORD_NOTE, PRIVATE_PUBLICATION_KEYWORD_NOTE, RESTRICTED_MATCH_NOTE } from "./tools/curator.js";
 export { PRIVATE_NOT_EMBEDDED, semanticCoverage } from "./semantic.js";
 export { noNeighboursReason } from "./tools/similar.js";
 export { neighboursNote } from "./fulltextMaps.js";

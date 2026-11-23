@@ -30,9 +30,11 @@
 // Public mode never calls this: its store holds no private record or value
 // (src/visibility.ts), so its output is unchanged.
 import { SITE_BASE, SITE_SLUG } from "../config.js";
+import { allowFullText } from "../exposure.js";
 import type { DataStore } from "../data.js";
 import { adminItemSetUrl, adminItemUrl, adminMediaUrl } from "../urls.js";
 import { PRIVATE_CITATION_NOTE, RESTRICTED_NOTE, type RestrictedValues } from "../visibility.js";
+import { PAGE_CHAR_BUDGET } from "./pagination.js";
 import { CHARACTER_LIMIT, scrub } from "./responses.js";
 import { textWindowFields, type WindowField } from "./textWindows.js";
 
@@ -54,6 +56,11 @@ const RESEARCH_FILTER_TOOLS = new Set(["list_years", "list_locations", "compare_
 export const PRIVATE_KEYWORD_NOTE =
   "Curator mode: the keyword filter also matches research items' private full text (the ILAM OCR text), so these counts " +
   "may include items matched only there. search_research_items marks such rows with matched_in.";
+
+/** The same for publications, on the paths whose rows cannot say matched_in (facets, citation pages, exports). */
+export const PRIVATE_PUBLICATION_KEYWORD_NOTE =
+  "Curator mode: the keyword also matches publications' private full text, so these counts may include publications " +
+  "matched only there. search_publications without citation_format marks such rows with matched_in.";
 
 /** Said on a search result with rows matched only in a private full text, and on passages drawn from one. */
 export const RESTRICTED_MATCH_NOTE =
@@ -274,28 +281,71 @@ function capped(text: string): string {
   return text.length <= CHARACTER_LIMIT ? text : `${text.slice(0, CHARACTER_LIMIT)} […truncated: ${text.length} characters in all]`;
 }
 
+/** What the public text window of the same result returned (zeros when it has no public text). */
+interface PublicWindow { length: number; returned: number; truncated: boolean }
+
+/** Below this many characters left on the page, the private text waits for the next page. */
+const MIN_PRIVATE_WINDOW = 200;
+
 /**
- * A record's restricted block as returned to a curator. `publicWindow` is how
- * many characters of public full text the same result already returns: the
- * restricted window shares that budget, so one result stays within it.
+ * A record's restricted block as returned to a curator. The public and the
+ * private full text are one stream on the shared `<field>_offset` (#54): the
+ * private text follows the public one, so private character i sits at offset
+ * `public length + i`. It starts only once the public text is exhausted, and
+ * shares the page budget with the public window. A record with private text
+ * only pages exactly as before (its public length is 0). The restricted values
+ * come with the first page only.
  */
-function restrictedBlock(r: RestrictedValues | undefined, ctx: Ctx, publicWindow: number): Record<string, unknown> {
+function restrictedBlock(r: RestrictedValues | undefined, ctx: Ctx, pub: PublicWindow): Record<string, unknown> {
   const out: Record<string, unknown> = { note: RESTRICTED_NOTE };
+  const field = ctx.window?.field ?? "fulltext";
+  const offset = Math.max(0, Math.floor(ctx.window?.offset ?? 0));
+  const laterPage = !!ctx.window?.include && offset > 0;
   if (r?.mongo_id) out.mongo_id = r.mongo_id;
   if (r?.security_level) out.security_level = r.security_level;
-  if (r?.bitstream) out.bitstream = r.bitstream.map(capped);
-  if (r?.values) out.values = Object.fromEntries(Object.entries(r.values).map(([term, texts]) => [term, texts.map(capped)]));
-  const field = ctx.window?.field ?? "fulltext";
+  if (laterPage && (r?.bitstream || r?.values)) out.values_note = `Restricted values are returned with ${field}_offset 0.`;
+  else {
+    if (r?.bitstream) out.bitstream = r.bitstream.map(capped);
+    if (r?.values) out.values = Object.fromEntries(Object.entries(r.values).map(([term, texts]) => [term, texts.map(capped)]));
+  }
   if (r?.fulltext) {
-    Object.assign(out, ctx.window
-      ? textWindowFields(field, r.fulltext, { ...ctx.window, budget: Math.max(1, CHARACTER_LIMIT - publicWindow) })
-      : { has_fulltext: true, fulltext_length: r.fulltext.length });
+    const text = r.fulltext;
+    if (!ctx.window) Object.assign(out, { has_fulltext: true, fulltext_length: text.length });
+    else if (!ctx.window.include) Object.assign(out, textWindowFields(field, text, ctx.window));
+    else Object.assign(out, privateWindow(field, text, ctx.window, offset, pub));
     if (r.fulltext_generated_by) out[`${field}_generated_by`] = r.fulltext_generated_by.label;
   } else if (ctx.window?.include) {
     // Asked for the private full text: say there is none rather than staying silent.
     out[`has_${field}`] = false;
   }
   return scrub(walk(out, ctx, 1) as Record<string, unknown>);
+}
+
+/** The private text's window in stream offsets (see restrictedBlock). */
+function privateWindow(field: WindowField, text: string, window: NonNullable<Ctx["window"]>, offset: number,
+  pub: PublicWindow): Record<string, unknown> {
+  const head = { [`has_${field}`]: true, [`${field}_length`]: text.length, ...(pub.length ? { [`${field}_starts_at`]: pub.length } : {}) };
+  if (pub.truncated) return { ...head, [`${field}_hint`]: `The private ${field} follows the public one, from ${field}_offset ${pub.length}.` };
+  const start = Math.max(0, offset - pub.length);
+  const page = Math.min(Math.floor(window.maxChars ?? CHARACTER_LIMIT), CHARACTER_LIMIT);
+  const left = page - pub.returned;
+  if (start < text.length && pub.returned > 0 && left < MIN_PRIVATE_WINDOW) {
+    return { ...head, [`${field}_next_offset`]: pub.length + start };
+  }
+  const shown = textWindowFields(field, text, { include: true, offset: start, maxChars: window.maxChars, budget: Math.max(1, left) });
+  if (!(field in shown)) return { ...head, ...shown }; // exposure below full: flags only
+  const returned = shown[`${field}_returned_chars`] as number;
+  const truncated = start + returned < text.length;
+  return {
+    ...head,
+    [field]: shown[field],
+    [`${field}_offset`]: pub.length + start,
+    [`${field}_returned_chars`]: returned,
+    ...(truncated ? { [`${field}_truncated`]: true, [`${field}_next_offset`]: pub.length + start + returned } : {}),
+    ...(start >= text.length
+      ? { [`${field}_hint`]: `${field}_offset ${offset} is past the end of the public and private ${field} (${pub.length + text.length} characters).` }
+      : {}),
+  };
 }
 
 /**
@@ -395,9 +445,15 @@ function walk(value: unknown, ctx: Ctx, depth: number): unknown {
     if (typeof value.omeka_id === "number") {
       const restricted = ctx.restricted.get(value.omeka_id);
       if (restricted || ctx.window?.include) {
-        const returned = value[`${ctx.window?.field ?? "fulltext"}_returned_chars`];
-        const publicWindow = typeof returned === "number" ? returned : 0;
-        out.restricted = restrictedBlock(restricted, ctx, publicWindow);
+        const field = ctx.window?.field ?? "fulltext";
+        const num = (v: unknown) => (typeof v === "number" ? v : 0);
+        const pub = { length: num(value[`${field}_length`]), returned: num(value[`${field}_returned_chars`]),
+          truncated: value[`${field}_next_offset`] !== undefined };
+        out.restricted = restrictedBlock(restricted, ctx, pub);
+        // Past the public text is not past the end when the private text continues it.
+        if (restricted?.fulltext && ctx.window?.include && typeof out[`${field}_hint`] === "string" && pub.length > 0) {
+          delete out[`${field}_hint`];
+        }
       }
     }
     if (Array.isArray(value.results) && value.results.some((r) => isPlain(r) && RESTRICTED_MATCHES.has(r.matched_in as string))) {
@@ -442,12 +498,43 @@ export function curatorText(text: string, store: DataStore, opts: { tool?: strin
   return rewriteUrls(text, ctx);
 }
 
-/** A result-level note for keyword filters that also matched private full text, or null. */
+/**
+ * A result-level note for keyword filters that also matched private full text,
+ * or null. Private text is searched only at the full exposure level (#54).
+ */
 function keywordNote(tool: string, args: unknown, store: DataStore): string | null {
-  if (!RESEARCH_FILTER_TOOLS.has(tool) || !isPlain(args) || !isPlain(args.filters)) return null;
-  if (typeof args.filters.keyword !== "string" || !args.filters.keyword) return null;
-  const counts = visibilityCounts(store) as { records_with_private_fulltext: number };
-  return counts.records_with_private_fulltext ? PRIVATE_KEYWORD_NOTE : null;
+  if (!allowFullText() || !isPlain(args)) return null;
+  const given = (v: unknown) => typeof v === "string" && v !== "";
+  if (RESEARCH_FILTER_TOOLS.has(tool)) {
+    if (!isPlain(args.filters) || !given(args.filters.keyword)) return null;
+    const counts = visibilityCounts(store) as { records_with_private_fulltext: number };
+    return counts.records_with_private_fulltext ? PRIVATE_KEYWORD_NOTE : null;
+  }
+  const publicationPath = tool === "list_publication_facets" ||
+    (tool === "search_publications" && (given(args.citation_format) || given(args.export)));
+  if (!publicationPath || !given(args.keyword)) return null;
+  return store.publications.some((p) => p.restricted?.fulltext) ? PRIVATE_PUBLICATION_KEYWORD_NOTE : null;
+}
+
+/**
+ * A page re-sized after decoration (#54): pageOf sized it before each private
+ * row gained `visibility`, `citation_note` and `admin_url`, so a page of private
+ * rows could pass the budget. Trailing rows move to the next page.
+ */
+function fitPage(value: Record<string, unknown>): Record<string, unknown> {
+  const rows = value.results;
+  if (!Array.isArray(rows) || typeof value.count !== "number" || typeof value.offset !== "number" ||
+      typeof value.total_matches !== "number") return value;
+  let chars = 0;
+  let kept = 0;
+  for (const row of rows) {
+    const size = JSON.stringify(row).length + 1;
+    if (kept && chars + size > PAGE_CHAR_BUDGET) break;
+    chars += size;
+    kept++;
+  }
+  if (kept === rows.length) return value;
+  return { ...value, results: rows.slice(0, kept), count: kept, has_more: true, next_offset: value.offset + kept, response_limited: true };
 }
 
 /** A tool result as a curator sees it: structured content and every text block. */
@@ -457,7 +544,7 @@ export function curatorToolResult<T>(tool: string, result: T, args: unknown, sto
   const out: Record<string, unknown> = { ...r };
   const note = !r.isError ? keywordNote(tool, args, store) : null;
   const decorate = (value: Record<string, unknown>) => {
-    const shown = curatorValue(value, store, { tool, args });
+    const shown = fitPage(curatorValue(value, store, { tool, args }) as Record<string, unknown>);
     return note ? { ...shown, curator_note: note } : shown;
   };
   let structured: Record<string, unknown> | null = null;
@@ -472,15 +559,15 @@ export function curatorToolResult<T>(tool: string, result: T, args: unknown, sto
       if (!(isPlain(c) && c.type === "text" && typeof c.text === "string")) return c;
       // The usual text block is the structured content, stringified (textResult): decorate it once.
       if (structured && c.text === structuredText) return { ...c, text: JSON.stringify(structured) };
-      let text = curatorText(c.text, store, { tool, args });
-      if (note && text.startsWith("{")) {
+      if (c.text.trimStart().startsWith("{")) {
         try {
-          text = JSON.stringify({ ...JSON.parse(text), curator_note: note });
+          const parsed: unknown = JSON.parse(c.text);
+          if (isPlain(parsed)) return { ...c, text: JSON.stringify(decorate(parsed)) };
         } catch {
-          // not a JSON object: left as decorated
+          // not JSON after all: URLs only, below
         }
       }
-      return { ...c, text };
+      return { ...c, text: curatorText(c.text, store, { tool, args }) };
     });
   }
   return out as T;

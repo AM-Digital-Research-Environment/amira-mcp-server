@@ -296,10 +296,26 @@ test("restricted: no private full text is said; long private values carry a mark
   assert.match(value, /\[…truncated: \d+ characters in all\]$/);
   assert.ok(value.length < LONG_PRIVATE.length);
 
-  const shared = lib.curatorValue({ omeka_id: IDS.publicItem, fulltext_returned_chars: 24_990 }, store(),
-    { tool: "get_publication", args: { include_fulltext: true } });
-  assert.ok(shared.restricted.fulltext_returned_chars <= 10, "the restricted window fits what the public one left");
-  assert.equal(shared.restricted.fulltext_truncated, true);
+  // Public, then private text, on one offset (#54). A page the public text
+  // filled sends no sliver of private text: it names where the private text starts.
+  const args = (offset) => ({ args: { include_fulltext: true, ...(offset ? { fulltext_offset: offset } : {}) }, tool: "get_publication" });
+  const full = lib.curatorValue({ omeka_id: IDS.publicItem, fulltext_length: 24_990, fulltext_returned_chars: 24_990 }, store(), args(0));
+  assert.equal(full.restricted.fulltext, undefined);
+  assert.equal(full.restricted.fulltext_next_offset, 24_990);
+  assert.equal(full.restricted.fulltext_starts_at, 24_990);
+  const midway = lib.curatorValue({ omeka_id: IDS.publicItem, fulltext_length: 60_000, fulltext_returned_chars: 25_000, fulltext_next_offset: 25_000 },
+    store(), args(0));
+  assert.equal(midway.restricted.fulltext, undefined, "the private text waits for the public one");
+  assert.match(midway.restricted.fulltext_hint, /from fulltext_offset 60000/);
+  // The public text ends on this page: the private one fills what is left, in stream offsets.
+  const tail = lib.curatorValue({ omeka_id: IDS.publicItem, fulltext_length: 1_000, fulltext_returned_chars: 400 }, store(), args(600));
+  assert.equal(tail.restricted.fulltext_offset, 1_000);
+  assert.ok(tail.restricted.fulltext_returned_chars <= 25_000 - 400, "the two windows share one page");
+  assert.equal(tail.restricted.values, undefined, "restricted values come with the first page only");
+  assert.match(tail.restricted.values_note, /fulltext_offset 0/);
+  const after = lib.curatorValue({ omeka_id: IDS.publicItem, fulltext_length: 1_000, fulltext_returned_chars: 0 }, store(), args(1_005));
+  assert.equal(after.restricted.fulltext_offset, 1_005);
+  assert.equal(after.restricted.fulltext.slice(0, 20), tail.restricted.fulltext.slice(5, 25), "offset 1005 is private character 5");
 });
 
 test("curator notes: private full-text matches in search rows and keyword filters elsewhere", async () => {
@@ -313,6 +329,40 @@ test("curator notes: private full-text matches in search rows and keyword filter
   assert.equal(years.curator_note, lib.PRIVATE_KEYWORD_NOTE);
   assert.equal(years.dated_items, 1, "the item matched only in private full text is counted");
   assert.equal((await call("list_years", {})).curator_note, undefined);
+
+  // Publication paths whose rows cannot say matched_in (#54).
+  const facets = await call("list_publication_facets", { facet: "year", keyword: PRIVATE.pubText });
+  assert.equal(facets.total_publications, 1);
+  assert.equal(facets.curator_note, lib.PRIVATE_PUBLICATION_KEYWORD_NOTE);
+  const cited = await call("search_publications", { keyword: PRIVATE.pubText, citation_format: "ris" });
+  assert.equal(cited.curator_note, lib.PRIVATE_PUBLICATION_KEYWORD_NOTE);
+  assert.equal((await call("search_publications", { keyword: PRIVATE.pubText })).curator_note, undefined, "summary rows say matched_in");
+
+  // Below full exposure no private text is searched, so nothing is said about it.
+  process.env.AMIRA_EXPOSURE = "descriptive";
+  try {
+    assert.equal((await call("list_years", { filters: { keyword: PRIVATE.fulltext } })).curator_note, undefined);
+  } finally { delete process.env.AMIRA_EXPOSURE; }
+});
+
+test("a page of private rows is re-sized after decoration, so it keeps the page budget (#54)", () => {
+  const privateUrl = `${lib.itemUrl(IDS.privateItem)}`;
+  // 100 rows filling 99% of the budget before decoration; the decoration adds more than 1% to each.
+  const bare = JSON.stringify({ title: "", omeka_id: IDS.privateItem, amira_url: privateUrl }).length + 1;
+  const row = { title: "x".repeat(Math.floor(lib.PAGE_CHAR_BUDGET * 0.99 / 100) - bare), omeka_id: IDS.privateItem, amira_url: privateUrl };
+  const rows = Array.from({ length: 100 }, () => row);
+  assert.ok(rows.reduce((n, r) => n + JSON.stringify(r).length + 1, 0) < lib.PAGE_CHAR_BUDGET, "pageOf would keep them all");
+  const page = { count: rows.length, total_matches: 250, offset: 50, has_more: true, next_offset: 150, results: rows };
+  const result = lib.curatorToolResult("search_research_items", { content: [{ type: "text", text: JSON.stringify(page) }],
+    structuredContent: page }, {}, store());
+  const shown = result.structuredContent;
+  assert.equal(shown.results[0].visibility, "private");
+  assert.ok(shown.count < rows.length);
+  assert.equal(shown.results.length, shown.count);
+  assert.equal(shown.next_offset, 50 + shown.count);
+  assert.equal(shown.response_limited, true);
+  assert.ok(shown.results.reduce((n, r) => n + JSON.stringify(r).length + 1, 0) <= lib.PAGE_CHAR_BUDGET);
+  assert.deepEqual(JSON.parse(result.content[0].text), shown, "the text block is the same page");
 });
 
 test("instructions, prompts and the full-text note speak of public records in curator mode", async () => {

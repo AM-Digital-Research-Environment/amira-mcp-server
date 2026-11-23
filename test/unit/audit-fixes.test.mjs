@@ -3,6 +3,7 @@
 // resolves to nothing; publication facets keep namesake authorities apart; an
 // aliased id and its Omeka id are one document.
 // #45: a Series venue (not crawled) is no journal node.
+// #54: get_publication gates its languages like the other structured fields.
 //
 // The shared fixture is extended HERE, in this process only: publication 512 by
 // a second "Fendler, Ute" authority (o_id 102) and by an unlinked "Beier, Ulli",
@@ -66,4 +67,15 @@ test("a Series venue is not typed as a journal; a crawled journal still is (#45)
   assert.ok(!graph.nodes.some((n) => n.omeka_id === 45032), "no node for the uncrawled series");
   const journal = await call("get_entity_graph", { seed: "publication:510" });
   assert.ok(journal.nodes.some((n) => n.id === "journal:520"));
+});
+
+test("get_publication keeps its languages with the other structured fields (#54)", async () => {
+  assert.equal((await call("get_publication", { id: 510 })).language, "English");
+  process.env.AMIRA_EXPOSURE = "minimal";
+  try {
+    const p = await call("get_publication", { id: 510 });
+    assert.equal(p.authors, undefined);
+    assert.equal(p.language, undefined);
+    assert.equal(p.languages, undefined);
+  } finally { delete process.env.AMIRA_EXPOSURE; }
 });
