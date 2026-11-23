@@ -55,6 +55,7 @@ test("rich publication fields preserve labels, links and page extent separately"
     "marcrel:ths": [ref(315, "Kaime, Thoko"), literal("Unreconciled adviser")],
     "marcrel:dgg": [literal("University of Bayreuth")],
     "dcterms:accessRights": [literal("Open access")], "dcterms:rights": [literal("CC BY")],
+    "dcterms:license": [{ type: "uri", "@id": "https://creativecommons.org/licenses/by/4.0/", "o:label": "CC BY 4.0" }],
     "fabio:hasURL": [{ type: "uri", "@id": "https://example.org/book", "o:label": "Publisher page" }],
   }, { roleLabel: () => null, classTerm: () => "fabio:DoctoralThesis" }, 1);
   assert.equal(p.pages, "10-20");
@@ -64,6 +65,9 @@ test("rich publication fields preserve labels, links and page extent separately"
   assert.deepEqual(p.conference_details, ["Meeting, Lagos, July 2025"]);
   assert.deepEqual(p.access_rights, ["Open access"]);
   assert.deepEqual(p.rights, ["CC BY"]);
+  // The licence is a uri value with a label (#45).
+  assert.equal(p.license, "CC BY 4.0");
+  assert.equal(p.license_url, "https://creativecommons.org/licenses/by/4.0/");
   assert.deepEqual(p.external_links, [{ url: "https://example.org/book", label: "Publisher page" }]);
   assert.equal(p.degree_granting_institutions[0].label, "University of Bayreuth");
 });

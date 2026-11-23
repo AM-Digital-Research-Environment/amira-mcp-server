@@ -138,13 +138,19 @@ recomputes the file from the snapshot with the same filters and ordering, up to
 | `num_pages` | Total page extent, kept separately from the `pages` range or e-locator; CSL-JSON uses `number-of-pages`, text exports keep it in a note |
 | `external_links` | Supplementary publisher/web links with labels, separate from repository links |
 | `access_rights`, `rights` | Explicit source statements; empty arrays do not imply closed access or absence of copyright |
+| `license`, `license_url` | The licence the publications sync writes to `dcterms:license` (label such as "CC BY 4.0", and its URI); null when none is recorded |
 | `advisers`, `degree_granting_institutions` | Thesis references with labels and linked authority IDs when available |
 
 Literal references have null IDs and URLs. Do not infer identity from matching
 labels alone. The 9 September data check found conference descriptions on 40
 publications, page extent on 81, supplementary links on 70, access statements on
-27, advisers on 7, and degree-granting institutions on 8. Rights statements were
-absent in that snapshot; the mapping is ready when records acquire them.
+27, advisers on 7, and degree-granting institutions on 8. `dcterms:rights` was
+absent in that snapshot; licences are recorded in `dcterms:license` instead.
+
+The entity graph gives a venue a node only when it is a crawled journal or a
+book that is itself a publication. A Series item (template 33) is not crawled:
+`get_publication` still links it (`venue_omeka_id`, `venue_amira_url`), but the
+graph gives it no node rather than a false journal.
 
 ## Read full text
 

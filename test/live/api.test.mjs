@@ -71,6 +71,17 @@ test("publication: live record has identifier + repository uris", async () => {
   assert.ok(pub.year == null || pub.year > 1990);
 });
 
+test("publication licence: dcterms:license (a labelled uri) is read", async () => {
+  // property 49 = dcterms:license; `ex` keeps only records where it exists.
+  const { body } = await get(`${API}/items?item_set_id=29918&property%5B0%5D%5Bproperty%5D=49&property%5B0%5D%5Btype%5D=ex&per_page=3`);
+  assert.ok(body.length >= 1, "publications with a licence on the instance");
+  for (const item of body) {
+    const pub = transformPublication(item, ctx, null);
+    assert.ok(pub.license, `licence label for ${item["o:id"]}`);
+    assert.match(pub.license_url ?? "", /^https?:\/\//);
+  }
+});
+
 test("publication full text: open-access records carry bibo:content > 10k chars", async () => {
   // property 91 = bibo:content; `ex` keeps only records where it exists.
   const { body, headers } = await get(

@@ -1,9 +1,12 @@
-// Tool arguments and results (#53): a whitespace-only array is refused, not
-// emptied after validation; "null" resolves to nothing; publication facets keep
-// namesake authorities apart; an aliased id and its Omeka id are one document.
+// Fixes from the repository audit, through the tools.
+// #53: a whitespace-only array is refused, not emptied after validation; "null"
+// resolves to nothing; publication facets keep namesake authorities apart; an
+// aliased id and its Omeka id are one document.
+// #45: a Series venue (not crawled) is no journal node.
 //
 // The shared fixture is extended HERE, in this process only: publication 512 by
-// a second "Fendler, Ute" authority (o_id 102) and by an unlinked "Beier, Ulli".
+// a second "Fendler, Ute" authority (o_id 102) and by an unlinked "Beier, Ulli",
+// in a Series item (45032) the snapshot does not hold.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildFixture } from "../fixtures/fixture-data.mjs";
@@ -17,10 +20,12 @@ const d = fixture.data;
 d.publications.push({
   ...structuredClone(d.publications[1]), o_id: 512, pub_id: "eref-512", title: "Namesake Fixture",
   authors: [{ label: "Fendler, Ute", o_id: 102 }, { label: "Beier, Ulli", o_id: null }],
+  venue: "University of Bayreuth African Studies Working Papers",
+  venue_ref: { label: "University of Bayreuth African Studies Working Papers", o_id: 45032 },
 });
 fixture.manifest.counts = Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v.length]));
 await lib.writeSnapshot(process.env.AMIRA_DATA_DIR, fixture);
-const conn = await connectInMemory(lib, {}, { name: "argument-fixes" });
+const conn = await connectInMemory(lib, {}, { name: "audit-fixes" });
 const { call } = conn;
 test.after(() => conn.close());
 
@@ -53,4 +58,12 @@ test("get_text_passages: an aliased id and its Omeka id are one document", async
   const page = await call("get_text_passages", { ids: ["publication:eref-510", "publication:510"], keyword: "zanzibar-fulltext-token" });
   assert.equal(page.total_matches, 30, "matches counted once");
   assert.deepEqual(page.unavailable_ids, []);
+});
+
+test("a Series venue is not typed as a journal; a crawled journal still is (#45)", async () => {
+  assert.equal((await call("resolve_entity", { query: "journal:45032" })).total_matches, 0);
+  const graph = await call("get_entity_graph", { seed: "publication:512" });
+  assert.ok(!graph.nodes.some((n) => n.omeka_id === 45032), "no node for the uncrawled series");
+  const journal = await call("get_entity_graph", { seed: "publication:510" });
+  assert.ok(journal.nodes.some((n) => n.id === "journal:520"));
 });

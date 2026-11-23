@@ -228,6 +228,9 @@ export interface PublicationRec extends VisibilityFields {
   external_links?: { url: string; label: string | null }[];
   access_rights?: string[];
   rights?: string[];
+  /** dcterms:license: its label ("CC BY 4.0") and URI. */
+  license?: string | null;
+  license_url?: string | null;
   advisers?: LinkedRef[];
   degree_granting_institutions?: LinkedRef[];
   publisher_ref?: LinkedRef | null;

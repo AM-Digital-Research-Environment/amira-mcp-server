@@ -170,6 +170,8 @@ export function registerPublicationTools(server: Server, tools: ToolMap): void {
               conference_details: p.conference_details ?? [],
               access_rights: p.access_rights ?? [],
               rights: p.rights ?? [],
+              license: p.license ?? null,
+              ...(p.license_url ? { license_url: p.license_url } : {}),
               venue: p.venue,
               ...(p.venue_ref?.o_id != null
                 ? {

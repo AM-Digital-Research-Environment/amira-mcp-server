@@ -406,6 +406,10 @@ export function transformPublication(item: OmekaItem, ctx: TransformContext, cla
     external_links: uriValues(item, "fabio:hasURL"),
     access_rights: allStrings(item, "dcterms:accessRights"),
     rights: allStrings(item, "dcterms:rights"),
+    // The publications sync writes the licence as a uri value with a label
+    // ("CC BY 4.0"); dcterms:rights is kept as the older fallback (#45).
+    license: firstString(item, "dcterms:license"),
+    license_url: uriValues(item, "dcterms:license")[0]?.url ?? null,
     advisers: linkedRefs(item, "marcrel:ths"),
     degree_granting_institutions: linkedRefs(item, "marcrel:dgg"),
     publisher_ref: firstLinked(item, "dcterms:publisher"),

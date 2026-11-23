@@ -136,6 +136,7 @@ function publicationNote(p: PublicationRec): string {
   if (allowStructured()) {
     if (p.conference_details?.length) notes.push(`Conference: ${p.conference_details.join("; ")}`);
     if (p.access_rights?.length) notes.push(`Access: ${p.access_rights.join("; ")}`);
+    if (p.license) notes.push(`License: ${p.license}${p.license_url ? ` (${p.license_url})` : ""}`);
     if (p.rights?.length) notes.push(`Rights: ${p.rights.join("; ")}`);
     if (p.advisers?.length) notes.push(`Thesis advisers: ${p.advisers.map((r) => r.label).join("; ")}`);
     if (p.degree_granting_institutions?.length) notes.push(`Degree-granting institutions: ${p.degree_granting_institutions.map((r) => r.label).join("; ")}`);

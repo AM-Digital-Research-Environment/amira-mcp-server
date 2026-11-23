@@ -110,9 +110,14 @@ export function graphIndex(store: DataStore): GraphIndex {
       ["person", credits(it.contributors, false), "contributor"],
       ...it.related.map((r): [EntityType, LinkedRef[], string] => ["research_item", [r.ref], r.relation]),
     ]);
+    // A venue is a node only when it is a crawled record (a journal, or a book
+    // that is itself a publication): a Series item (template 33) is not
+    // crawled, and typing it as a journal made 86 false journal nodes (#45).
+    const venue = (p: (typeof store.publications)[number]): LinkedRef[] =>
+      p.venue_ref?.o_id != null && kindOf.has(p.venue_ref.o_id) ? [p.venue_ref] : [];
     for (const p of store.publications) record(`publication:${p.o_id}`, "publications", [
       ["person", p.authors, "author"], ["person", p.editors, "editor"], ["subject", p.subjects, "subject"],
-      ["journal", p.venue_ref ? [p.venue_ref] : [], "venue"], ["organisation", p.funders, "funder"],
+      ["journal", venue(p), "venue"], ["organisation", p.funders, "funder"],
       ["location", p.places_of_publication, "publication_place"],
     ]);
     for (const p of store.podcasts) record(`podcast:${p.o_id}`, "podcasts", [
