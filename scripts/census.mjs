@@ -40,14 +40,19 @@ const TARGETS = [
   { key: "playlists_set", set: 39193 },
   { key: "languages_set", set: 19 },
   { key: "genres_set", set: 21 },
+  { key: "chronicles_set", set: 50105 },
+  { key: "subjects_set", set: 1852 },
 ];
+
+/** Per request: a hung Omeka request fails the census instead of holding it forever (#59). */
+const FETCH_TIMEOUT_MS = 30_000;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function fetchJSON(url, { withHeaders = false } = {}) {
   for (let attempt = 1; ; attempt++) {
     try {
-      const res = await fetch(url, { headers: { "User-Agent": "amira-mcp-census/1.0" } });
+      const res = await fetch(url, { headers: { "User-Agent": "amira-mcp-census/1.0" }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
       if (!withHeaders) return body;
@@ -117,7 +122,7 @@ async function fetchPropertyLabels() {
 
 function sampleOf(v) {
   const s =
-    v["@value"] ?? v["display_title"] ?? v["o:label"] ?? v["@id"] ?? JSON.stringify(v);
+    v["@value"] ?? v.display_title ?? v["o:label"] ?? v["@id"] ?? JSON.stringify(v);
   return String(s).slice(0, 90);
 }
 
@@ -129,7 +134,7 @@ function censusOf(items) {
   const classes = {};
   for (const it of items) {
     if ((it["o:media"] ?? []).length > 0) withMedia++;
-    if (it["thumbnail_display_urls"]?.large) withThumb++;
+    if (it.thumbnail_display_urls?.large) withThumb++;
     for (const s of it["o:item_set"] ?? []) itemSets[s["o:id"]] = (itemSets[s["o:id"]] ?? 0) + 1;
     const cls = it["o:resource_class"]?.["o:id"];
     if (cls != null) classes[cls] = (classes[cls] ?? 0) + 1;

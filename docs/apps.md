@@ -1,7 +1,7 @@
 # MCP Apps development and source data
 
 One self-contained `text/html;profile=mcp-app` resource, `ui://amira/app.html`,
-renders the views of seven tools. The official `@modelcontextprotocol/ext-apps` 2.0.3
+renders the views of seven tools. The official `@modelcontextprotocol/ext-apps` 2.0.4
 SDK is bundled into it once; there are no external scripts, styles, fonts, tiles or
 network data dependencies. The SDK uses the published 2026-01-26 Apps wire protocol.
 Server transport protocol versions are negotiated separately.
@@ -52,7 +52,7 @@ it has no title or description.
   closing script tag. A host without `DecompressionStream` shows a one-line notice;
   the tool result in the conversation is unaffected.
 
-The result is 181 KB on the wire, 471 KB decoded. `test/unit/apps.test.mjs`
+The result is 183 KB on the wire, 476 KB decoded. `test/unit/apps.test.mjs`
 fails the build above 300 KB for the resource or 500 KB for the decoded script:
 tripwires for a second SDK copy (about 400 KB) or a regressed locale stub, not
 for an ordinary new view. The build prints both sizes.

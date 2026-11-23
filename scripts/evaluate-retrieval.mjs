@@ -33,7 +33,7 @@ if (!Array.isArray(judgments) || judgments.length === 0) throw new Error("Provid
 
 hermeticEnv();
 process.env.AMIRA_DATA_DIR = fileURLToPath(new URL("../data", import.meta.url));
-const { createAmiraServer, ensureStore } = await import("../server/lib.js");
+const { createAmiraServer, ensureStore, snapshotId } = await import("../server/lib.js");
 const { InMemoryTransport } = await import("@modelcontextprotocol/server");
 const { Client } = await import("@modelcontextprotocol/client");
 
@@ -95,7 +95,7 @@ try {
   const mean = (field) => reports.reduce((sum, r) => sum + r[field], 0) / reports.length;
   const report = {
     k,
-    snapshot: { fetched_at: store.manifest.fetchedAt, max_modified: store.manifest.maxModified ?? null },
+    snapshot: { snapshot_id: snapshotId(store.manifest), fetched_at: store.manifest.fetchedAt, max_modified: store.manifest.maxModified ?? null },
     queries: reports.length,
     mean: { precision: mean("precision"), recall: mean("recall"), ndcg: mean("ndcg"), mrr: mean("reciprocal_rank") },
     results: reports,

@@ -156,7 +156,7 @@ const AMIRA_URL = /^https:\/\/data\.africamultiple\.uni-bayreuth\.de\/s\/amira\/
 async function mount(t, tool, { toolInfo = true, canAsk = false, canShare = false } = {}) {
   const uri = APP_OF.get(tool);
   assert.equal(uri, lib.APP_URI, `${tool} declares the app`);
-  const html = PAGE.slice(0, BUNDLE.index) + `<script>${STUB_JS}</script>\n<script>${VIEWS_JS}</script>\n</body>\n</html>\n`;
+  const html = `${PAGE.slice(0, BUNDLE.index)}<script>${STUB_JS}</script>\n<script>${VIEWS_JS}</script>\n</body>\n</html>\n`;
 
   const requests = [];
   const win = new Window({

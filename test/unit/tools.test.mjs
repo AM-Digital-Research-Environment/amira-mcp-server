@@ -197,7 +197,7 @@ test("publication export byte bounds preserve whole records and advance without 
       } while (offset < 3);
       assert.deepEqual(ids, [1000, 1001, 1002]);
     }
-    store.publications[0].title = "oversized-only " + "é".repeat(60_000);
+    store.publications[0].title = `oversized-only ${"é".repeat(60_000)}`;
     const oversized = await client.callTool({ name: "search_publications", arguments: { citation_format: "ris", keyword: "oversized-only" } });
     const error = toolError(oversized);
     assert.equal(error.code, "export_too_large");

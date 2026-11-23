@@ -90,7 +90,8 @@ function render(payload) {
       W +
       " " +
       H +
-      '" role="img" aria-label="Research items per ' +
+      // role="group", not "img": an image hides its focusable bars from screen readers (#59).
+      '" role="group" aria-label="Research items per ' +
       unit +
       '" preserveAspectRatio="xMidYMid meet">',
   ];

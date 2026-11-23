@@ -19,8 +19,14 @@ data/
 .env
 .env.*
 
-# Local-only Claude settings (keep the skill, drop local config)
+# Local-only Claude settings (keep the skill, drop local config) and agent
+# worktrees, which are whole checkouts of this repository
 .claude/settings.local.json
+.claude/worktrees/
+
+# MCP conformance runs and SBOMs, written by local runs of the CI checks
+conformance-results/
+*.cdx.json
 
 # The companion skill has ONE source of truth: .claude/skills/amira-mcp/ — it is
 # what CI zips into amira-mcp-skill.zip and what the .mcpb ships. `.agents/` is a

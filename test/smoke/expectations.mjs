@@ -9,6 +9,8 @@
 export const MIN_RESEARCH_ITEMS = 3750;
 export const MIN_PUBLICATIONS = 240;
 export const MIN_JOURNALS = 50;
+// Cluster Chronicles (item set 50105): 60 works in November 2026.
+export const MIN_CHRONICLES = 50;
 
 let failures = 0;
 

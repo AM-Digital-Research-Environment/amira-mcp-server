@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { hermeticEnv } from "../helpers/env.mjs";
-import { MIN_RESEARCH_ITEMS } from "../smoke/expectations.mjs";
+import { MIN_CHRONICLES, MIN_RESEARCH_ITEMS } from "../smoke/expectations.mjs";
 
 // AMIRA_SITE_BASE is the one deliberate input (test another Omeka instance);
 // everything else is cleared and the cache isolated before the bundle loads.
@@ -15,11 +15,13 @@ hermeticEnv();
 if (siteOverride) process.env.AMIRA_SITE_BASE = siteOverride;
 const {
   probeRemote,
+  transformChronicle,
   transformJournal,
   transformPodcast,
   transformProject,
   transformPublication,
   transformResearchItem,
+  transformSubject,
   transformVideo,
 } = await import("../../server/lib.js");
 
@@ -129,6 +131,31 @@ test("podcast: live records transform; absent transcripts stay null", async () =
   const pods = body.map((p) => transformPodcast(p, ctx));
   assert.ok(pods.every((p) => p.series?.label));
   assert.ok(pods.every((p) => p.transcript === null || typeof p.transcript === "string"));
+});
+
+// #57: the two corpora the release gate did not run through their transforms.
+test("Cluster Chronicles (item set 50105): live works transform with a form, series and credits", async () => {
+  const { body, headers } = await get(`${API}/items?item_set_id=50105&per_page=25`);
+  const total = Number(headers.get("omeka-s-total-results"));
+  assert.ok(total >= MIN_CHRONICLES, `chronicles on the instance: ${total}`);
+  const works = body.map((item) => transformChronicle(item, ctx));
+  assert.ok(works.every((w) => w.o_id > 0 && w.title.length > 0));
+  // ctx resolves no class ids here, so the form comes from the JSON-LD @type, as a template change would break.
+  assert.ok(works.every((w) => w.resource_class && w.form !== "other"), works.map((w) => w.resource_class).join());
+  assert.ok(works.some((w) => w.series?.label === "Cluster Chronicles"), "isPartOf names the series");
+  assert.ok(works.some((w) => w.people.length > 0), "marcrel credits are read");
+  assert.ok(works.some((w) => w.year != null), "dcterms:date gives a year");
+  assert.ok(works.some((w) => w.text && w.text.length > 1000), "some work carries its text (bibo:content)");
+});
+
+test("subject authorities (item set 1852): live headings transform with vocabulary and URI", async () => {
+  const { body, headers } = await get(`${API}/items?item_set_id=1852&per_page=50`);
+  const total = Number(headers.get("omeka-s-total-results"));
+  assert.ok(total >= 500, `subject authorities on the instance: ${total}`);
+  const subjects = body.map(transformSubject);
+  assert.ok(subjects.every((s) => s.o_id > 0 && s.name.length > 0));
+  assert.ok(subjects.some((s) => s.vocabulary), "dcterms:type names the vocabulary");
+  assert.ok(subjects.some((s) => s.uri?.startsWith("http")), "dcterms:identifier carries the authority URI");
 });
 
 test("citation pages resolve: /s/amira/item/<o:id> -> 200", async () => {

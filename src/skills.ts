@@ -33,8 +33,12 @@
 // three reference files were invisible to them. The extension is therefore
 // served through a small `SkillSource` over the SDK-built entries, whose
 // `listResources()` lists every file with a title and a one-line summary — the
-// approach the IWAC server took for the same reason.
-import type { McpServer, Resource } from "@modelcontextprotocol/server";
+// approach the IWAC server took for the same reason. It follows the catalog's
+// contract (#56): any spelling of a URI the SDK would accept finds the same
+// entry, and a cursor it never issued is refused. The SDK keeps its own sources
+// in a private trusted set, so ours is re-validated per skills/list and
+// skills/get; for one entry that is a few microseconds.
+import { ProtocolError, ProtocolErrorCode, type McpServer, type Resource } from "@modelcontextprotocol/server";
 import {
   DIRECTORY_MIME_TYPE,
   SkillsExtension,
@@ -105,6 +109,39 @@ export function describeMarkdown(text: string): { title?: string; summary?: stri
   return { ...(title ? { title } : {}), ...(summary ? { summary } : {}) };
 }
 
+/**
+ * The one spelling of a skill URI, as the SDK's own catalog matches them (#56):
+ * WHATWG-serialised (so `SKILL://amira-mcp/SKILL.md` is the entry point), no
+ * fragment, each path segment percent-decoded (so `Q%26A.md` and `Q&A.md` are
+ * one file). `undefined` when it does not parse.
+ */
+export function skillUriKey(uri: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(uri);
+  } catch {
+    return undefined;
+  }
+  url.hash = "";
+  const href = url.href;
+  if (href.includes("?")) return href;
+  const scheme = href.indexOf("://");
+  if (scheme < 0) return href;
+  const rest = href.slice(scheme + 3).split("/").map((segment) => {
+    try {
+      return decodeURIComponent(segment);
+    } catch {
+      return segment;
+    }
+  });
+  return `${href.slice(0, scheme + 3)}${rest.join("/")}`;
+}
+
+/** We never hand out a cursor (every list fits one page), so any cursor is one we did not issue: the SDK catalog's answer. */
+const refuseCursor = (cursor: string | undefined) => {
+  if (cursor !== undefined) throw new ProtocolError(ProtocolErrorCode.InvalidParams, "Invalid cursor");
+};
+
 /** A skill's root directory URI: its SKILL.md URI without the file name. */
 const rootOf = (skill: Skill) => skill.uri.slice(0, -"/SKILL.md".length);
 
@@ -118,7 +155,9 @@ const manifestOf = (skill: Skill) => (Array.isArray(skill.resources) ? skill.res
  * to something plausible-looking.
  */
 export function snapshotSource(entries: readonly Skill[], snapshot: SkillsSnapshot): SkillSource {
-  const byUri = new Map(entries.map((skill) => [skill.uri, skill]));
+  // Every map is keyed by `skillUriKey`, so any spelling of a URI finds its file.
+  const key = (uri: string) => skillUriKey(uri) ?? uri;
+  const byUri = new Map(entries.map((skill) => [key(skill.uri), skill]));
   const served = new Map<string, string>();
   const directories = new Map<string, Resource[]>();
   const listed: Resource[] = [];
@@ -126,17 +165,18 @@ export function snapshotSource(entries: readonly Skill[], snapshot: SkillsSnapsh
   for (const skill of entries) {
     const name = skill.frontmatter.name;
     for (const { uri, size } of manifestOf(skill)) {
-      const path = uri.slice(BASE.length);
+      // The snapshot is keyed by the decoded relative path; the URI is percent-encoded.
+      const path = key(uri).slice(BASE.length);
       const mimeType = mimeTypeOf(path);
-      served.set(uri, path);
+      served.set(key(uri), path);
 
       // Every directory from the skill's root down to the file gains a child.
       const segments = uri.slice(rootOf(skill).length + 1).split("/");
       let dir = rootOf(skill);
       segments.forEach((segment, i) => {
         const child = `${dir}/${segment}`;
-        const children = directories.get(dir) ?? [];
-        directories.set(dir, children);
+        const children = directories.get(key(dir)) ?? [];
+        directories.set(key(dir), children);
         if (!children.some((c) => c.uri === child)) {
           const isFile = i === segments.length - 1;
           children.push(
@@ -164,19 +204,24 @@ export function snapshotSource(entries: readonly Skill[], snapshot: SkillsSnapsh
   for (const children of directories.values()) children.sort((a, b) => (a.uri < b.uri ? -1 : a.uri > b.uri ? 1 : 0));
 
   return {
-    list: async () => ({ skills: [...entries] }),
-    get: async (uri) => byUri.get(uri),
+    list: async ({ cursor }) => {
+      refuseCursor(cursor);
+      return { skills: [...entries] };
+    },
+    get: async (uri) => byUri.get(key(uri)),
     read: async (uri) => {
-      const path = served.get(uri);
+      const path = served.get(key(uri));
       if (path === undefined) return undefined;
       const text = snapshot.text[path];
       if (text !== undefined) return { text, mimeType: mimeTypeOf(path) };
       const base64 = snapshot.base64[path];
       return base64 === undefined ? undefined : { bytes: new Uint8Array(Buffer.from(base64, "base64")), mimeType: mimeTypeOf(path) };
     },
-    readDirectory: async (uri) => {
-      const children = directories.get(uri);
-      return children === undefined ? undefined : { resources: children };
+    readDirectory: async (uri, { cursor }) => {
+      const children = directories.get(key(uri));
+      if (children === undefined) return undefined;
+      refuseCursor(cursor);
+      return { resources: children };
     },
     listResources: async () => listed,
   };

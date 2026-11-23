@@ -32,28 +32,15 @@ import { resolveEntities } from "../entityGraph.js";
 import { fold } from "../text.js";
 import { duplicatePointer, publicFirst, withoutPrivateNamesakes } from "../namesakes.js";
 import { chronicleCredits, collaborativeRole, isPersonCredit } from "../personCredits.js";
-import { RECORD_KINDS, detailToolOf, recordByOId, recordTitle } from "../recordKinds.js";
 import { recordArg } from "./records.js";
 import { pastEndHint } from "./listHints.js";
 
-const KIND_LABEL: Record<string, string> = {
-  research_item: "a research item", organisation: "an institution or group", section: "a research section",
-  collection: "a collection", publication: "a publication", location: "a location", subject: "a subject",
-};
-
-/** The person an `id` argument names, or an error saying what the id is when it names another kind of record. */
+/** The person an `id` argument names. An id of another kind of record is
+ * answered by `recordArg` (naming the right tool), before `notFound` runs. */
 function personById(store: DataStore, id: string | number): { record: PersonRec } | { error: ReturnType<typeof errorResult> } {
   return recordArg(store, id, "person", () => {
-    const text = String(id).trim();
-    const n = Number(text.replace(/^person:/i, ""));
+    const n = Number(String(id).trim().replace(/^person:/i, ""));
     if (!Number.isSafeInteger(n) || n <= 0) return errorResult("invalid_id", "Use a numeric person id or person:<id>.");
-    const other = recordByOId(store, n);
-    if (other) {
-      const what = KIND_LABEL[other.kind] ?? `a ${other.kind}`;
-      const tool = detailToolOf(other.kind) ?? RECORD_KINDS[other.kind].search ?? "resolve_entity";
-      const message = `Omeka id ${n} is ${what} ('${recordTitle(other.record)}'), not a person.`;
-      return errorResult("not_found", `${message} Use ${tool}.`, { suggested_tool: tool, terse: message });
-    }
     return errorResult("not_found", "Unknown person id.", { suggested_tool: "resolve_entity" });
   });
 }

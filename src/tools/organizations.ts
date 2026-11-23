@@ -162,9 +162,15 @@ function contributorIndex(store: DataStore): { byId: Map<number, ResearchItemRec
   });
 }
 
-function contributedItems(store: DataStore, org: OrganisationRec): ResearchItemRec[] {
+/** The items crediting the organisation, by id or by name, each once. */
+function contributedSet(store: DataStore, org: OrganisationRec): Set<ResearchItemRec> {
   const { byId, byName } = contributorIndex(store);
-  const found = new Set([...(byId.get(org.o_id) ?? []), ...(byName.get(fold(org.name)) ?? [])]);
+  return new Set([...(byId.get(org.o_id) ?? []), ...(byName.get(fold(org.name)) ?? [])]);
+}
+
+/** `contributedSet` in collection order. */
+function contributedItems(store: DataStore, org: OrganisationRec): ResearchItemRec[] {
+  const found = contributedSet(store, org);
   return store.items.filter((it) => found.has(it));
 }
 
@@ -413,7 +419,8 @@ export function registerOrganizationTools(server: Server, tools: ToolMap): void 
             id: String(g.o_id),
             omeka_id: g.o_id,
             ...duplicatePointer(store, g, "organisation"),
-            contributed_item_count: contributedItems(store, g).length,
+            // The size only: no rescan of every item per listed group (#58).
+            contributed_item_count: contributedSet(store, g).size,
             amira_url: itemUrl(g.o_id),
           }),
           { ...echo, ...filtersEcho(args) },

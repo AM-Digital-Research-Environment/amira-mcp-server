@@ -70,6 +70,13 @@ COPY --from=snapshot /app/server/http.js /app/server/tokenCli.js ./server/
 COPY --from=snapshot /app/data ./data
 EXPOSE 8787
 USER node
-HEALTHCHECK --interval=30s --timeout=3s --start-period=20s \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# The start period is long for curator mode (#57): it serves no baked snapshot,
+# so /healthz answers 503 until the first authenticated crawl into the empty
+# tmpfs has finished, which takes minutes. Failures inside it are not counted
+# and the first success ends it, so the public image (healthy in seconds)
+# loses nothing. The check asks the address the server binds (HOST, then
+# AMIRA_HTTP_HOST; loopback for a wildcard) on the port it listens on: PORT,
+# set above, wins over AMIRA_HTTP_PORT as in src/config.ts.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10m \
+  CMD node -e "const e=process.env,h=e.HOST||e.AMIRA_HTTP_HOST||'',a=!h||h==='0.0.0.0'||h==='::'?'127.0.0.1':h.includes(':')&&!h.startsWith('[')?'['+h+']':h;fetch('http://'+a+':'+(e.PORT||e.AMIRA_HTTP_PORT||8787)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "server/http.js"]

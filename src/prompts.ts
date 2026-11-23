@@ -10,6 +10,7 @@ import { completable, type McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { config } from "./config.js";
 import { ensureStore, type DataStore } from "./data.js";
+import { allowStructured } from "./exposure.js";
 import { fold } from "./text.js";
 
 /**
@@ -40,9 +41,11 @@ const CITE_CURATOR =
 /** The citation rules of every prompt, for the server's access mode. */
 const cite = (): string => (config.access === "curator" ? CITE_CURATOR : CITE_PUBLIC);
 
-/** Up to 20 stored names that start with (then contain) the typed prefix. */
+/** Up to 20 stored names that start with (then contain) the typed prefix.
+ * None below the structured exposure level, where the tools withhold these vocabularies too (#56). */
 function suggest(key: string, pick: (store: DataStore) => string[]) {
   return async (value: string | undefined): Promise<string[]> => {
+    if (!allowStructured()) return [];
     const store = await ensureStore();
     const names = store.cached(`complete:${key}`, () => [...new Set(pick(store))].sort());
     const q = fold(value ?? "");
@@ -71,8 +74,23 @@ const text = (body: string) => ({
   messages: [{ role: "user" as const, content: { type: "text" as const, text: body } }],
 });
 
-export function registerPrompts(server: McpServer): void {
-  server.registerPrompt(
+/**
+ * The tools each prompt's workflow cannot do without. A prompt is registered
+ * only when the tool profile serves all of them (#56): otherwise it would send
+ * the model to tools the host never sees. Supporting steps (facets, the entity
+ * graph) are skipped by the model when absent; these are the ones the answer rests on.
+ */
+export const PROMPT_TOOLS = {
+  literature_review: ["search_publications"],
+  project_dossier: ["get_project"],
+  person_profile: ["resolve_entity", "get_person"],
+  place_report: ["list_locations", "search_research_items"],
+  transcript_evidence: ["get_text_passages"],
+} as const satisfies Record<string, readonly string[]>;
+
+export function registerPrompts(server: McpServer, servedTools: ReadonlySet<string> | null = null): void {
+  const served = (prompt: keyof typeof PROMPT_TOOLS) => !servedTools || PROMPT_TOOLS[prompt].every((tool) => servedTools.has(tool));
+  if (served("literature_review")) server.registerPrompt(
     "literature_review",
     {
       title: "Literature review from the cluster bibliography",
@@ -98,7 +116,7 @@ export function registerPrompts(server: McpServer): void {
     },
   );
 
-  server.registerPrompt(
+  if (served("project_dossier")) server.registerPrompt(
     "project_dossier",
     {
       title: "Project dossier",
@@ -118,7 +136,7 @@ export function registerPrompts(server: McpServer): void {
       ),
   );
 
-  server.registerPrompt(
+  if (served("person_profile")) server.registerPrompt(
     "person_profile",
     {
       title: "Researcher profile",
@@ -138,7 +156,7 @@ export function registerPrompts(server: McpServer): void {
       ),
   );
 
-  server.registerPrompt(
+  if (served("place_report")) server.registerPrompt(
     "place_report",
     {
       title: "Place report",
@@ -157,7 +175,7 @@ export function registerPrompts(server: McpServer): void {
       ),
   );
 
-  server.registerPrompt(
+  if (served("transcript_evidence")) server.registerPrompt(
     "transcript_evidence",
     {
       title: "Evidence in transcripts and full texts",

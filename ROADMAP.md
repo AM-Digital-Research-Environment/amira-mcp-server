@@ -37,8 +37,8 @@ November (`docs/review-2026-11-06.md`) shipped in 1.35.0 and was retired after
    - a read-only Omeka role with `view-all`, replacing the `reviewer` service
      account, which could edit;
    - paging private podcast and video transcripts (reported only by length in
-     `restricted` today);
-   - `get_text_passages` over private full text;
+     `restricted` today), and searching them with `get_text_passages`, which
+     covers the other private texts since 1.38.0;
    - app views (map, graph, …) that link private records to their
      `admin_url` instead of showing them without a link.
 3. **Retrieval effectiveness.** Build a blind multilingual query set with judged
@@ -168,5 +168,6 @@ and the June 2026 migration. Source comments cite them by number.
 - WissKI, entirely: no querying, no SPARQL, and no links. The crawl ignores
   `dre:wisskiUrl`.
 - OAuth on the public server (curator mode gets it in step 2), sampling,
-  elicitation and resource subscriptions, beyond
-  `notifications/resources/list_changed` after a refresh.
+  elicitation, resource subscriptions and list-change notifications: the tool,
+  prompt and resource lists are fixed for a build (`listChanged: false`), and a
+  refresh changes the data behind them, not the lists.

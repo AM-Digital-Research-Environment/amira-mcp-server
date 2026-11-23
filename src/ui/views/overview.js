@@ -120,7 +120,7 @@ function render(d) {
     ? "Content dates span " + d.content_date_range.earliest + "–" + d.content_date_range.latest + ". "
     : "";
   const snap = d.data_snapshot
-    ? "Snapshot: " + esc(d.data_snapshot.source) + ", fetched " + String(d.data_snapshot.fetched_at).slice(0, 10) + "."
+    ? "Snapshot: " + esc(d.data_snapshot.source) + ", fetched " + esc(String(d.data_snapshot.fetched_at).slice(0, 10)) + "."
     : "";
   const gated = d.metadata_exposure
     ? " Metadata exposure is limited to '" + esc(d.metadata_exposure) + "', so some breakdowns are withheld."

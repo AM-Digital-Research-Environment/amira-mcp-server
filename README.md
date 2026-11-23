@@ -132,7 +132,9 @@ add nothing to the per-turn tool payload.
 `research`, `discovery` and `visualization` expose smaller documented subsets
 (26/14/14 core tools respectively; HTTP adds `search` and `fetch`). Profiles are
 fixed at startup; they reduce discovery cost, not access permissions. Tools
-outside a profile are removed, and so are the apps that render them. See
+outside a profile are removed, and so are the apps that render them, the
+prompts whose workflow rests on them (`PROMPT_TOOLS` in `src/prompts.ts`) and the
+`amira://record` kinds they answer. See
 [`src/toolProfiles.ts`](src/toolProfiles.ts) for the exact lists.
 
 Typed ids work everywhere in either vocabulary (`item:` / `research_item:`,
@@ -463,8 +465,8 @@ would otherwise sail under every ceiling.
 
 Version 1.18 deliberately raises the full-profile ceiling to 14,000 estimated
 tokens to accommodate six tools and useful output schemas. Smaller profile gates
-are 10,100 (`research`, raised from 10,000 for `resolve_entity`'s near-miss
-fields), 6,500 (`discovery`) and 9,500 (`visualization`). The guidance-off
+are 10,700 (`research`), 6,800 (`discovery`) and 9,500 (`visualization`)
+(`test/unit/budget.test.mjs`). The guidance-off
 surfaces of the evaluation ablation are measured and gated like the shipped ones.
 The committed [baseline](test/token-baseline.json) records the exact surface size,
 text bytes, serialized wire bytes (text and structured content both count) and the
@@ -485,10 +487,12 @@ unnoticed.
 Pack the extension:
 
 ```bash
-npm run prepack-mcpb                       # clean + typecheck + build + test + smoke
-npm run validate:manifest
-npm run pack-mcpb                          # -> amira-mcp-server.mcpb
+npm run pack-mcpb    # -> amira-mcp-server.mcpb
 ```
+
+npm runs `prepack-mcpb` first (clean, build, typecheck, skill check, unit
+tests, both smoke tests, the response weigh-in and manifest validation), so a
+pack never ships an unchecked build.
 
 `scripts/census.mjs` re-runs the property census behind the field mapping
 (`scripts/census-report.json`, generated on 10 June 2026 and not rerun since,
@@ -498,8 +502,9 @@ records each release.
 
 ## Continuous delivery
 
-Three GitHub Actions cover pull requests and distribution (the two distribution
-workflows crawl the **public** API — no credentials):
+Four GitHub Actions workflows cover pull requests, distribution and the
+published image (the two distribution workflows crawl the **public** API — no
+credentials):
 
 - **CI** (`.github/workflows/ci.yml`) — on pull requests and pushes to `main`:
   type-checks and lints once, then runs the offline unit suite (including the
@@ -615,7 +620,7 @@ rather than given an invented label. Group ids are renumbered per build
 | `AMIRA_SKILLS` | — | on | Serve the companion skill over the finalized SEP-2640 extension. `0`/`false`/`off` withdraws the capability and the `skills/*` methods |
 | `PORT` | — | `8787` | Port for the remote HTTP transport (`server/http.js`); ignored by the `.mcpb` |
 | `HOST` | — | `127.0.0.1` | HTTP bind address; set `0.0.0.0` explicitly for remote access. The Docker image sets this itself |
-| `AMIRA_HTTP_PORT` / `AMIRA_HTTP_HOST` | — | — | Namespaced alternatives to `PORT` / `HOST`, for hosts where those names are taken; `PORT` / `HOST` win when both are set |
+| `AMIRA_HTTP_PORT` / `AMIRA_HTTP_HOST` | — | — | Namespaced alternatives to `PORT` / `HOST`, for hosts where those names are taken; `PORT` / `HOST` win when both are set. The Docker image sets `PORT` and `HOST`, so there `AMIRA_HTTP_PORT` / `AMIRA_HTTP_HOST` alone have no effect: set `PORT` / `HOST` |
 | `AMIRA_ALLOWED_ORIGINS` | — | `localhost, 127.0.0.1, [::1]` | Comma-separated browser Origin hostnames or URLs allowed to call the HTTP endpoint. Server-to-server clients, which omit `Origin`, are unaffected. Add trusted web-client origins explicitly; wildcards are rejected. |
 | `AMIRA_RATE_LIMIT` | — | `120` | Requests/minute per client on `/mcp` (`0` disables). A courtesy cap — queries operate on the in-memory snapshot — not a security control; `/healthz` is exempt |
 | `AMIRA_TRUST_PROXY` | — | `false` | Attribute requests to the address the reverse proxy observed: `X-Real-IP`, otherwise the `X-Forwarded-For` entry `AMIRA_PROXY_HOPS` from the right (never the client-supplied leftmost one). Enable it behind a proxy — otherwise every request comes from the proxy and all clients share one bucket — and never when clients connect directly |
@@ -628,7 +633,8 @@ rather than given an invented label. Group ids are renumbered per build
 | `AMIRA_CURATOR_RETRY_SECONDS` | — | `60` | Curator mode only: first timer-driven retry after a transient failure leaves no data (the first crawl failed); doubles up to five minutes |
 | `AMIRA_CURATOR_AUTH_PROBE` | — | `items?is_public=0&per_page=1` | Curator mode only: the keyed request that must return a non-empty array (proof that the key is accepted and has view-all) before any crawl or refresh |
 | `AMIRA_CURATOR_TOKEN` | Curator token | unset | stdio / `.mcpb` only: relay to the curator server with this personal token instead of serving the bundled snapshot (see [Curator access in Claude Desktop](#curator-access-in-claude-desktop)). Empty means public mode. Refused with `AMIRA_ACCESS=curator` and by the HTTP server |
-| `AMIRA_CURATOR_URL` | Curator server URL (advanced) | `https://data.africamultiple.uni-bayreuth.de/curator/mcp` | The endpoint the relay forwards to. Must be `https://` (`http://` only for `localhost` / `127.0.0.1`) |
+| `AMIRA_CURATOR_URL` | Curator server URL (advanced) | `https://data.africamultiple.uni-bayreuth.de/curator/mcp` | The endpoint the relay forwards to. Must be `https://` (`http://` only for `localhost` / `127.0.0.1` / `[::1]`) |
+| `AMIRA_CURATOR_RELAY_TIMEOUT_SECONDS` | — | `300` | stdio relay only: how long to wait for the curator server to answer one request before the relay reports it as unreachable |
 | `AMIRA_CURATOR_MAX_STALE_HOURS` | — | `24` | Curator mode only: refuse data Omeka has not confirmed for this long. Curator mode also requires `AMIRA_CACHE_DIR` (on tmpfs) and checks hourly by default |
 
 ### Snapshot layout and recovery
@@ -689,8 +695,8 @@ starting it and restart to change it.
 | Prompts, companion skill | registered and declared | neither |
 | Resources | titles and descriptions | URIs and MIME types only |
 
-The tool list costs 12,223 estimated tokens per turn on stdio with guidance and
-8,535 without (HTTP: 13,116 and 9,046); the instructions add ~500 once per
+The tool list costs 13,050 estimated tokens per turn on stdio with guidance and
+8,412 without (HTTP: 13,794 and 8,792; `test/token-baseline.json`); the instructions add ~500 once per
 session. `npm run weigh` measures both and the baseline records them.
 
 ## Architecture

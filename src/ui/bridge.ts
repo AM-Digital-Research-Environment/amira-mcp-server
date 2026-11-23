@@ -1,7 +1,7 @@
 // The browser half of every AMIRA view: the official Apps SDK handshake plus
 // the small API the views script (src/ui/page.ts) calls as window.amiraApp.
 // Bundled once, gzip-compressed into the one ui://amira/app.html page.
-import { App, applyHostStyleVariables, type McpUiHostContext } from "@modelcontextprotocol/ext-apps";
+import { App, type McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult } from "@modelcontextprotocol/client";
 import { ContextSync, type ContextSyncStatus } from "./contextSync.js";
 import { askText, buildSelectionContext, selectionText, type SelectionContext } from "./selectionContext.js";
@@ -25,8 +25,10 @@ function status(message: string) {
 }
 function context(ctx?: Partial<McpUiHostContext>) {
   if (!ctx) return;
+  // The host's theme picks the light or dark palette. Its style variables are
+  // not applied: the views' stylesheet reads only its own tokens (src/ui/shell.ts),
+  // tuned for contrast in both palettes, so they would set properties nothing reads (#59).
   if (ctx.theme === "dark" || ctx.theme === "light") document.documentElement.dataset.theme = ctx.theme;
-  if (ctx.styles?.variables) applyHostStyleVariables(ctx.styles.variables);
   const dimensions = ctx.containerDimensions;
   if (dimensions) {
     const height = "height" in dimensions ? dimensions.height : dimensions.maxHeight;

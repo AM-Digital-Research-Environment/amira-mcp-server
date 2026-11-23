@@ -41,7 +41,7 @@ Both `search_publications` and `list_publication_facets` accept the same filters
 
 | Filter | Matching |
 | --- | --- |
-| `keyword` | Substring in title, abstract, venue, subjects, or available full text |
+| `keyword` | Every word, in title, abstract, venue, subjects, or available full text; quote a phrase to match it exactly |
 | `author` | Authors and editors; either name order |
 | `subject` | Partial subject heading |
 | `language` | Name or ISO code, including `fr`, `fra`, `fre` |
@@ -49,6 +49,7 @@ Both `search_publications` and `list_publication_facets` accept the same filters
 | `venue` | Partial journal/book title |
 | `has_fulltext` | Whether extracted text exists; `false` is also supported |
 | `year_from`, `year_to` | Inclusive publication-year range |
+| `added_since` | Added to AMIRA on or after this ISO date (`2026-09-01`) |
 
 Filters are AND-combined and text comparisons ignore case and accents. An
 inverted year range returns `invalid_range`. Publication search is newest first;
@@ -68,8 +69,9 @@ are longer, so fewer of them fit the page budget: follow `next_offset`.
 {"has_fulltext":true,"include_abstract":true}
 ```
 
-For multi-word keyword queries, `search_publications` matches a phrase as a
-substring. The HTTP `search` adapter ranks individual terms across multiple
+A multi-word `keyword` matches publications containing every word, in any of
+those fields; put a phrase in double quotes (`"migration control"`) to match it
+exactly. The HTTP `search` adapter ranks individual terms across multiple
 corpora; its matching semantics differ.
 
 ## Read and cite

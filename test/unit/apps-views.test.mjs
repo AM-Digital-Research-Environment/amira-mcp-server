@@ -740,3 +740,31 @@ test("every tool name a view passes to callTool or pickerLoad is on the bridge's
   assert.deepEqual(dynamic, ["_shared.js: callTool(tool", "_shared.js: callTool(tool"]);
   assert.deepEqual([...used].sort(), [...BRIDGE_TOOLS].sort());
 });
+
+// --- accessibility and escaping (#59) ------------------------------------------
+
+test("map and timeline charts are groups, so their focusable marks stay in the accessibility tree", async (t) => {
+  for (const [tool, mark] of [["list_locations", "circle.place"], ["list_years", "[data-year]"]]) {
+    const app = await mount(t, tool);
+    app.show(await payload(tool));
+    assertHealthy(app);
+    const svg = app.root.querySelector("svg");
+    assert.equal(svg.getAttribute("role"), "group", tool);
+    assert.ok(svg.querySelector(`${mark}[role="button"]`), `${tool}: a focusable mark inside`);
+  }
+});
+
+test("overview escapes the snapshot date; the related seed label wraps before escaping", async (t) => {
+  const overview = await mount(t, "get_collection_overview");
+  const d = await payload("get_collection_overview");
+  overview.show({ ...d, data_snapshot: { ...d.data_snapshot, fetched_at: "<b>x</b>2026" } });
+  assertHealthy(overview);
+  assert.equal(overview.root.querySelector("b"), null, "no markup from the payload");
+
+  const related = await mount(t, "find_related");
+  const r = await payload("find_related", { entity_type: "subject", value: "Architecture" });
+  related.show({ ...r, seed_label: "Arts & Crafts & Design" });
+  assertHealthy(related);
+  const lines = [...related.root.querySelectorAll("text.seedlab")].map(text);
+  assert.deepEqual(lines, ["Arts & Crafts", "& Design"], "13-character lines counted on the text, not its entities");
+});

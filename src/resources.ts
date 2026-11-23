@@ -12,10 +12,10 @@
 // `resource_link` to one of these URIs instead of inline rows. Everything is
 // recomputed from the URI — nothing is stored between requests, which suits
 // the stateless HTTP transport.
-import { ResourceNotFoundError, ResourceTemplate, type McpServer } from "@modelcontextprotocol/server";
+import { ProtocolError, ProtocolErrorCode, ResourceNotFoundError, ResourceTemplate, type McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { ensureStore, UNIVERSITY_LABELS, withStore, type DataStore } from "./data.js";
-import { allowDescriptive, allowStructured } from "./exposure.js";
+import { allowDescriptive, allowStructured, exposureMessage } from "./exposure.js";
 import { guidanceEnabled } from "./guidance.js";
 import { API_BASE, SITE_BASE, config } from "./config.js";
 import { curatorText, curatorValue, visibilityCounts } from "./tools/curator.js";
@@ -76,7 +76,7 @@ const csvCell = (v: unknown): string => {
 function toCsv(rows: Record<string, unknown>[]): string {
   if (!rows.length) return "";
   const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))];
-  return [columns.join(","), ...rows.map((r) => columns.map((c) => csvCell(r[c])).join(","))].join("\r\n") + "\r\n";
+  return `${[columns.join(","), ...rows.map((r) => columns.map((c) => csvCell(r[c])).join(","))].join("\r\n")}\r\n`;
 }
 
 /** One research item as a flat export row; relational fields follow the exposure level. */
@@ -144,7 +144,7 @@ function exportText(store: DataStore, uri: string, corpus: string, format: strin
     const rows = shownRows(store, selectResearchItems(store, parsed.data).filtered.slice(0, MAX_EXPORT_ROWS).map((it) => itemRow(store, it)));
     return format === "csv"
       ? { mimeType: MIME.csv!, text: toCsv(rows) }
-      : { mimeType: MIME.jsonl!, text: rows.map((r) => JSON.stringify(r)).join("\n") + "\n" };
+      : { mimeType: MIME.jsonl!, text: `${rows.map((r) => JSON.stringify(r)).join("\n")}\n` };
   }
   const parsed = z.object(publicationFilters).strict().safeParse(filters);
   if (!parsed.success) throw new ResourceNotFoundError(uri, "Invalid export filters.");
@@ -154,12 +154,12 @@ function exportText(store: DataStore, uri: string, corpus: string, format: strin
     .sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.title.localeCompare(b.title) || a.o_id - b.o_id)
     .slice(0, MAX_EXPORT_ROWS);
   if (format === "csv") return { mimeType: MIME.csv!, text: toCsv(shownRows(store, records.map(publicationRow))) };
-  if (format === "jsonl") return { mimeType: MIME.jsonl!, text: shownRows(store, records.map(publicationRow)).map((r) => JSON.stringify(r)).join("\n") + "\n" };
+  if (format === "jsonl") return { mimeType: MIME.jsonl!, text: `${shownRows(store, records.map(publicationRow)).map((r) => JSON.stringify(r)).join("\n")}\n` };
   if (format === "csl-json") {
     return { mimeType: MIME["csl-json"]!, text: JSON.stringify(records.map((p) => publicationCitation(p, "csl-json").export)) };
   }
   const separator = format === "ris" ? "\n" : "\n\n";
-  return { mimeType: MIME[format]!, text: records.map((p) => publicationCitation(p, format as "bibtex" | "ris").export).join(separator) + "\n" };
+  return { mimeType: MIME[format]!, text: `${records.map((p) => publicationCitation(p, format as "bibtex" | "ris").export).join(separator)}\n` };
 }
 
 /** Authority kinds without a detail tool, described from the snapshot. */
@@ -216,7 +216,10 @@ function datasetDescription(store: DataStore): Record<string, unknown> {
     description:
       "Metadata for the digitised research items, projects, research sections, people, institutions, publications, " +
       "journals, podcasts, videos and Cluster Chronicles works of the Africa Multiple Cluster of Excellence at the University of Bayreuth, as published " +
-      "on its public Omeka S site. This description covers one snapshot served by the AMIRA MCP server.",
+      (config.access === "curator"
+        ? "in its Omeka S instance, public and private records together, as AMIRA curators see them. "
+        : "on its public Omeka S site. ") +
+      "This description covers one snapshot served by the AMIRA MCP server.",
     url: `${SITE_BASE}/s/amira`,
     identifier: snapshotId(store.manifest),
     version: store.manifest.fetchedAt,
@@ -248,6 +251,27 @@ function datasetDescription(store: DataStore): Record<string, unknown> {
   };
 }
 
+/**
+ * The resource error for a detail tool's error result: `not_found` stays a
+ * missing resource, anything else (`exposure_restricted`, `deadline_exceeded`,
+ * a curator outage) keeps its code and message instead of claiming the record
+ * does not exist (#56).
+ */
+export function recordError(uri: string, text: string | undefined, notFound: string): Error {
+  let error: { code?: unknown; message?: unknown } | undefined;
+  try {
+    error = (JSON.parse(text ?? "") as { error?: { code?: unknown; message?: unknown } }).error;
+  } catch {
+    error = undefined;
+  }
+  const code = typeof error?.code === "string" ? error.code : undefined;
+  if (!code || code === "not_found") return new ResourceNotFoundError(uri, notFound);
+  const message = typeof error?.message === "string" ? error.message : code;
+  const kind = code === "deadline_exceeded" || code.endsWith("_unavailable")
+    ? ProtocolErrorCode.InternalError : ProtocolErrorCode.InvalidRequest;
+  return new ProtocolError(kind, `${code}: ${message}`, { code });
+}
+
 const json = (uri: string, value: unknown) => ({
   contents: [{ uri, mimeType: "application/json", text: JSON.stringify(value) }],
 });
@@ -261,7 +285,11 @@ export function registerDataResources(server: McpServer, tools: ToolMap,
     "amira-record",
     new ResourceTemplate("amira://record/{kind}/{id}", {
       list: undefined,
-      complete: { kind: (value) => RESOURCE_KINDS.filter((k) => k.startsWith(value)) },
+      // Only the kinds this server can answer: a stored kind whose detail tool the
+      // profile serves, and the authority kinds where structure is exposed (#56).
+      complete: { kind: (value) => RESOURCE_KINDS.filter((k) => k.startsWith(value) && (isStoredKind(k) && RECORD_KINDS[k].detail
+        ? !servedTools || servedTools.has(RECORD_KINDS[k].detail!.tool)
+        : allowStructured())) },
     }),
     {
       ...described("AMIRA record", "Any AMIRA record as citable JSON, e.g. amira://record/research_item/9902. Kinds follow resolve_entity ids."),
@@ -279,8 +307,13 @@ export function registerDataResources(server: McpServer, tools: ToolMap,
         const result = (await (tool.handler as (args: unknown, ctx: unknown) => Promise<{ isError?: boolean; content?: { type: string; text?: string }[] }>)(
           route.arg(parsed.key), {})) ?? {};
         const text = result.content?.find((c) => c.type === "text")?.text;
-        if (result.isError || !text) throw new ResourceNotFoundError(uri.href, `No ${parsed.kind} with id ${parsed.key}.`);
+        if (result.isError) throw recordError(uri.href, text, `No ${parsed.kind} with id ${parsed.key}.`);
+        if (!text) throw new ResourceNotFoundError(uri.href, `No ${parsed.kind} with id ${parsed.key}.`);
         return { contents: [{ uri: uri.href, mimeType: "application/json", text }] };
+      }
+      if (!route && !allowStructured()) {
+        throw new ProtocolError(ProtocolErrorCode.InvalidRequest, `exposure_restricted: ${exposureMessage("structured")}`,
+          { code: "exposure_restricted" });
       }
       const store = await ensureStore();
       const record = allowStructured() ? authorityRecord(store, parsed.kind, Number(parsed.key)) : null;

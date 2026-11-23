@@ -97,7 +97,7 @@ generation-based fixture on Windows.
   `admin_url` instead ([docs/curator.md](docs/curator.md)).
 - **Read-only stays read-only.** No tool writes to Omeka S, and the public
   server needs no credential. Curator mode reads with one service key; keep it
-  inside the fetch (`src/snapshot.ts`) and out of every log, error and URL.
+  inside the fetch (`src/snapshot/http.ts`) and out of every log, error and URL.
 - **Private data stays curator-only.** New fields come from the record the
   transforms see, which never holds a private value (`src/visibility.ts`);
   a private value belongs in `restricted`. `test/unit/curator*.test.mjs`
@@ -107,30 +107,34 @@ generation-based fixture on Windows.
 
 ## Versioning and releases
 
-Version lives in both `package.json` and `manifest.json`. Bump them together
-with `npm version <major|minor|patch> --no-git-tag-version` (its `version`
+Version lives in `package.json`, `manifest.json` and `CITATION.cff`. Bump all
+three with `npm version <major|minor|patch> --no-git-tag-version`: its `version`
 lifecycle runs `scripts/sync-version.mjs`, which copies the new version into
-`manifest.json`; `node scripts/sync-version.mjs --check` reports drift), and add
-an entry to `CHANGELOG.md` in the same commit: its `## X.Y.Z` section becomes the
-release notes (`scripts/release-notes.mjs`), and a tag without one fails before
-anything is published. Run `npm run stamp-citation` in that commit too: a unit
-test requires `CITATION.cff` to cite `package.json`'s version, so CI on `main`
-would fail between the bump and the release job's own stamp (which then finds
-nothing to change). Releases are tag-driven: pushing `v*` builds a fresh
+`manifest.json`, then `scripts/stamp-citation.mjs`, which sets `CITATION.cff`'s
+`version` and today's `date-released` (`--check` on either script reports
+drift). Commit the three with an entry in `CHANGELOG.md`: its `## X.Y.Z` section
+becomes the release notes (`scripts/release-notes.mjs`), and a tag without one
+fails before anything is published. A unit test requires `CITATION.cff` to cite
+`package.json`'s version, so the citation belongs in the version commit, not
+after it. Releases are tag-driven: pushing `v*` builds a fresh
 snapshot, packs the `.mcpb` and the companion skill, builds the image, and
 publishes the GitHub Release and the GHCR image. Released versions are
 immutable: `scripts/release-guard.mjs` refuses a version that already exists on
 GitHub or the MCP Registry, so fix a release with a new version, never by
 moving its tag.
 
-Run `npm run lint` (Biome, rules only) before committing; CI runs it. On
+Run `npm run lint` (Biome, rules only) before committing; CI runs it. It reports
+nothing, infos included: keep it that way, so a new diagnostic stands out.
+`noUselessStringRaw` is off for `src/ui/` and the test helpers, whose CSS and
+scripts sit in `String.raw` templates so a backslash added later stays literal;
+agent worktrees under `.claude/worktrees/` are skipped. On
 Windows ARM64 the native Biome binary can crash; the x64 build under emulation
 works.
 
-`CITATION.cff` is **not** a third file to bump. The release workflow stamps its
-`version` and `date-released` from the tag — into the packed `.mcpb`, then back
-onto `main` as a follow-up commit. To set it by hand (from `package.json` and
-today's date):
+The release workflow stamps `CITATION.cff` again from the tag, into the packed
+`.mcpb`, and commits it back to `main` only when the version commit left it
+behind (normally it finds nothing to change). To set it by hand (from
+`package.json` and today's date):
 
 ```bash
 npm run stamp-citation

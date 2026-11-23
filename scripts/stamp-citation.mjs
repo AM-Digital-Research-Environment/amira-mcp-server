@@ -6,8 +6,9 @@
 // into the bundle, `validate:manifest` reads manifest.json, and
 // scripts/sync-version.mjs keeps them equal — so they fail loudly when wrong.
 // CITATION.cff fails silently: nothing validates it, and GitHub's "Cite this
-// repository" button will happily render a stale version forever. So this is
-// stamped from the tag at release time instead of being maintained by hand.
+// repository" button will happily render a stale version forever. So it is
+// never maintained by hand: npm's `version` lifecycle stamps it with the bump
+// (package.json), and the release stamps it again from the tag.
 //
 // Two lines are rewritten by regex rather than round-tripping the YAML: a YAML
 // serializer (the `yaml` devDependency the tests use) would reflow the whole

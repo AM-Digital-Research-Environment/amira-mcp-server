@@ -83,20 +83,20 @@ Filters are AND-combined and all optional. Default `limit` 20 (max 100).
 | Places ranked by item count | `list_locations` | Flat list of every place — countries and the places under them together (hierarchy rolled up, so an item from Lagos counts toward both Lagos and Nigeria); `level` is `country` or `place` (city, region or site); optional exact `country`, `near: {latitude, longitude, km}` or `bbox: [west, south, east, north]`; returns coordinates and Wikidata ids |
 | Collections ranked by item count | `list_collections` | One row per project collection (cluster and external), cited by the project page, with its item set(s), collection `code` and IIIF links; feed the id, code or title into the `collection` filter of search_research_items |
 | Formats / languages / resource types | `list_categories` | `category` ∈ formats (alias: genres) / languages / resource_types |
-| Coverage over time (date histogram) | `list_years` | `bucket` = year/decade; `from`/`to` window; `sort` = chronological/count; ranged items count in every year they span; rights/admin dates are not used. Renders as an interactive chart in MCP Apps hosts (`ui://amira/timeline`); the JSON is identical everywhere else |
+| Coverage over time (date histogram) | `list_years` | `bucket` = year/decade; `from`/`to` window; `sort` = chronological/count; ranged items count in every year they span; rights/admin dates are not used. Renders as an interactive chart in MCP Apps hosts; the JSON is identical everywhere else |
 
 **Charts (MCP Apps).** Seven tools render inline in hosts that support the `io.modelcontextprotocol/ui`
-extension:
+extension. They share one app resource, `ui://amira/app.html`, which picks the view from the tool:
 
-| Tool | Chart |
+| Tool | View |
 |---|---|
-| `get_collection_overview` | stat tiles + ranked breakdowns (`ui://amira/overview`) |
-| `list_years` | year/decade histogram (`ui://amira/timeline`) |
-| `list_research_sections` | funding-phase Gantt with a "now" marker (`ui://amira/sections`) |
-| `find_related` | radial co-occurrence hub, including publication-only seeds (`ui://amira/related`) |
-| `get_entity_graph` | bounded typed graph, node navigation and paginated evidence (`ui://amira/graph`) |
-| `list_locations` | offline map, country filtering, missing coordinates and item evidence (`ui://amira/map`) |
-| `search_publications` | filters, persistent selection (25 max) and host-mediated BibTeX/RIS/CSL-JSON downloads (`ui://amira/bibliography`) |
+| `get_collection_overview` | stat tiles + ranked breakdowns |
+| `list_years` | year/decade histogram |
+| `list_research_sections` | funding-phase Gantt with a "now" marker |
+| `find_related` | radial co-occurrence hub, including publication-only seeds |
+| `get_entity_graph` | bounded typed graph, node navigation and paginated evidence |
+| `list_locations` | offline map, country filtering, missing coordinates and item evidence |
+| `search_publications` | filters, persistent selection (25 max) and host-mediated BibTeX/RIS/CSL-JSON downloads |
 
 This changes nothing about how you call them or what you read: the JSON payload is byte-identical and
 the rendering is a host-side affordance. Do not describe the chart in prose as if it were the answer —
@@ -106,13 +106,13 @@ read the numbers from the payload and cite as usual.
 
 | Task | Tool | Key params |
 | --- | --- | --- |
-| Search publications — incl. INSIDE full text | `search_publications` | `keyword` (title, abstract, venue, subjects, and the extracted full text of open-access PDFs — full-text hits flagged `matched_in: "fulltext"` + a `fulltext_snippet`), `author`, `type`, `venue`, `subject`, `language`, `has_fulltext`, `year_from`/`year_to` |
+| Search publications — incl. INSIDE full text | `search_publications` | `keyword` (title, abstract, venue, subjects, and the extracted full text of open-access PDFs — full-text hits flagged `matched_in: "fulltext"` + a `fulltext_snippet`), `author`, `type`, `venue`, `subject`, `language`, `has_fulltext`, `year_from`/`year_to`, `added_since`; `include_abstract=true` adds the abstract (first 1,200 chars) and subjects to each row |
 | Full publication + citation export (full text opt-in) | `get_publication` | Omeka `id` or repository alias; `citation_format=bibtex` (default), `ris`, or `csl-json`; linked authors/editors/publisher/venue, conference details, page extent, access statements and thesis advisers. `include_fulltext=true` + `fulltext_offset`/`fulltext_max_chars` for extracted text (cap 25k chars/call) |
 | Export a filtered bibliography | `search_publications` | Simplest: `export=bibtex` (or `ris`, `csl-json`, `csv`, `jsonl`) returns one `resource_link` to the whole file. Inline alternative: `citation_format=…` replaces summaries with entries, max 25 records and 44,000 UTF-8 bytes per page; follow `next_offset` even when `count` is below the requested limit (`response_limited` marks byte-limited pages) |
 | Count publication types, years, languages, subjects, authors/editors or venues | `list_publication_facets` | `facet` plus the same filters as `search_publications`; counts cover the complete filtered corpus, not just a search page. One publication counts once per value; `missing_values` reports missing metadata |
 | Journals the cluster publishes in | `list_journals` | `keyword`; ranked by publication count, with ISSN + country; feed the title into the `venue` filter |
 
-## Podcasts & YouTube videos
+## Podcasts, YouTube videos & Cluster Chronicles
 
 | Task | Tool | Key params |
 | --- | --- | --- |

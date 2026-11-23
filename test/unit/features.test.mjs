@@ -244,7 +244,7 @@ test("ranked search interleaves corpora on equal scores", async () => {
 test("pages stop under the size budget and continue without gaps", async () => {
   const store = lib.currentStore();
   const original = [...store.items];
-  const filler = (i) => ({ ...original[0], o_id: 90_000 + i, dre_id: `fx-big-${i}`, title: `Bulk ${i} ` + "x".repeat(2_000) });
+  const filler = (i) => ({ ...original[0], o_id: 90_000 + i, dre_id: `fx-big-${i}`, title: `Bulk ${i} ${"x".repeat(2_000)}` });
   store.items.push(...Array.from({ length: 40 }, (_, i) => filler(i)));
   try {
     const seen = [];

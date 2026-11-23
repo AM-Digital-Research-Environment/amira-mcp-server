@@ -2,14 +2,15 @@
 // hand, and `validate:manifest`, the packaging test and the release guard all
 // fail on a mismatch, so a forgotten manifest bump cost a release round trip.
 // npm's `version` lifecycle runs this after `npm version <x>` has bumped
-// package.json and before it commits, then stages manifest.json:
+// package.json and before it commits, then scripts/stamp-citation.mjs, and
+// stages manifest.json and CITATION.cff:
 //
 //   npm version minor                       bumps both, commits, tags
 //   node scripts/sync-version.mjs           copy package.json's version into manifest.json
 //   node scripts/sync-version.mjs --check   exit 1 if they differ; write nothing
 //
-// CITATION.cff is not touched: the release stamps it from the tag
-// (scripts/stamp-citation.mjs).
+// CITATION.cff is scripts/stamp-citation.mjs's job; the release stamps it again
+// from the tag.
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -16,10 +16,22 @@ const validate = ajv.compile(schema);
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 // These exclusions cannot be undone by .mcpbignore negations. Runtime bundles
 // are self-contained; development dependencies and local credentials never ship.
+// Local Claude settings and agent worktrees (whole checkouts) are here too, so a
+// negation in .mcpbignore cannot pack them (#59).
 const alwaysExcluded = ignore().add([
   ".git", ".agents", ".codex", ".aws", "node_modules", ".env*", ".npmrc", ".yarnrc",
   "*.mcpb", "*.log", ".mcpbignore", "package-lock.json", "yarn.lock",
+  ".claude/settings.local.json", ".claude/worktrees",
 ]);
+
+/** The PNG's IHDR width and height; throws on anything too short to hold them, rather than reading past the end. */
+function pngSize(png, src) {
+  // 8-byte signature, then the IHDR chunk: length (4), type (4), width (4), height (4).
+  if (png.length < 24 || !png.subarray(0, 8).equals(pngSignature) || png.toString("latin1", 12, 16) !== "IHDR") {
+    throw new Error(`Manifest icons entry must be a local PNG file: ${src}`);
+  }
+  return `${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`;
+}
 
 function bundlePath(name) {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: a NUL in an archive path is exactly what this refuses
@@ -57,9 +69,7 @@ export function validateManifest(filename) {
   // dimensions match the declared `size`, so the directory never shows a
   // mislabelled or missing image.
   for (const { src, size } of manifest.icons ?? []) {
-    const png = readBundleFile(root, src);
-    if (!png.subarray(0, 8).equals(pngSignature)) throw new Error(`Manifest icons entry must be a local PNG file: ${src}`);
-    const actual = `${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`;
+    const actual = pngSize(readBundleFile(root, src), src);
     if (actual !== size) throw new Error(`Manifest icons entry ${src} is ${actual}, not ${size}`);
   }
   const pkg = JSON.parse(readBundleFile(root, "package.json").toString("utf8"));

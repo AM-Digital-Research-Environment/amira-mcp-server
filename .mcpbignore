@@ -30,8 +30,10 @@ tsconfig.views.json
 # Tests (the stdio/HTTP smoke tests live in test/smoke/)
 test/
 
-# Local caches
+# Local caches, conformance runs and SBOMs
 .census-cache/
+conformance-results/
+*.cdx.json
 
 # Scratch files the refresh-data workflow writes to the repo root before
 # the packaging test runs (the signature it publishes and the one it reads back).

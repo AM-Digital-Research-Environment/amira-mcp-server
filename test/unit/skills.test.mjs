@@ -272,3 +272,42 @@ test("hidden and ignored files never enter the catalog", async () => {
   assert.deepEqual(Object.keys(snapshot.text), ["tidy/SKILL.md"]);
   assert.deepEqual(skills[0].resources.map((r) => r.uri), ["skill://tidy/SKILL.md"]);
 });
+
+test("the served source follows the SDK catalog's contract: canonical URIs, decoded paths, no foreign cursors (#56)", async () => {
+  // The embedded catalog answers the canonical spelling of its entry point.
+  const conn = await connectInMemory(lib, {}, { name: "skills-unit" });
+  const skills = new SkillsClient(conn.client);
+  try {
+    const [entry] = (await skills.list()).skills;
+    assert.deepEqual((await skills.get("SKILL://amira-mcp/SKILL.md")).skill, entry);
+    const root = await skills.readDirectory("SKILL://amira-mcp");
+    assert.ok(root.resources.some((r) => r.uri === "skill://amira-mcp/SKILL.md"));
+    await assert.rejects(skills.list({ cursor: "bogus" }), /Invalid cursor/);
+  } finally {
+    await conn.close();
+  }
+
+  // A file whose name needs percent-encoding is read by its decoded snapshot path.
+  const dir = path.join(await tmp("encoded"), ".claude", "skills");
+  const skillDir = await writeSkill(dir, "spaced");
+  await fs.writeFile(path.join(skillDir, "Q&A notes.md"), "# Q&A\n\nAnswers.\n");
+  const { snapshot } = await buildSkillsSnapshot({ root: path.dirname(path.dirname(dir)), strict: true });
+  const extension = await lib.loadSkillsExtension(snapshot);
+  const server = new McpServer({ name: "skills-encoded", version: "0.0.0" });
+  extension.attach(server);
+  const served = await skillsClientFor(server);
+  try {
+    const [spaced] = (await served.skills.list()).skills;
+    const file = spaced.resources.find((r) => r.uri.endsWith(".md") && r.uri !== spaced.uri);
+    assert.equal(file.uri, "skill://spaced/Q&A%20notes.md");
+    for (const uri of [file.uri, "skill://spaced/Q%26A%20notes.md", "skill://spaced/Q&A%20notes.md#top"]) {
+      const read = await served.client.readResource({ uri });
+      assert.equal(read.contents[0].text, "# Q&A\n\nAnswers.\n", uri);
+    }
+    const listed = (await served.client.listResources()).resources.find((r) => r.uri === file.uri);
+    assert.equal(listed.title, "Q&A", "described from the decoded file's heading");
+  } finally {
+    await served.close();
+  }
+  assert.equal(lib.skillUriKey("SKILL://amira-mcp/references/a%20b.md#x"), "skill://amira-mcp/references/a b.md");
+});

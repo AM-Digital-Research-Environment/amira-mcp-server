@@ -373,7 +373,9 @@ export async function ensureStore(): Promise<DataStore> {
           curator.retryDelayMs = 0;
         }
         // In the background: a request arriving first builds what it needs itself.
-        void warmIndexes(store).catch((err: Error) => console.error(`[amira] index warm-up failed: ${err.message}`));
+        void warmIndexes(store, lifecycle.signal).catch((err: Error) => {
+          if (!lifecycle.signal.aborted) console.error(`[amira] index warm-up failed: ${err.message}`);
+        });
         if (config.liveRefresh) startBackgroundRefresh();
         return store;
       })

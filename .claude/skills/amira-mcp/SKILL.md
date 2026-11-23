@@ -7,13 +7,12 @@ description: |
   Use this skill when:
   - Querying the AMIRA MCP server tools about the cluster's research projects, research sections,
     digitised research items, people, institutions, groups, publications, subjects, locations,
-    podcasts, or YouTube videos/transcripts
+    podcasts, YouTube videos/transcripts, or Cluster Chronicles works
   - Investigating the Africa Multiple Cluster of Excellence, its DRE, or the AMIRA collection
   - Exploring how a theme, place, or person connects across projects and collections
   - Building cited research outputs grounded in the AMIRA data
   It provides a query workflow, tool-selection guidance, citation conventions (amira_url), and coverage
-  caveats; the bundled references add cluster background (references/cluster-context.md), the data
-  model, and the tool catalogue.
+  caveats; the bundled references add cluster background, the data model, and the tool catalogue.
 ---
 
 # Africa Multiple Research Data — MCP Workflow
@@ -107,6 +106,8 @@ ResearchSection ── research projects belong to one or more sections
 Publication (bibliography) ── authors/editors reconciled to People; venue → Journal authority;
                               open-access PDFs carry extracted full text
 Podcast / YouTube video ── speakers reconciled to People; videos carry transcripts
+Cluster Chronicles work ── chroniclers, other credits and people depicted reconciled to People;
+                           essays and poems carry their text; related works, videos and podcasts linked
 ```
 
 Every entity is an Omeka item with a stable public page: its **`amira_url`**
@@ -143,12 +144,16 @@ Use the right entry point for the question:
   Centres, privileged partner, cooperation and global partners) → `list_cluster_partners` (optional
   `category`). Research groups → `list_groups`. Bibliography → `search_publications` (keyword reaches INTO the
   extracted full text of open-access publications — hits are flagged `matched_in: "fulltext"` with a
-  `fulltext_snippet`; filter with `has_fulltext`, `venue`, `author`, `subject`, `language`, `type`, years).
+  `fulltext_snippet`; filter with `has_fulltext`, `venue`, `author`, `subject`, `language`, `type`, years;
+  `include_abstract=true` adds each work's abstract (first 1,200 characters) and subjects to the rows,
+  so a reading list needs no `get_publication` per record).
   Use `list_publication_facets` for complete counts and publication vocabulary. Journals →
   `list_journals` (ranked by publication count; feed a title into the `venue` filter).
 - Talks and audiovisual: `search_videos` (keyword reaches INTO transcripts; hits are flagged
   `matched_in: "transcript"` with a `transcript_snippet` around the match) and `search_podcasts`
   (transcripts searched the same way).
+- Cluster Chronicles: `search_chronicles` (`person`, `form`, years, `subject`, `place`, and a
+  `keyword` that reaches into the essays and poems, flagged `matched_in: "text"` with a `text_snippet`).
 - Discover vocabulary first when unsure of exact terms: `list_subjects` (tags are merged in),
   `list_locations`, `list_collections` (one per project, cited by the project page — pair with the `collection` filter),
   `list_categories` (formats/languages/resource_types), all ranked by item count. Feed a returned

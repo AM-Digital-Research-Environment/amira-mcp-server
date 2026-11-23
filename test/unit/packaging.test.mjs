@@ -138,6 +138,24 @@ test("validation rejects absent, unsafe and mismatched bundle files", (t) => {
   assert.throws(() => validateManifest(manifestFile), /ENOENT/);
 });
 
+test("a truncated icon is refused, and local Claude settings and worktrees never ship (#59)", (t) => {
+  const { root, write, manifest, manifestFile, output } = fixture(t);
+  // The PNG signature alone: reading the IHDR size used to run past the end.
+  write("tiny.png", Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0]));
+  write("manifest.json", { ...manifest, icons: [{ src: "tiny.png", size: "96x96" }] });
+  assert.throws(() => validateManifest(manifestFile), /local PNG file: tiny\.png/);
+  write("manifest.json", manifest);
+
+  write(".claude/skills/amira-mcp/SKILL.md", "Companion skill");
+  write(".claude/settings.local.json", "{}");
+  write(".claude/worktrees/feature/README.md", "a whole checkout");
+  write(".mcpbignore", ["!.claude/settings.local.json", "!.claude/worktrees/", ""].join("\n"));
+  packBundle(root, output);
+  const names = Object.keys(unzipSync(readFileSync(output)));
+  assert.ok(names.includes(".claude/skills/amira-mcp/SKILL.md"));
+  assert.ok(!names.some((n) => n.startsWith(".claude/worktrees/") || n === ".claude/settings.local.json"), names.join());
+});
+
 test("packing fails before replacing the previous artifact if a required file is excluded", (t) => {
   const { root, write, output } = fixture(t);
   for (const required of ["manifest.json", "package.json", "server/", "icon.png"]) {

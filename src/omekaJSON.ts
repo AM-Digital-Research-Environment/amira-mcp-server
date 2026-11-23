@@ -170,8 +170,8 @@ export function systemDate(item: OmekaItem, key: "o:modified" | "o:created"): st
 
 /** Large thumbnail URL of the primary media, when the item has any. */
 export function thumbnailUrl(item: OmekaItem): string | null {
-  const t = item["thumbnail_display_urls"];
-  if (isObj(t) && typeof t["large"] === "string" && t["large"]) return t["large"] as string;
+  const t = item.thumbnail_display_urls;
+  if (isObj(t) && typeof t.large === "string" && t.large) return t.large as string;
   return null;
 }
 

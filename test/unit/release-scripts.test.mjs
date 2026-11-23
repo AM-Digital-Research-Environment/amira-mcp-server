@@ -88,6 +88,8 @@ test("syncManifestVersion sets only the top-level version and keeps the layout",
 test("manifest.json is on package.json's version, and npm version keeps it there", () => {
   const pkg = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
   assert.match(pkg.scripts.version ?? "", /scripts\/sync-version\.mjs/, "the npm `version` lifecycle runs sync-version");
+  assert.match(pkg.scripts.version ?? "", /scripts\/stamp-citation\.mjs.*git add .*CITATION\.cff/,
+    "and stamps and stages CITATION.cff, which a unit test requires in the version commit (#59)");
   const run = spawnSync(process.execPath, [path.join(REPO_ROOT, "scripts", "sync-version.mjs"), "--check"], { encoding: "utf8" });
   assert.equal(run.status, 0, run.stderr);
 });

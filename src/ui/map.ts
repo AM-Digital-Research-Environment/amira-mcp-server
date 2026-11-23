@@ -19,10 +19,10 @@ const outline = land.features.flatMap((feature) =>
   if (points.length < 3) return "";
   // One "l" command, then implicit repeats: a negative dx carries its own
   // separator, a positive one needs a space.
-  return `M${points[0]![0]},${points[0]![1]}l` + points.slice(1).map(([x, y], i) => {
+  return `M${points[0]![0]},${points[0]![1]}l${points.slice(1).map(([x, y], i) => {
     const [px, py] = points[i]!, dx = x - px;
     return `${i && dx >= 0 ? " " : ""}${dx},${y - py}`;
-  }).join("") + "z";
+  }).join("")}z`;
 })).join("");
 const CSS = String.raw`
 .land { fill: var(--grid); stroke: var(--border); stroke-width: .5; }

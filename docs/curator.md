@@ -198,6 +198,17 @@ explicit setting is checked. Likewise, on Linux the server warns (and still
 starts) when the key file or the tokens file is readable by its group or by
 others.
 
+**The health check.** A curator container serves nothing until its first
+crawl into the empty tmpfs has finished, which takes minutes; `/healthz`
+answers 503 until then. The image's `HEALTHCHECK` allows a 10-minute start
+period, so Docker does not mark the container unhealthy (and an orchestrator
+does not restart it) while it crawls. If the first crawl takes longer on your
+site, raise it with `docker run --health-start-period=20m` or Compose's
+`healthcheck: { start_period: 20m }`. The check asks the address the server
+binds (`HOST`, loopback when that is `0.0.0.0` or `::`) on `PORT`. The image
+sets `PORT=8787`, which wins over `AMIRA_HTTP_PORT`: to move the port, set
+`PORT`.
+
 Curator mode also refuses:
 
 - the stdio server and the `.mcpb` (`server/index.js`): curator mode is HTTP

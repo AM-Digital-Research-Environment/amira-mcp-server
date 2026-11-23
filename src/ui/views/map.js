@@ -131,7 +131,7 @@ function render(d) {
       );
     });
   const svg = [
-    '<svg viewBox="0 0 720 360" role="img" aria-label="Research locations on a world map"><path class="land" d="__OUTLINE__"/>',
+    '<svg viewBox="0 0 720 360" role="group" aria-label="Research locations on a world map"><path class="land" d="__OUTLINE__"/>',
   ];
   mapped.forEach(function (r) {
     const x = (r.longitude + 180) * 2,

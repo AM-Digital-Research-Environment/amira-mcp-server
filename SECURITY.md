@@ -56,8 +56,8 @@ is audited with the curator's name and the tool, never a token, key or argument.
 With a **Curator token** set in the extension settings (`AMIRA_CURATOR_TOKEN`,
 kept in the OS keychain by Claude Desktop), the local stdio process becomes a
 relay that forwards every message unchanged to the curator endpoint
-(`AMIRA_CURATOR_URL`, `https://` only; `http://` only for `localhost` and
-`127.0.0.1`), with the token in the `Authorization` header. It loads no
+(`AMIRA_CURATOR_URL`, `https://` only; `http://` only for `localhost`,
+`127.0.0.1` and `[::1]`), with the token in the `Authorization` header. It loads no
 snapshot, writes no cache and holds no Omeka key. The token is removed from the
 process environment once read and redacted from every log line and error. A
 rejected token or an unreachable server is an error; it never falls back to

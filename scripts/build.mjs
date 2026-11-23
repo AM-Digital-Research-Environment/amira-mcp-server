@@ -131,9 +131,10 @@ await esbuild.build({ ...serverBuild,
 // `--sourcemap` (npm test, CI's unit lanes): a linked map for the test library
 // only, so a failing test's stack points into src/ rather than into a 3 MB
 // bundle (scripts/test.mjs runs the tests with --enable-source-maps). The
-// runtime bundles never get one: the .mcpb ignores *.map, but the container
-// copies all of server/. Without the flag a stale map from an earlier build
-// is removed, so it can never describe a different lib.js.
+// runtime bundles never get one, and neither artifact ships lib.js: the .mcpb
+// ignores it and *.map, and the container copies only server/http.js and
+// server/tokenCli.js. Without the flag a stale map from an earlier build is
+// removed, so it can never describe a different lib.js.
 const libMap = process.argv.includes("--sourcemap");
 if (!libMap) rmSync(new URL("../server/lib.js.map", import.meta.url), { force: true });
 await esbuild.build({ ...serverBuild, entryPoints: ["./src/lib.ts"], sourcemap: libMap ? "linked" : false });

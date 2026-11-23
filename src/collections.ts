@@ -27,6 +27,9 @@ interface CollectionIndex {
   byProject: Map<number, Collection>;
   bySet: Map<number, Collection>;
   byCode: Map<string, Collection>;
+  /** Items filed by item-set membership, in collection order: all of them, and those with no project link. */
+  bySetMembership: Map<Collection, ResearchItemRec[]>;
+  unlinked: Map<Collection, ResearchItemRec[]>;
 }
 
 function collectionIndex(store: DataStore): CollectionIndex {
@@ -75,7 +78,23 @@ function collectionIndex(store: DataStore): CollectionIndex {
       if (project) ofProject(project);
     }
     const all = [...new Set([...byProject.values(), ...bySet.values()])];
-    return { all, byProject, bySet, byCode };
+    // Set members, indexed once rather than rescanning every item per collection (#58).
+    const bySetMembership = new Map<Collection, ResearchItemRec[]>();
+    const unlinked = new Map<Collection, ResearchItemRec[]>();
+    const file = (map: Map<Collection, ResearchItemRec[]>, c: Collection, it: ResearchItemRec) => {
+      const list = map.get(c) ?? [];
+      if (list.at(-1) !== it) list.push(it);
+      map.set(c, list);
+    };
+    for (const it of store.items) {
+      for (const setId of it.item_sets) {
+        const c = bySet.get(setId);
+        if (!c) continue;
+        file(bySetMembership, c, it);
+        if (it.project?.o_id == null) file(unlinked, c, it);
+      }
+    }
+    return { all, byProject, bySet, byCode, bySetMembership, unlinked };
   });
 }
 
@@ -123,9 +142,9 @@ export function inCollection(it: ResearchItemRec, c: Collection): boolean {
 }
 
 export function itemsOfCollection(store: DataStore, c: Collection): ResearchItemRec[] {
-  if (!c.project) return store.items.filter((it) => inCollection(it, c));
-  const unlinked = c.sets.length ? store.items.filter((it) => it.project?.o_id == null && inCollection(it, c)) : [];
-  return [...store.itemsForProject(c.project.o_id), ...unlinked];
+  const index = collectionIndex(store);
+  if (!c.project) return index.bySetMembership.get(c) ?? [];
+  return [...store.itemsForProject(c.project.o_id), ...(index.unlinked.get(c) ?? [])];
 }
 
 /** The public description of a collection, cited by its project page. */

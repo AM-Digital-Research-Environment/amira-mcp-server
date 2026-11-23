@@ -2,7 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "vcs": { "enabled": false, "clientKind": "git", "useIgnoreFile": false },
   "files": {
-    "includes": ["src/**", "scripts/**", "test/**", "!scripts/vendor", "!src/ui/land.json"]
+    "includes": ["src/**", "scripts/**", "test/**", "!scripts/vendor", "!src/ui/land.json", "!!**/.claude/worktrees"]
   },
   "formatter": {
     "enabled": false
@@ -26,6 +26,14 @@
       "linter": {
         "rules": {
           "suspicious": { "noTemplateCurlyInString": "off" }
+        }
+      }
+    },
+    {
+      "includes": ["src/ui/**", "test/helpers/**"],
+      "linter": {
+        "rules": {
+          "complexity": { "noUselessStringRaw": "off" }
         }
       }
     },

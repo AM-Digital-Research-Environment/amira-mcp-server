@@ -16,7 +16,7 @@ export {
 export { itemUrl, itemUrlOrNull } from "./urls.js";
 export { generateItemCitation } from "./citation.js";
 export { createAmiraServer } from "./mcpServer.js";
-export { loadSkillCatalog } from "./skills.js";
+export { loadSkillCatalog, loadSkillsExtension, skillUriKey } from "./skills.js";
 export { exposureLevel } from "./exposure.js";
 export { guidanceEnabled, stripSchemaText } from "./guidance.js";
 export { isTemplatePlaceholder, loadConfig, parseAllowedOriginHostnames, config } from "./config.js";
@@ -41,7 +41,8 @@ export { placeMatcher, researchFilterError } from "./researchItemQuery.js";
 export { foldedMatches } from "./text.js";
 export { cleanArgs } from "./tools/policy.js";
 export { TOOL_PROFILES, allowedTools } from "./toolProfiles.js";
-export { exportUri } from "./resources.js";
+export { PROMPT_TOOLS } from "./prompts.js";
+export { exportUri, recordError } from "./resources.js";
 export { escBibtex } from "./citation.js";
 export { scrub } from "./tools/responses.js";
 export { describeMarkdown } from "./skills.js";

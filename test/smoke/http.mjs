@@ -15,7 +15,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { SkillsClient } from "@modelcontextprotocol/client/ext/skills";
 import { exitedCleanly, expectedToolNames, spawnHttpServer } from "../helpers/mcp.mjs";
 import {
-  check, checkToolSurface, failureCount, MIN_JOURNALS, MIN_PUBLICATIONS, MIN_RESEARCH_ITEMS,
+  check, checkToolSurface, failureCount, MIN_CHRONICLES, MIN_JOURNALS, MIN_PUBLICATIONS, MIN_RESEARCH_ITEMS,
 } from "./expectations.mjs";
 
 /** Poll until `url` answers 2xx: the port is bound before the snapshot loads. */
@@ -193,6 +193,18 @@ try {
   check(overview.counts?.research_items >= MIN_RESEARCH_ITEMS, "rich tool over HTTP: overview parity");
   check(overview.counts?.publications >= MIN_PUBLICATIONS, "rich tool over HTTP: publications corpus present");
   check(overview.counts?.journals >= MIN_JOURNALS, "rich tool over HTTP: journals corpus present");
+
+  // The tools the HTTP smoke never reached before (#57).
+  const chronicles = await call("search_chronicles", { limit: 1 });
+  check(chronicles.total_matches >= MIN_CHRONICLES, "search_chronicles over HTTP");
+  if (chronicles.results?.[0]?.id) {
+    const work = await call("get_chronicle", { id: chronicles.results[0].id });
+    check(typeof work.amira_url === "string", "get_chronicle over HTTP: cited");
+  }
+  const facets = await call("list_publication_facets", { facet: "year", limit: 3 });
+  check(facets.total_publications >= MIN_PUBLICATIONS, "list_publication_facets over HTTP");
+  const ftMap = await call("get_fulltext_map", {});
+  check(ftMap.error ? ftMap.error.code === "fulltext_map_unavailable" : ftMap.coverage?.articles > 0, "get_fulltext_map over HTTP");
 
   // Skills over MCP on the REMOTE surface — the reason the extension is worth
   // having. ChatGPT, Claude.ai connectors and the APIs cannot install a local

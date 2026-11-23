@@ -197,7 +197,9 @@ function render(d) {
 
   // The seed itself, last so it sits above the spokes.
   out.push('<circle class="seed" cx="' + CX + '" cy="' + CY + '" r="' + R_SEED + '" />');
-  const words = esc(clip(seedName, 30)).split(" ");
+  // Wrapped on the raw text and escaped per line, as graph.js does: escaping
+  // first measured "&amp;" as five characters and could split an entity.
+  const words = clip(seedName, 30).split(" ");
   let lines = [],
     cur = "";
   words.forEach(function (w) {
@@ -212,7 +214,7 @@ function render(d) {
   lines = lines.slice(0, 3);
   const y0 = CY - (lines.length - 1) * 6 - 4;
   lines.forEach(function (ln, i) {
-    out.push('<text class="seedlab" x="' + CX + '" y="' + (y0 + i * 12) + '" text-anchor="middle">' + ln + "</text>");
+    out.push('<text class="seedlab" x="' + CX + '" y="' + (y0 + i * 12) + '" text-anchor="middle">' + esc(ln) + "</text>");
   });
   out.push(
     '<text class="seedsub" x="' +

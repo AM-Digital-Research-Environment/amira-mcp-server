@@ -219,27 +219,33 @@ export function entityEdges(store: DataStore, seed: string) {
 
 function computeEdges(store: DataStore, seed: string) {
   const index = graphIndex(store);
+  // Keyed by the plain tuple: the SHA-256 id is computed once per edge, not per evidence row (#58).
   const edges = new Map<string, { edge: Edge; evidence: Map<string, Evidence> }>();
   const add = (source: string, target: string, kind: Edge["kind"], relation: string, evidence: Evidence) => {
     if (target === source) return;
-    const id = createHash("sha256").update(JSON.stringify([source, target, kind, relation])).digest("hex").slice(0, 24);
-    const row = edges.get(id) ?? { edge: { id, source, target, kind, relation, count: 0, research_item_count: 0,
-      publication_count: 0, video_count: 0, podcast_count: 0, chronicle_count: 0, evidence: [], evidence_total: 0 }, evidence: new Map() };
-    row.evidence.set(evidence.id, evidence); edges.set(id, row);
+    const key = JSON.stringify([source, target, kind, relation]);
+    let row = edges.get(key);
+    if (!row) {
+      const id = createHash("sha256").update(key).digest("hex").slice(0, 24);
+      row = { edge: { id, source, target, kind, relation, count: 0, research_item_count: 0,
+        publication_count: 0, video_count: 0, podcast_count: 0, chronicle_count: 0, evidence: [], evidence_total: 0 }, evidence: new Map() };
+      edges.set(key, row);
+    }
+    row.evidence.set(evidence.id, evidence);
   };
   for (const link of index.explicit.get(seed) ?? []) add(link.source, link.target, "explicit", link.relation, link.evidence);
   for (const row of index.records.get(seed) ?? []) for (const target of row.entities) {
     add(seed, target, "cooccurrence", `shared_${row.evidence.corpus}`, row.evidence);
   }
+  const COUNT_FIELD = { research_items: "research_item_count", publications: "publication_count", videos: "video_count",
+    podcasts: "podcast_count", chronicles: "chronicle_count" } as const;
   for (const { edge, evidence } of edges.values()) {
-    const refs = [...evidence.values()];
-    edge.count = edge.evidence_total = refs.length;
-    edge.evidence = refs.slice(0, 1);
-    edge.research_item_count = refs.filter((r) => r.corpus === "research_items").length;
-    edge.publication_count = refs.filter((r) => r.corpus === "publications").length;
-    edge.video_count = refs.filter((r) => r.corpus === "videos").length;
-    edge.podcast_count = refs.filter((r) => r.corpus === "podcasts").length;
-    edge.chronicle_count = refs.filter((r) => r.corpus === "chronicles").length;
+    edge.count = edge.evidence_total = evidence.size;
+    for (const ref of evidence.values()) {
+      if (!edge.evidence.length) edge.evidence.push(ref);
+      const field = COUNT_FIELD[ref.corpus as keyof typeof COUNT_FIELD];
+      if (field) edge[field]++;
+    }
   }
   return [...edges.values()].sort((a, b) => b.edge.count - a.edge.count || a.edge.id.localeCompare(b.edge.id));
 }

@@ -79,3 +79,58 @@ test("get_publication keeps its languages with the other structured fields (#54)
     assert.equal(p.languages, undefined);
   } finally { delete process.env.AMIRA_EXPOSURE; }
 });
+
+test("completions and the record resource follow the exposure level (#56)", async () => {
+  const kinds = async () => (await conn.client.complete({ ref: { type: "ref/resource", uri: "amira://record/{kind}/{id}" },
+    argument: { name: "kind", value: "" } })).completion.values;
+  const people = () => conn.client.complete({ ref: { type: "ref/prompt", name: "person_profile" }, argument: { name: "name", value: "Fen" } });
+  assert.ok((await people()).completion.values.length > 0);
+  assert.ok((await kinds()).includes("location"));
+  process.env.AMIRA_EXPOSURE = "minimal";
+  try {
+    assert.deepEqual((await people()).completion.values, [], "no person vocabulary below structured");
+    const restricted = await kinds();
+    assert.ok(!restricted.includes("location") && !restricted.includes("subject"), restricted.join());
+    // Refused, not "not found": the record exists.
+    await assert.rejects(conn.client.readResource({ uri: "amira://record/location/900" }), /exposure_restricted/);
+  } finally { delete process.env.AMIRA_EXPOSURE; }
+  const missing = await conn.client.readResource({ uri: "amira://record/research_item/999999" }).catch((e) => e);
+  assert.match(String(missing.message), /No research_item with id 999999/);
+  assert.equal(missing.code, -32602, "a missing record stays ResourceNotFound");
+});
+
+test("a detail tool's other errors keep their code through amira://record (#56)", () => {
+  const body = (code, message) => JSON.stringify({ error: { code, message } });
+  const missing = lib.recordError("amira://record/video/1", body("not_found", "gone"), "No video with id 1.");
+  assert.equal(missing.code, -32602);
+  assert.match(missing.message, /No video with id 1/);
+  const late = lib.recordError("amira://record/video/1", body("deadline_exceeded", "Took too long."), "No video with id 1.");
+  assert.equal(late.code, -32603);
+  assert.equal(late.message, "deadline_exceeded: Took too long.");
+  assert.deepEqual(late.data, { code: "deadline_exceeded" });
+  const refused = lib.recordError("amira://record/video/1", body("exposure_restricted", "Not at this level."), "No video with id 1.");
+  assert.equal(refused.code, -32600);
+  assert.equal(lib.recordError("amira://record/video/1", "not json", "No video with id 1.").code, -32602);
+});
+
+test("a tool profile registers only the prompts whose tools it serves (#56)", async () => {
+  for (const profile of Object.keys(lib.TOOL_PROFILES)) {
+    const served = lib.allowedTools(profile);
+    const c = await connectInMemory(lib, { profile }, { name: `prompts-${profile}` });
+    try {
+      const names = (await c.client.listPrompts()).prompts.map((p) => p.name).sort();
+      const expected = Object.entries(lib.PROMPT_TOOLS).filter(([, tools]) => !served || tools.every((t) => served.has(t)))
+        .map(([name]) => name).sort();
+      assert.deepEqual(names, expected, profile);
+      assert.ok(names.length > 0, `${profile} keeps at least one prompt`);
+      const kinds = (await c.client.complete({ ref: { type: "ref/resource", uri: "amira://record/{kind}/{id}" },
+        argument: { name: "kind", value: "" } })).completion.values;
+      if (served && !served.has("get_podcast")) assert.ok(!kinds.includes("podcast"), `${profile}: ${kinds.join()}`);
+    } finally { await c.close(); }
+  }
+  const visualization = await connectInMemory(lib, { profile: "visualization" }, { name: "prompts-vis" });
+  try {
+    const names = (await visualization.client.listPrompts()).prompts.map((p) => p.name);
+    assert.ok(!names.includes("person_profile"), "get_person is not in the visualization profile");
+  } finally { await visualization.close(); }
+});

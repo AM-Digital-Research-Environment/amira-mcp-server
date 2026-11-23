@@ -13,6 +13,8 @@ import { guidanceEnabled } from "./guidance.js";
 import { config } from "./config.js";
 
 export const VERSION = typeof __SERVER_VERSION__ !== "undefined" ? __SERVER_VERSION__ : "dev";
+/** The emblem, injected by esbuild like the version; absent when the source runs unbundled (#59). */
+const ICON = typeof __SERVER_ICON__ !== "undefined" && __SERVER_ICON__ ? __SERVER_ICON__ : undefined;
 
 /**
  * The stateless MCP revision (SEP-2575). The SDK keeps this string internal on
@@ -185,7 +187,7 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
       // The Africa Multiple emblem, 96 px. Claude shows it over the app's views
       // and on the overview's entry-point tile; it accepts only an inline PNG or
       // JPEG (64-128 px, under 10 KB) and fetches no icon URL.
-      icons: [{ src: `data:image/png;base64,${__SERVER_ICON__}`, mimeType: "image/png", sizes: ["96x96"] }],
+      ...(ICON ? { icons: [{ src: `data:image/png;base64,${ICON}`, mimeType: "image/png", sizes: ["96x96"] }] } : {}),
     },
     {
       ...(guidance
@@ -199,9 +201,11 @@ export function createAmiraServer(opts: CreateServerOptions = {}): McpServer {
       },
     },
   );
-  const tools = registerTools(server, opts.profile ?? resolveToolProfile(), { openai: opts.openai, guidance });
-  if (guidance) registerPrompts(server);
-  registerDataResources(server, tools, { guidance, servedTools: allowedTools(opts.profile ?? resolveToolProfile()) });
+  const profile = opts.profile ?? resolveToolProfile();
+  const servedTools = allowedTools(profile);
+  const tools = registerTools(server, profile, { openai: opts.openai, guidance });
+  if (guidance) registerPrompts(server, servedTools);
+  registerDataResources(server, tools, { guidance, servedTools });
   // SEP-2640: the SDK extension declares its capability as it attaches, so a
   // host never sees the capability without `skills/list` behind it.
   if (skills) registerSkills(server);

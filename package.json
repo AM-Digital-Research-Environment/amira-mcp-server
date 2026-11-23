@@ -54,7 +54,7 @@
     "benchmark": "npm run build && node scripts/benchmark.mjs",
     "evaluate-retrieval": "npm run build && node scripts/evaluate-retrieval.mjs",
     "stamp-citation": "node scripts/stamp-citation.mjs",
-    "version": "node scripts/sync-version.mjs && git add manifest.json",
+    "version": "node scripts/sync-version.mjs && node scripts/stamp-citation.mjs && git add manifest.json CITATION.cff",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "validate:manifest": "node scripts/mcpb.mjs validate manifest.json",
     "start:http": "node server/http.js",

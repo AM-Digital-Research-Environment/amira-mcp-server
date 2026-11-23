@@ -16,7 +16,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { childEnv, SERVER_STDIO } from "../helpers/env.mjs";
 import { expectedToolNames } from "../helpers/mcp.mjs";
 import {
-  check, checkToolSurface, failureCount, MIN_JOURNALS, MIN_PUBLICATIONS, MIN_RESEARCH_ITEMS,
+  check, checkToolSurface, failureCount, MIN_JOURNALS, MIN_PUBLICATIONS, MIN_RESEARCH_ITEMS, MIN_CHRONICLES,
 } from "./expectations.mjs";
 
 /** Extension methods are not in the client's spec table — supply a result schema. */
@@ -257,6 +257,27 @@ check(pods.results?.some((p) => p.has_transcript === true), "search_podcasts: po
 if (pods.results?.[0]?.id) {
   const pod = await call("get_podcast", { id: pods.results[0].id });
   check(!("transcript" in pod), "get_podcast: transcript omitted by default");
+}
+
+// Cluster Chronicles, the publication facets and the full-text map (#57):
+// each corpus or tool is called at least once against the real snapshot.
+const chronicles = await call("search_chronicles", { limit: 2 }, { expect: [AMIRA] });
+check(chronicles.total_matches >= MIN_CHRONICLES, `search_chronicles: at least ${MIN_CHRONICLES} works`);
+if (chronicles.results?.[0]?.id) {
+  const work = await call("get_chronicle", { id: chronicles.results[0].id }, { expect: [AMIRA] });
+  check(typeof work.title === "string" && work.title.length > 0, "get_chronicle: title present");
+  check(!("text" in work), "get_chronicle: text omitted by default (opt-in)");
+}
+const typeFacet = await call("list_publication_facets", { facet: "type", limit: 3 });
+check(typeFacet.total_publications >= MIN_PUBLICATIONS && typeFacet.results?.[0]?.publication_count > 0,
+  "list_publication_facets: type counts over the whole bibliography");
+const ftMap = await call("get_fulltext_map", {}, { expect: ["error"] });
+if (ftMap.error) {
+  // A crawl that could not reach the map's release still serves; say so rather than fail.
+  check(ftMap.error.code === "fulltext_map_unavailable", `get_fulltext_map: only unavailable may fail (got ${ftMap.error.code})`);
+  console.warn("  note: no full-text map in this snapshot");
+} else {
+  check(ftMap.coverage?.articles > 0 && ftMap.collection?.amira_url?.startsWith(AMIRA), "get_fulltext_map: coverage and a cited collection");
 }
 
 const vids = await call("search_videos", { keyword: "Africa", limit: 3 });
