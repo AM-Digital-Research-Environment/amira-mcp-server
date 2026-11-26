@@ -51,15 +51,21 @@ import { config } from "./config.js";
 import { bool } from "./env.js";
 
 /**
- * Skill files are immutable for the life of a build, so every skill result is
- * shareable across clients for a day — the same reasoning as the app HTML's
- * hint (src/tools/apps.ts). A curator server keeps its rule of no shared
- * caching whatever the method (#49), although the skill text itself is public.
- * The SDK sends it on 2026-07-28 connections only, where the fields exist.
+ * Skill files are immutable for the life of a build, so every public skill
+ * result is shareable across clients for a day — the same reasoning as the app
+ * HTML's hint (src/tools/apps.ts). A curator server serves private-only
+ * workflow rules too (`amira-curator`) and keeps its rule of no shared caching
+ * whatever the method (#49). The SDK sends cache hints on 2026-07-28
+ * connections only, where the fields exist.
  */
-const skillsCacheHint = () => config.access === "curator"
+export type SkillAccessMode = "public" | "curator";
+
+const skillsCacheHint = (access: SkillAccessMode = config.access) => access === "curator"
   ? ({ ttlMs: 0, cacheScope: "private" } as const)
   : ({ ttlMs: 86_400_000, cacheScope: "public" } as const);
+
+/** Skills exposed only when `AMIRA_ACCESS=curator`; public servers never list or serve them. */
+export const CURATOR_ONLY_SKILLS = new Set(["amira-curator"]);
 
 /** Paths under .claude/skills/: lossless UTF-8 as text, anything else base64. */
 export type SkillsSnapshot = { text: Record<string, string>; base64: Record<string, string> };
@@ -227,11 +233,18 @@ export function snapshotSource(entries: readonly Skill[], snapshot: SkillsSnapsh
   };
 }
 
-/** The extension that serves a snapshot: the SDK's validated entries, our listing. */
-export async function loadSkillsExtension(snapshot: SkillsSnapshot): Promise<SkillsExtension | undefined> {
+/** The extension that serves a snapshot: the SDK's validated entries, filtered by access mode, with our listing. */
+export async function loadSkillsExtension(
+  snapshot: SkillsSnapshot,
+  opts: { access?: SkillAccessMode } = {},
+): Promise<SkillsExtension | undefined> {
+  const access = opts.access ?? config.access;
   const catalog = await loadSkillCatalog(snapshot);
-  if (catalog.entries.length === 0) return undefined;
-  return new SkillsExtension({ source: snapshotSource(catalog.entries, snapshot), cacheHint: skillsCacheHint(), strict: true });
+  const entries = access === "curator"
+    ? catalog.entries
+    : catalog.entries.filter((skill) => !CURATOR_ONLY_SKILLS.has(skill.frontmatter.name));
+  if (entries.length === 0) return undefined;
+  return new SkillsExtension({ source: snapshotSource(entries, snapshot), cacheHint: skillsCacheHint(access), strict: true });
 }
 
 /**
@@ -243,7 +256,7 @@ export async function loadSkillsExtension(snapshot: SkillsSnapshot): Promise<Ski
 const EXTENSION: SkillsExtension | undefined = await (async () => {
   if (Object.keys(SNAPSHOT.text).length + Object.keys(SNAPSHOT.base64).length === 0) return undefined;
   try {
-    return await loadSkillsExtension(SNAPSHOT);
+    return await loadSkillsExtension(SNAPSHOT, { access: config.access });
   } catch (err) {
     console.error(`[amira] skills catalog rejected, serving none: ${(err as Error).message}`);
     return undefined;

@@ -214,10 +214,16 @@ try {
   const skillsClient = new SkillsClient(client);
   check(skillsClient.supported && skillsClient.directoryRead, "HTTP: skills extension declared");
   const skillList = await skillsClient.list();
+  check(skillList.skills.length === 1 && skillList.invalid.length === 0, `HTTP: 1 public skill, got ${skillList.skills.length}`);
   const skill = skillList.skills[0];
   check(skill?.uri === "skill://amira-mcp/SKILL.md", "HTTP: skills/list serves the companion skill");
-  check(skill?.resources?.length === 4, "HTTP: complete resource manifest");
-  // SkillsClient re-hashes the body against the listed digest and size.
+  check(skill?.resources?.length === 6, `HTTP: complete resource manifest (6 files), got ${skill?.resources?.length}`);
+  // SkillsClient re-hashes every file against its listed digest and size.
+  for (const resource of skill.resources) {
+    const label = resource.uri.replace("skill://amira-mcp/", "");
+    const file = await skillsClient.read(skill, label).catch((err) => err);
+    check(file?.verified === true, `HTTP: ${label} verifies against its size and digest`);
+  }
   const skillDoc = await skillsClient.read(skill).catch((err) => err);
   check(skillDoc?.verified === true, "HTTP: SKILL.md verifies against the manifest");
   check(skillDoc?.body?.includes("amira_url"), "HTTP: SKILL.md body readable over resources/read");

@@ -164,6 +164,11 @@ applied to every tool and resource, so no tool can forget it:
 - **Instructions and prompts** put the private-record rules first, cite
   public records by `amira_url`, and name private ones as private with their
   `admin_url`.
+- **Companion skill (`amira-curator`)**: in curator mode the Skills over MCP
+  endpoint (`io.modelcontextprotocol/skills`) serves `skill://amira-curator/SKILL.md`
+  alongside `skill://amira-mcp/SKILL.md`, with `cacheScope: "private"` (`ttlMs: 0`),
+  and `curatorInstructions` points to both. Public servers never list or serve
+  `amira-curator`.
 - **The server informs, it does not forbid.** Every note on private material
   states facts: what is private, that a private record has no public page,
   that a private text or value is not on the public site. Curators hold the

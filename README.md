@@ -244,10 +244,12 @@ Install it either way:
 
 ### …or let the server hand it over (Skills over MCP)
 
-> **Official extension; host support varies.** SEP-2640 is now Final. The server follows the
-> [published Skills extension](https://modelcontextprotocol.io/extensions/skills/overview), including
-> SHA-256 digests and byte sizes for every file. The zip above remains available for clients without
-> extension support. The research tools and citation contract work either way.
+> **Official extension; supported in Claude (public beta) and compatible hosts.** SEP-2640 is Final.
+> The server follows the [published Skills extension](https://modelcontextprotocol.io/extensions/skills/overview),
+> including SHA-256 digests and byte sizes for every file. Claude (web, desktop and Claude Code)
+> loads skills over MCP natively in public beta (on by default for Pro/Max/Ultra; opt-in for Team).
+> The zip above remains available for clients without extension support. The research tools and
+> citation contract work either way.
 
 The server also **serves that same skill over the connection**, following the
 [SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640) extension
@@ -255,22 +257,26 @@ The server also **serves that same skill over the connection**, following the
 implements the extension discovers the skill on connect, and the copy it gets is the one built into
 the running server rather than a zip that may predate the tool surface it describes. It is the only
 route that reaches the **remote HTTP surface** — ChatGPT, Claude.ai connectors and the APIs have no
-local skills directory.
+local skills directory. On the internal **curator server** (`AMIRA_ACCESS=curator`), a second
+companion skill (`skill://amira-curator/SKILL.md`, served with `cacheScope: "private"`) is published
+alongside `amira-mcp` for private records, `admin_url`, `restricted` values and private full text;
+public servers never list or serve it.
 
 | Method | What it returns |
 | --- | --- |
-| `skills/list` | The catalog: `skill://amira-mcp/SKILL.md`, its frontmatter, and a SHA-256 digest and byte size for every file |
+| `skills/list` | The catalog: `skill://amira-mcp/SKILL.md` (plus `skill://amira-curator/SKILL.md` on the curator server), frontmatter, and a SHA-256 digest and byte size for every file |
 | `skills/get` | One skill by URI, to refresh digests without re-listing |
 | `resources/read` | Any single file — `SKILL.md` or a reference — read on demand |
 | `resources/directory/read` | One directory level at a time (`skill://amira-mcp`, `skill://amira-mcp/references`) |
 
 **Cost when unused: near zero.** Skill text is never injected into any tool description, so the
 `tools/list` payload — the part re-sent every turn — is byte-identical whether or not a host
-supports the extension. The instructions add one sentence naming `skill://amira-mcp/SKILL.md`, and
-`resources/list` names every skill file with a title and a one-line summary, so a host without the
-extension (Claude Desktop, Claude Code) can still find the workflow and its three references and
-read them with `resources/read`. Disclosure timing stays a host decision; the reference files load
-only when something actually reads them.
+supports the extension. `SKILL.md` stays concise and delegates deep corpus details and step-by-step
+research recipes to its five `references/*.md` files (progressive disclosure). The instructions add
+one sentence naming `skill://amira-mcp/SKILL.md` (and `skill://amira-curator/SKILL.md` in curator
+mode), and `resources/list` names every skill file with a title and a one-line summary, so hosts
+without the extension can still find and read them with `resources/read`. Disclosure timing stays a
+host decision; the reference files load only when something actually reads them.
 
 Set `AMIRA_SKILLS=0` to drop the capability and the three methods entirely.
 

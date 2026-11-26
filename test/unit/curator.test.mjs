@@ -15,6 +15,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { SkillsClient } from "@modelcontextprotocol/client/ext/skills";
+import { z } from "zod";
 import { hermeticEnv, tempDir } from "../helpers/env.mjs";
 import { connectInMemory } from "../helpers/mcp.mjs";
 import { IDS, KEY, PRIVATE, startOmekaStub } from "../helpers/omeka-stub.mjs";
@@ -88,8 +90,27 @@ test("curator instructions put the private-record rules first and stay within 2,
   assert.ok(text.startsWith("CURATOR MODE"));
   assert.match(text, /admin_url/);
   assert.match(text, /CITATIONS — follow exactly/);
+  assert.ok(text.includes("skill://amira-mcp/SKILL.md"));
+  assert.ok(text.includes("skill://amira-curator/SKILL.md"));
   assert.ok(text.length <= 2048, `${text.length} characters`);
   assert.ok(lib.curatorInstructions(false).length <= 2048);
+  assert.equal(lib.curatorInstructions(false).includes("skill://"), false);
+});
+
+test("curator: serves both amira-mcp and amira-curator skills", async () => {
+  const skills = new SkillsClient(conn.client);
+  assert.equal(skills.supported, true);
+  const { skills: entries, invalid } = await skills.list();
+  assert.deepEqual(invalid, []);
+  assert.deepEqual(entries.map((s) => s.frontmatter.name), ["amira-curator", "amira-mcp"]);
+  const curatorSkill = entries.find((s) => s.frontmatter.name === "amira-curator");
+  const manual = await skills.read(curatorSkill);
+  assert.equal(manual.verified, true);
+  assert.match(manual.body, /admin_url/);
+  assert.match(manual.body, /restricted/);
+  const listed = (await conn.client.listResources()).resources.map((r) => r.uri);
+  assert.ok(listed.includes("skill://amira-curator/SKILL.md"));
+  assert.ok(listed.includes("skill://amira-mcp/SKILL.md"));
 });
 
 test("the crawl sends the key to the Omeka API only, and the manifest records curator mode without it", () => {
@@ -315,6 +336,9 @@ test("http: no token and an unknown token are 401; a personal token works and is
 
   const client = await clientFor(base, ALICE);
   t.after(() => client.close());
+  const privateCache = z.object({ ttlMs: z.literal(0), cacheScope: z.literal("private") }).loose();
+  const skillRes = await client.request({ method: "skills/list", params: {} }, privateCache);
+  assert.deepEqual(skillRes.skills.map((s) => s.frontmatter.name), ["amira-curator", "amira-mcp"]);
   const result = await client.callTool({ name: "get_research_item", arguments: { id: IDS.publicItem, include_fulltext: true } });
   keep(result);
   assert.equal(result.isError, undefined);

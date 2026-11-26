@@ -27,8 +27,8 @@ export function registerFulltextTools(server: Server, tools: ToolMap): void {
     {
       title: "ILAM full-text map",
       description:
-        "ILAM's journal African Music by its private full text, from public derived counts: AI-labelled content groups, " +
-        "countries named, word rates per year. Never returns text.",
+        "ILAM's journal African Music from derived public full-text counts: AI-labelled topic clusters, " +
+        "countries named, yearly word frequency trends. Never returns text.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("get_fulltext_map:in", () => z.strictObject({
         words: z.array(z.string().min(1).max(60)).min(1).max(6).optional()

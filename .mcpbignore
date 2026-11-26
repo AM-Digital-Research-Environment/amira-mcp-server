@@ -50,7 +50,10 @@ conformance-results/
 *.log
 .env
 .env.*
+# Local-only Claude settings (keep the public companion skill, drop local config
+# and the HTTP-only curator skill, which the curator server serves over MCP).
 .claude/settings.local.json
+.claude/skills/amira-curator/
 biome.json
 # Release-workflow files written into the checkout before the pack (the v1.31.0
 # build packed release-notes.md and stopped at the allowlist test).

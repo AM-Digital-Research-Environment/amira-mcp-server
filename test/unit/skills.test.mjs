@@ -94,8 +94,41 @@ test("the server serves the companion skill: URIs, manifest and directory levels
       references.resources.map((r) => r.uri),
       committed.filter((uri) => uri.startsWith("skill://amira-mcp/references/")),
     );
+
+    // Public mode never advertises or serves curator-only skills.
+    const listed = (await conn.client.listResources()).resources.map((r) => r.uri);
+    assert.ok(!listed.some((uri) => uri.startsWith("skill://amira-curator/")));
+    await assert.rejects(skills.get("skill://amira-curator/SKILL.md"), (err) => err.code === -32602);
+    await assert.rejects(conn.client.readResource({ uri: "skill://amira-curator/SKILL.md" }));
+    await assert.rejects(skills.readDirectory("skill://amira-curator"), (err) => err.code === -32602);
   } finally {
     await conn.close();
+  }
+});
+
+test("curator access exposes amira-curator alongside amira-mcp, while public access filters it out", async () => {
+  const { snapshot, skills: built } = await buildSkillsSnapshot({ root: REPO, strict: true });
+  assert.deepEqual(built.map((s) => s.frontmatter.name), ["amira-curator", "amira-mcp"]);
+
+  for (const [access, expected] of [["public", ["amira-mcp"]], ["curator", ["amira-curator", "amira-mcp"]]]) {
+    const ext = await lib.loadSkillsExtension(snapshot, { access });
+    assert.ok(ext, `${access} loads an extension`);
+    const server = new McpServer({ name: `skills-${access}`, version: "0.0.0" });
+    ext.attach(server);
+    const conn = await skillsClientFor(server);
+    try {
+      const { skills, invalid } = await conn.skills.list();
+      assert.deepEqual(invalid, []);
+      assert.deepEqual(skills.map((s) => s.frontmatter.name), expected);
+      for (const skill of skills) {
+        const doc = await conn.skills.read(skill);
+        assert.equal(doc.verified, true, skill.uri);
+      }
+      const listed = (await conn.client.listResources()).resources.map((r) => r.uri);
+      assert.equal(listed.includes("skill://amira-curator/SKILL.md"), access === "curator");
+    } finally {
+      await conn.close();
+    }
   }
 });
 

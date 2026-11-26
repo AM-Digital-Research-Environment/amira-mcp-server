@@ -60,8 +60,8 @@ const NOTE = "Groups of records whose catalogue descriptions read alike (k-means
 export function registerSemanticMapTools(server: Server, tools: ToolMap): void {
   tools.get_semantic_map = server.registerTool("get_semantic_map", {
     title: "Semantic map of the collection",
-    description: "The collection as unnamed groups of records close in meaning (k-means over EmbeddingGemma 2 vectors): size, type mix, " +
-      "top subjects, countries and projects, records nearest the centre. `group` lists one; `id` finds a record's group.",
+    description: "Thematic clusters across the collection: unnamed groups of records close in meaning (k-means, EmbeddingGemma 2) with size, " +
+      "type mix, top subjects, countries, projects and central records. `group` lists one; `id` locates a record.",
     annotations: READ_ONLY,
     inputSchema: schemaOnce("get_semantic_map:in", () => z.strictObject({
       group: z.number().int().min(1).optional().describe("A group id: list its records, nearest the centre first"),

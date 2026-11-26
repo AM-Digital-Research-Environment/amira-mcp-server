@@ -16,7 +16,7 @@ export {
 export { itemUrl, itemUrlOrNull } from "./urls.js";
 export { generateItemCitation } from "./citation.js";
 export { createAmiraServer } from "./mcpServer.js";
-export { loadSkillCatalog, loadSkillsExtension, skillUriKey } from "./skills.js";
+export { CURATOR_ONLY_SKILLS, loadSkillCatalog, loadSkillsExtension, skillUriKey } from "./skills.js";
 export { exposureLevel } from "./exposure.js";
 export { guidanceEnabled, stripSchemaText } from "./guidance.js";
 export { isTemplatePlaceholder, loadConfig, parseAllowedOriginHostnames, config } from "./config.js";

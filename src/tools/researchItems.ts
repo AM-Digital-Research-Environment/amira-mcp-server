@@ -48,7 +48,7 @@ export function registerResearchItemTools(server: Server, tools: ToolMap): void 
     "search_research_items",
     {
       title: "Search research items",
-      description: "Search digitised research items. Filters are AND-combined; empty results suggest a filter to relax or a stored place name. export links all matches as a file.",
+      description: "Search digitised archival research items (artefacts, photos, audio, texts, maps). AND filters; empty hits suggest relaxations. export links all matches as a file.",
       annotations: READ_ONLY,
       inputSchema: schemaOnce("search_research_items:in", () => z.strictObject({
         keyword: textParam().optional()

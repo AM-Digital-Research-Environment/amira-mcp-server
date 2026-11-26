@@ -1,358 +1,186 @@
 ---
 name: amira-mcp
 description: |
-  Research workflow and context for the AMIRA MCP server (amira-mcp-server) — the read-only interface to
-  the Africa Multiple Cluster of Excellence research data, as published on the cluster's public Omeka S
-  site (data.africamultiple.uni-bayreuth.de) by its Digital Research Environment (DRE).
-  Use this skill when:
-  - Querying the AMIRA MCP server tools about the cluster's research projects, research sections,
-    digitised research items, people, institutions, groups, publications, subjects, locations,
-    podcasts, YouTube videos/transcripts, or Cluster Chronicles works
-  - Investigating the Africa Multiple Cluster of Excellence, its DRE, or the AMIRA collection
-  - Exploring how a theme, place, or person connects across projects and collections
-  - Building cited research outputs grounded in the AMIRA data
-  It provides a query workflow, tool-selection guidance, citation conventions (amira_url), and coverage
-  caveats; the bundled references add cluster background, the data model, and the tool catalogue.
+  Research workflow, citation rules (amira_url) and coverage caveats for the AMIRA MCP server
+  (amira-mcp-server) — the Africa Multiple Cluster of Excellence research data on Omeka S
+  (data.africamultiple.uni-bayreuth.de). Use when querying or synthesising AMIRA research items
+  (archival artefacts, images, audio, maps), projects, research sections (AM 1.0 / AM 2.0), people,
+  institutions, groups, the cluster bibliography (with open-access PDF full text and BibTeX/RIS/CSL-JSON
+  exports), journals, podcasts, YouTube transcripts, Cluster Chronicles (writer-in-residence essays,
+  poems, photos), the ILAM African Music full-text map, entity graphs, or semantic similarity.
 ---
 
 # Africa Multiple Research Data — MCP Workflow
 
-Context and method for working with the **amira-mcp-server** tools. They expose the research data of
-the **Africa Multiple Cluster of Excellence** (University of Bayreuth) as published on the cluster's
-public **Omeka S site** at <https://data.africamultiple.uni-bayreuth.de> (the AMIRA collection). Both
-the site and this MCP server are built and maintained by the cluster's **Digital Research Environment
-(DRE)**.
+Context, workflow and citation contract for **amira-mcp-server**. It exposes the research data of
+the **Africa Multiple Cluster of Excellence** (University of Bayreuth, DFG EXC 2052) as published on
+its public **Omeka S** site at <https://data.africamultiple.uni-bayreuth.de> (AMIRA), built and
+maintained by the cluster's **Digital Research Environment (DRE)**.
 
-This skill is for research questions answered with the tools. The Omeka data model, the REST API
-and the pipelines behind the site are the subject of the DRE's separate `africa-multiple-data`
-skill, where a session has it.
+This skill covers research questions answered with the MCP tools. The Omeka data model, REST API and
+sync pipelines belong to the separate `africa-multiple-data` skill. On the internal **curator
+server** (where server instructions start with `CURATOR MODE`), also read the companion
+`amira-curator` skill for private records, `admin_url`, `restricted` values and private full text.
 
-## What this collection is
+## Which reference to read (progressive disclosure)
 
-The **Africa Multiple Cluster of Excellence** (University of Bayreuth, est. 2019) studies Africa and
-its diasporas under the banner **"Reconfiguring African Studies"**. Its three core concepts —
-**multiplicity, relationality, reflexivity** — treat phenomena as products of ever-changing
-relationships rather than fixed entities; `find_related` and `get_entity_graph` put this relational view
-into practice. See [references/cluster-context.md](references/cluster-context.md) for the fuller
-picture — mission, funding phases, research centres, the DRE.
+Read only the reference needed for the task at hand:
 
-AMIRA connects research data across the cluster's five Africa Multiple Research Centres (AMRCs) and
-partner institutions worldwide. The centres are at the University of Bayreuth, Université Joseph
-Ki-Zerbo, Rhodes University, the University of Lagos, and Moi University; older records call them
-African Cluster Centres (ACC). Bayreuth also hosts the coordinating DRE infrastructure and metadata
-layer. Federal University of Bahia is a privileged partner, not an AMRC.
+| Need | Reference |
+| --- | --- |
+| Full 38-tool catalogue (40 over HTTP), filter params, MCP Apps charts, worked patterns | [references/tools-by-task.md](references/tools-by-task.md) |
+| Field-level shapes of items, projects, sections, people, publications, media, chronicles | [references/data-model.md](references/data-model.md) |
+| Cluster Chronicles, ILAM *African Music* full-text map, semantic neighbours/map, entity graph, text passages, cohort comparisons | [references/special-corpora.md](references/special-corpora.md) |
+| Step-by-step recipes (literature review, project dossier, person profile, place report, transcript evidence) & evidence ledger | [references/research-recipes.md](references/research-recipes.md) |
+| Cluster mission, funding phases, core concepts, AMRCs, DRE, other cluster bodies | [references/cluster-context.md](references/cluster-context.md) |
 
-Each project's `university` field is a current AMIRA metadata/source facet, not a formal AMRC list:
+## Collection at a glance
 
-- **UBT** — University of Bayreuth (Germany)
-- **ULG** — University of Lagos (Nigeria)
-- **UJKZ** — Université Joseph Ki-Zerbo, Ouagadougou (Burkina Faso)
-- **UFB** — Federal University of Bahia (Brazil)
-- **External** — outside collections, e.g. the International Library of African Music (ILAM, Rhodes
-  University; mostly the articles of its journal *African Music*, with some audio) and Bayreuth
-  Global / Bayreuth Postkolonial
+AMIRA connects data across the cluster's five **Africa Multiple Research Centres (AMRCs)** —
+University of Bayreuth (coordinating DRE), Université Joseph Ki-Zerbo, Rhodes University, University
+of Lagos and Moi University (older records say African Cluster Centres, ACC) — and global partners.
+**Federal University of Bahia** is a privileged partner, not an AMRC.
 
-Work is organised into thematic **research sections**, redefined between the cluster's two funding
-phases — so `list_research_sections` returns *two distinct groups* plus a synthetic grouping. Don't
-hardcode the list (read it from the tool), but expect:
+The `university` facet on projects is a current data/source label, not a formal AMRC list: **UBT**
+(Bayreuth), **ULG** (Lagos), **UJKZ** (Ouagadougou), **UFB** (Bahia) and **External** (outside
+collections such as ILAM / *African Music* at Rhodes and Bayreuth Global / Bayreuth Postkolonial).
 
-- **Phase 1 — AM 1.0 (2019–2025):** Affiliations, Arts & Aesthetics, Knowledges, Learning, Mobilities,
-  Moralities. These carry nearly all the projects and **all** the digitised items so far.
-- **Phase 2 — AM 2.0 (2026–2032):** Accumulation, Digitalities, Ecologies, In/securities,
-  Re:membering, Translating — **a first few projects and no items yet**; sparse or empty results
-  from these are expected, not a bug.
-- **External:** the synthetic grouping for outside collections.
-
-Each section carries a `funding_phase` label and `date` range, so you can group or filter the two sets
-directly. Filter with the exact strings the tool returns (note "In/securities", "Re:membering").
-
-Beyond the research items, the collection carries the cluster **bibliography** (open-access
-publications carry the **extracted full text of their PDFs**, searchable via
-`search_publications keyword=…`), the **journals** they appear in (`list_journals`), **podcast
-episodes** (e.g. *Cluster Conversations*) with transcripts, and the cluster's **YouTube videos** —
-most with full **transcripts**. Use `search_podcasts keyword=…` and `search_videos keyword=…` for
-full-text search over talks and lectures.
-
-The **Cluster Chronicles** are the cluster's writer-in-residence programme, curated by Ute Fendler
-(Elnathan John 2021, Jean Luc Raharimanana 2023, Umar Timol 2024, Egara Kabaji 2026): one record per
-work — essays and poems (with their verbatim **full text**), photographs and drawings, events and a
-video. `search_chronicles` filters by `person` (a chronicler, another credited person or someone a
-photo depicts), `form` (essay, poem, still image, event, video), year, `subject`, `place` and
-`keyword` (reaching into the texts, with a `text_snippet`). `get_chronicle` gives the credits with
-roles, `depicts`, the `related` works and the existing video and podcast records they link to (typed
-ids), the images, and the text opt-in (`include_text=true`, paged by `text_offset` /
-`text_max_chars`). **Every chronicle abstract was written by a language model**
-(`abstract_ai_generated`, `abstract_generated_by`): say so when you quote one, and prefer the
-chronicler's own text. French titles carry `title_language: "fr"` and an `alternative_titles`
-translation.
-
-The data is **read from a snapshot of the public Omeka S API**. The public server works offline from
-the bundled snapshot and needs no key or credentials (the curator server, below, crawls with a
-service key); when live refresh is enabled, it may probe and
-refresh a local cache from the public API. `get_collection_overview` reports which snapshot source is
-serving and when it was fetched.
-
-## The entities (and how they connect)
+**Research sections** were redefined between funding phases — read the live list with
+`list_research_sections` rather than hardcoding:
+- **AM 1.0 (2019–2025):** Affiliations, Arts & Aesthetics, Knowledges, Learning, Mobilities,
+  Moralities (nearly all projects and all digitised items so far).
+- **AM 2.0 (2026–2032):** Accumulation, Digitalities, Ecologies, In/securities, Re:membering,
+  Translating (a first few projects, no items yet — empty item results are expected).
+- **External:** synthetic grouping for outside collections.
 
 ```
-ResearchSection ── research projects belong to one or more sections
+ResearchSection ── projects belong to one or more sections
       │
    Project ──(items)── ResearchItem ──┬── contributors (Person / Institution / Group, with roles)
-      │                               ├── subjects (incl. former "tags" — one merged facet)
-      ├── principal investigators     ├── places (countries + cities; `location` walks the chain)
-      ├── members                     ├── typed dates (created / collected / issued / …)
-      └── funding institutions        └── formats / languages / sponsors / related items
+      │                               ├── subjects (incl. former free-form tags — one merged facet)
+      ├── PIs & members               ├── places (countries + cities; `location` walks hierarchy)
+      └── funding institutions        └── typed dates, formats, languages, media / IIIF, relations
 
-Publication (bibliography) ── authors/editors reconciled to People; venue → Journal authority;
-                              open-access PDFs carry extracted full text
-Podcast / YouTube video ── speakers reconciled to People; videos carry transcripts
-Cluster Chronicles work ── chroniclers, other credits and people depicted reconciled to People;
-                           essays and poems carry their text; related works, videos and podcasts linked
+Publication (bibliography) ── authors/editors → People; venue → Journal; OA PDFs carry full text
+Podcast / YouTube video ── speakers → People; episodes & most videos carry searchable transcripts
+Cluster Chronicles ── writer-in-residence essays, poems (verbatim text), photos, events, video
 ```
 
-Every entity is an Omeka item with a stable public page: its **`amira_url`**
-(`…/s/amira/item/<id>`). The preferred identifier is the Omeka `id` / `omeka_id`, i.e. the final
-number in that URL; use that when an identifier is needed.
-
-See [references/data-model.md](references/data-model.md) for field-level detail, and
-[references/tools-by-task.md](references/tools-by-task.md) for the full 38-tool catalogue (40 over HTTP),
-the five prompts and the resources.
+Every entity is an Omeka item with a stable public page: **`amira_url`** (`…/s/amira/item/<id>`).
+Data comes from a snapshot of the public Omeka S API (works offline, optional live refresh);
+`get_collection_overview` reports its source and freshness (`data_snapshot`).
 
 ## Workflow
 
+Batch independent tool calls in one turn (hosts cap tool rounds, not calls per turn) and sequence
+only calls that depend on an earlier id or resolution.
+
 ### 1 — Scope
-Call `get_collection_overview` once. It returns counts (now incl. podcasts and videos), breakdowns,
-the content date range, and **snapshot freshness** (`data_snapshot`). Note the distinction it implies:
-many projects are registry entries; only a subset carry digitised items. In hosts that support MCP
-Apps it also renders as a dashboard — that is a display affordance only, so keep reading the numbers
-from the payload.
+Call `get_collection_overview` once for counts across every corpus, text/transcript coverage,
+breakdowns, content date range and `data_snapshot`. Many projects are registry entries without
+digitised items (`item_count` separates them). In MCP Apps hosts it also renders a dashboard —
+always read numbers from the JSON payload.
 
 ### 2 — Search
-Use the right entry point for the question:
-- Things/artefacts → `search_research_items` (filters: keyword, **subject**, **location** (any level —
-  a country OR a city; `location=Nigeria` finds Lagos items too, since the place hierarchy is walked),
-  **country** (the country level, exact name or a common alias: `Côte d'Ivoire` finds the stored
-  "Ivory Coast", and `Niger` never includes Nigeria), contributor, project_id, research_section,
-  university, resource_type, genre/format, language, year range, `has_media`, and `added_since` /
-  `modified_since` for what is new). A multi-word `keyword` matches records containing **every**
-  word, in any field; put a phrase in quotes to match it exactly. When a strict AND combination
-  returns nothing, the envelope adds `suggestions` naming which single filter to drop (and how many
-  items that would surface), and `did_you_mean` names stored places close to an unmatched place —
-  relax, don't give up.
-- Projects → `search_projects`. Sections → `list_research_sections`. People → `search_persons`.
-  Institutions → `list_institutions`; the cluster's own partner network (Africa Multiple Research
-  Centres, privileged partner, cooperation and global partners) → `list_cluster_partners` (optional
-  `category`). Research groups → `list_groups`. Bibliography → `search_publications` (keyword reaches INTO the
-  extracted full text of open-access publications — hits are flagged `matched_in: "fulltext"` with a
-  `fulltext_snippet`; filter with `has_fulltext`, `venue`, `author`, `subject`, `language`, `type`, years;
-  `include_abstract=true` adds each work's abstract (first 1,200 characters) and subjects to the rows,
-  so a reading list needs no `get_publication` per record).
-  Use `list_publication_facets` for complete counts and publication vocabulary. Journals →
-  `list_journals` (ranked by publication count; feed a title into the `venue` filter).
-- Talks and audiovisual: `search_videos` (keyword reaches INTO transcripts; hits are flagged
-  `matched_in: "transcript"` with a `transcript_snippet` around the match) and `search_podcasts`
-  (transcripts searched the same way).
-- Cluster Chronicles: `search_chronicles` (`person`, `form`, years, `subject`, `place`, and a
-  `keyword` that reaches into the essays and poems, flagged `matched_in: "text"` with a `text_snippet`).
-- Discover vocabulary first when unsure of exact terms: `list_subjects` (tags are merged in),
-  `list_locations`, `list_collections` (one per project, cited by the project page — pair with the `collection` filter),
-  `list_categories` (formats/languages/resource_types), all ranked by item count. Feed a returned
-  value straight back into the matching filter. `list_years` gives the date distribution (by year or
-  decade) for coverage-over-time and most-covered-year questions. For date ranges, pass `from <= to`
-  / `year_from <= year_to`; research-item, publication and timeline tools return
-  `invalid_range` for inverted ranges, podcast and video searches included.
+Pick the right entry point for the corpus:
+- **Research items** → `search_research_items` (`keyword`, `subject`, `location` at any hierarchy
+  level, exact `country` with aliases such as `Côte d'Ivoire` = `Ivory Coast`, `location_id`,
+  `contributor`, `project_id`, `collection`, `research_section`, `university`, `resource_type`,
+  `genre`, `language`, `year_from`/`year_to`, `has_media`, `added_since`/`modified_since`,
+  `mentions_country`). Multi-word `keyword` matches records containing **every** word; quote a
+  phrase for an exact match. Empty strict combinations return `suggestions` and `did_you_mean` —
+  relax rather than giving up.
+- **Projects & sections** → `search_projects`, `list_research_sections`.
+- **People & organisations** → `search_persons`, `resolve_entity`, `list_institutions`,
+  `list_cluster_partners`, `list_groups`.
+- **Bibliography & journals** → `search_publications` (`keyword` searches abstracts and extracted OA
+  PDF full text, flagging `matched_in: "fulltext"` + snippet; `include_abstract=true` adds
+  abstracts/subjects to summaries), `list_publication_facets`, `list_journals`.
+- **Talks, audio & chronicles** → `search_podcasts`, `search_videos` (both search transcripts),
+  `search_chronicles` (searches essay/poem texts).
+- **Vocabulary & timelines** → `list_subjects`, `list_locations`, `list_collections`,
+  `list_categories` (formats/languages/resource_types), `list_years` (year/decade histogram).
 
-Keep `limit` modest (10–25) while scoping; paginate with `offset` / `next_offset`. Ask for more than
-a tool's max and it caps but tells you — the envelope echoes `requested_limit` / `effective_limit`. A
-page can also stop short of `limit` to stay small (`response_limited: true`): keep following
-`next_offset`. For a whole result set, pass `export` (`csv`/`jsonl`; publications also `bibtex`,
-`ris`, `csl-json`): the tool returns a `resource_link` to an `amira://export/…` file instead of rows.
+Keep `limit` modest (10–25) while scoping and paginate with `offset` / `next_offset` (pages may stop
+early at the byte budget with `response_limited: true`). For whole result sets, pass `export`
+(`csv`/`jsonl`; publications also `bibtex`, `ris`, `csl-json`) to receive an `amira://export/…`
+`resource_link`.
 
 ### 3 — Drill
-`get_research_item` (by Omeka `id` / `omeka_id`, or a typed id) returns the full record — including the
-**typed dates**, the place hierarchy, contributors with their **affiliation at the time**, provenance as
-linked institutions, typed identifiers, the attached **media** files and, when there are any, the
-**IIIF manifest** — plus a ready-to-paste `generated_citation` + `bibtex`. `get_project`, `get_research_section`, `get_person`, `get_institution`,
-`get_publication` (with citation exports, peer-review status, funders, linked contributors/publisher,
-conference/extent/access/thesis metadata, and the venue's `amira_url` when it is a Journal record),
-`get_podcast`, `get_video`, `get_chronicle` complete the detail layer. `get_person` needs a **complete** name (either
-order) or an id; a fragment returns candidates instead of a profile. It reports GND and other
-authority identifiers and the top collaborators (people credited on the same items or publications).
-`get_podcast` names the model that generated the transcript (`transcript_generated_by`): podcast
-transcripts are machine-generated, so quote them as such and check important passages against the
-audio.
-**Transcripts and publication full text are opt-in:** `get_podcast` / `get_video` omit the transcript
-by default (you still see `has_transcript` + `transcript_length`); pass `include_transcript=true` for
-the text, and `transcript_offset` / `transcript_max_chars` to page a long one. `get_publication`
-works identically with `include_fulltext=true` + `fulltext_offset` / `fulltext_max_chars` (full texts
-run to ~100k characters — always page). When paging, take the next offset from the reported
-`*_returned_chars`, not from the size you asked for: on the `fetch` tool the window is sized to what
-`max_chars` leaves after the record's metadata header, so the two differ. Profile views return slim
-item refs — follow up with `get_research_item`.
+Use `get_research_item`, `get_project`, `get_research_section`, `get_person`, `get_institution`,
+`get_publication`, `get_podcast`, `get_video` or `get_chronicle` by Omeka `id` / `omeka_id` or typed
+id (`item:`/`research_item:`, `pub:`/`publication:`, `person:`, `project:`, `video:`, `podcast:`,
+`chronicle:`). `get_person` requires a complete name (either order) or exact `id`; fragments and
+homonyms return candidates.
 
-### 4 — Connect
-`find_related` pivots from a subject / location / person / project to the entities that co-occur with
-it (related projects, sections, subjects, people, countries, formats, with counts). Use it to trace a
-theme across projects — the cluster's core analytic. For subject and person seeds the bibliography
-joins the pivot: `matched_publications` counts publications whose subjects or authors/editors match,
-with up to 10 `related_publications`. Matching is by substring (subject), name in
-either order (person), an exact place name or alias at any level of the hierarchy (location; an
-unknown name falls back to word prefixes) or id/label (project); the response echoes the rule in
-`matching`. `matched_items` counts *items*, so it can legitimately differ from a
-`list_subjects` heading count.
+**Long texts are opt-in and paged:** `get_publication` (`include_fulltext`, `fulltext_offset`,
+`fulltext_max_chars`), `get_podcast` / `get_video` (`include_transcript`, `transcript_offset`,
+`transcript_max_chars`), `get_chronicle` (`include_text`, `text_offset`, `text_max_chars`). When
+paging, advance by reported `*_returned_chars` (important on the HTTP `fetch` tool, where the window
+shares `max_chars` with the metadata header).
 
-For ILAM's journal *African Music*, whose full text is private, DRE Visualizations' offline
-full-text map adds content-based links: `find_related entity_type=research_item` (and
-`get_research_item`'s `closest_in_content`) give an article's closest articles by full text,
-`search_research_items mentions_country=…` finds articles whose text names a country, and
-`get_fulltext_map` gives content groups, countries named and word trends per year. Group names are
-AI-generated and experimental: say so whenever you show one. None of these returns text; never
-claim to have read an ILAM article.
+### 4 — Connect & analyse
+- **Co-occurrence pivot:** `find_related` (by `subject`, `location`, `person`, `project`,
+  `research_item` for ILAM content neighbours, or `record` for semantic-neighbour themes).
+- **Exact identity & graph:** `resolve_entity` (never silently merge homonyms) → `get_entity_graph`
+  (explicit catalogue links vs per-corpus co-occurrence, paginated edge evidence via `edge_id` +
+  `snapshot_id`).
+- **Close reading:** `get_text_passages` for bounded literal-phrase passages with exact UTF-16
+  extracted-text offsets across selected `publication:`, `video:`, `podcast:` and `chronicle:` ids.
+- **Similarity, maps & comparisons:** `get_similar_items`, `get_semantic_map`, `get_fulltext_map`,
+  `compare_collections`, `get_data_quality`, `get_snapshot_changes`. Read
+  [references/special-corpora.md](references/special-corpora.md) for their caveats and exact rules
+  before citing AI-labelled groups or `wording_only` semantic neighbours.
 
-`get_similar_items` adds similarity by meaning across corpora: the records whose catalogue
-descriptions read most alike (a project → related podcasts, a publication → research items), with
-cosine scores. Each neighbour says what it also shares in the catalogue (`shared`: subjects,
-places, people, project) or `basis: "wording_only"`. Present a `wording_only` pair as
-"described in similar terms", never as a documented link; name what is shared when it is. The
-detail tools take `include_similar: true` to add five explained neighbours to one record, and
-`find_related entity_type=record` counts the projects, subjects, people and countries those
-neighbours share: the themes around a record rather than a list of look-alikes.
-`get_semantic_map` gives the whole collection as unnamed groups of records close in meaning.
-Characterise a group from its `top_subjects`, `top_countries`, `top_projects` and records; never
-present it as a curated category, and do not cite a group id across snapshots. A record with too little
-own text (`low_signal`) or newer than the vector build (`not_in_release`) has no neighbours; that
-says nothing about the record itself.
-
-Prefer `resolve_entity` when a name could be ambiguous. It returns typed IDs,
-separate homonym candidates and unresolved literal nodes; do not silently pick
-one person. Pass the selected `id` to `get_entity_graph`. It distinguishes explicit
-catalogue links from co-occurrence and counts distinct evidence records separately
-per corpus. Use `edge_id` and its `snapshot_id` to page citations; a refresh can
-require resolving the graph again. Check `truncated` before describing coverage.
-`get_person id=…` selects an exact person; name lookup refuses homonyms.
-
-For close reading, `get_text_passages` finds bounded passages in selected
-`publication:ID`, `video:ID`, `podcast:ID` or `chronicle:ID` records, with exact original UTF-16
-offsets and citations. These are extracted-text offsets, not page numbers or
-timestamps. Every match is reachable through `next_offset`; `scanned_matches_capped`
-only flags a document with more than 10,000 matches. Full exposure is required. (On the curator
-server it also reads research items and private texts; see "Curator mode" below.)
-Typed ids are interchangeable across tools: the remote `search`/`fetch` pair's
-`item:ID` / `pub:ID` work in the graph, passage and `get_*` tools, and
-`research_item:ID` / `publication:ID` work in `fetch`.
-
-Use `compare_collections` for 2–4 project/collection cohorts with identical research
-filters. Report denominators and missingness; overlapping cohorts and date ranges
-must not be summed as disjoint observations. `get_data_quality` summarizes source
-coverage and unresolved references. `get_snapshot_changes` compares only retained
-local generations from the same source, not arbitrary dates or the live site.
-
-### Prompts and resources
-Hosts may offer the server's prompts as commands: `literature_review`, `project_dossier`,
-`person_profile`, `place_report` and `transcript_evidence` run the workflows above with the citation
-rules built in. `amira://record/{kind}/{id}` returns any record as JSON, and `amira://dataset`
-describes the snapshot (counts, coverage, licence mix, funder) for citing the data set itself.
-
-### 5 — Synthesise with citations
-Every record carries an **`amira_url`**. Cite each entity you mention as a **markdown link** to that
-URL whenever possible. For publications, videos, and podcasts, you may also include DOI, repository,
-watch, or listen URLs when useful, but they should supplement rather than replace the AMIRA record
-link.
+### 5 — Synthesise with citations (and prompts/resources)
+For structured deliverables (literature review, project dossier, researcher profile, place report,
+transcript evidence), follow [references/research-recipes.md](references/research-recipes.md) (hosts
+also expose these five workflows as MCP prompts). Data resources `amira://record/{kind}/{id}` and
+`amira://dataset` provide citable JSON and schema.org dataset provenance.
 
 ## Citation rules (important)
 
-- ALWAYS render an entity's `amira_url` as a markdown link, e.g.
+- **Always render every mentioned entity's `amira_url` as a markdown link**, e.g.
   `[Lagos Immigration Map](https://data.africamultiple.uni-bayreuth.de/s/amira/item/9902)`.
-- **Never** print legacy DRE identifiers. If an identifier is explicitly needed, use
-  the Omeka `id` / `omeka_id` (the final number in the `amira_url`). Never collapse items into an id
-  range. List each referenced item as its own full link — a bulleted list is the right shape when
-  there are several.
-- For a publication, video, or podcast, include the AMIRA `amira_url` as the main source link; add DOI,
-  repository, watch, or listen URLs only as secondary links where they help.
-- Do not invent links or ids — only use the URLs the tools return.
-- **When a formal reference is wanted, don't assemble one by hand.** `get_research_item` returns
-  `generated_citation` (creator + role, medium, date, collection, holding repository, `amira_url`)
-  and a `bibtex` entry; `citation_format=ris` / `csl-json` returns `ris` / `csl_json` instead, for a
-  reference manager. `get_publication` supports the same `citation_format` choices. If the item carries a curated
-  `citation[]` (only 31 of ~4,000 do), quote that verbatim and treat the generated one as a fallback.
-- To export a filtered bibliography, add `citation_format=ris`, `bibtex`, or `csl-json` to
-  `search_publications`. Results contain complete export entries in `ris`, `bibtex`, or `csl_json`
-  instead of ordinary summaries. Follow `next_offset` until `has_more=false`: batches cap at 25
-  records and may stop earlier at the response byte limit. Combine strings with blank lines, or
-  collect CSL objects into a JSON array. Exports omit abstracts/full text. See the bibliography
-  section of [references/tools-by-task.md](references/tools-by-task.md) for details.
+- **Never print legacy DRE identifiers.** When an id is explicitly needed, use the Omeka
+  `id` / `omeka_id` (the final number of `amira_url`). Never collapse items into an id range — list
+  each referenced item with its own link.
+- For publications, videos and podcasts, keep `amira_url` as the main link; add DOI, repository,
+  watch or listen URLs only as secondary links where helpful.
+- **Never invent URLs or ids** — use only values returned by tools.
+- **Formal references:** do not hand-assemble them. `get_research_item` and `get_publication` return
+  `generated_citation` plus `bibtex` (or `ris` / `csl_json` via `citation_format`). On research
+  items, prefer curated `citation[]` verbatim when present (~31 items) and use `generated_citation`
+  otherwise. For a filtered bibliography export, use `search_publications` with `export=…` (one
+  resource link) or `citation_format=ris|bibtex|csl-json` paged via `next_offset`.
 
-## Curator mode (private records)
-
-An internal curator server, for AMIRA's developers and data curators with a personal token, also
-serves **private** records and values. You are on it when the server's instructions say CURATOR
-MODE and results carry `visibility`. The public server never does.
-
-- Every record says `visibility: "public"` or `"private"`. A private record has **no `amira_url`**:
-  it carries `admin_url` (its Omeka admin page, which only curators can open) and a
-  `citation_note`. Readers without curator access cannot open it, so name it as private with its
-  `admin_url` rather than linking it as if public. Citations and exports of a private record say so too.
-- `restricted` on a detail result holds private values (`security_level`, `mongo_id`, `bitstream`,
-  other private `values`, private full text), not on the public site. Read and use them as the task
-  needs. A private text of a public record leaves the record public: cite the record by its
-  `amira_url` as usual. The text itself is private in AMIRA, not on the public site; whether to
-  quote it is up to the curator.
-- Private full text (e.g. ILAM's OCR text) is searchable in `search_research_items` and
-  `search_publications`: a row matched only there says `matched_in: "restricted_fulltext"` with a
-  snippet. Read it with `include_fulltext` on `get_research_item` / `get_publication`, paged by
-  `fulltext_offset` / `fulltext_max_chars` like any long text. To read around a phrase rather than
-  page the whole text, `get_text_passages` takes `research_item:ID` (or `item:ID`) here and searches
-  private full texts of research items, publications and chronicles: each such passage says
-  `matched_in` (`"restricted_fulltext"`, `"restricted_text"` for a chronicle), its offsets are
-  `fulltext_offset` values into that private text, and the result's `restricted_match_note` says the
-  passage text is private, even when the record itself is public.
-- Counts include private records (`get_collection_overview` splits them by `visibility`), so they
-  differ from the public site's.
-
-## Caveats
+## Key caveats
 
 1. **Snapshot, not live API.** Data reflects the last crawl (`get_collection_overview` →
-   `data_snapshot`). The server may lag the live site.
-2. **Curated, not exhaustive.** Absence of a result is not proof of absence.
-3. **Coverage is uneven.** Item counts skew toward a few large collections (ILAM's *African Music* articles,
-   the Liberia broadcasting tapes). Disclose this when comparing universities, places, or themes.
-4. **Projects ≠ items.** The registry is larger than the set of projects with digitised items; use
-   `item_count` to tell them apart.
-5. **Name format.** People are stored `Surname, Forename` — always display and cite that form. Every
-   person filter accepts either order (and ignores accents); `get_person` echoes the canonical name.
-5b. **Accents never change the answer.** Every keyword, subject, place, venue and title comparison is
-   accent-insensitive, so `Côte d'Ivoire` and `Cote d'Ivoire` return the same results in every tool.
-   This matters because the data itself is inconsistent — the subject authority is accented while many
-   item titles are not — so before v1.7.0 the right spelling depended on which tool you asked. Do not
-   re-query a term in a second spelling to "check"; it is the same query.
-6. **Subjects absorb tags.** The former dashboard distinguished subjects from free-form tags; the
-   collection now stores both as subjects. There is no tag filter — use `subject`.
-7. **Languages are canonical records.** One record per language ("French", code `fra`); the server
-   accepts names, ISO 639-1/2 codes and the legacy bibliographic codes (`fre`, `ger`) alike.
-8. **Transcripts and full text are opt-in on detail calls.** Podcast transcripts cover all episodes;
-   video transcripts cover most videos; publication full text covers only the deposited PDF subset
-   (`has_fulltext` on each result tells you, and `get_collection_overview` reports the counts).
-   ERef, which supplies most of the bibliography, is metadata-only; EPub deposits carry PDFs.
-   Missing extracted text does not establish that a publication is closed access.
-   Absence of a transcript or full text is not an error. The detail tools omit the text unless you
-   pass `include_transcript=true` / `include_fulltext=true` (see Drill).
-9. **Places: flat facet, hierarchy-aware filters.** `list_locations` is a flat, item-count-ranked list
-   (countries and the places under them together, hierarchy rolled up — no level to choose; each
-   row's `level` says `country` or `place`, the data having only those two tiers). On
-   `search_research_items`, `location` matches a place at ANY level (a country *or* a city —
-   `location=Nigeria` includes Lagos items), and `country` narrows to the country level specifically.
-10. **Dates carry a `date_status`.** Podcasts and videos label each date `published`, `scheduled`
-    (dated in the future — e.g. an episode page posted ahead of release) or `unknown`. Scheduled items
-    are returned, not hidden; flag them when a future date would mislead.
-11. **Research-item year ranges are content ranges.** `get_research_item.dates` still exposes typed
-    rights/admin dates such as `copyrighted`, `available`, `valid`, and `modified`, but derived `date`,
-    `year_from`/`year_to` filtering, `list_years`, and `content_date_range` are based on content dates
-    such as `created`, `collected`, `issued`, and `date`.
-12. **Errors are structured.** A miss or invalid input returns `{ error: { code, message, suggested_tool?,
-    available_values? } }` — read `suggested_tool`/`available_values` to recover rather than guessing.
-
-13. **Exact place identity.** `location` is a label search and may match homonyms.
-    Use `location_id` from `list_locations` for one authority and its descendants.
-14. **Profiles.** Full mode has 38 core tools (40 over HTTP). Some deployments expose
-    `research`, `discovery` or `visualization` subsets. Use the advertised catalogue;
-    do not assume an omitted tool exists.
+   `data_snapshot`) and may lag the live site.
+2. **Curated, not exhaustive.** Absence of a result is never proof of absence.
+3. **Uneven coverage.** Item counts skew toward a few large collections (ILAM *African Music*,
+   Liberia broadcasting tapes); disclose this when comparing universities, places or themes.
+4. **Projects ≠ items.** Many projects are registry entries (`item_count: 0`).
+5. **Names & ethics.** People are stored `Surname, Forename` — always display and cite that form
+   (filters accept either order). A person's records reflect what AMIRA catalogues, not their full
+   work or standing: never rank, rate or evaluate researchers.
+6. **Accent-insensitive everywhere.** `Côte d'Ivoire` and `Cote d'Ivoire` are identical queries in
+   every tool — do not re-query in a second spelling.
+7. **Subjects absorb tags.** Free-form tags and LCSH headings share one `subject` facet (distinguished
+   by `vocabulary=lcsh|tag` on `list_subjects`).
+8. **Canonical languages.** Names, ISO 639-1/2 and legacy bibliographic codes (`fre`, `ger`) all work.
+9. **Opt-in texts & coverage.** Podcast transcripts cover all episodes; video transcripts cover most
+   videos; publication full text covers only EPub PDF deposits (ERef is metadata-only — missing text
+   does not mean closed access). Podcast transcripts are machine-generated (`transcript_generated_by`);
+   Cluster Chronicles abstracts are AI-written (`abstract_ai_generated`).
+10. **Places & dates.** `list_locations` rolls up countries and places into one flat ranked list
+    (`level`: `country` or `place`); `location` matches any level (and may match homonyms — use
+    `location_id` for exact authority + descendants); `country` matches countries only. Podcasts and
+    videos tag `date_status` (`published`, `scheduled`, `unknown`) — flag future scheduled dates.
+    Research-item year filters use content dates, not rights/admin dates; inverted ranges return
+    `invalid_range`.
+11. **Structured errors & profiles.** Errors return `{ error: { code, message, suggested_tool?,
+    available_values? } }` — use them to recover. Full mode exposes 38 core tools (40 over HTTP);
+    smaller profiles (`research`, `discovery`, `visualization`) omit subsets — rely on the advertised
+    catalogue.

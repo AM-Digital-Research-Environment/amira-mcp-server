@@ -317,7 +317,7 @@ const skill = skillList.skills[0];
 check(skill?.uri === "skill://amira-mcp/SKILL.md", "skills/list: expected skill uri");
 check(skill?.frontmatter?.name === "amira-mcp", "skills/list: frontmatter name matches the directory");
 check(typeof skill?.frontmatter?.description === "string", "skills/list: frontmatter carries a description");
-check(skill?.resources?.length === 4, `skills/list: complete manifest (4 files), got ${skill?.resources?.length}`);
+check(skill?.resources?.length === 6, `skills/list: complete manifest (6 files), got ${skill?.resources?.length}`);
 
 const skillGet = await skillsClient.get(skill.uri);
 check(skillGet.skill?.uri === skill.uri, "skills/get: returns the requested skill");
@@ -329,7 +329,7 @@ check(rootNames.includes("references:inode/directory"), "directory/read: subdire
 check(skillRoot.resources.length === 2, "directory/read: direct children only, not recursive");
 
 const refDir = await skillsClient.readDirectory("skill://amira-mcp/references");
-check(refDir.resources.length === 3, `directory/read: 3 reference files, got ${refDir.resources.length}`);
+check(refDir.resources.length === 5, `directory/read: 5 reference files, got ${refDir.resources.length}`);
 
 for (const resource of skill.resources) {
   const label = resource.uri.replace("skill://amira-mcp/", "");
@@ -341,6 +341,7 @@ check(manual.body?.includes("amira_url") && manual.frontmatter?.name === "amira-
 
 const listed = (await client.listResources()).resources.map((r) => r.uri);
 check(listed.includes("skill://amira-mcp/SKILL.md"), "resources/list: the skill's SKILL.md is listed");
+check(!listed.some((u) => u.startsWith("skill://amira-curator/")), "resources/list: curator-only skill is absent in public mode");
 check(JSON.stringify(listed.filter((u) => u.startsWith("ui://"))) === JSON.stringify(["ui://amira/app.html"]),
   "resources/list: the one ui:// app page is still there");
 

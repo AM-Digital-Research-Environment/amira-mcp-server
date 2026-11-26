@@ -83,31 +83,32 @@ const CACHE_HINTS = {
  * is not served (AMIRA_SKILLS=0), and INSTRUCTIONS is the longer text.
  */
 const SKILL_POINTER = " Before substantial research, read skill://amira-mcp/SKILL.md.";
+const CURATOR_SKILL_POINTER = " Before substantial research, read skill://amira-mcp/SKILL.md and skill://amira-curator/SKILL.md.";
 
 export const INSTRUCTIONS =
   "CITATIONS — follow exactly:\n" +
-  "• Every record carries an `amira_url`, its public AMIRA page. Whenever you mention an item, person, project, " +
-  "subject, place, publication, podcast, video or chronicle, render its `amira_url` as a markdown link. For several records " +
-  "use one link each (a bulleted list is good) — never collapse them into an id range.\n" +
-  "• Use only URLs returned by the tools; never invent one. DOI, watch or listen URLs may be added, but never " +
-  "replace the AMIRA link.\n" +
-  "• Never print legacy DRE identifiers. If an id is needed, use `omeka_id` (the final number of the amira_url).\n\n" +
+  "• Every record carries an `amira_url`. Whenever you mention an item, person, project, subject, place, " +
+  "publication, podcast, video or chronicle, link its `amira_url` in markdown — one link per record " +
+  "(e.g. a bulleted list), never an id range.\n" +
+  "• Use only URLs returned by tools; never invent one. DOI, watch or listen URLs may supplement, never " +
+  "replace, the AMIRA link.\n" +
+  "• Never print legacy DRE identifiers; if an id is needed, use `omeka_id` (the final number of amira_url).\n\n" +
   "NAMES: people are stored 'Surname, Forename' (e.g. `Baumann, Oliver`); display and cite that form. Person " +
   "filters accept either order and ignore accents. A person's records show what AMIRA catalogues, not their full " +
-  "work or standing: present them as records, never as an evaluation, and do not rank or judge people.\n\n" +
-  "WORKFLOW: call get_collection_overview first, then search_* / list_* to find records and get_* for detail. " +
-  "resolve_entity turns a name into a typed id for get_entity_graph; find_related pivots on a subject, place, " +
-  "person or project. Multi-word keywords match records containing every word; quote a phrase to match it " +
-  "exactly. Transcripts and texts are opt-in on get_* (include_transcript / include_fulltext / " +
-  "include_text, paged by offset)." +
+  "work or standing: present them as records, never as an evaluation, and never rank or judge people.\n\n" +
+  "WORKFLOW: start with get_collection_overview, then search_* / list_* (items, projects, people, publications, " +
+  "podcasts, videos, chronicles) and get_* for detail. resolve_entity → get_entity_graph maps links; " +
+  "find_related pivots across corpora; get_text_passages quotes passages; get_similar_items / get_semantic_map " +
+  "find semantic clusters; get_fulltext_map covers ILAM African Music; compare_collections and get_data_quality " +
+  "check coverage. Multi-word keywords require every word; quote phrases. Long texts are opt-in on get_* " +
+  "(include_fulltext / include_transcript / include_text)." +
   SKILL_POINTER +
   "\n\n" +
   "ABOUT: AMIRA (Africa Multiple Interactive Research Atlas) is the research-data platform of the Africa Multiple " +
-  "Cluster of Excellence, University of Bayreuth, built by its Digital Research Environment and curated with the " +
-  "Africa Multiple Research Centres at Université Joseph Ki-Zerbo, Rhodes University, the University of Lagos and " +
-  "Moi University. Federal University of Bahia is a privileged partner, not an AMRC. Results come from a snapshot " +
-  "of the public Omeka S API; get_collection_overview reports its date. The collection is curated, not " +
-  "exhaustive: absence of a result is not proof of absence.";
+  "Cluster of Excellence, University of Bayreuth (DRE), curated with the Africa Multiple Research Centres at " +
+  "Université Joseph Ki-Zerbo, Rhodes University, the University of Lagos and Moi University (Federal University " +
+  "of Bahia is a privileged partner, not an AMRC). Results come from a snapshot of the public Omeka S API " +
+  "(see get_collection_overview) and are curated, not exhaustive: absence is not proof of absence.";
 
 /**
  * Curator mode (#26): the private-record rules come first, then the public
@@ -115,20 +116,18 @@ export const INSTRUCTIONS =
  * text stays within the same 2,048-character limit (a unit test enforces it).
  */
 const CURATOR_RULES =
-  "CURATOR MODE — this server also serves PRIVATE AMIRA records and values:\n" +
-  "• A record with `visibility: \"private\"` has no public page: `admin_url` (Omeka admin) and `citation_note` " +
-  "replace `amira_url`. Only curators can open it: name it as private.\n" +
-  "• `restricted` holds private values (security level, MongoDB id, full text), not on the public site; " +
-  "quoting them is the curator's call.\n\n";
+  "CURATOR MODE — also serves PRIVATE AMIRA records and values:\n" +
+  "• `visibility: \"private\"` records have no public page: `admin_url` (Omeka admin) and `citation_note` " +
+  "replace `amira_url`; name them as private.\n" +
+  "• `restricted` holds private values (security level, MongoDB id, full text); quoting them is the curator's call.\n\n";
 const CURATOR_ABOUT =
-  "\n\nABOUT: AMIRA is the research-data platform of the Africa Multiple Cluster of Excellence, University of Bayreuth. " +
-  "Results come from an authenticated snapshot of its Omeka S API; get_collection_overview gives its date and the " +
-  "public/private split.";
+  "\n\nABOUT: AMIRA (Africa Multiple, University of Bayreuth). " +
+  "Authenticated Omeka S snapshot; get_collection_overview gives its date and public/private split.";
 export function curatorInstructions(skills = true): string {
   // The public citation rules, restated for public records: a private one has no amira_url.
   const rules = INSTRUCTIONS.slice(0, INSTRUCTIONS.indexOf("\n\nABOUT:"))
     .replace("• Every record carries an `amira_url`", "• Every public record carries an `amira_url`");
-  return CURATOR_RULES + (skills ? rules : rules.replace(SKILL_POINTER, "")) + CURATOR_ABOUT;
+  return CURATOR_RULES + (skills ? rules.replace(SKILL_POINTER, CURATOR_SKILL_POINTER) : rules.replace(SKILL_POINTER, "")) + CURATOR_ABOUT;
 }
 
 /** Curator results hold private data: no shared caching, whatever the method. */

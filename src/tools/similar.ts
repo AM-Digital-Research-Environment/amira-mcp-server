@@ -156,8 +156,8 @@ const LIMIT = limitParam(5, 10);
 export function registerSimilarTools(server: Server, tools: ToolMap): void {
   tools.get_similar_items = server.registerTool("get_similar_items", {
     title: "Find similar records",
-    description: "Records whose catalogue descriptions read most alike (EmbeddingGemma 2 vectors), across research items, publications, " +
-      "videos, podcasts, projects and sections. Each says what else it shares (subjects, places, people, project) or wording_only.",
+    description: "Semantic similarity and recommendations: records whose catalogue descriptions read most alike (EmbeddingGemma 2) across items, " +
+      "publications, videos, podcasts, projects and sections, with shared metadata or wording_only.",
     annotations: READ_ONLY,
     inputSchema: schemaOnce("get_similar_items:in", () => z.strictObject({
       id: z.union([z.string().min(1).max(256), z.number().int().positive()]).describe("omeka_id, or a typed id such as publication:29919"),
