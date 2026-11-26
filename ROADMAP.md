@@ -15,7 +15,7 @@ November (`docs/review-2026-11-06.md`) shipped in 1.35.0 and was retired after
 
 ## Next priorities
 
-1. **Deploy 1.40.0 from the published image.** The curator service must now set
+1. **Deploy 1.44.0 from the published image.** The curator service must now set
    `AMIRA_CACHE_DIR` explicitly and mount it as tmpfs, or it refuses to start
    (see [docs/curator.md](docs/curator.md)). On 7 October the public endpoint
    still answered 1.17.0, while the MCP Registry already listed a newer release
@@ -126,8 +126,11 @@ November (`docs/review-2026-11-06.md`) shipped in 1.35.0 and was retired after
 - MCP roadmap: a redesign of the `tools/call` result shape (keep `textResult`
   centralised so it lands in one file), progressive tool discovery, ETags on top
   of `ttlMs`/`cacheScope`.
-- Skills: Claude is not in the extension's client matrix, so keep shipping
-  `amira-mcp-skill.zip`.
+- Skills: Claude (web/desktop and Claude Code) shipped Skills over MCP in public
+  beta on 24 November 2026 (default on Pro/Max/Ultra, admin opt-in on Team). Keep
+  shipping `amira-mcp-skill.zip` while the feature is in beta and for hosts without
+  extension support; verify live discovery and progressive disclosure of
+  `amira-mcp` and `amira-curator` in Claude once deployed.
 - MCPB: stay on manifest 0.3; 0.4 only adds the `uv` Python server type.
 - Don't adopt MCP logging, sampling or roots (deprecated by SEP-2577); stderr is
   correct. Don't reintroduce `mcpb sign` while node-forge GHSA-86w9-cpqp-85rv is

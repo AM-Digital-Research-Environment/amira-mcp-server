@@ -5,6 +5,36 @@ What each release changed, newest first. Dates are tag dates. The
 carry the full notes and assets; [ROADMAP.md](ROADMAP.md) holds the decisions in
 force and what comes next.
 
+## 1.44.0 — 2026-11-26
+
+### Skills over MCP & Tool Search
+
+- **Progressive-disclosure `amira-mcp` skill.** Rewrote the frontmatter
+  description as a concise routing rule covering every corpus (Cluster
+  Chronicles, ILAM *African Music*, semantic similarity, entity graphs,
+  bibliography exports) and trimmed `.claude/skills/amira-mcp/SKILL.md` by half
+  (from 26.2 KB to 13.0 KB). Deep corpus guidance and the five structured
+  research workflows now load on demand from two new reference files
+  (`references/special-corpora.md` and `references/research-recipes.md`).
+- **Curator-only `amira-curator` skill.** Added a dedicated
+  `.claude/skills/amira-curator/SKILL.md` covering private records, `admin_url`,
+  `restricted` values, private full-text and transcript search/paging,
+  `get_text_passages`, app admin links and retired authority duplicates. Served
+  exclusively when `AMIRA_ACCESS=curator` with `cacheScope: "private"`
+  (`ttlMs: 0`), and excluded from public servers and the local `.mcpb`.
+  `curatorInstructions()` points to both skills while staying within the
+  2,048-character limit.
+- **Tool Search Tool tuning.** Expanded `INSTRUCTIONS` (still under 2,048
+  characters) so hosts that defer tool loading know about every analytical tool
+  family (`get_text_passages`, `get_similar_items`, `get_semantic_map`,
+  `get_fulltext_map`, `compare_collections`, `get_data_quality`, chronicles),
+  and sharpened descriptions on `search_research_items`, `get_similar_items`,
+  `get_semantic_map` and `get_fulltext_map` for better BM25/regex recall while
+  reducing total surface weight by 6 tokens (13,044 stdio / 13,788 HTTP).
+- **HTTP smoke digest verification & docs.** `smoke:http` now verifies the size
+  and SHA-256 digest of every served skill file; `README.md`, `ROADMAP.md` and
+  `docs/curator.md` reflect Claude's public beta support for Skills over MCP.
+
 ## 1.43.1 — 2026-11-23
 
 Fixes from an audit of 1.43.0: views that a late answer could overwrite, saved
